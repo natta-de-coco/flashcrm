@@ -187,7 +187,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
     if (!conversation) {
       const { data: created, error } = await supabaseAdmin
         .from("conversations")
-        .insert({ contact_id: contactId, channel: "whatsapp" })
+        .insert({ contact_id: contactId!, channel: "whatsapp" })
         .select("id, bot_enabled")
         .single();
       if (error) throw error;
