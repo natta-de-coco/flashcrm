@@ -269,7 +269,7 @@ function InboxPage() {
                   variant="secondary"
                   onClick={() =>
                     void updateConversation({
-                      assigned_to: active.assigned_to === user?.id ? null : user?.id,
+                      assigned_to: active.assigned_to === user?.id ? null : (user?.id ?? null),
                     })
                   }
                 >
