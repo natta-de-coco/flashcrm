@@ -128,7 +128,13 @@ function InboxPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  async function updateConversation(patch: Record<string, unknown>) {
+  type ConvPatch = {
+    bot_enabled?: boolean;
+    status?: "open" | "pending" | "closed";
+    assigned_to?: string | null;
+  };
+
+  async function updateConversation(patch: ConvPatch) {
     if (!activeId) return;
     const { error } = await supabase.from("conversations").update(patch).eq("id", activeId);
     if (error) toast.error(error.message);
