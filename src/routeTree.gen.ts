@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp/webhook'
+import { Route as ApiPublicWidgetChatRouteImport } from './routes/api/public/widget/chat'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,31 +24,44 @@ const ApiPublicWhatsappWebhookRoute =
     path: '/api/public/whatsapp/webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicWidgetChatRoute = ApiPublicWidgetChatRouteImport.update({
+  id: '/api/public/widget/chat',
+  path: '/api/public/widget/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
+  '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/whatsapp/webhook'
+  fullPaths: '/' | '/api/public/whatsapp/webhook' | '/api/public/widget/chat'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/whatsapp/webhook'
-  id: '__root__' | '/' | '/api/public/whatsapp/webhook'
+  to: '/' | '/api/public/whatsapp/webhook' | '/api/public/widget/chat'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/public/whatsapp/webhook'
+    | '/api/public/widget/chat'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
+  ApiPublicWidgetChatRoute: typeof ApiPublicWidgetChatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -66,12 +80,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicWhatsappWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/widget/chat': {
+      id: '/api/public/widget/chat'
+      path: '/api/public/widget/chat'
+      fullPath: '/api/public/widget/chat'
+      preLoaderRoute: typeof ApiPublicWidgetChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
+  ApiPublicWidgetChatRoute: ApiPublicWidgetChatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
