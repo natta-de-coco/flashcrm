@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp/webhook'
 import { Route as ApiPublicWidgetChatRouteImport } from './routes/api/public/widget/chat'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicWhatsappWebhookRoute =
@@ -32,34 +38,40 @@ const ApiPublicWidgetChatRoute = ApiPublicWidgetChatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/public/whatsapp/webhook' | '/api/public/widget/chat'
+  fullPaths:
+    '/' | '/auth' | '/api/public/whatsapp/webhook' | '/api/public/widget/chat'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/whatsapp/webhook' | '/api/public/widget/chat'
+  to: '/' | '/auth' | '/api/public/whatsapp/webhook' | '/api/public/widget/chat'
   id:
     | '__root__'
     | '/'
+    | '/auth'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthRoute: typeof AuthRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiPublicWidgetChatRoute: typeof ApiPublicWidgetChatRoute
 }
@@ -71,6 +83,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/whatsapp/webhook': {
@@ -92,6 +111,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthRoute: AuthRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiPublicWidgetChatRoute: ApiPublicWidgetChatRoute,
 }
