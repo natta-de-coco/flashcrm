@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Plus, Send } from "lucide-react";
+import { Copy, Download, Plus, Send } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -165,6 +165,37 @@ function MarketingPage() {
   }
 
   const activeSite = (sites.data ?? []).find((s) => s.id === selectedSite) ?? sites.data?.[0] ?? null;
+  const activateSite = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("lead_sites")
+        .update({ status: "active", activated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Site activated");
+      void qc.invalidateQueries({ queryKey: ["lead_sites"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const revokeSite = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("lead_sites").update({ status: "revoked" }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Site revoked");
+      void qc.invalidateQueries({ queryKey: ["lead_sites"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const popupSnippet = activeSite
+    ? `<script src="${origin}/flas-popup.js" data-site-key="${activeSite.site_key}" async></script>`
+    : "";
+
   const snippet = activeSite
     ? `<script src="${origin}/lead-capture.js" data-site-key="${activeSite.site_key}" async></script>\n<div data-flas-leads data-heading="Join our newsletter" data-cta="Subscribe"></div>`
     : "";
