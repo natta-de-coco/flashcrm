@@ -269,28 +269,52 @@ export type Database = {
       }
       lead_sites: {
         Row: {
+          activated_at: string | null
+          activation_token: string
           active: boolean
+          admin_email: string | null
+          ask_email: boolean
+          ask_whatsapp: boolean
           created_at: string
+          domain: string | null
           id: string
           name: string
           platform: string
+          popup_greeting: string
           site_key: string
+          status: string
         }
         Insert: {
+          activated_at?: string | null
+          activation_token?: string
           active?: boolean
+          admin_email?: string | null
+          ask_email?: boolean
+          ask_whatsapp?: boolean
           created_at?: string
+          domain?: string | null
           id?: string
           name: string
           platform?: string
+          popup_greeting?: string
           site_key?: string
+          status?: string
         }
         Update: {
+          activated_at?: string | null
+          activation_token?: string
           active?: boolean
+          admin_email?: string | null
+          ask_email?: boolean
+          ask_whatsapp?: boolean
           created_at?: string
+          domain?: string | null
           id?: string
           name?: string
           platform?: string
+          popup_greeting?: string
           site_key?: string
+          status?: string
         }
         Relationships: []
       }
