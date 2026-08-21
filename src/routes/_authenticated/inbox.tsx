@@ -45,10 +45,37 @@ function InboxPage() {
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
+  const [tagDraft, setTagDraft] = useState("");
+  const [reminderNote, setReminderNote] = useState("");
+  const [reminderDue, setReminderDue] = useState("");
+  const [templateId, setTemplateId] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const send = useServerFn(sendAgentMessage);
   const suggest = useServerFn(draftBotReply);
+  const sendTemplate = useServerFn(sendTemplateMessage);
+
+  const team = useQuery({
+    queryKey: ["team-basic"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("id, full_name, email");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const templates = useQuery({
+    queryKey: ["approved-templates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("wa_templates")
+        .select("id, name, body, language")
+        .eq("status", "approved")
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const conversations = useQuery({
     queryKey: ["conversations"],
