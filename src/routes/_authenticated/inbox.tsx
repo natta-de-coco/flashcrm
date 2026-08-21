@@ -170,6 +170,7 @@ function InboxPage() {
     bot_enabled?: boolean;
     status?: "open" | "pending" | "closed";
     assigned_to?: string | null;
+    tags?: string[];
   };
 
   async function updateConversation(patch: ConvPatch) {
@@ -178,6 +179,74 @@ function InboxPage() {
     if (error) toast.error(error.message);
     else void qc.invalidateQueries({ queryKey: ["conversations"] });
   }
+
+  const reminders = useQuery({
+    queryKey: ["reminders", activeId],
+    enabled: Boolean(activeId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("reminders")
+        .select("*")
+        .eq("conversation_id", activeId!)
+        .order("due_at", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const addReminder = useMutation({
+    mutationFn: async () => {
+      if (!activeId || !reminderDue) throw new Error("Pick a date and time first");
+      const { error } = await supabase.from("reminders").insert({
+        conversation_id: activeId,
+        contact_id: active?.contact_id ?? null,
+        assigned_to: active?.assigned_to ?? user?.id ?? null,
+        created_by: user?.id ?? null,
+        note: reminderNote || "Follow up",
+        due_at: new Date(reminderDue).toISOString(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setReminderNote("");
+      setReminderDue("");
+      toast.success("Follow-up reminder set");
+      void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const templateMutation = useMutation({
+    mutationFn: async () =>
+      sendTemplate({ data: { templateId, conversationId: activeId!, variables: [] } }),
+    onSuccess: () => {
+      setTemplateId("");
+      toast.success("Template sent");
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  async function toggleReminderDone(id: string, done: boolean) {
+    const { error } = await supabase.from("reminders").update({ done }).eq("id", id);
+    if (error) toast.error(error.message);
+    else void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
+  }
+
+  function addTag() {
+    const tag = tagDraft.trim().toLowerCase();
+    if (!tag || !active) return;
+    const next = Array.from(new Set([...(active.tags ?? []), tag]));
+    setTagDraft("");
+    void updateConversation({ tags: next });
+  }
+
+  function removeTag(tag: string) {
+    if (!active) return;
+    void updateConversation({ tags: (active.tags ?? []).filter((t) => t !== tag) });
+  }
+
 
   return (
     <div className="flex h-[calc(100vh-0px)] min-h-0 flex-1">
