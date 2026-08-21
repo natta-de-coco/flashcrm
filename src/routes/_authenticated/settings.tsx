@@ -61,7 +61,9 @@ function SettingsPage() {
         language: tplForm.language.trim() || "en_US",
         category: tplForm.category,
         body: tplForm.body.trim(),
-        created_by: user?.id ?? null,
+        variables: (tplForm.body.match(/\{\{\d+\}\}/g) ?? []).map((v) =>
+          v.replace(/[^0-9]/g, ""),
+        ),
       });
       if (error) throw error;
     },
