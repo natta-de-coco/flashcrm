@@ -3,10 +3,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { Link, Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
+  Activity,
   Bot,
   Inbox,
   LayoutDashboard,
   LogOut,
+  Mail,
   MessageSquare,
   Settings,
   Users,
