@@ -48,6 +48,11 @@ type Site = {
   platform: string;
   site_key: string;
   active: boolean;
+  status: string;
+  domain: string | null;
+  admin_email: string | null;
+  activation_token: string;
+  popup_greeting: string;
 };
 
 type Campaign = {
@@ -237,7 +242,58 @@ function MarketingPage() {
 
             {activeSite ? (
               <div className="grid gap-2">
-                <Label>Embed snippet for {activeSite.name}</Label>
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-3">
+                  <Badge
+                    variant={activeSite.status === "active" ? "default" : "secondary"}
+                    className="capitalize"
+                  >
+                    {activeSite.status}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {activeSite.domain ?? "No domain reported yet"}
+                    {activeSite.admin_email ? ` · ${activeSite.admin_email}` : ""}
+                  </span>
+                  <div className="ml-auto flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" asChild>
+                      <a href={`${origin}/api/public/plugin/download?siteKey=${activeSite.site_key}`}>
+                        <Download className="size-4" /> WordPress plugin
+                      </a>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        copy(
+                          `${origin}/api/public/plugin/activate?token=${activeSite.activation_token}`,
+                        )
+                      }
+                    >
+                      <Copy className="size-4" /> Activation link
+                    </Button>
+                    {isAdmin && activeSite.status !== "active" && (
+                      <Button size="sm" onClick={() => activateSite.mutate(activeSite.id)}>
+                        Activate now
+                      </Button>
+                    )}
+                    {isAdmin && activeSite.status === "active" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => revokeSite.mutate(activeSite.id)}
+                      >
+                        Revoke
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <Label>Popup chatbot snippet for {activeSite.name}</Label>
+                <Textarea readOnly rows={2} value={popupSnippet} className="font-mono text-xs" />
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => copy(popupSnippet)}>
+                    <Copy className="size-4" /> Copy popup snippet
+                  </Button>
+                </div>
+                <Label className="mt-2">Inline form snippet</Label>
                 <Textarea readOnly rows={3} value={snippet} className="font-mono text-xs" />
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => copy(snippet)}>
