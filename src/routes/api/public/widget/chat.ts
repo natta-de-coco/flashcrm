@@ -3,6 +3,7 @@ import { z } from "zod";
 
 const PayloadSchema = z.object({
   sessionId: z.string().min(6).max(80),
+  siteKey: z.string().min(10).max(120).optional(),
   name: z.string().max(80).optional(),
   message: z.string().min(1).max(2000),
 });
@@ -28,6 +29,21 @@ export const Route = createFileRoute("/api/public/widget/chat")({
             status: 400,
             headers: corsHeaders,
           });
+        }
+
+        if (parsed.siteKey) {
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const { data: site } = await supabaseAdmin
+            .from("lead_sites")
+            .select("status, active")
+            .eq("site_key", parsed.siteKey)
+            .maybeSingle();
+          if (!site || !site.active || site.status !== "active") {
+            return new Response(
+              JSON.stringify({ error: "This site is not activated yet" }),
+              { status: 403, headers: corsHeaders },
+            );
+          }
         }
 
         try {
