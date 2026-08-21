@@ -371,19 +371,129 @@ function InboxPage() {
                     </Button>
                   ))}
                 </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() =>
-                    void updateConversation({
-                      assigned_to: active.assigned_to === user?.id ? null : (user?.id ?? null),
-                    })
+                <select
+                  className="h-9 rounded-md border bg-background px-2 text-xs"
+                  value={active.assigned_to ?? ""}
+                  onChange={(e) =>
+                    void updateConversation({ assigned_to: e.target.value || null })
                   }
                 >
-                  {active.assigned_to === user?.id ? "Unassign me" : "Assign to me"}
-                </Button>
+                  <option value="">Unassigned</option>
+                  {(team.data ?? []).map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.id === user?.id
+                        ? "Me"
+                        : member.full_name || member.email || "Teammate"}
+                    </option>
+                  ))}
+                </select>
               </div>
             </header>
+
+            {/* Thread tools: tags, templates, follow-up reminders */}
+            <div className="space-y-3 border-b bg-card px-5 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Tag className="size-4 text-muted-foreground" />
+                {(active.tags ?? []).map((tag) => (
+                  <Badge key={tag} variant="secondary" className="gap-1">
+                    {tag}
+                    <button aria-label={`Remove ${tag}`} onClick={() => removeTag(tag)}>
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+                <Input
+                  className="h-8 w-40"
+                  placeholder="Add tag"
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addTag();
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="h-8 rounded-md border bg-background px-2 text-xs"
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
+                >
+                  <option value="">Send approved template…</option>
+                  {(templates.data ?? []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!templateId || templateMutation.isPending}
+                  onClick={() => templateMutation.mutate()}
+                >
+                  {templateMutation.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                  Send template
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Bell className="size-4 text-muted-foreground" />
+                <Input
+                  className="h-8 w-56"
+                  placeholder="Follow-up note"
+                  value={reminderNote}
+                  onChange={(e) => setReminderNote(e.target.value)}
+                />
+                <Input
+                  type="datetime-local"
+                  className="h-8 w-52"
+                  value={reminderDue}
+                  onChange={(e) => setReminderDue(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!reminderDue || addReminder.isPending}
+                  onClick={() => addReminder.mutate()}
+                >
+                  Set reminder
+                </Button>
+              </div>
+
+              {(reminders.data ?? []).length > 0 && (
+                <ul className="space-y-1">
+                  {(reminders.data ?? []).map((r) => (
+                    <li
+                      key={r.id}
+                      className={cn(
+                        "flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 text-xs",
+                        r.done && "opacity-60",
+                      )}
+                    >
+                      <span className="truncate">
+                        {r.note} · {new Date(r.due_at).toLocaleString()}
+                        {!r.done && new Date(r.due_at) < new Date() ? " · overdue" : ""}
+                      </span>
+                      <button
+                        className="flex items-center gap-1 font-medium text-brand"
+                        onClick={() => void toggleReminderDone(r.id, !r.done)}
+                      >
+                        <Check className="size-3" /> {r.done ? "Reopen" : "Done"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
 
             <div className="chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
               {(messages.data ?? []).map((m) => (
