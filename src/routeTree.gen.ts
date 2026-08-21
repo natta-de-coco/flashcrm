@@ -16,6 +16,7 @@ import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated/contacts'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated/inbox'
+import { Route as AuthenticatedMonitoringRouteImport } from './routes/_authenticated/monitoring'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as ApiPublicLeadsCollectRouteImport } from './routes/api/public/leads/collect'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp/webhook'
@@ -55,6 +56,11 @@ const AuthenticatedInboxRoute = AuthenticatedInboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMonitoringRoute = AuthenticatedMonitoringRouteImport.update({
+  id: '/monitoring',
+  path: '/monitoring',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/contacts': typeof AuthenticatedContactsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/inbox': typeof AuthenticatedInboxRoute
+  '/monitoring': typeof AuthenticatedMonitoringRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/contacts': typeof AuthenticatedContactsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/inbox': typeof AuthenticatedInboxRoute
+  '/monitoring': typeof AuthenticatedMonitoringRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/inbox': typeof AuthenticatedInboxRoute
+  '/_authenticated/monitoring': typeof AuthenticatedMonitoringRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
@@ -124,6 +133,7 @@ export interface FileRouteTypes {
     | '/contacts'
     | '/dashboard'
     | '/inbox'
+    | '/monitoring'
     | '/settings'
     | '/api/public/leads/collect'
     | '/api/public/whatsapp/webhook'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/contacts'
     | '/dashboard'
     | '/inbox'
+    | '/monitoring'
     | '/settings'
     | '/api/public/leads/collect'
     | '/api/public/whatsapp/webhook'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/_authenticated/contacts'
     | '/_authenticated/dashboard'
     | '/_authenticated/inbox'
+    | '/_authenticated/monitoring'
     | '/_authenticated/settings'
     | '/api/public/leads/collect'
     | '/api/public/whatsapp/webhook'
@@ -215,6 +227,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInboxRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/monitoring': {
+      id: '/_authenticated/monitoring'
+      path: '/monitoring'
+      fullPath: '/monitoring'
+      preLoaderRoute: typeof AuthenticatedMonitoringRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
@@ -251,6 +270,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedContactsRoute: typeof AuthenticatedContactsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
+  AuthenticatedMonitoringRoute: typeof AuthenticatedMonitoringRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
 
@@ -259,6 +279,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedContactsRoute: AuthenticatedContactsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInboxRoute: AuthenticatedInboxRoute,
+  AuthenticatedMonitoringRoute: AuthenticatedMonitoringRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
 }
 
