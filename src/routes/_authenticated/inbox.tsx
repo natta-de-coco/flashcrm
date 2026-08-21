@@ -4,14 +4,25 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
-import { draftBotReply, sendAgentMessage } from "@/lib/crm.functions";
+import { draftBotReply, sendAgentMessage, sendTemplateMessage } from "@/lib/crm.functions";
 import type { Conversation, Message } from "@/lib/crm-types";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Bot, Globe, Loader2, Search, Send, Sparkles } from "lucide-react";
+import {
+  Bell,
+  Bot,
+  Check,
+  Globe,
+  Loader2,
+  Search,
+  Send,
+  Sparkles,
+  Tag,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -34,10 +45,37 @@ function InboxPage() {
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
+  const [tagDraft, setTagDraft] = useState("");
+  const [reminderNote, setReminderNote] = useState("");
+  const [reminderDue, setReminderDue] = useState("");
+  const [templateId, setTemplateId] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const send = useServerFn(sendAgentMessage);
   const suggest = useServerFn(draftBotReply);
+  const sendTemplate = useServerFn(sendTemplateMessage);
+
+  const team = useQuery({
+    queryKey: ["team-basic"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("id, full_name, email");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const templates = useQuery({
+    queryKey: ["approved-templates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("wa_templates")
+        .select("id, name, body, language")
+        .eq("status", "approved")
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
 
   const conversations = useQuery({
     queryKey: ["conversations"],
@@ -132,6 +170,7 @@ function InboxPage() {
     bot_enabled?: boolean;
     status?: "open" | "pending" | "closed";
     assigned_to?: string | null;
+    tags?: string[];
   };
 
   async function updateConversation(patch: ConvPatch) {
@@ -140,6 +179,74 @@ function InboxPage() {
     if (error) toast.error(error.message);
     else void qc.invalidateQueries({ queryKey: ["conversations"] });
   }
+
+  const reminders = useQuery({
+    queryKey: ["reminders", activeId],
+    enabled: Boolean(activeId),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("reminders")
+        .select("*")
+        .eq("conversation_id", activeId!)
+        .order("due_at", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const addReminder = useMutation({
+    mutationFn: async () => {
+      if (!activeId || !reminderDue) throw new Error("Pick a date and time first");
+      const { error } = await supabase.from("reminders").insert({
+        conversation_id: activeId,
+        contact_id: active?.contact_id ?? null,
+        assigned_to: active?.assigned_to ?? user?.id ?? null,
+        created_by: user?.id ?? null,
+        note: reminderNote || "Follow up",
+        due_at: new Date(reminderDue).toISOString(),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setReminderNote("");
+      setReminderDue("");
+      toast.success("Follow-up reminder set");
+      void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const templateMutation = useMutation({
+    mutationFn: async () =>
+      sendTemplate({ data: { templateId, conversationId: activeId!, variables: [] } }),
+    onSuccess: () => {
+      setTemplateId("");
+      toast.success("Template sent");
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  async function toggleReminderDone(id: string, done: boolean) {
+    const { error } = await supabase.from("reminders").update({ done }).eq("id", id);
+    if (error) toast.error(error.message);
+    else void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
+  }
+
+  function addTag() {
+    const tag = tagDraft.trim().toLowerCase();
+    if (!tag || !active) return;
+    const next = Array.from(new Set([...(active.tags ?? []), tag]));
+    setTagDraft("");
+    void updateConversation({ tags: next });
+  }
+
+  function removeTag(tag: string) {
+    if (!active) return;
+    void updateConversation({ tags: (active.tags ?? []).filter((t) => t !== tag) });
+  }
+
 
   return (
     <div className="flex h-[calc(100vh-0px)] min-h-0 flex-1">
@@ -264,19 +371,129 @@ function InboxPage() {
                     </Button>
                   ))}
                 </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() =>
-                    void updateConversation({
-                      assigned_to: active.assigned_to === user?.id ? null : (user?.id ?? null),
-                    })
+                <select
+                  className="h-9 rounded-md border bg-background px-2 text-xs"
+                  value={active.assigned_to ?? ""}
+                  onChange={(e) =>
+                    void updateConversation({ assigned_to: e.target.value || null })
                   }
                 >
-                  {active.assigned_to === user?.id ? "Unassign me" : "Assign to me"}
-                </Button>
+                  <option value="">Unassigned</option>
+                  {(team.data ?? []).map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.id === user?.id
+                        ? "Me"
+                        : member.full_name || member.email || "Teammate"}
+                    </option>
+                  ))}
+                </select>
               </div>
             </header>
+
+            {/* Thread tools: tags, templates, follow-up reminders */}
+            <div className="space-y-3 border-b bg-card px-5 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Tag className="size-4 text-muted-foreground" />
+                {(active.tags ?? []).map((tag) => (
+                  <Badge key={tag} variant="secondary" className="gap-1">
+                    {tag}
+                    <button aria-label={`Remove ${tag}`} onClick={() => removeTag(tag)}>
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+                <Input
+                  className="h-8 w-40"
+                  placeholder="Add tag"
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addTag();
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="h-8 rounded-md border bg-background px-2 text-xs"
+                  value={templateId}
+                  onChange={(e) => setTemplateId(e.target.value)}
+                >
+                  <option value="">Send approved template…</option>
+                  {(templates.data ?? []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!templateId || templateMutation.isPending}
+                  onClick={() => templateMutation.mutate()}
+                >
+                  {templateMutation.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                  Send template
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Bell className="size-4 text-muted-foreground" />
+                <Input
+                  className="h-8 w-56"
+                  placeholder="Follow-up note"
+                  value={reminderNote}
+                  onChange={(e) => setReminderNote(e.target.value)}
+                />
+                <Input
+                  type="datetime-local"
+                  className="h-8 w-52"
+                  value={reminderDue}
+                  onChange={(e) => setReminderDue(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!reminderDue || addReminder.isPending}
+                  onClick={() => addReminder.mutate()}
+                >
+                  Set reminder
+                </Button>
+              </div>
+
+              {(reminders.data ?? []).length > 0 && (
+                <ul className="space-y-1">
+                  {(reminders.data ?? []).map((r) => (
+                    <li
+                      key={r.id}
+                      className={cn(
+                        "flex items-center justify-between gap-3 rounded-md border px-3 py-1.5 text-xs",
+                        r.done && "opacity-60",
+                      )}
+                    >
+                      <span className="truncate">
+                        {r.note} · {new Date(r.due_at).toLocaleString()}
+                        {!r.done && new Date(r.due_at) < new Date() ? " · overdue" : ""}
+                      </span>
+                      <button
+                        className="flex items-center gap-1 font-medium text-brand"
+                        onClick={() => void toggleReminderDone(r.id, !r.done)}
+                      >
+                        <Check className="size-3" /> {r.done ? "Reopen" : "Done"}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
 
             <div className="chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
               {(messages.data ?? []).map((m) => (

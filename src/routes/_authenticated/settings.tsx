@@ -3,11 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Save } from "lucide-react";
+import { Copy, Plus, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -34,6 +35,51 @@ function SettingsPage() {
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [form, setForm] = useState({ business_name: "", display_phone: "", phone_number_id: "" });
+  const [tplForm, setTplForm] = useState({
+    name: "",
+    language: "en_US",
+    category: "UTILITY",
+    body: "",
+  });
+
+  const templates = useQuery({
+    queryKey: ["wa_templates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("wa_templates")
+        .select("id, name, language, category, body, status")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const createTpl = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("wa_templates").insert({
+        name: tplForm.name.trim(),
+        language: tplForm.language.trim() || "en_US",
+        category: tplForm.category,
+        body: tplForm.body.trim(),
+        variables: (tplForm.body.match(/\{\{\d+\}\}/g) ?? []).map((v) =>
+          v.replace(/[^0-9]/g, ""),
+        ),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setTplForm({ name: "", language: "en_US", category: "UTILITY", body: "" });
+      toast.success("Template added");
+      void qc.invalidateQueries({ queryKey: ["wa_templates"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  async function setTemplateStatus(id: string, status: string) {
+    const { error } = await supabase.from("wa_templates").update({ status }).eq("id", id);
+    if (error) toast.error(error.message);
+    else void qc.invalidateQueries({ queryKey: ["wa_templates"] });
+  }
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -192,6 +238,118 @@ function SettingsPage() {
             >
               Preview the widget
             </a>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">WhatsApp message templates</CardTitle>
+            <CardDescription>
+              Keep your Meta-approved templates here so agents and the chatbot can send them. Use
+              {" {{1}}, {{2}} "}
+              for variables and mark a template approved once Meta approves it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {isAdmin && (
+              <div className="grid gap-3 rounded-lg border p-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="t_name">Template name</Label>
+                    <Input
+                      id="t_name"
+                      placeholder="order_update"
+                      value={tplForm.name}
+                      onChange={(e) => setTplForm({ ...tplForm, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="t_lang">Language</Label>
+                    <Input
+                      id="t_lang"
+                      value={tplForm.language}
+                      onChange={(e) => setTplForm({ ...tplForm, language: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="t_cat">Category</Label>
+                    <select
+                      id="t_cat"
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      value={tplForm.category}
+                      onChange={(e) => setTplForm({ ...tplForm, category: e.target.value })}
+                    >
+                      <option value="MARKETING">Marketing</option>
+                      <option value="UTILITY">Utility</option>
+                      <option value="AUTHENTICATION">Authentication</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="t_body">Body</Label>
+                  <Textarea
+                    id="t_body"
+                    rows={3}
+                    placeholder="Hi {{1}}, your order {{2}} is on its way!"
+                    value={tplForm.body}
+                    onChange={(e) => setTplForm({ ...tplForm, body: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Button
+                    disabled={!tplForm.name.trim() || !tplForm.body.trim() || createTpl.isPending}
+                    onClick={() => createTpl.mutate()}
+                  >
+                    <Plus className="size-4" /> Add template
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {(templates.data ?? []).length === 0 && (
+                <p className="text-sm text-muted-foreground">No templates yet.</p>
+              )}
+              {(templates.data ?? []).map((tpl) => (
+                <div key={tpl.id} className="rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">
+                        {tpl.name}{" "}
+                        <span className="text-xs font-normal text-muted-foreground">
+                          {tpl.language} · {tpl.category.toLowerCase()}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                        {tpl.body}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={tpl.status === "approved" ? "default" : "secondary"}
+                        className={tpl.status === "approved" ? "bg-brand text-brand-foreground" : ""}
+                      >
+                        {tpl.status}
+                      </Badge>
+                      {isAdmin && (
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-xs"
+                          value={tpl.status}
+                          onChange={(e) =>
+                            void setTemplateStatus(tpl.id, e.target.value)
+                          }
+                        >
+                          <option value="draft">draft</option>
+                          <option value="pending">pending</option>
+                          <option value="approved">approved</option>
+                          <option value="rejected">rejected</option>
+                        </select>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 

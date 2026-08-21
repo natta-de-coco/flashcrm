@@ -273,3 +273,46 @@ export async function storeOutbound(
     })
     .eq("id", conversationId);
 }
+
+/** Sends an approved WhatsApp message template. */
+export async function sendWhatsAppTemplate(
+  to: string,
+  name: string,
+  language: string,
+  variables: string[] = [],
+) {
+  const token = process.env["WHATSAPP_ACCESS_TOKEN"];
+  const phoneNumberId = process.env["WHATSAPP_PHONE_NUMBER_ID"];
+  if (!token || !phoneNumberId) {
+    throw new Error(
+      "WhatsApp is not configured yet. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
+    );
+  }
+
+  const components = variables.length
+    ? [{ type: "body", parameters: variables.map((text) => ({ type: "text", text })) }]
+    : [];
+
+  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: { name, language: { code: language }, components },
+    }),
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    console.error(`[whatsapp] template send failed [${res.status}]: ${text}`);
+    throw new Error(`WhatsApp template send failed [${res.status}]: ${text}`);
+  }
+  try {
+    const json = JSON.parse(text) as { messages?: Array<{ id?: string }> };
+    return json.messages?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}

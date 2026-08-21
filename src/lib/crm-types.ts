@@ -33,6 +33,7 @@ export type Conversation = {
   status: ConvStatus;
   assigned_to: string | null;
   bot_enabled: boolean;
+  tags: string[];
   unread_count: number;
   last_message_at: string;
   last_message_preview: string | null;

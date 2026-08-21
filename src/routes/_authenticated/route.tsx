@@ -3,10 +3,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { Link, Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
+  Activity,
   Bot,
   Inbox,
   LayoutDashboard,
   LogOut,
+  Mail,
   MessageSquare,
   Settings,
   Users,
@@ -21,7 +23,9 @@ const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/contacts", label: "Contacts", icon: Users },
+  { to: "/marketing", label: "Leads & Marketing", icon: Mail },
   { to: "/chatbot", label: "Chatbot", icon: Bot },
+  { to: "/monitoring", label: "Monitoring", icon: Activity },
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
 
