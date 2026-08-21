@@ -1,20 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-
-type WaWebhookBody = {
-  entry?: Array<{
-    changes?: Array<{
-      value?: {
-        contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
-        messages?: Array<{
-          id?: string;
-          from?: string;
-          type?: string;
-          text?: { body?: string };
-        }>;
-      };
-    }>;
-  }>;
-};
+import type { WaWebhookBody } from "@/lib/monitoring.server";
 
 export const Route = createFileRoute("/api/public/whatsapp/webhook")({
   server: {
@@ -29,76 +14,62 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
 
         if (mode === "subscribe" && expected && token === expected && challenge) {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-          await supabaseAdmin
-            .from("wa_config")
-            .update({ webhook_verified: true })
-            .eq("id", true);
+          await supabaseAdmin.from("wa_config").update({ webhook_verified: true }).eq("id", true);
           return new Response(challenge, { status: 200 });
         }
         return new Response("Forbidden", { status: 403 });
       },
 
       POST: async ({ request }) => {
+        const { logWebhookEvent, finishWebhookEvent, processWaPayload, raiseAlert } = await import(
+          "@/lib/monitoring.server"
+        );
+
+        const raw = await request.text();
         let body: WaWebhookBody;
         try {
-          body = (await request.json()) as WaWebhookBody;
+          body = JSON.parse(raw) as WaWebhookBody;
         } catch {
+          const id = await logWebhookEvent({ eventType: "invalid", payload: { raw: raw.slice(0, 2000) } });
+          await finishWebhookEvent(id, { ok: false, error: "Payload was not valid JSON" });
+          await raiseAlert({
+            title: "WhatsApp webhook sent an invalid payload",
+            message: "The request body could not be parsed as JSON.",
+            severity: "warning",
+          });
           return new Response("Bad request", { status: 400 });
         }
 
-        const { ingestInboundMessage, sendWhatsAppText, storeOutbound } = await import(
-          "@/lib/wa.server"
-        );
+        const eventType = body.entry?.[0]?.changes?.[0]?.value?.statuses?.length
+          ? "status"
+          : "message";
+        const waMessageId =
+          body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.id ??
+          body.entry?.[0]?.changes?.[0]?.value?.statuses?.[0]?.id ??
+          null;
 
-        for (const entry of body.entry ?? []) {
-          for (const change of entry.changes ?? []) {
-            const value = change.value;
-            const contactName = value?.contacts?.[0]?.profile?.name ?? null;
-            for (const message of value?.messages ?? []) {
-              const text = message.text?.body;
-              const from = message.from;
-              if (!text || !from) continue;
+        const eventId = await logWebhookEvent({ eventType, payload: body, waMessageId });
+        const startedAt = Date.now();
 
-              try {
-                const { conversationId, reply } = await ingestInboundMessage({
-                  channel: "whatsapp",
-                  phone: from,
-                  name: contactName,
-                  text,
-                  waMessageId: message.id ?? null,
-                });
-
-                if (reply) {
-                  try {
-                    const waId = await sendWhatsAppText(from, reply);
-                    if (waId) {
-                      const { supabaseAdmin } = await import(
-                        "@/integrations/supabase/client.server"
-                      );
-                      await supabaseAdmin
-                        .from("messages")
-                        .update({ wa_message_id: waId })
-                        .eq("conversation_id", conversationId)
-                        .is("wa_message_id", null)
-                        .eq("body", reply);
-                    }
-                  } catch (sendError) {
-                    console.error("[whatsapp] reply send failed", sendError);
-                    await storeOutbound(
-                      conversationId,
-                      "(delivery failed — check WhatsApp credentials)",
-                      "bot",
-                    );
-                  }
-                }
-              } catch (error) {
-                console.error("[whatsapp] ingest failed", error);
-              }
-            }
-          }
+        try {
+          await processWaPayload(body);
+          await finishWebhookEvent(eventId, { ok: true, durationMs: Date.now() - startedAt });
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : "Unknown processing error";
+          console.error("[whatsapp] webhook processing failed", error);
+          await finishWebhookEvent(eventId, {
+            ok: false,
+            error: detail,
+            durationMs: Date.now() - startedAt,
+          });
+          await raiseAlert({
+            title: "WhatsApp webhook event failed",
+            message: detail,
+            severity: "critical",
+          });
         }
 
-        // Always 200 so Meta does not retry endlessly.
+        // Always 200 so Meta does not retry endlessly — retries happen from the app.
         return new Response("EVENT_RECEIVED", { status: 200 });
       },
     },
