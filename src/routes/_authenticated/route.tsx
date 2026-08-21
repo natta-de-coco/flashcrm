@@ -5,11 +5,13 @@ import { Link, Outlet, createFileRoute, useNavigate } from "@tanstack/react-rout
 import {
   Activity,
   Bot,
+  FileText,
   Inbox,
   LayoutDashboard,
   LogOut,
   Mail,
   MessageSquare,
+  Package,
   Settings,
   Users,
 } from "lucide-react";
@@ -24,6 +26,8 @@ const NAV = [
   { to: "/inbox", label: "Inbox", icon: Inbox },
   { to: "/contacts", label: "Contacts", icon: Users },
   { to: "/marketing", label: "Leads & Marketing", icon: Mail },
+  { to: "/catalog", label: "Product Catalog", icon: Package },
+  { to: "/content", label: "Content & SEO", icon: FileText },
   { to: "/chatbot", label: "Chatbot", icon: Bot },
   { to: "/monitoring", label: "Monitoring", icon: Activity },
   { to: "/settings", label: "Settings", icon: Settings },

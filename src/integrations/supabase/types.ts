@@ -105,6 +105,7 @@ export type Database = {
           phone: string | null
           stage: Database["public"]["Enums"]["lead_stage"]
           tags: string[]
+          tenant_id: string | null
           updated_at: string
           value: number
         }
@@ -120,6 +121,7 @@ export type Database = {
           phone?: string | null
           stage?: Database["public"]["Enums"]["lead_stage"]
           tags?: string[]
+          tenant_id?: string | null
           updated_at?: string
           value?: number
         }
@@ -135,10 +137,79 @@ export type Database = {
           phone?: string | null
           stage?: Database["public"]["Enums"]["lead_stage"]
           tags?: string[]
+          tenant_id?: string | null
           updated_at?: string
           value?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "contacts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_posts: {
+        Row: {
+          author_id: string | null
+          body: string | null
+          created_at: string
+          id: string
+          media_urls: string[]
+          platforms: string[]
+          scheduled_at: string | null
+          seo_metadata: Json
+          status: string
+          tenant_id: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          media_urls?: string[]
+          platforms?: string[]
+          scheduled_at?: string | null
+          seo_metadata?: Json
+          status?: string
+          tenant_id?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string | null
+          created_at?: string
+          id?: string
+          media_urls?: string[]
+          platforms?: string[]
+          scheduled_at?: string | null
+          seo_metadata?: Json
+          status?: string
+          tenant_id?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_posts_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_posts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversations: {
         Row: {
@@ -225,45 +296,67 @@ export type Database = {
       }
       leads: {
         Row: {
+          assigned_to: string | null
           contact_id: string | null
           created_at: string
+          custom_fields: Json
           email: string
           id: string
+          lead_score: number
           name: string | null
           phone: string | null
           site_id: string | null
           source: string
           source_url: string | null
+          status: string
           subscribed: boolean
           tags: string[]
+          tenant_id: string | null
         }
         Insert: {
+          assigned_to?: string | null
           contact_id?: string | null
           created_at?: string
+          custom_fields?: Json
           email: string
           id?: string
+          lead_score?: number
           name?: string | null
           phone?: string | null
           site_id?: string | null
           source?: string
           source_url?: string | null
+          status?: string
           subscribed?: boolean
           tags?: string[]
+          tenant_id?: string | null
         }
         Update: {
+          assigned_to?: string | null
           contact_id?: string | null
           created_at?: string
+          custom_fields?: Json
           email?: string
           id?: string
+          lead_score?: number
           name?: string | null
           phone?: string | null
           site_id?: string | null
           source?: string
           source_url?: string | null
+          status?: string
           subscribed?: boolean
           tags?: string[]
+          tenant_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "leads_contact_id_fkey"
             columns: ["contact_id"]
@@ -276,6 +369,13 @@ export type Database = {
             columns: ["site_id"]
             isOneToOne: false
             referencedRelation: "lead_sites"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -327,6 +427,77 @@ export type Database = {
           },
         ]
       }
+      organizations: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          images: string[]
+          price: number | null
+          sku: string | null
+          specs: Json
+          tenant_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          images?: string[]
+          price?: number | null
+          sku?: string | null
+          specs?: Json
+          tenant_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          images?: string[]
+          price?: number | null
+          sku?: string | null
+          specs?: Json
+          tenant_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -334,6 +505,8 @@ export type Database = {
           email: string | null
           full_name: string | null
           id: string
+          staff_role: Database["public"]["Enums"]["staff_role"]
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -342,6 +515,8 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id: string
+          staff_role?: Database["public"]["Enums"]["staff_role"]
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -350,9 +525,19 @@ export type Database = {
           email?: string | null
           full_name?: string | null
           id?: string
+          staff_role?: Database["public"]["Enums"]["staff_role"]
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reminders: {
         Row: {
@@ -575,6 +760,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      current_tenant_id: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -596,6 +782,12 @@ export type Database = {
         | "lost"
       msg_direction: "inbound" | "outbound"
       msg_sender: "contact" | "agent" | "bot"
+      staff_role:
+        | "super_admin"
+        | "company_admin"
+        | "marketing_manager"
+        | "staff"
+        | "seo_editor"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -736,6 +928,13 @@ export const Constants = {
       ],
       msg_direction: ["inbound", "outbound"],
       msg_sender: ["contact", "agent", "bot"],
+      staff_role: [
+        "super_admin",
+        "company_admin",
+        "marketing_manager",
+        "staff",
+        "seo_editor",
+      ],
     },
   },
 } as const
