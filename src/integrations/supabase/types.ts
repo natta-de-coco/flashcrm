@@ -50,6 +50,48 @@ export type Database = {
         }
         Relationships: []
       }
+      campaigns: {
+        Row: {
+          audience_tag: string | null
+          body: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          recipients_count: number
+          scheduled_at: string | null
+          sent_at: string | null
+          status: string
+          subject: string
+        }
+        Insert: {
+          audience_tag?: string | null
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          recipients_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string
+        }
+        Update: {
+          audience_tag?: string | null
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          recipients_count?: number
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string
+        }
+        Relationships: []
+      }
       contacts: {
         Row: {
           company: string | null
@@ -109,6 +151,7 @@ export type Database = {
           last_message_at: string
           last_message_preview: string | null
           status: Database["public"]["Enums"]["conv_status"]
+          tags: string[]
           unread_count: number
           updated_at: string
           web_session_id: string | null
@@ -123,6 +166,7 @@ export type Database = {
           last_message_at?: string
           last_message_preview?: string | null
           status?: Database["public"]["Enums"]["conv_status"]
+          tags?: string[]
           unread_count?: number
           updated_at?: string
           web_session_id?: string | null
@@ -137,6 +181,7 @@ export type Database = {
           last_message_at?: string
           last_message_preview?: string | null
           status?: Database["public"]["Enums"]["conv_status"]
+          tags?: string[]
           unread_count?: number
           updated_at?: string
           web_session_id?: string | null
@@ -147,6 +192,90 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_sites: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          platform: string
+          site_key: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          platform?: string
+          site_key?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          platform?: string
+          site_key?: string
+        }
+        Relationships: []
+      }
+      leads: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          email: string
+          id: string
+          name: string | null
+          phone: string | null
+          site_id: string | null
+          source: string
+          source_url: string | null
+          subscribed: boolean
+          tags: string[]
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          name?: string | null
+          phone?: string | null
+          site_id?: string | null
+          source?: string
+          source_url?: string | null
+          subscribed?: boolean
+          tags?: string[]
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          name?: string | null
+          phone?: string | null
+          site_id?: string | null
+          source?: string
+          source_url?: string | null
+          subscribed?: boolean
+          tags?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "lead_sites"
             referencedColumns: ["id"]
           },
         ]
@@ -225,6 +354,87 @@ export type Database = {
         }
         Relationships: []
       }
+      reminders: {
+        Row: {
+          assigned_to: string | null
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string
+          created_by: string | null
+          done: boolean
+          due_at: string
+          id: string
+          note: string
+        }
+        Insert: {
+          assigned_to?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          done?: boolean
+          due_at: string
+          id?: string
+          note?: string
+        }
+        Update: {
+          assigned_to?: string | null
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          done?: boolean
+          due_at?: string
+          id?: string
+          note?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminders_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reminders_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_alerts: {
+        Row: {
+          created_at: string
+          id: string
+          message: string | null
+          resolved: boolean
+          severity: string
+          source: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          resolved?: boolean
+          severity?: string
+          source?: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string | null
+          resolved?: boolean
+          severity?: string
+          source?: string
+          title?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -270,6 +480,93 @@ export type Database = {
           phone_number_id?: string | null
           updated_at?: string
           webhook_verified?: boolean
+        }
+        Relationships: []
+      }
+      wa_templates: {
+        Row: {
+          body: string
+          category: string
+          created_at: string
+          footer: string | null
+          header: string | null
+          id: string
+          language: string
+          name: string
+          status: string
+          updated_at: string
+          variables: string[]
+        }
+        Insert: {
+          body?: string
+          category?: string
+          created_at?: string
+          footer?: string | null
+          header?: string | null
+          id?: string
+          language?: string
+          name: string
+          status?: string
+          updated_at?: string
+          variables?: string[]
+        }
+        Update: {
+          body?: string
+          category?: string
+          created_at?: string
+          footer?: string | null
+          header?: string | null
+          id?: string
+          language?: string
+          name?: string
+          status?: string
+          updated_at?: string
+          variables?: string[]
+        }
+        Relationships: []
+      }
+      webhook_events: {
+        Row: {
+          attempts: number
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          event_type: string
+          id: string
+          last_retry_at: string | null
+          payload: Json
+          processed_at: string | null
+          source: string
+          status: string
+          wa_message_id: string | null
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          event_type?: string
+          id?: string
+          last_retry_at?: string | null
+          payload?: Json
+          processed_at?: string | null
+          source?: string
+          status?: string
+          wa_message_id?: string | null
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          event_type?: string
+          id?: string
+          last_retry_at?: string | null
+          payload?: Json
+          processed_at?: string | null
+          source?: string
+          status?: string
+          wa_message_id?: string | null
         }
         Relationships: []
       }
