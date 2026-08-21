@@ -73,14 +73,16 @@ export async function finishWebhookEvent(
   outcome: { ok: boolean; error?: string | null; durationMs?: number; retry?: boolean },
 ) {
   if (!id) return;
-  const patch: Record<string, unknown> = {
-    status: outcome.ok ? "processed" : "failed",
-    error: outcome.error ?? null,
-    processed_at: new Date().toISOString(),
-    duration_ms: outcome.durationMs ?? null,
-  };
-  if (outcome.retry) patch["last_retry_at"] = new Date().toISOString();
-  await supabaseAdmin.from("webhook_events").update(patch).eq("id", id);
+  await supabaseAdmin
+    .from("webhook_events")
+    .update({
+      status: outcome.ok ? "processed" : "failed",
+      error: outcome.error ?? null,
+      processed_at: new Date().toISOString(),
+      duration_ms: outcome.durationMs ?? null,
+      ...(outcome.retry ? { last_retry_at: new Date().toISOString() } : {}),
+    })
+    .eq("id", id);
 }
 
 /**
