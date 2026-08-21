@@ -35,6 +35,49 @@ function SettingsPage() {
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [form, setForm] = useState({ business_name: "", display_phone: "", phone_number_id: "" });
+  const [tplForm, setTplForm] = useState({
+    name: "",
+    language: "en_US",
+    category: "UTILITY",
+    body: "",
+  });
+
+  const templates = useQuery({
+    queryKey: ["wa_templates"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("wa_templates")
+        .select("id, name, language, category, body, status")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const createTpl = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("wa_templates").insert({
+        name: tplForm.name.trim(),
+        language: tplForm.language.trim() || "en_US",
+        category: tplForm.category,
+        body: tplForm.body.trim(),
+        created_by: user?.id ?? null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setTplForm({ name: "", language: "en_US", category: "UTILITY", body: "" });
+      toast.success("Template added");
+      void qc.invalidateQueries({ queryKey: ["wa_templates"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  async function setTemplateStatus(id: string, status: string) {
+    const { error } = await supabase.from("wa_templates").update({ status }).eq("id", id);
+    if (error) toast.error(error.message);
+    else void qc.invalidateQueries({ queryKey: ["wa_templates"] });
+  }
 
   useEffect(() => setOrigin(window.location.origin), []);
 
