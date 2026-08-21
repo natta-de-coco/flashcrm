@@ -4,14 +4,25 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
-import { draftBotReply, sendAgentMessage } from "@/lib/crm.functions";
+import { draftBotReply, sendAgentMessage, sendTemplateMessage } from "@/lib/crm.functions";
 import type { Conversation, Message } from "@/lib/crm-types";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Bot, Globe, Loader2, Search, Send, Sparkles } from "lucide-react";
+import {
+  Bell,
+  Bot,
+  Check,
+  Globe,
+  Loader2,
+  Search,
+  Send,
+  Sparkles,
+  Tag,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
