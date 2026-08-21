@@ -22,6 +22,7 @@ import { Route as AuthenticatedMarketingRouteImport } from './routes/_authentica
 import { Route as AuthenticatedMonitoringRouteImport } from './routes/_authenticated/monitoring'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as ApiPublicLeadsCollectRouteImport } from './routes/api/public/leads/collect'
+import { Route as ApiPublicPluginDownloadRouteImport } from './routes/api/public/plugin/download'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp/webhook'
 import { Route as ApiPublicWidgetChatRouteImport } from './routes/api/public/widget/chat'
 
@@ -89,6 +90,11 @@ const ApiPublicLeadsCollectRoute = ApiPublicLeadsCollectRouteImport.update({
   path: '/api/public/leads/collect',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPluginDownloadRoute = ApiPublicPluginDownloadRouteImport.update({
+  id: '/api/public/plugin/download',
+  path: '/api/public/plugin/download',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp/webhook',
@@ -114,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/monitoring': typeof AuthenticatedMonitoringRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
+  '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -130,6 +137,7 @@ export interface FileRoutesByTo {
   '/monitoring': typeof AuthenticatedMonitoringRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
+  '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/_authenticated/monitoring': typeof AuthenticatedMonitoringRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
+  '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -166,6 +175,7 @@ export interface FileRouteTypes {
     | '/monitoring'
     | '/settings'
     | '/api/public/leads/collect'
+    | '/api/public/plugin/download'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   fileRoutesByTo: FileRoutesByTo
@@ -182,6 +192,7 @@ export interface FileRouteTypes {
     | '/monitoring'
     | '/settings'
     | '/api/public/leads/collect'
+    | '/api/public/plugin/download'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   id:
@@ -199,6 +210,7 @@ export interface FileRouteTypes {
     | '/_authenticated/monitoring'
     | '/_authenticated/settings'
     | '/api/public/leads/collect'
+    | '/api/public/plugin/download'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   fileRoutesById: FileRoutesById
@@ -208,6 +220,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ApiPublicLeadsCollectRoute: typeof ApiPublicLeadsCollectRoute
+  ApiPublicPluginDownloadRoute: typeof ApiPublicPluginDownloadRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiPublicWidgetChatRoute: typeof ApiPublicWidgetChatRoute
 }
@@ -305,6 +318,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicLeadsCollectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/plugin/download': {
+      id: '/api/public/plugin/download'
+      path: '/api/public/plugin/download'
+      fullPath: '/api/public/plugin/download'
+      preLoaderRoute: typeof ApiPublicPluginDownloadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp/webhook': {
       id: '/api/public/whatsapp/webhook'
       path: '/api/public/whatsapp/webhook'
@@ -354,6 +374,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ApiPublicLeadsCollectRoute: ApiPublicLeadsCollectRoute,
+  ApiPublicPluginDownloadRoute: ApiPublicPluginDownloadRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiPublicWidgetChatRoute: ApiPublicWidgetChatRoute,
 }
