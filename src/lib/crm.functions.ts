@@ -60,3 +60,108 @@ export const draftBotReply = createServerFn({ method: "POST" })
     if (!draft) throw new Error("The assistant could not generate a reply right now");
     return { draft };
   });
+
+const RetrySchema = z.object({ eventId: z.string().uuid() });
+
+/** Re-processes a failed WhatsApp webhook event. */
+export const retryWebhookEvent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => RetrySchema.parse(input))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { processWaPayload, finishWebhookEvent } = await import("@/lib/monitoring.server");
+
+    const { data: event, error } = await supabaseAdmin
+      .from("webhook_events")
+      .select("id, payload, attempts")
+      .eq("id", data.eventId)
+      .single();
+    if (error || !event) throw new Error("Webhook event not found");
+
+    await supabaseAdmin
+      .from("webhook_events")
+      .update({ attempts: (event.attempts ?? 1) + 1, last_retry_at: new Date().toISOString() })
+      .eq("id", event.id);
+
+    const startedAt = Date.now();
+    try {
+      await processWaPayload(event.payload as never);
+      await finishWebhookEvent(event.id, {
+        ok: true,
+        durationMs: Date.now() - startedAt,
+        retry: true,
+      });
+      return { ok: true, error: null as string | null };
+    } catch (retryError) {
+      const detail = retryError instanceof Error ? retryError.message : "Retry failed";
+      await finishWebhookEvent(event.id, {
+        ok: false,
+        error: detail,
+        durationMs: Date.now() - startedAt,
+        retry: true,
+      });
+      return { ok: false, error: detail };
+    }
+  });
+
+const TemplateSchema = z.object({
+  templateId: z.string().uuid(),
+  conversationId: z.string().uuid().optional(),
+  phone: z.string().min(6).max(24).optional(),
+  variables: z.array(z.string().max(500)).max(10).default([]),
+});
+
+/** Sends an approved WhatsApp template to a conversation or a raw phone number. */
+export const sendTemplateMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => TemplateSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { sendWhatsAppTemplate, storeOutbound } = await import("@/lib/wa.server");
+
+    const { data: template, error } = await supabaseAdmin
+      .from("wa_templates")
+      .select("*")
+      .eq("id", data.templateId)
+      .single();
+    if (error || !template) throw new Error("Template not found");
+    if (template.status !== "approved") throw new Error("Only approved templates can be sent");
+
+    let phone = data.phone ?? null;
+    let conversationId = data.conversationId ?? null;
+
+    if (conversationId && !phone) {
+      const { data: conv } = await supabaseAdmin
+        .from("conversations")
+        .select("contact_id")
+        .eq("id", conversationId)
+        .single();
+      if (conv) {
+        const { data: contact } = await supabaseAdmin
+          .from("contacts")
+          .select("phone")
+          .eq("id", conv.contact_id)
+          .single();
+        phone = contact?.phone ?? null;
+      }
+    }
+    if (!phone) throw new Error("No WhatsApp number available for this recipient");
+
+    const waId = await sendWhatsAppTemplate(
+      phone,
+      template.name,
+      template.language,
+      data.variables,
+    );
+
+    let rendered = template.body;
+    data.variables.forEach((value, index) => {
+      rendered = rendered.replaceAll(`{{${index + 1}}}`, value);
+    });
+
+    if (conversationId) {
+      await storeOutbound(conversationId, rendered, "agent", context.userId, waId);
+    }
+
+    return { ok: true, waId, rendered };
+  });
