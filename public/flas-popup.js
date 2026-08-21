@@ -116,6 +116,7 @@
 
   function showChat() {
     lead.style.display = "none";
+    body.style.display = "flex";
     chat.classList.add("on");
     if (!body.childElementCount) {
       add("Thanks " + (state.name || "") + "! How can we help you today?", false);
@@ -135,6 +136,7 @@
   launch.addEventListener("click", open);
   root.querySelector(".flasp-x").addEventListener("click", close);
   if (state.captured) showChat();
+  else body.style.display = "none";
 
   lead.addEventListener("submit", function (event) {
     event.preventDefault();
