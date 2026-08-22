@@ -121,7 +121,9 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TemplateSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { sendWhatsAppTemplate, storeOutbound } = await import("@/lib/wa.server");
+    const { sendWhatsAppTemplate, storeOutbound, resolveWaCredentials } = await import(
+      "@/lib/wa.server"
+    );
 
     const { data: template, error } = await supabaseAdmin
       .from("wa_templates")
@@ -133,20 +135,24 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
 
     let phone = data.phone ?? null;
     let conversationId = data.conversationId ?? null;
+    let waNumberId: string | null = null;
 
-    if (conversationId && !phone) {
+    if (conversationId) {
       const { data: conv } = await supabaseAdmin
         .from("conversations")
-        .select("contact_id")
+        .select("contact_id, wa_number_id")
         .eq("id", conversationId)
         .single();
       if (conv) {
-        const { data: contact } = await supabaseAdmin
-          .from("contacts")
-          .select("phone")
-          .eq("id", conv.contact_id)
-          .single();
-        phone = contact?.phone ?? null;
+        waNumberId = conv.wa_number_id ?? null;
+        if (!phone) {
+          const { data: contact } = await supabaseAdmin
+            .from("contacts")
+            .select("phone")
+            .eq("id", conv.contact_id)
+            .single();
+          phone = contact?.phone ?? null;
+        }
       }
     }
     if (!phone) throw new Error("No WhatsApp number available for this recipient");
@@ -156,6 +162,7 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       template.name,
       template.language,
       data.variables,
+      await resolveWaCredentials(waNumberId),
     );
 
     let rendered = template.body;
