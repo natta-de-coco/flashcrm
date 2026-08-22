@@ -285,11 +285,18 @@ function MarketingPage() {
                     {activeSite.admin_email ? ` · ${activeSite.admin_email}` : ""}
                   </span>
                   <div className="ml-auto flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={`${origin}/api/public/plugin/download?siteKey=${activeSite.site_key}`}>
-                        <Download className="size-4" /> WordPress plugin
-                      </a>
-                    </Button>
+                    {activeSite.platform !== "other" && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a
+                          href={`${origin}/api/public/plugin/download?siteKey=${activeSite.site_key}&platform=${activeSite.platform === "shopify" ? "shopify" : "wordpress"}`}
+                        >
+                          <Download className="size-4" />
+                          {activeSite.platform === "shopify"
+                            ? "Shopify theme package"
+                            : "WordPress plugin"}
+                        </a>
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -330,6 +337,30 @@ function MarketingPage() {
                   <Button variant="outline" size="sm" onClick={() => copy(snippet)}>
                     <Copy className="size-4" /> Copy snippet
                   </Button>
+                </div>
+                <div className="rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+                  {activeSite.platform === "shopify" ? (
+                    <>
+                      <strong className="text-foreground">Shopify install:</strong> download the
+                      theme package, then in Shopify admin go to Online Store → Themes → Edit code,
+                      add the snippet under <em>Snippets</em> and render it before{" "}
+                      <code>&lt;/body&gt;</code> in <code>theme.liquid</code>. Full steps are in
+                      INSTALL.txt inside the ZIP.
+                    </>
+                  ) : activeSite.platform === "wordpress" ? (
+                    <>
+                      <strong className="text-foreground">WordPress install:</strong> Plugins → Add
+                      New → Upload Plugin, choose the ZIP, activate — or paste the snippet into a
+                      Custom HTML block.
+                    </>
+                  ) : (
+                    <>
+                      <strong className="text-foreground">Any website:</strong> paste the popup
+                      snippet just before <code>&lt;/body&gt;</code>.
+                    </>
+                  )}{" "}
+                  The site registers itself with Flas CRM on first visit — then activate it with the
+                  link above so the popup goes live.
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Already have a signup form? Add <code>class="flas-lead-form"</code> to it and the

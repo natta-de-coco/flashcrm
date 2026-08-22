@@ -39,6 +39,28 @@
   }
   persist();
 
+  // One-time activation ping: registers the site's domain with Flas CRM so an
+  // admin can activate it (WordPress does this from PHP; Shopify/others do it here).
+  if (!state.pinged) {
+    state.pinged = true;
+    persist();
+    try {
+      fetch(base + "/api/public/plugin/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteKey: siteKey,
+          domain: window.location.origin,
+          platform: (script && script.getAttribute("data-platform")) || "website",
+        }),
+      }).catch(function () {
+        state.pinged = false;
+      });
+    } catch (error) {
+      state.pinged = false;
+    }
+  }
+
   var css = document.createElement("style");
   css.textContent = [
     ".flasp{position:fixed;right:0;bottom:0;z-index:2147483000;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}",
@@ -58,6 +80,8 @@
     ".flasp-form input{border:1px solid #d8dcda;border-radius:10px;padding:11px 12px;font-size:14px;width:100%;box-sizing:border-box}",
     ".flasp-form button{border:0;color:#fff;border-radius:10px;padding:12px;font-size:14px;font-weight:700;cursor:pointer}",
     ".flasp-note{margin:0;font-size:11px;color:#6b7280;line-height:1.5}",
+    ".flasp-consent{display:flex;gap:8px;align-items:flex-start;font-size:11px;color:#4b5563;line-height:1.45}",
+    ".flasp-consent input{margin-top:2px}",
     ".flasp-foot{display:none;gap:8px;padding:12px;border-top:1px solid #eceeed;background:#fff}",
     ".flasp-foot.on{display:flex}",
     ".flasp-input{flex:1;border:1px solid #d8dcda;border-radius:999px;padding:10px 14px;font-size:13px;outline:none}",
@@ -85,6 +109,7 @@
     '<div><label for="flasp-name">Your name</label><input id="flasp-name" name="name" type="text" placeholder="Jane Doe" required /></div>' +
     '<div><label for="flasp-phone">WhatsApp number</label><input id="flasp-phone" name="phone" type="tel" placeholder="+971 50 123 4567" required /></div>' +
     '<div><label for="flasp-email">Email</label><input id="flasp-email" name="email" type="email" placeholder="you@company.com" required /></div>' +
+    '<label class="flasp-consent"><input type="checkbox" name="consent" required /> <span>I agree to be contacted on WhatsApp and by email about my enquiry and related offers.</span></label>' +
     '<button type="submit">Start the chat</button>' +
     '<p class="flasp-note">We use these details to reply on WhatsApp and email. No spam.</p>' +
     "</form>" +
@@ -144,7 +169,8 @@
     var name = lead.querySelector("[name=name]").value.trim();
     var phone = lead.querySelector("[name=phone]").value.trim();
     var email = lead.querySelector("[name=email]").value.trim();
-    if (!name || !phone || !email) return;
+    var consent = lead.querySelector("[name=consent]").checked;
+    if (!name || !phone || !email || !consent) return;
     button.disabled = true;
     button.textContent = "Connecting…";
 
@@ -157,6 +183,7 @@
         name: name,
         phone: phone,
         sourceUrl: window.location.href,
+        consent: true,
         tags: ["popup-chat"],
       }),
     })

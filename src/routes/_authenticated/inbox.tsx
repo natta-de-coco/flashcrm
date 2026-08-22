@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { draftBotReply, sendAgentMessage, sendTemplateMessage } from "@/lib/crm.functions";
 import type { Conversation, Message } from "@/lib/crm-types";
 import { supabase } from "@/integrations/supabase/client";
+import { downloadCsv, toCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -15,6 +16,7 @@ import {
   Bell,
   Bot,
   Check,
+  Download,
   Globe,
   Loader2,
   Search,
@@ -247,13 +249,79 @@ function InboxPage() {
     void updateConversation({ tags: (active.tags ?? []).filter((t) => t !== tag) });
   }
 
+  function exportConversations() {
+    const rows = (conversations.data ?? []).map((c) => ({
+      contact: c.contacts?.name ?? "",
+      phone: c.contacts?.phone ?? "",
+      company: c.contacts?.company ?? "",
+      channel: c.channel,
+      whatsapp_line: c.wa_numbers?.label ?? "",
+      status: c.status,
+      bot_enabled: c.bot_enabled ? "yes" : "no",
+      tags: (c.tags ?? []).join("|"),
+      unread: c.unread_count,
+      last_message_at: c.last_message_at,
+      last_message: c.last_message_preview ?? "",
+    }));
+    downloadCsv(
+      `flas-conversations-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv(rows as unknown as Record<string, unknown>[], [
+        { key: "contact", label: "Contact" },
+        { key: "phone", label: "WhatsApp number" },
+        { key: "company", label: "Company" },
+        { key: "channel", label: "Channel" },
+        { key: "whatsapp_line", label: "Your WhatsApp line" },
+        { key: "status", label: "Status" },
+        { key: "bot_enabled", label: "Bot enabled" },
+        { key: "tags", label: "Tags" },
+        { key: "unread", label: "Unread" },
+        { key: "last_message_at", label: "Last message at" },
+        { key: "last_message", label: "Last message" },
+      ]),
+    );
+    toast.success("Conversations CSV downloaded");
+  }
+
+  function exportTranscript() {
+    if (!active) return;
+    const rows = (messages.data ?? []).map((m) => ({
+      time: m.created_at,
+      from: m.sender,
+      direction: m.direction,
+      message: m.body,
+      status: m.status,
+    }));
+    downloadCsv(
+      `flas-chat-${active.contacts?.name ?? "transcript"}-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv(rows as unknown as Record<string, unknown>[], [
+        { key: "time", label: "Time" },
+        { key: "from", label: "From" },
+        { key: "direction", label: "Direction" },
+        { key: "message", label: "Message" },
+        { key: "status", label: "Status" },
+      ]),
+    );
+    toast.success("Transcript CSV downloaded");
+  }
+
 
   return (
     <div className="flex h-[calc(100vh-0px)] min-h-0 flex-1">
       {/* Conversation list */}
       <div className="flex w-full max-w-sm shrink-0 flex-col border-r bg-card">
         <div className="space-y-3 border-b p-4">
-          <h1 className="text-lg font-bold">Inbox</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-bold">Inbox</h1>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={exportConversations}
+              disabled={(conversations.data ?? []).length === 0}
+              title="Download all conversations as CSV"
+            >
+              <Download className="size-4" /> CSV
+            </Button>
+          </div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -377,6 +445,15 @@ function InboxPage() {
                     </Button>
                   ))}
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={exportTranscript}
+                  disabled={(messages.data ?? []).length === 0}
+                  title="Download this chat as CSV"
+                >
+                  <Download className="size-4" /> Transcript
+                </Button>
                 <select
                   className="h-9 rounded-md border bg-background px-2 text-xs"
                   value={active.assigned_to ?? ""}

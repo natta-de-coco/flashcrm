@@ -21,9 +21,10 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { STAGES, type Contact, type LeadStage } from "@/lib/crm-types";
+import { downloadCsv, toCsv } from "@/lib/csv";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search, Upload } from "lucide-react";
+import { Download, Plus, Search, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -97,12 +98,48 @@ function ContactsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  function exportContacts() {
+    const rows = (contacts.data ?? []).map((c) => ({
+      name: c.name,
+      phone: c.phone,
+      email: c.email,
+      company: c.company,
+      stage: c.stage,
+      value: c.value,
+      tags: (c.tags ?? []).join("|"),
+      consent_given: c.consent_given ? "yes" : "no",
+      consent_at: c.consent_at ?? "",
+      created_at: c.created_at,
+    }));
+    downloadCsv(
+      `flas-contacts-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv(rows as unknown as Record<string, unknown>[], [
+        { key: "name", label: "Name" },
+        { key: "phone", label: "WhatsApp number" },
+        { key: "email", label: "Email" },
+        { key: "company", label: "Company" },
+        { key: "stage", label: "Pipeline stage" },
+        { key: "value", label: "Deal value" },
+        { key: "tags", label: "Tags" },
+        { key: "consent_given", label: "Consent given" },
+        { key: "consent_at", label: "Consent date" },
+        { key: "created_at", label: "Added on" },
+      ]),
+    );
+    toast.success("Contacts CSV downloaded");
+  }
+
   const bulkImport = useMutation({
     mutationFn: async () => {
-      const rows = importText
+      const lines = importText
         .split("\n")
         .map((line) => line.trim())
-        .filter(Boolean)
+        .filter(Boolean);
+      // Drop a CSV header row like "name,phone,email" if present.
+      if (lines[0] && /name/i.test(lines[0]) && /(phone|number|email)/i.test(lines[0])) {
+        lines.shift();
+      }
+      const rows = lines
         .map((line) => {
           const [a = "", b = "", c = ""] = line.split(/[,\t;]/).map((p) => p.trim());
           // Accept "phone", "name, phone" or "name, phone, email" per line.
@@ -180,6 +217,13 @@ function ContactsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          <Button
+            variant="outline"
+            onClick={exportContacts}
+            disabled={(contacts.data ?? []).length === 0}
+          >
+            <Download className="size-4" /> Export CSV
+          </Button>
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
@@ -197,6 +241,18 @@ function ContactsPage() {
                 <code className="rounded bg-muted px-1">imported</code> so you can filter the
                 records later.
               </p>
+              <div className="grid gap-1.5">
+                <Label htmlFor="csv_file">…or upload a CSV file</Label>
+                <Input
+                  id="csv_file"
+                  type="file"
+                  accept=".csv,text/csv,text/plain"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setImportText(await file.text());
+                  }}
+                />
+              </div>
               <Textarea
                 rows={8}
                 placeholder={"+971501234567\nSara Ahmed, +971559876543, sara@example.com"}
@@ -285,6 +341,14 @@ function ContactsPage() {
                           {c.phone ?? c.email ?? "No contact details"}
                           {c.company ? ` · ${c.company}` : ""}
                         </p>
+                        {c.consent_given && (
+                          <Badge variant="outline" className="mt-1 text-[10px]">
+                            Consented
+                            {c.consent_at
+                              ? ` · ${new Date(c.consent_at).toLocaleDateString()}`
+                              : ""}
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold text-brand">
