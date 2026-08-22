@@ -23,7 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { STAGES, type Contact, type LeadStage } from "@/lib/crm-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -52,6 +52,8 @@ function ContactsPage() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
 
   const contacts = useQuery({
     queryKey: ["contacts"],
@@ -92,6 +94,59 @@ function ContactsPage() {
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["contacts"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const bulkImport = useMutation({
+    mutationFn: async () => {
+      const rows = importText
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [a = "", b = "", c = ""] = line.split(/[,\t;]/).map((p) => p.trim());
+          // Accept "phone", "name, phone" or "name, phone, email" per line.
+          const phoneish = (v: string) => /^[+0-9][0-9\s()-]{4,}$/.test(v);
+          let name = a;
+          let phone = b;
+          let email = c;
+          if (phoneish(a) && !b) {
+            name = "";
+            phone = a;
+          } else if (phoneish(a) && phoneish(b)) {
+            name = "";
+            phone = a;
+            email = b;
+          }
+          return { name: name || phone, phone: phone || null, email: email || null };
+        })
+        .filter((r) => r.phone || r.email);
+
+      if (rows.length === 0) throw new Error("No valid numbers or emails found");
+
+      const phones = rows.map((r) => r.phone).filter(Boolean) as string[];
+      const { data: existing } = phones.length
+        ? await supabase.from("contacts").select("phone").in("phone", phones)
+        : { data: [] as { phone: string }[] };
+      const known = new Set((existing ?? []).map((e) => e.phone));
+      const fresh = rows.filter((r) => !r.phone || !known.has(r.phone));
+      if (fresh.length === 0) return { added: 0, skipped: rows.length };
+
+      const { error } = await supabase
+        .from("contacts")
+        .insert(fresh.map((r) => ({ ...r, tags: ["imported"] })));
+      if (error) throw error;
+      return { added: fresh.length, skipped: rows.length - fresh.length };
+    },
+    onSuccess: (result) => {
+      setImportText("");
+      setImportOpen(false);
+      toast.success(
+        `Imported ${result.added} contact${result.added === 1 ? "" : "s"}` +
+          (result.skipped ? ` · ${result.skipped} already existed` : ""),
+      );
+      void qc.invalidateQueries({ queryKey: ["contacts"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
