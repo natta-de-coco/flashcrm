@@ -1,6 +1,9 @@
 import { Button } from "@/components/ui/button";
+import { OnboardingModal } from "@/components/OnboardingModal";
 import { useAuth } from "@/hooks/useAuth";
+import { TenantProvider } from "@/hooks/useTenant";
 import { cn } from "@/lib/utils";
+import flashLogoAsset from "@/assets/flash-logo.png.asset.json";
 import { Link, Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
@@ -11,7 +14,6 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
-  MessageSquare,
   Package,
   Settings,
   Users,
@@ -56,14 +58,13 @@ function AuthenticatedLayout() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <aside className="hidden w-60 shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground md:flex">
-        <Link to="/dashboard" className="mb-8 flex items-center gap-2 px-2 text-base font-bold">
-          <span className="grid size-8 place-items-center rounded-lg bg-brand text-brand-foreground">
-            <MessageSquare className="size-4" />
-          </span>
-          Flas CRM
-        </Link>
+    <TenantProvider>
+      <OnboardingModal />
+      <div className="flex min-h-screen bg-background">
+        <aside className="hidden w-60 shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground md:flex">
+          <Link to="/dashboard" className="mb-8 flex items-center px-2">
+            <img src={flashLogoAsset.url} alt="Flash CRM" className="h-9 w-auto" />
+          </Link>
 
         <nav className="flex flex-1 flex-col gap-1">
           {nav.map((item) => (
@@ -111,6 +112,7 @@ function AuthenticatedLayout() {
         </div>
         <Outlet />
       </div>
-    </div>
+      </div>
+    </TenantProvider>
   );
 }
