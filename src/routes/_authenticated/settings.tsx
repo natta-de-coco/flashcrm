@@ -80,7 +80,10 @@ function SettingsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  async function updateNumber(id: string, patch: Record<string, unknown>) {
+  async function updateNumber(
+    id: string,
+    patch: { is_default?: boolean; active?: boolean; label?: string },
+  ) {
     const { error } = await supabase.from("wa_numbers").update(patch).eq("id", id);
     if (error) toast.error(error.message);
     else void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
