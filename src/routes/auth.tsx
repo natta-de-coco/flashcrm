@@ -30,6 +30,9 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
+  // Two-factor step: set when the account has TOTP enabled.
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
 
   useEffect(() => {
     if (session) navigate({ to: "/inbox" });
@@ -39,6 +42,33 @@ function AuthPage() {
     e.preventDefault();
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setBusy(false);
+      toast.error(error.message);
+      return;
+    }
+    // If the account has 2FA enabled, the session starts at AAL1 — require the code.
+    const aal = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    setBusy(false);
+    if (aal.data?.nextLevel === "aal2" && aal.data.currentLevel !== "aal2") {
+      const { data: factors } = await supabase.auth.mfa.listFactors();
+      const factor = (factors?.totp ?? []).find((f) => f.status === "verified");
+      if (factor) {
+        setMfaFactorId(factor.id);
+        return;
+      }
+    }
+    navigate({ to: "/inbox" });
+  }
+
+  async function verifyMfa(e: React.FormEvent) {
+    e.preventDefault();
+    if (!mfaFactorId) return;
+    setBusy(true);
+    const { error } = await supabase.auth.mfa.challengeAndVerify({
+      factorId: mfaFactorId,
+      code: mfaCode.trim(),
+    });
     setBusy(false);
     if (error) {
       toast.error(error.message);
