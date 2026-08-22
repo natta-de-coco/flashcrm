@@ -330,14 +330,9 @@ export async function sendWhatsAppTemplate(
   name: string,
   language: string,
   variables: string[] = [],
+  creds?: WaCredentials,
 ) {
-  const token = process.env["WHATSAPP_ACCESS_TOKEN"];
-  const phoneNumberId = process.env["WHATSAPP_PHONE_NUMBER_ID"];
-  if (!token || !phoneNumberId) {
-    throw new Error(
-      "WhatsApp is not configured yet. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
-    );
-  }
+  const { token, phoneNumberId } = creds ?? (await resolveWaCredentials());
 
   const components = variables.length
     ? [{ type: "body", parameters: variables.map((text) => ({ type: "text", text })) }]
