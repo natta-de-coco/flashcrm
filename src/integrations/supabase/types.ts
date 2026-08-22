@@ -14,6 +14,97 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_keys: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          key_hash: string
+          last_used_at: string | null
+          name: string
+          prefix: string
+          revoked_at: string | null
+          scopes: string[]
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key_hash: string
+          last_used_at?: string | null
+          name: string
+          prefix: string
+          revoked_at?: string | null
+          scopes?: string[]
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          key_hash?: string
+          last_used_at?: string | null
+          name?: string
+          prefix?: string
+          revoked_at?: string | null
+          scopes?: string[]
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_label: string | null
+          created_at: string
+          details: Json
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          tenant_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_label?: string | null
+          created_at?: string
+          details?: Json
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          tenant_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_label?: string | null
+          created_at?: string
+          details?: Json
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_settings: {
         Row: {
           bot_name: string
@@ -532,21 +623,33 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          plan: string
           slug: string
+          subscription_renews_at: string | null
+          subscription_status: string
+          suspended: boolean
           updated_at: string
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
+          plan?: string
           slug: string
+          subscription_renews_at?: string | null
+          subscription_status?: string
+          suspended?: boolean
           updated_at?: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
+          plan?: string
           slug?: string
+          subscription_renews_at?: string | null
+          subscription_status?: string
+          suspended?: boolean
           updated_at?: string
         }
         Relationships: []
@@ -772,6 +875,7 @@ export type Database = {
         Row: {
           access_token: string
           active: boolean
+          app_secret: string | null
           created_at: string
           display_phone: string | null
           id: string
@@ -782,6 +886,7 @@ export type Database = {
         Insert: {
           access_token: string
           active?: boolean
+          app_secret?: string | null
           created_at?: string
           display_phone?: string | null
           id?: string
@@ -792,6 +897,7 @@ export type Database = {
         Update: {
           access_token?: string
           active?: boolean
+          app_secret?: string | null
           created_at?: string
           display_phone?: string | null
           id?: string

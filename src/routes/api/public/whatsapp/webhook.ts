@@ -1,5 +1,40 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { createHmac, timingSafeEqual } from "crypto";
 import type { WaWebhookBody } from "@/lib/monitoring.server";
+
+/**
+ * Verifies Meta's X-Hub-Signature-256 header against the app secret of the
+ * connected number the payload targets (or the WHATSAPP_APP_SECRET env
+ * fallback). Returns true when verification passes or when no secret is
+ * configured yet (with a console warning, so existing setups keep working).
+ */
+async function verifySignature(raw: string, body: WaWebhookBody, header: string | null) {
+  const phoneNumberId = body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+
+  let secret: string | null = null;
+  if (phoneNumberId) {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data } = await supabaseAdmin
+      .from("wa_numbers")
+      .select("app_secret")
+      .eq("phone_number_id", phoneNumberId)
+      .maybeSingle();
+    secret = data?.app_secret ?? null;
+  }
+  if (!secret) secret = process.env["WHATSAPP_APP_SECRET"] ?? null;
+
+  if (!secret) {
+    console.warn("[whatsapp] no app secret configured — webhook signature not enforced");
+    return { ok: true as const, enforced: false };
+  }
+  if (!header || !header.startsWith("sha256=")) return { ok: false as const, enforced: true };
+
+  const expected = `sha256=${createHmac("sha256", secret).update(raw, "utf8").digest("hex")}`;
+  const a = Buffer.from(header);
+  const b = Buffer.from(expected);
+  const ok = a.length === b.length && timingSafeEqual(a, b);
+  return { ok, enforced: true };
+}
 
 export const Route = createFileRoute("/api/public/whatsapp/webhook")({
   server: {
@@ -38,6 +73,26 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
             severity: "warning",
           });
           return new Response("Bad request", { status: 400 });
+        }
+
+        // Reject spoofed payloads before anything is stored or processed.
+        const signature = await verifySignature(
+          raw,
+          body,
+          request.headers.get("x-hub-signature-256"),
+        );
+        if (!signature.ok) {
+          const id = await logWebhookEvent({ eventType: "rejected", payload: body });
+          await finishWebhookEvent(id, { ok: false, error: "Signature verification failed" });
+          await raiseAlert({
+            title: "Rejected a WhatsApp webhook with an invalid signature",
+            message:
+              "A payload failed X-Hub-Signature-256 verification and was discarded. Check that the Meta app secret matches the connected number.",
+            severity: "critical",
+          });
+          const { logAudit } = await import("@/lib/audit.server");
+          await logAudit({ action: "webhook.signature_rejected", entityType: "webhook_event" });
+          return new Response("Invalid signature", { status: 401 });
         }
 
         const eventType = body.entry?.[0]?.changes?.[0]?.value?.statuses?.length

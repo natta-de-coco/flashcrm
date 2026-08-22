@@ -35,7 +35,7 @@ export const Route = createFileRoute("/api/public/widget/chat")({
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const { data: site } = await supabaseAdmin
             .from("lead_sites")
-            .select("status, active")
+            .select("status, active, domain")
             .eq("site_key", parsed.siteKey)
             .maybeSingle();
           if (!site || !site.active || site.status !== "active") {
@@ -43,6 +43,17 @@ export const Route = createFileRoute("/api/public/widget/chat")({
               JSON.stringify({ error: "This site is not activated yet" }),
               { status: 403, headers: corsHeaders },
             );
+          }
+          // Pin the key to its registered domain so it can't be reused on
+          // someone else's website.
+          if (site.domain) {
+            const origin = request.headers.get("origin") ?? request.headers.get("referer") ?? "";
+            if (origin && !origin.toLowerCase().includes(site.domain.toLowerCase())) {
+              return new Response(JSON.stringify({ error: "This key is not allowed here" }), {
+                status: 403,
+                headers: corsHeaders,
+              });
+            }
           }
         }
 

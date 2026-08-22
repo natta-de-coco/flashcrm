@@ -20,11 +20,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { recordAuditEvent } from "@/lib/audit.functions";
+import { parseContactImport, validRows } from "@/lib/contact-import";
 import { STAGES, type Contact, type LeadStage } from "@/lib/crm-types";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Plus, Search, Upload } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { AlertCircle, Download, Plus, Search, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -55,6 +58,14 @@ function ContactsPage() {
   const [form, setForm] = useState(EMPTY);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const auditEvent = useServerFn(recordAuditEvent);
+
+  // Live validation: every parsed row carries its own error list.
+  const previewRows = useMemo(
+    () => (importText.trim() ? parseContactImport(importText) : []),
+    [importText],
+  );
+  const importableRows = useMemo(() => validRows(previewRows), [previewRows]);
 
   const contacts = useQuery({
     queryKey: ["contacts"],
@@ -126,40 +137,20 @@ function ContactsPage() {
         { key: "created_at", label: "Added on" },
       ]),
     );
+    void auditEvent({
+      data: { action: "contacts.export", entityType: "contact", details: { rows: rows.length } },
+    }).catch(() => {});
     toast.success("Contacts CSV downloaded");
   }
 
   const bulkImport = useMutation({
     mutationFn: async () => {
-      const lines = importText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
-      // Drop a CSV header row like "name,phone,email" if present.
-      if (lines[0] && /name/i.test(lines[0]) && /(phone|number|email)/i.test(lines[0])) {
-        lines.shift();
-      }
-      const rows = lines
-        .map((line) => {
-          const [a = "", b = "", c = ""] = line.split(/[,\t;]/).map((p) => p.trim());
-          // Accept "phone", "name, phone" or "name, phone, email" per line.
-          const phoneish = (v: string) => /^[+0-9][0-9\s()-]{4,}$/.test(v);
-          let name = a;
-          let phone = b;
-          let email = c;
-          if (phoneish(a) && !b) {
-            name = "";
-            phone = a;
-          } else if (phoneish(a) && phoneish(b)) {
-            name = "";
-            phone = a;
-            email = b;
-          }
-          return { name: name || phone, phone: phone || null, email: email || null };
-        })
-        .filter((r) => r.phone || r.email);
-
-      if (rows.length === 0) throw new Error("No valid numbers or emails found");
+      const rows = importableRows.map((r) => ({
+        name: r.name || r.phone || r.email || "",
+        phone: r.phone,
+        email: r.email,
+      }));
+      if (rows.length === 0) throw new Error("No valid rows to import — fix the errors below");
 
       const phones = rows.map((r) => r.phone).filter(Boolean) as string[];
       const { data: existing } = phones.length
@@ -176,6 +167,17 @@ function ContactsPage() {
       return { added: fresh.length, skipped: rows.length - fresh.length };
     },
     onSuccess: (result) => {
+      void auditEvent({
+        data: {
+          action: "contacts.import",
+          entityType: "contact",
+          details: {
+            added: result.added,
+            skipped: result.skipped,
+            invalidRows: previewRows.length - importableRows.length,
+          },
+        },
+      }).catch(() => {});
       setImportText("");
       setImportOpen(false);
       toast.success(
@@ -254,17 +256,54 @@ function ContactsPage() {
                 />
               </div>
               <Textarea
-                rows={8}
+                rows={6}
                 placeholder={"+971501234567\nSara Ahmed, +971559876543, sara@example.com"}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
               />
+
+              {previewRows.length > 0 && (
+                <div className="rounded-lg border">
+                  <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2 text-xs font-medium">
+                    <span>Preview — check rows before importing</span>
+                    <span>
+                      {importableRows.length} valid · {previewRows.length - importableRows.length}{" "}
+                      with errors
+                    </span>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto">
+                    {previewRows.map((row) => (
+                      <div
+                        key={row.line}
+                        className={`flex items-start gap-2 border-b px-3 py-1.5 text-xs last:border-0 ${
+                          row.errors.length ? "bg-destructive/5" : ""
+                        }`}
+                      >
+                        <span className="w-8 shrink-0 text-muted-foreground">#{row.line}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {row.name || "—"}
+                          {row.phone ? ` · ${row.phone}` : ""}
+                          {row.email ? ` · ${row.email}` : ""}
+                        </span>
+                        {row.errors.length > 0 && (
+                          <span className="flex items-center gap-1 text-destructive">
+                            <AlertCircle className="size-3 shrink-0" />
+                            {row.errors.join("; ")}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <DialogFooter>
                 <Button
                   onClick={() => bulkImport.mutate()}
-                  disabled={!importText.trim() || bulkImport.isPending}
+                  disabled={importableRows.length === 0 || bulkImport.isPending}
                 >
-                  Import contacts
+                  Import {importableRows.length > 0 ? `${importableRows.length} valid ` : ""}
+                  contact{importableRows.length === 1 ? "" : "s"}
                 </Button>
               </DialogFooter>
             </DialogContent>

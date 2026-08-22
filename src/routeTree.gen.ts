@@ -24,6 +24,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as ApiPublicLeadsCollectRouteImport } from './routes/api/public/leads/collect'
 import { Route as ApiPublicPluginActivateRouteImport } from './routes/api/public/plugin/activate'
 import { Route as ApiPublicPluginDownloadRouteImport } from './routes/api/public/plugin/download'
+import { Route as ApiPublicV1SplatRouteImport } from './routes/api/public/v1/$'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp/webhook'
 import { Route as ApiPublicWidgetChatRouteImport } from './routes/api/public/widget/chat'
 
@@ -101,6 +102,11 @@ const ApiPublicPluginDownloadRoute = ApiPublicPluginDownloadRouteImport.update({
   path: '/api/public/plugin/download',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicV1SplatRoute = ApiPublicV1SplatRouteImport.update({
+  id: '/api/public/v1/$',
+  path: '/api/public/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp/webhook',
@@ -128,6 +134,7 @@ export interface FileRoutesByFullPath {
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
   '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
+  '/api/public/v1/$': typeof ApiPublicV1SplatRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -146,6 +153,7 @@ export interface FileRoutesByTo {
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
   '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
+  '/api/public/v1/$': typeof ApiPublicV1SplatRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -166,6 +174,7 @@ export interface FileRoutesById {
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
   '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
+  '/api/public/v1/$': typeof ApiPublicV1SplatRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -186,6 +195,7 @@ export interface FileRouteTypes {
     | '/api/public/leads/collect'
     | '/api/public/plugin/activate'
     | '/api/public/plugin/download'
+    | '/api/public/v1/$'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   fileRoutesByTo: FileRoutesByTo
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/api/public/leads/collect'
     | '/api/public/plugin/activate'
     | '/api/public/plugin/download'
+    | '/api/public/v1/$'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   id:
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/api/public/leads/collect'
     | '/api/public/plugin/activate'
     | '/api/public/plugin/download'
+    | '/api/public/v1/$'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   fileRoutesById: FileRoutesById
@@ -234,6 +246,7 @@ export interface RootRouteChildren {
   ApiPublicLeadsCollectRoute: typeof ApiPublicLeadsCollectRoute
   ApiPublicPluginActivateRoute: typeof ApiPublicPluginActivateRoute
   ApiPublicPluginDownloadRoute: typeof ApiPublicPluginDownloadRoute
+  ApiPublicV1SplatRoute: typeof ApiPublicV1SplatRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiPublicWidgetChatRoute: typeof ApiPublicWidgetChatRoute
 }
@@ -345,6 +358,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicPluginDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/v1/$': {
+      id: '/api/public/v1/$'
+      path: '/api/public/v1/$'
+      fullPath: '/api/public/v1/$'
+      preLoaderRoute: typeof ApiPublicV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/whatsapp/webhook': {
       id: '/api/public/whatsapp/webhook'
       path: '/api/public/whatsapp/webhook'
@@ -396,6 +416,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicLeadsCollectRoute: ApiPublicLeadsCollectRoute,
   ApiPublicPluginActivateRoute: ApiPublicPluginActivateRoute,
   ApiPublicPluginDownloadRoute: ApiPublicPluginDownloadRoute,
+  ApiPublicV1SplatRoute: ApiPublicV1SplatRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiPublicWidgetChatRoute: ApiPublicWidgetChatRoute,
 }
