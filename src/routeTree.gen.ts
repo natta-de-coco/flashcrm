@@ -23,9 +23,13 @@ import { Route as AuthenticatedMarketingRouteImport } from './routes/_authentica
 import { Route as AuthenticatedMonitoringRouteImport } from './routes/_authenticated/monitoring'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as ApiPublicLeadsCollectRouteImport } from './routes/api/public/leads/collect'
+import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicPluginActivateRouteImport } from './routes/api/public/plugin/activate'
 import { Route as ApiPublicPluginDownloadRouteImport } from './routes/api/public/plugin/download'
 import { Route as ApiPublicV1SplatRouteImport } from './routes/api/public/v1/$'
+import { Route as ApiPublicWebhooksCustomRouteImport } from './routes/api/public/webhooks/custom'
+import { Route as ApiPublicWebhooksShopifyRouteImport } from './routes/api/public/webhooks/shopify'
+import { Route as ApiPublicWebhooksWordpressRouteImport } from './routes/api/public/webhooks/wordpress'
 import { Route as ApiPublicWhatsappWebhookRouteImport } from './routes/api/public/whatsapp/webhook'
 import { Route as ApiPublicWidgetChatRouteImport } from './routes/api/public/widget/chat'
 
@@ -98,6 +102,12 @@ const ApiPublicLeadsCollectRoute = ApiPublicLeadsCollectRouteImport.update({
   path: '/api/public/leads/collect',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPaymentsWebhookRoute =
+  ApiPublicPaymentsWebhookRouteImport.update({
+    id: '/api/public/payments/webhook',
+    path: '/api/public/payments/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicPluginActivateRoute = ApiPublicPluginActivateRouteImport.update({
   id: '/api/public/plugin/activate',
   path: '/api/public/plugin/activate',
@@ -113,6 +123,23 @@ const ApiPublicV1SplatRoute = ApiPublicV1SplatRouteImport.update({
   path: '/api/public/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicWebhooksCustomRoute = ApiPublicWebhooksCustomRouteImport.update({
+  id: '/api/public/webhooks/custom',
+  path: '/api/public/webhooks/custom',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicWebhooksShopifyRoute =
+  ApiPublicWebhooksShopifyRouteImport.update({
+    id: '/api/public/webhooks/shopify',
+    path: '/api/public/webhooks/shopify',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicWebhooksWordpressRoute =
+  ApiPublicWebhooksWordpressRouteImport.update({
+    id: '/api/public/webhooks/wordpress',
+    path: '/api/public/webhooks/wordpress',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWhatsappWebhookRoute =
   ApiPublicWhatsappWebhookRouteImport.update({
     id: '/api/public/whatsapp/webhook',
@@ -139,9 +166,13 @@ export interface FileRoutesByFullPath {
   '/monitoring': typeof AuthenticatedMonitoringRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
   '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
+  '/api/public/webhooks/custom': typeof ApiPublicWebhooksCustomRoute
+  '/api/public/webhooks/shopify': typeof ApiPublicWebhooksShopifyRoute
+  '/api/public/webhooks/wordpress': typeof ApiPublicWebhooksWordpressRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -159,9 +190,13 @@ export interface FileRoutesByTo {
   '/monitoring': typeof AuthenticatedMonitoringRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
   '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
+  '/api/public/webhooks/custom': typeof ApiPublicWebhooksCustomRoute
+  '/api/public/webhooks/shopify': typeof ApiPublicWebhooksShopifyRoute
+  '/api/public/webhooks/wordpress': typeof ApiPublicWebhooksWordpressRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -181,9 +216,13 @@ export interface FileRoutesById {
   '/_authenticated/monitoring': typeof AuthenticatedMonitoringRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
   '/api/public/plugin/download': typeof ApiPublicPluginDownloadRoute
   '/api/public/v1/$': typeof ApiPublicV1SplatRoute
+  '/api/public/webhooks/custom': typeof ApiPublicWebhooksCustomRoute
+  '/api/public/webhooks/shopify': typeof ApiPublicWebhooksShopifyRoute
+  '/api/public/webhooks/wordpress': typeof ApiPublicWebhooksWordpressRoute
   '/api/public/whatsapp/webhook': typeof ApiPublicWhatsappWebhookRoute
   '/api/public/widget/chat': typeof ApiPublicWidgetChatRoute
 }
@@ -203,9 +242,13 @@ export interface FileRouteTypes {
     | '/monitoring'
     | '/settings'
     | '/api/public/leads/collect'
+    | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
     | '/api/public/plugin/download'
     | '/api/public/v1/$'
+    | '/api/public/webhooks/custom'
+    | '/api/public/webhooks/shopify'
+    | '/api/public/webhooks/wordpress'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   fileRoutesByTo: FileRoutesByTo
@@ -223,9 +266,13 @@ export interface FileRouteTypes {
     | '/monitoring'
     | '/settings'
     | '/api/public/leads/collect'
+    | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
     | '/api/public/plugin/download'
     | '/api/public/v1/$'
+    | '/api/public/webhooks/custom'
+    | '/api/public/webhooks/shopify'
+    | '/api/public/webhooks/wordpress'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   id:
@@ -244,9 +291,13 @@ export interface FileRouteTypes {
     | '/_authenticated/monitoring'
     | '/_authenticated/settings'
     | '/api/public/leads/collect'
+    | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
     | '/api/public/plugin/download'
     | '/api/public/v1/$'
+    | '/api/public/webhooks/custom'
+    | '/api/public/webhooks/shopify'
+    | '/api/public/webhooks/wordpress'
     | '/api/public/whatsapp/webhook'
     | '/api/public/widget/chat'
   fileRoutesById: FileRoutesById
@@ -256,9 +307,13 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   ApiPublicLeadsCollectRoute: typeof ApiPublicLeadsCollectRoute
+  ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicPluginActivateRoute: typeof ApiPublicPluginActivateRoute
   ApiPublicPluginDownloadRoute: typeof ApiPublicPluginDownloadRoute
   ApiPublicV1SplatRoute: typeof ApiPublicV1SplatRoute
+  ApiPublicWebhooksCustomRoute: typeof ApiPublicWebhooksCustomRoute
+  ApiPublicWebhooksShopifyRoute: typeof ApiPublicWebhooksShopifyRoute
+  ApiPublicWebhooksWordpressRoute: typeof ApiPublicWebhooksWordpressRoute
   ApiPublicWhatsappWebhookRoute: typeof ApiPublicWhatsappWebhookRoute
   ApiPublicWidgetChatRoute: typeof ApiPublicWidgetChatRoute
 }
@@ -363,6 +418,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicLeadsCollectRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/payments/webhook': {
+      id: '/api/public/payments/webhook'
+      path: '/api/public/payments/webhook'
+      fullPath: '/api/public/payments/webhook'
+      preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/plugin/activate': {
       id: '/api/public/plugin/activate'
       path: '/api/public/plugin/activate'
@@ -382,6 +444,27 @@ declare module '@tanstack/react-router' {
       path: '/api/public/v1/$'
       fullPath: '/api/public/v1/$'
       preLoaderRoute: typeof ApiPublicV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/webhooks/custom': {
+      id: '/api/public/webhooks/custom'
+      path: '/api/public/webhooks/custom'
+      fullPath: '/api/public/webhooks/custom'
+      preLoaderRoute: typeof ApiPublicWebhooksCustomRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/webhooks/shopify': {
+      id: '/api/public/webhooks/shopify'
+      path: '/api/public/webhooks/shopify'
+      fullPath: '/api/public/webhooks/shopify'
+      preLoaderRoute: typeof ApiPublicWebhooksShopifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/webhooks/wordpress': {
+      id: '/api/public/webhooks/wordpress'
+      path: '/api/public/webhooks/wordpress'
+      fullPath: '/api/public/webhooks/wordpress'
+      preLoaderRoute: typeof ApiPublicWebhooksWordpressRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/whatsapp/webhook': {
@@ -435,9 +518,13 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   ApiPublicLeadsCollectRoute: ApiPublicLeadsCollectRoute,
+  ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicPluginActivateRoute: ApiPublicPluginActivateRoute,
   ApiPublicPluginDownloadRoute: ApiPublicPluginDownloadRoute,
   ApiPublicV1SplatRoute: ApiPublicV1SplatRoute,
+  ApiPublicWebhooksCustomRoute: ApiPublicWebhooksCustomRoute,
+  ApiPublicWebhooksShopifyRoute: ApiPublicWebhooksShopifyRoute,
+  ApiPublicWebhooksWordpressRoute: ApiPublicWebhooksWordpressRoute,
   ApiPublicWhatsappWebhookRoute: ApiPublicWhatsappWebhookRoute,
   ApiPublicWidgetChatRoute: ApiPublicWidgetChatRoute,
 }

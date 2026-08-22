@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_provider_keys: {
+        Row: {
+          active: boolean
+          api_key: string
+          created_at: string
+          created_by: string | null
+          id: string
+          label: string
+          provider: string
+          tenant_id: string
+        }
+        Insert: {
+          active?: boolean
+          api_key: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string
+          provider: string
+          tenant_id: string
+        }
+        Update: {
+          active?: boolean
+          api_key?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          label?: string
+          provider?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_provider_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       api_keys: {
         Row: {
           created_at: string
@@ -140,6 +181,53 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      business_profiles: {
+        Row: {
+          business_name: string | null
+          created_at: string
+          description: string | null
+          id: string
+          industry: string | null
+          learned_facts: string | null
+          qa: Json
+          tenant_id: string
+          updated_at: string
+          website_url: string | null
+        }
+        Insert: {
+          business_name?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          industry?: string | null
+          learned_facts?: string | null
+          qa?: Json
+          tenant_id: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Update: {
+          business_name?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          industry?: string | null
+          learned_facts?: string | null
+          qa?: Json
+          tenant_id?: string
+          updated_at?: string
+          website_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       campaigns: {
         Row: {
@@ -411,6 +499,74 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "deletion_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_email: string | null
+          customer_name: string
+          customer_phone: string | null
+          due_date: string | null
+          id: string
+          invoice_number: string
+          items: Json
+          notes: string | null
+          status: string
+          subtotal: number
+          tax_percent: number
+          tenant_id: string
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_email?: string | null
+          customer_name: string
+          customer_phone?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_number: string
+          items?: Json
+          notes?: string | null
+          status?: string
+          subtotal?: number
+          tax_percent?: number
+          tenant_id: string
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_email?: string | null
+          customer_name?: string
+          customer_phone?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_number?: string
+          items?: Json
+          notes?: string | null
+          status?: string
+          subtotal?: number
+          tax_percent?: number
+          tenant_id?: string
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "organizations"
