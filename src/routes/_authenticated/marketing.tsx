@@ -522,10 +522,151 @@ function MarketingPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">Lead routing rules</CardTitle>
+            <CardDescription>
+              Automatically assign each new website lead to the right WhatsApp number. Rules are
+              checked in priority order — the first match wins.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {(waNumbers.data ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Connect a WhatsApp number in Settings first, then create routing rules here.
+              </p>
+            ) : (
+              isAdmin && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="rule_name">Rule name</Label>
+                    <Input
+                      id="rule_name"
+                      placeholder="Shopify leads → sales line"
+                      value={ruleForm.name}
+                      onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="match_field">Match by</Label>
+                    <select
+                      id="match_field"
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      value={ruleForm.match_field}
+                      onChange={(e) =>
+                        setRuleForm({
+                          ...ruleForm,
+                          match_field: e.target.value as RoutingRule["match_field"],
+                        })
+                      }
+                    >
+                      {MATCH_FIELDS.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="match_value">Value</Label>
+                    <Input
+                      id="match_value"
+                      placeholder={
+                        MATCH_FIELDS.find((f) => f.id === ruleForm.match_field)?.hint ?? ""
+                      }
+                      value={ruleForm.match_value}
+                      onChange={(e) => setRuleForm({ ...ruleForm, match_value: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="rule_number">Assign to</Label>
+                    <select
+                      id="rule_number"
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      value={ruleForm.wa_number_id}
+                      onChange={(e) => setRuleForm({ ...ruleForm, wa_number_id: e.target.value })}
+                    >
+                      <option value="">Choose a number…</option>
+                      {(waNumbers.data ?? []).map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.label}
+                          {n.display_phone ? ` · ${n.display_phone}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid w-24 gap-1.5">
+                    <Label htmlFor="rule_priority">Priority</Label>
+                    <Input
+                      id="rule_priority"
+                      type="number"
+                      value={ruleForm.priority}
+                      onChange={(e) => setRuleForm({ ...ruleForm, priority: e.target.value })}
+                    />
+                  </div>
+                  <Button
+                    disabled={
+                      !ruleForm.name.trim() ||
+                      !ruleForm.match_value.trim() ||
+                      !ruleForm.wa_number_id ||
+                      createRule.isPending
+                    }
+                    onClick={() => createRule.mutate()}
+                  >
+                    <Plus className="size-4" /> Add rule
+                  </Button>
+                </div>
+              )
+            )}
+
+            <div className="space-y-2">
+              {(routingRules.data ?? []).length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No rules yet — leads go to your default WhatsApp number.
+                </p>
+              )}
+              {(routingRules.data ?? []).map((rule) => {
+                const number = (waNumbers.data ?? []).find((n) => n.id === rule.wa_number_id);
+                return (
+                  <div
+                    key={rule.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{rule.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {MATCH_FIELDS.find((f) => f.id === rule.match_field)?.label}:{" "}
+                        <code className="rounded bg-muted px-1">{rule.match_value}</code> →{" "}
+                        {number?.label ?? "Unknown number"} · priority {rule.priority}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={rule.active}
+                        onCheckedChange={(v) => toggleRule.mutate({ id: rule.id, active: v })}
+                      />
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteRule.mutate(rule.id)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Marketing campaigns</CardTitle>
             <CardDescription>
-              Write a campaign for your subscribed leads. Sending activates once your email domain is
-              verified.
+              Write a campaign for your subscribed leads. Campaigns only ever go to leads who ticked
+              the consent box — that keeps you out of spam folders and on the right side of
+              WhatsApp and email regulations. Sending activates once your email domain is verified.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
