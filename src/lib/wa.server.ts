@@ -17,14 +17,56 @@ export async function getBotSettings(): Promise<BotSettings | null> {
   return (data as BotSettings) ?? null;
 }
 
-export async function sendWhatsAppText(to: string, body: string) {
+export type WaCredentials = { token: string; phoneNumberId: string };
+
+/**
+ * Resolves the credentials for a connected WhatsApp number. With no id it uses
+ * the default connected number, falling back to the env-var configuration.
+ */
+export async function resolveWaCredentials(waNumberId?: string | null): Promise<WaCredentials> {
+  if (waNumberId) {
+    const { data } = await supabaseAdmin
+      .from("wa_numbers")
+      .select("access_token, phone_number_id, active")
+      .eq("id", waNumberId)
+      .maybeSingle();
+    if (data && data.active) {
+      return { token: data.access_token, phoneNumberId: data.phone_number_id };
+    }
+  } else {
+    const { data } = await supabaseAdmin
+      .from("wa_numbers")
+      .select("access_token, phone_number_id")
+      .eq("is_default", true)
+      .eq("active", true)
+      .maybeSingle();
+    if (data) return { token: data.access_token, phoneNumberId: data.phone_number_id };
+  }
+
   const token = process.env["WHATSAPP_ACCESS_TOKEN"];
   const phoneNumberId = process.env["WHATSAPP_PHONE_NUMBER_ID"];
   if (!token || !phoneNumberId) {
     throw new Error(
-      "WhatsApp is not configured yet. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
+      "WhatsApp is not configured yet. Connect a number in Settings or add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
     );
   }
+  return { token, phoneNumberId };
+}
+
+/** Finds the connected wa_numbers row matching a webhook's phone_number_id. */
+export async function findWaNumberByPhoneId(phoneNumberId?: string | null) {
+  if (!phoneNumberId) return null;
+  const { data } = await supabaseAdmin
+    .from("wa_numbers")
+    .select("id")
+    .eq("phone_number_id", phoneNumberId)
+    .eq("active", true)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+export async function sendWhatsAppText(to: string, body: string, creds?: WaCredentials) {
+  const { token, phoneNumberId } = creds ?? (await resolveWaCredentials());
 
   const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`, {
     method: "POST",
@@ -118,6 +160,7 @@ type IngestArgs = {
   name?: string | null;
   text: string;
   waMessageId?: string | null;
+  waNumberId?: string | null;
 };
 
 /**
@@ -125,7 +168,7 @@ type IngestArgs = {
  * needed) and returns the bot reply that was generated and stored, if any.
  */
 export async function ingestInboundMessage(args: IngestArgs) {
-  const { channel, phone, sessionId, name, text, waMessageId } = args;
+  const { channel, phone, sessionId, name, text, waMessageId, waNumberId } = args;
 
   // 1. Contact
   let contactId: string | null = null;
@@ -150,7 +193,8 @@ export async function ingestInboundMessage(args: IngestArgs) {
   }
 
   // 2. Conversation
-  let conversation: { id: string; bot_enabled: boolean } | null = null;
+  let conversation: { id: string; bot_enabled: boolean; wa_number_id?: string | null } | null =
+    null;
   if (channel === "web" && sessionId) {
     const { data } = await supabaseAdmin
       .from("conversations")
@@ -179,15 +223,21 @@ export async function ingestInboundMessage(args: IngestArgs) {
   } else {
     const { data } = await supabaseAdmin
       .from("conversations")
-      .select("id, bot_enabled")
+      .select("id, bot_enabled, wa_number_id")
       .eq("contact_id", contactId!)
       .eq("channel", "whatsapp")
       .maybeSingle();
     if (data) conversation = data;
+    if (conversation && waNumberId && !conversation.wa_number_id) {
+      await supabaseAdmin
+        .from("conversations")
+        .update({ wa_number_id: waNumberId })
+        .eq("id", conversation.id);
+    }
     if (!conversation) {
       const { data: created, error } = await supabaseAdmin
         .from("conversations")
-        .insert({ contact_id: contactId!, channel: "whatsapp" })
+        .insert({ contact_id: contactId!, channel: "whatsapp", wa_number_id: waNumberId ?? null })
         .select("id, bot_enabled")
         .single();
       if (error) throw error;
@@ -280,14 +330,9 @@ export async function sendWhatsAppTemplate(
   name: string,
   language: string,
   variables: string[] = [],
+  creds?: WaCredentials,
 ) {
-  const token = process.env["WHATSAPP_ACCESS_TOKEN"];
-  const phoneNumberId = process.env["WHATSAPP_PHONE_NUMBER_ID"];
-  if (!token || !phoneNumberId) {
-    throw new Error(
-      "WhatsApp is not configured yet. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID.",
-    );
-  }
+  const { token, phoneNumberId } = creds ?? (await resolveWaCredentials());
 
   const components = variables.length
     ? [{ type: "body", parameters: variables.map((text) => ({ type: "text", text })) }]

@@ -6,6 +6,7 @@ export type WaWebhookBody = {
     changes?: Array<{
       field?: string;
       value?: {
+        metadata?: { display_phone_number?: string; phone_number_id?: string };
         contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
         messages?: Array<{
           id?: string;
@@ -90,13 +91,15 @@ export async function finishWebhookEvent(
  * runs the chatbot, delivers replies and records delivery-status callbacks.
  */
 export async function processWaPayload(body: WaWebhookBody) {
-  const { ingestInboundMessage, sendWhatsAppText, storeOutbound } = await import("@/lib/wa.server");
+  const { ingestInboundMessage, sendWhatsAppText, storeOutbound, findWaNumberByPhoneId, resolveWaCredentials } =
+    await import("@/lib/wa.server");
   let handled = 0;
 
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const value = change.value;
       const contactName = value?.contacts?.[0]?.profile?.name ?? null;
+      const waNumberId = await findWaNumberByPhoneId(value?.metadata?.phone_number_id ?? null);
 
       for (const status of value?.statuses ?? []) {
         if (!status.id) continue;
@@ -128,11 +131,12 @@ export async function processWaPayload(body: WaWebhookBody) {
           name: contactName,
           text,
           waMessageId: message.id ?? null,
+          waNumberId,
         });
 
         if (reply) {
           try {
-            const waId = await sendWhatsAppText(from, reply);
+            const waId = await sendWhatsAppText(from, reply, await resolveWaCredentials(waNumberId));
             if (waId) {
               await supabaseAdmin
                 .from("messages")
