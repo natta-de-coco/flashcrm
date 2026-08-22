@@ -1,4 +1,5 @@
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
+import { BillingCard } from "@/components/settings/BillingCard";
 import { AuditLogCard } from "@/components/settings/AuditLogCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
 import { Badge } from "@/components/ui/badge";
@@ -554,6 +555,8 @@ function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <BillingCard />
 
         {isAdmin && (
           <>
