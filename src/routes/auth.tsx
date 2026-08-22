@@ -144,6 +144,40 @@ function AuthPage() {
             </TabsList>
 
             <TabsContent value="signin">
+              {mfaFactorId ? (
+                <form onSubmit={verifyMfa} className="space-y-4 pt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="mfa">Two-factor code</Label>
+                    <Input
+                      id="mfa"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="123456"
+                      autoFocus
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter the 6-digit code from your authenticator app.
+                    </p>
+                  </div>
+                  <Button type="submit" className="w-full" disabled={busy || mfaCode.trim().length !== 6}>
+                    Verify and sign in
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => {
+                      void supabase.auth.signOut();
+                      setMfaFactorId(null);
+                      setMfaCode("");
+                    }}
+                  >
+                    Back
+                  </Button>
+                </form>
+              ) : (
               <form onSubmit={signIn} className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">Work email</Label>
