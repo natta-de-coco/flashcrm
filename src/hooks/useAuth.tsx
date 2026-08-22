@@ -7,6 +7,7 @@ type AuthState = {
   session: Session | null;
   loading: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   signOut: () => Promise<void>;
 };
 
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthState>({
   session: null,
   loading: true,
   isAdmin: false,
+  isSuperAdmin: false,
   signOut: async () => {},
 });
 
@@ -22,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
@@ -39,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userId = session?.user?.id;
     if (!userId) {
       setIsAdmin(false);
+      setIsSuperAdmin(false);
       return;
     }
     let active = true;
@@ -50,6 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .maybeSingle()
       .then(({ data }) => {
         if (active) setIsAdmin(Boolean(data));
+      });
+    // Platform manager flag from the multi-tenant staff role.
+    supabase
+      .from("profiles")
+      .select("staff_role")
+      .eq("id", userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setIsSuperAdmin(data?.staff_role === "super_admin");
       });
     return () => {
       active = false;
@@ -63,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         loading,
         isAdmin,
+        isSuperAdmin,
         signOut: async () => {
           await supabase.auth.signOut();
         },

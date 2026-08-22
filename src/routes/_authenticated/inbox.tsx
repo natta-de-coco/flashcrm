@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
+import { recordAuditEvent } from "@/lib/audit.functions";
 import { draftBotReply, sendAgentMessage, sendTemplateMessage } from "@/lib/crm.functions";
 import type { Conversation, Message } from "@/lib/crm-types";
 import { supabase } from "@/integrations/supabase/client";
@@ -56,6 +57,17 @@ function InboxPage() {
   const send = useServerFn(sendAgentMessage);
   const suggest = useServerFn(draftBotReply);
   const sendTemplate = useServerFn(sendTemplateMessage);
+  const auditEvent = useServerFn(recordAuditEvent);
+
+  /** Fire-and-forget compliance log entry for an inbox action. */
+  function logAction(
+    action: "conversation.assign" | "conversation.tag" | "conversation.status" | "reminder.create" | "conversations.export" | "transcript.export",
+    details: Record<string, unknown> = {},
+  ) {
+    void auditEvent({
+      data: { action, entityType: "conversation", entityId: activeId ?? undefined, details },
+    }).catch(() => {});
+  }
 
   const team = useQuery({
     queryKey: ["team-basic"],
@@ -154,6 +166,12 @@ function InboxPage() {
   const sendMutation = useMutation({
     mutationFn: async (body: string) => send({ data: { conversationId: activeId!, body } }),
     onSuccess: (res) => {
+      if (res.blockedReasons?.length) {
+        toast.error("Message blocked by safety rules", {
+          description: res.blockedReasons.join(" "),
+        });
+        return;
+      }
       setDraft("");
       if (res.deliveryError) toast.warning(`Saved, but not delivered: ${res.deliveryError}`);
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
@@ -178,8 +196,16 @@ function InboxPage() {
   async function updateConversation(patch: ConvPatch) {
     if (!activeId) return;
     const { error } = await supabase.from("conversations").update(patch).eq("id", activeId);
-    if (error) toast.error(error.message);
-    else void qc.invalidateQueries({ queryKey: ["conversations"] });
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    if (patch.assigned_to !== undefined) {
+      logAction("conversation.assign", { assignedTo: patch.assigned_to });
+    }
+    if (patch.status) logAction("conversation.status", { status: patch.status });
+    if (patch.tags) logAction("conversation.tag", { tags: patch.tags });
+    void qc.invalidateQueries({ queryKey: ["conversations"] });
   }
 
   const reminders = useQuery({
@@ -210,6 +236,7 @@ function InboxPage() {
       if (error) throw error;
     },
     onSuccess: () => {
+      logAction("reminder.create", { note: reminderNote || "Follow up", due: reminderDue });
       setReminderNote("");
       setReminderDue("");
       toast.success("Follow-up reminder set");
@@ -221,7 +248,13 @@ function InboxPage() {
   const templateMutation = useMutation({
     mutationFn: async () =>
       sendTemplate({ data: { templateId, conversationId: activeId!, variables: [] } }),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res.blockedReasons?.length) {
+        toast.error("Template blocked by safety rules", {
+          description: res.blockedReasons.join(" "),
+        });
+        return;
+      }
       setTemplateId("");
       toast.success("Template sent");
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
@@ -279,6 +312,7 @@ function InboxPage() {
         { key: "last_message", label: "Last message" },
       ]),
     );
+    logAction("conversations.export", { rows: rows.length });
     toast.success("Conversations CSV downloaded");
   }
 
@@ -301,6 +335,7 @@ function InboxPage() {
         { key: "status", label: "Status" },
       ]),
     );
+    logAction("transcript.export", { rows: rows.length });
     toast.success("Transcript CSV downloaded");
   }
 

@@ -22,6 +22,24 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
       .single();
     if (error || !conversation) throw new Error("Conversation not found");
 
+    // Compliance gate: consent, 24h window, routing rules, subscription.
+    const { checkSendPermission } = await import("@/lib/safety.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    const safety = await checkSendPermission({
+      conversationId: conversation.id,
+      isTemplate: false,
+    });
+    if (!safety.allowed) {
+      await logAudit({
+        action: "message.blocked",
+        actorId: context.userId,
+        entityType: "conversation",
+        entityId: conversation.id,
+        details: { reasons: safety.reasons },
+      });
+      return { ok: false, deliveryError: null, blockedReasons: safety.reasons };
+    }
+
     let waId: string | null = null;
     let deliveryError: string | null = null;
 
@@ -47,7 +65,14 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
     }
 
     await storeOutbound(conversation.id, data.body, "agent", context.userId, waId);
-    return { ok: !deliveryError, deliveryError };
+    await logAudit({
+      action: "message.send",
+      actorId: context.userId,
+      entityType: "conversation",
+      entityId: conversation.id,
+      details: { channel: conversation.channel, delivered: !deliveryError },
+    });
+    return { ok: !deliveryError, deliveryError, blockedReasons: [] as string[] };
   });
 
 const BotSchema = z.object({ conversationId: z.string().uuid() });
@@ -157,6 +182,36 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
     }
     if (!phone) throw new Error("No WhatsApp number available for this recipient");
 
+    // Compliance gate: template sends require recorded opt-in consent, an
+    // active number, the correct routed line and an active subscription.
+    const { checkSendPermission } = await import("@/lib/safety.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    let contactId: string | null = null;
+    if (!conversationId) {
+      const { data: byPhone } = await supabaseAdmin
+        .from("contacts")
+        .select("id")
+        .eq("phone", phone)
+        .maybeSingle();
+      contactId = byPhone?.id ?? null;
+    }
+    const safety = await checkSendPermission({
+      conversationId,
+      contactId,
+      waNumberId,
+      isTemplate: true,
+    });
+    if (!safety.allowed) {
+      await logAudit({
+        action: "message.blocked",
+        actorId: context.userId,
+        entityType: conversationId ? "conversation" : "phone",
+        entityId: conversationId ?? phone,
+        details: { template: template.name, reasons: safety.reasons },
+      });
+      return { ok: false, waId: null, rendered: null, blockedReasons: safety.reasons };
+    }
+
     const waId = await sendWhatsAppTemplate(
       phone,
       template.name,
@@ -173,6 +228,13 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
     if (conversationId) {
       await storeOutbound(conversationId, rendered, "agent", context.userId, waId);
     }
+    await logAudit({
+      action: "message.template_send",
+      actorId: context.userId,
+      entityType: conversationId ? "conversation" : "phone",
+      entityId: conversationId ?? phone,
+      details: { template: template.name, waId },
+    });
 
-    return { ok: true, waId, rendered };
+    return { ok: true, waId, rendered, blockedReasons: [] as string[] };
   });

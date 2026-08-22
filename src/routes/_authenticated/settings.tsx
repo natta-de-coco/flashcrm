@@ -1,3 +1,6 @@
+import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
+import { AuditLogCard } from "@/components/settings/AuditLogCard";
+import { SecurityCard } from "@/components/settings/SecurityCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,6 +49,7 @@ function SettingsPage() {
     display_phone: "",
     phone_number_id: "",
     access_token: "",
+    app_secret: "",
   });
 
   const numbers = useQuery({
@@ -68,12 +72,19 @@ function SettingsPage() {
         display_phone: numForm.display_phone.trim() || null,
         phone_number_id: numForm.phone_number_id.trim(),
         access_token: numForm.access_token.trim(),
+        ...(numForm.app_secret.trim() ? { app_secret: numForm.app_secret.trim() } : {}),
         is_default: (numbers.data ?? []).length === 0,
       });
       if (error) throw error;
     },
     onSuccess: () => {
-      setNumForm({ label: "", display_phone: "", phone_number_id: "", access_token: "" });
+      setNumForm({
+        label: "",
+        display_phone: "",
+        phone_number_id: "",
+        access_token: "",
+        app_secret: "",
+      });
       toast.success("Number connected");
       void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
     },
@@ -320,6 +331,16 @@ function SettingsPage() {
                       onChange={(e) => setNumForm({ ...numForm, access_token: e.target.value })}
                     />
                   </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="n_secret">App secret (recommended)</Label>
+                    <Input
+                      id="n_secret"
+                      type="password"
+                      placeholder="Meta app secret — verifies webhook signatures"
+                      value={numForm.app_secret}
+                      onChange={(e) => setNumForm({ ...numForm, app_secret: e.target.value })}
+                    />
+                  </div>
                 </div>
                 <div>
                   <Button
@@ -533,6 +554,15 @@ function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {isAdmin && (
+          <>
+            <ApiKeysCard origin={origin} />
+            <AuditLogCard />
+          </>
+        )}
+
+        <SecurityCard />
 
         <Card>
           <CardHeader>

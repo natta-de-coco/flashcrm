@@ -75,7 +75,7 @@ export const Route = createFileRoute("/api/public/leads/collect")({
 
           const { data: site } = await supabaseAdmin
             .from("lead_sites")
-            .select("id, platform, active")
+            .select("id, platform, active, status, domain")
             .eq("site_key", parsed.siteKey)
             .maybeSingle();
 
@@ -84,6 +84,18 @@ export const Route = createFileRoute("/api/public/leads/collect")({
               status: 401,
               headers: corsHeaders,
             });
+          }
+
+          // The site key is embedded in public pages, so also pin it to the
+          // registered domain: requests from other origins are rejected.
+          if (site.domain) {
+            const origin = request.headers.get("origin") ?? request.headers.get("referer") ?? "";
+            if (origin && !origin.toLowerCase().includes(site.domain.toLowerCase())) {
+              return new Response(JSON.stringify({ error: "This key is not allowed here" }), {
+                status: 403,
+                headers: corsHeaders,
+              });
+            }
           }
 
           const email = parsed.email.toLowerCase();
@@ -151,6 +163,27 @@ export const Route = createFileRoute("/api/public/leads/collect")({
             { onConflict: "email" },
           );
           if (error) throw error;
+
+          const { logAudit } = await import("@/lib/audit.server");
+          if (consented) {
+            await logAudit({
+              action: "consent.capture",
+              entityType: "lead",
+              entityId: email,
+              details: { siteId: site.id, platform: site.platform, consentAt },
+            });
+          }
+          await logAudit({
+            action: "lead.route",
+            entityType: "lead",
+            entityId: email,
+            details: {
+              siteId: site.id,
+              platform: site.platform,
+              matchedRule: Boolean(assignedNumber),
+              waNumberId: assignedNumber,
+            },
+          });
 
           return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
         } catch (error) {

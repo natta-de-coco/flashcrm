@@ -5,6 +5,7 @@ import { Link, Outlet, createFileRoute, useNavigate } from "@tanstack/react-rout
 import {
   Activity,
   Bot,
+  Building2,
   FileText,
   Inbox,
   LayoutDashboard,
@@ -34,8 +35,13 @@ const NAV = [
 ] as const;
 
 function AuthenticatedLayout() {
-  const { session, loading, signOut, user } = useAuth();
+  const { session, loading, signOut, user, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
+
+  // Platform manager gets the companies portal on top of the normal workspace nav.
+  const nav = isSuperAdmin
+    ? [...NAV, { to: "/companies", label: "Companies", icon: Building2 } as const]
+    : NAV;
 
   useEffect(() => {
     if (!loading && !session) navigate({ to: "/auth" });
@@ -60,7 +66,7 @@ function AuthenticatedLayout() {
         </Link>
 
         <nav className="flex flex-1 flex-col gap-1">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <Link
               key={item.to}
               to={item.to}
@@ -92,7 +98,7 @@ function AuthenticatedLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex gap-1 overflow-x-auto border-b bg-sidebar px-2 py-2 md:hidden">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <Link
               key={item.to}
               to={item.to}
