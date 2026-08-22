@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
+import { Route as AuthenticatedCompaniesRouteImport } from './routes/_authenticated/companies'
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated/contacts'
 import { Route as AuthenticatedContentRouteImport } from './routes/_authenticated/content'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -50,6 +51,11 @@ const AuthenticatedCatalogRoute = AuthenticatedCatalogRouteImport.update({
 const AuthenticatedChatbotRoute = AuthenticatedChatbotRouteImport.update({
   id: '/chatbot',
   path: '/chatbot',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCompaniesRoute = AuthenticatedCompaniesRouteImport.update({
+  id: '/companies',
+  path: '/companies',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedContactsRoute = AuthenticatedContactsRouteImport.update({
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
+  '/companies': typeof AuthenticatedCompaniesRoute
   '/contacts': typeof AuthenticatedContactsRoute
   '/content': typeof AuthenticatedContentRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
+  '/companies': typeof AuthenticatedCompaniesRoute
   '/contacts': typeof AuthenticatedContactsRoute
   '/content': typeof AuthenticatedContentRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRoute
+  '/_authenticated/companies': typeof AuthenticatedCompaniesRoute
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
   '/_authenticated/content': typeof AuthenticatedContentRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -185,6 +194,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/catalog'
     | '/chatbot'
+    | '/companies'
     | '/contacts'
     | '/content'
     | '/dashboard'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/catalog'
     | '/chatbot'
+    | '/companies'
     | '/contacts'
     | '/content'
     | '/dashboard'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/catalog'
     | '/_authenticated/chatbot'
+    | '/_authenticated/companies'
     | '/_authenticated/contacts'
     | '/_authenticated/content'
     | '/_authenticated/dashboard'
@@ -286,6 +298,13 @@ declare module '@tanstack/react-router' {
       path: '/chatbot'
       fullPath: '/chatbot'
       preLoaderRoute: typeof AuthenticatedChatbotRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/companies': {
+      id: '/_authenticated/companies'
+      path: '/companies'
+      fullPath: '/companies'
+      preLoaderRoute: typeof AuthenticatedCompaniesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/contacts': {
@@ -385,6 +404,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
   AuthenticatedChatbotRoute: typeof AuthenticatedChatbotRoute
+  AuthenticatedCompaniesRoute: typeof AuthenticatedCompaniesRoute
   AuthenticatedContactsRoute: typeof AuthenticatedContactsRoute
   AuthenticatedContentRoute: typeof AuthenticatedContentRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -397,6 +417,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
   AuthenticatedChatbotRoute: AuthenticatedChatbotRoute,
+  AuthenticatedCompaniesRoute: AuthenticatedCompaniesRoute,
   AuthenticatedContactsRoute: AuthenticatedContactsRoute,
   AuthenticatedContentRoute: AuthenticatedContentRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
