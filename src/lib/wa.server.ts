@@ -193,7 +193,8 @@ export async function ingestInboundMessage(args: IngestArgs) {
   }
 
   // 2. Conversation
-  let conversation: { id: string; bot_enabled: boolean } | null = null;
+  let conversation: { id: string; bot_enabled: boolean; wa_number_id?: string | null } | null =
+    null;
   if (channel === "web" && sessionId) {
     const { data } = await supabaseAdmin
       .from("conversations")
