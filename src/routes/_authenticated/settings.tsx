@@ -273,6 +273,131 @@ function SettingsPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">Connected WhatsApp numbers</CardTitle>
+            <CardDescription>
+              Connect more than one WhatsApp Business number. Incoming chats are routed to the
+              number the customer messaged, and replies go out from the same number.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {isAdmin && (
+              <div className="grid gap-3 rounded-lg border p-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="n_label">Label</Label>
+                    <Input
+                      id="n_label"
+                      placeholder="Sales line"
+                      value={numForm.label}
+                      onChange={(e) => setNumForm({ ...numForm, label: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="n_phone">Display phone number</Label>
+                    <Input
+                      id="n_phone"
+                      placeholder="+971 50 123 4567"
+                      value={numForm.display_phone}
+                      onChange={(e) => setNumForm({ ...numForm, display_phone: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="n_pid">Phone number ID</Label>
+                    <Input
+                      id="n_pid"
+                      placeholder="From Meta → WhatsApp → API Setup"
+                      value={numForm.phone_number_id}
+                      onChange={(e) => setNumForm({ ...numForm, phone_number_id: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="n_token">Access token</Label>
+                    <Input
+                      id="n_token"
+                      type="password"
+                      placeholder="Permanent token from Meta"
+                      value={numForm.access_token}
+                      onChange={(e) => setNumForm({ ...numForm, access_token: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Button
+                    disabled={
+                      !numForm.label.trim() ||
+                      !numForm.phone_number_id.trim() ||
+                      !numForm.access_token.trim() ||
+                      addNumber.isPending
+                    }
+                    onClick={() => addNumber.mutate()}
+                  >
+                    <Plus className="size-4" /> Connect number
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {!isAdmin && (
+                <p className="text-sm text-muted-foreground">
+                  Only admins can view and manage connected numbers.
+                </p>
+              )}
+              {isAdmin && (numbers.data ?? []).length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No numbers connected yet — the env-var configuration is used as a fallback.
+                </p>
+              )}
+              {(numbers.data ?? []).map((n) => (
+                <div
+                  key={n.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {n.label}
+                      {n.is_default && (
+                        <Badge className="ml-2 bg-brand text-brand-foreground">default</Badge>
+                      )}
+                      {!n.active && (
+                        <Badge variant="secondary" className="ml-2">
+                          disabled
+                        </Badge>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {n.display_phone ?? "No display number"} · ID {n.phone_number_id}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {!n.is_default && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateNumber(n.id, { is_default: true })}
+                      >
+                        <Star className="size-3.5" /> Make default
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateNumber(n.id, { active: !n.active })}
+                    >
+                      {n.active ? "Disable" : "Enable"}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => removeNumber(n.id)}>
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Website chat widget</CardTitle>
             <CardDescription>
               Paste this snippet before the closing &lt;/body&gt; tag of your website. Chats appear
