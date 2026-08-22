@@ -3,12 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Download, Plus, Send } from "lucide-react";
+import { Copy, Download, Plus, Send, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -39,8 +40,33 @@ type Lead = {
   source: string;
   source_url: string | null;
   subscribed: boolean;
+  consent_given: boolean;
+  consent_at: string | null;
   created_at: string;
 };
+
+type RoutingRule = {
+  id: string;
+  name: string;
+  match_field: "tag" | "source" | "platform" | "email_domain";
+  match_value: string;
+  wa_number_id: string;
+  priority: number;
+  active: boolean;
+};
+
+type WaNumber = {
+  id: string;
+  label: string;
+  display_phone: string | null;
+};
+
+const MATCH_FIELDS = [
+  { id: "tag", label: "Lead tag", hint: "e.g. popup-chat, vip, wholesale" },
+  { id: "platform", label: "Platform", hint: "wordpress, shopify or other" },
+  { id: "source", label: "Source URL contains", hint: "e.g. /wholesale or dubai" },
+  { id: "email_domain", label: "Email domain", hint: "e.g. bigcompany.com" },
+] as const;
 
 type Site = {
   id: string;
@@ -72,6 +98,13 @@ function MarketingPage() {
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
   const [campaignForm, setCampaignForm] = useState({ name: "", subject: "", body: "" });
+  const [ruleForm, setRuleForm] = useState({
+    name: "",
+    match_field: "tag" as RoutingRule["match_field"],
+    match_value: "",
+    wa_number_id: "",
+    priority: "100",
+  });
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
 
   useEffect(() => setOrigin(window.location.origin), []);
@@ -111,6 +144,70 @@ function MarketingPage() {
       if (error) throw error;
       return data as unknown as Campaign[];
     },
+  });
+
+  const routingRules = useQuery({
+    queryKey: ["routing_rules"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lead_routing_rules")
+        .select("*")
+        .order("priority", { ascending: true });
+      if (error) throw error;
+      return data as unknown as RoutingRule[];
+    },
+  });
+
+  const waNumbers = useQuery({
+    queryKey: ["wa-numbers-basic"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("wa_numbers")
+        .select("id, label, display_phone")
+        .eq("active", true);
+      if (error) throw error;
+      return data as WaNumber[];
+    },
+  });
+
+  const createRule = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("lead_routing_rules").insert({
+        name: ruleForm.name.trim(),
+        match_field: ruleForm.match_field,
+        match_value: ruleForm.match_value.trim(),
+        wa_number_id: ruleForm.wa_number_id,
+        priority: Number(ruleForm.priority) || 100,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setRuleForm({ name: "", match_field: "tag", match_value: "", wa_number_id: "", priority: "100" });
+      toast.success("Routing rule added");
+      void qc.invalidateQueries({ queryKey: ["routing_rules"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggleRule = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { error } = await supabase.from("lead_routing_rules").update({ active }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["routing_rules"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteRule = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("lead_routing_rules").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Rule removed");
+      void qc.invalidateQueries({ queryKey: ["routing_rules"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const createSite = useMutation({
@@ -402,6 +499,18 @@ function MarketingPage() {
                   <Badge variant="secondary" className="capitalize">
                     {lead.source}
                   </Badge>
+                  {lead.consent_given ? (
+                    <Badge variant="outline" className="text-[10px]">
+                      Consented
+                      {lead.consent_at
+                        ? ` · ${new Date(lead.consent_at).toLocaleDateString()}`
+                        : ""}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      No consent
+                    </Badge>
+                  )}
                   <span className="text-[11px] text-muted-foreground">
                     {new Date(lead.created_at).toLocaleDateString()}
                   </span>
