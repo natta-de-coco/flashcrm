@@ -203,6 +203,7 @@ function AuthPage() {
                   Sign in
                 </Button>
               </form>
+              )}
             </TabsContent>
 
             <TabsContent value="signup">
