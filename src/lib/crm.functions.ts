@@ -13,11 +13,11 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SendSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { sendWhatsAppText, storeOutbound } = await import("@/lib/wa.server");
+    const { sendWhatsAppText, storeOutbound, resolveWaCredentials } = await import("@/lib/wa.server");
 
     const { data: conversation, error } = await supabaseAdmin
       .from("conversations")
-      .select("id, channel, contact_id")
+      .select("id, channel, contact_id, wa_number_id")
       .eq("id", data.conversationId)
       .single();
     if (error || !conversation) throw new Error("Conversation not found");
@@ -33,7 +33,11 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
         .single();
       if (contact?.phone) {
         try {
-          waId = await sendWhatsAppText(contact.phone, data.body);
+          waId = await sendWhatsAppText(
+            contact.phone,
+            data.body,
+            await resolveWaCredentials(conversation.wa_number_id),
+          );
         } catch (sendError) {
           deliveryError = sendError instanceof Error ? sendError.message : "Delivery failed";
         }
