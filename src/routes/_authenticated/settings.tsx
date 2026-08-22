@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Plus, Save } from "lucide-react";
+import { Copy, Plus, Save, Star, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -41,6 +41,59 @@ function SettingsPage() {
     category: "UTILITY",
     body: "",
   });
+  const [numForm, setNumForm] = useState({
+    label: "",
+    display_phone: "",
+    phone_number_id: "",
+    access_token: "",
+  });
+
+  const numbers = useQuery({
+    queryKey: ["wa_numbers"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("wa_numbers")
+        .select("id, label, display_phone, phone_number_id, is_default, active, created_at")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: isAdmin,
+  });
+
+  const addNumber = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("wa_numbers").insert({
+        label: numForm.label.trim(),
+        display_phone: numForm.display_phone.trim() || null,
+        phone_number_id: numForm.phone_number_id.trim(),
+        access_token: numForm.access_token.trim(),
+        is_default: (numbers.data ?? []).length === 0,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setNumForm({ label: "", display_phone: "", phone_number_id: "", access_token: "" });
+      toast.success("Number connected");
+      void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  async function updateNumber(id: string, patch: Record<string, unknown>) {
+    const { error } = await supabase.from("wa_numbers").update(patch).eq("id", id);
+    if (error) toast.error(error.message);
+    else void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
+  }
+
+  async function removeNumber(id: string) {
+    const { error } = await supabase.from("wa_numbers").delete().eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Number removed");
+      void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
+    }
+  }
 
   const templates = useQuery({
     queryKey: ["wa_templates"],
