@@ -180,6 +180,39 @@ function ContactsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
+          <Dialog open={importOpen} onOpenChange={setImportOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="size-4" /> Import numbers
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Import leads & numbers</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm text-muted-foreground">
+                Paste one contact per line — a phone number alone, or{" "}
+                <code className="rounded bg-muted px-1">name, phone, email</code>. Duplicates are
+                skipped automatically and every import is tagged{" "}
+                <code className="rounded bg-muted px-1">imported</code> so you can filter the
+                records later.
+              </p>
+              <Textarea
+                rows={8}
+                placeholder={"+971501234567\nSara Ahmed, +971559876543, sara@example.com"}
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+              />
+              <DialogFooter>
+                <Button
+                  onClick={() => bulkImport.mutate()}
+                  disabled={!importText.trim() || bulkImport.isPending}
+                >
+                  Import contacts
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button>
