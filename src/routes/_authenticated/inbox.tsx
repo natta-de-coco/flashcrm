@@ -82,7 +82,7 @@ function InboxPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conversations")
-        .select("*, contacts(id, name, phone, company, stage)")
+        .select("*, contacts(id, name, phone, company, stage), wa_numbers(label, display_phone)")
         .order("last_message_at", { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -318,6 +318,12 @@ function InboxPage() {
                   {c.channel === "web" ? <Globe className="size-3" /> : null}
                   {c.channel === "web" ? "Website" : "WhatsApp"}
                 </Badge>
+                {c.wa_numbers && (
+                  <Badge variant="outline" className="gap-1 text-[10px]">
+                    {c.wa_numbers.label}
+                    {c.wa_numbers.display_phone ? ` · ${c.wa_numbers.display_phone}` : ""}
+                  </Badge>
+                )}
                 {c.bot_enabled && (
                   <Badge className="gap-1 bg-brand text-brand-foreground text-[10px]">
                     <Bot className="size-3" /> Bot
