@@ -225,6 +225,7 @@ export type Database = {
           tags: string[]
           unread_count: number
           updated_at: string
+          wa_number_id: string | null
           web_session_id: string | null
         }
         Insert: {
@@ -240,6 +241,7 @@ export type Database = {
           tags?: string[]
           unread_count?: number
           updated_at?: string
+          wa_number_id?: string | null
           web_session_id?: string | null
         }
         Update: {
@@ -255,6 +257,7 @@ export type Database = {
           tags?: string[]
           unread_count?: number
           updated_at?: string
+          wa_number_id?: string | null
           web_session_id?: string | null
         }
         Relationships: [
@@ -263,6 +266,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_wa_number_id_fkey"
+            columns: ["wa_number_id"]
+            isOneToOne: false
+            referencedRelation: "wa_numbers"
             referencedColumns: ["id"]
           },
         ]
@@ -689,6 +699,39 @@ export type Database = {
           phone_number_id?: string | null
           updated_at?: string
           webhook_verified?: boolean
+        }
+        Relationships: []
+      }
+      wa_numbers: {
+        Row: {
+          access_token: string
+          active: boolean
+          created_at: string
+          display_phone: string | null
+          id: string
+          is_default: boolean
+          label: string
+          phone_number_id: string
+        }
+        Insert: {
+          access_token: string
+          active?: boolean
+          created_at?: string
+          display_phone?: string | null
+          id?: string
+          is_default?: boolean
+          label: string
+          phone_number_id: string
+        }
+        Update: {
+          access_token?: string
+          active?: boolean
+          created_at?: string
+          display_phone?: string | null
+          id?: string
+          is_default?: boolean
+          label?: string
+          phone_number_id?: string
         }
         Relationships: []
       }
