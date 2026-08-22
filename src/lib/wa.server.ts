@@ -160,6 +160,7 @@ type IngestArgs = {
   name?: string | null;
   text: string;
   waMessageId?: string | null;
+  waNumberId?: string | null;
 };
 
 /**
@@ -167,7 +168,7 @@ type IngestArgs = {
  * needed) and returns the bot reply that was generated and stored, if any.
  */
 export async function ingestInboundMessage(args: IngestArgs) {
-  const { channel, phone, sessionId, name, text, waMessageId } = args;
+  const { channel, phone, sessionId, name, text, waMessageId, waNumberId } = args;
 
   // 1. Contact
   let contactId: string | null = null;
@@ -221,15 +222,21 @@ export async function ingestInboundMessage(args: IngestArgs) {
   } else {
     const { data } = await supabaseAdmin
       .from("conversations")
-      .select("id, bot_enabled")
+      .select("id, bot_enabled, wa_number_id")
       .eq("contact_id", contactId!)
       .eq("channel", "whatsapp")
       .maybeSingle();
     if (data) conversation = data;
+    if (conversation && waNumberId && !conversation.wa_number_id) {
+      await supabaseAdmin
+        .from("conversations")
+        .update({ wa_number_id: waNumberId })
+        .eq("id", conversation.id);
+    }
     if (!conversation) {
       const { data: created, error } = await supabaseAdmin
         .from("conversations")
-        .insert({ contact_id: contactId!, channel: "whatsapp" })
+        .insert({ contact_id: contactId!, channel: "whatsapp", wa_number_id: waNumberId ?? null })
         .select("id, bot_enabled")
         .single();
       if (error) throw error;
