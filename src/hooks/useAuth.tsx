@@ -42,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userId = session?.user?.id;
     if (!userId) {
       setIsAdmin(false);
+      setIsSuperAdmin(false);
       return;
     }
     let active = true;
@@ -53,6 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .maybeSingle()
       .then(({ data }) => {
         if (active) setIsAdmin(Boolean(data));
+      });
+    // Platform manager flag from the multi-tenant staff role.
+    supabase
+      .from("profiles")
+      .select("staff_role")
+      .eq("id", userId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setIsSuperAdmin(data?.staff_role === "super_admin");
       });
     return () => {
       active = false;
