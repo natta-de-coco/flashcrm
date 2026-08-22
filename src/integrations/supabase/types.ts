@@ -374,6 +374,50 @@ export type Database = {
           },
         ]
       }
+      deletion_requests: {
+        Row: {
+          created_at: string
+          details: Json
+          id: string
+          processed_at: string | null
+          requested_by: string | null
+          scope: string
+          status: string
+          target: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          id?: string
+          processed_at?: string | null
+          requested_by?: string | null
+          scope?: string
+          status?: string
+          target?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          id?: string
+          processed_at?: string | null
+          requested_by?: string | null
+          scope?: string
+          status?: string
+          target?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deletion_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_routing_rules: {
         Row: {
           active: boolean
@@ -434,6 +478,7 @@ export type Database = {
           popup_greeting: string
           site_key: string
           status: string
+          webhook_secret: string
         }
         Insert: {
           activated_at?: string | null
@@ -450,6 +495,7 @@ export type Database = {
           popup_greeting?: string
           site_key?: string
           status?: string
+          webhook_secret?: string
         }
         Update: {
           activated_at?: string | null
@@ -466,6 +512,7 @@ export type Database = {
           popup_greeting?: string
           site_key?: string
           status?: string
+          webhook_secret?: string
         }
         Relationships: []
       }
@@ -623,6 +670,8 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          paddle_customer_id: string | null
+          paddle_subscription_id: string | null
           plan: string
           slug: string
           subscription_renews_at: string | null
@@ -634,6 +683,8 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
           plan?: string
           slug: string
           subscription_renews_at?: string | null
@@ -645,6 +696,8 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
           plan?: string
           slug?: string
           subscription_renews_at?: string | null
@@ -793,6 +846,54 @@ export type Database = {
           },
         ]
       }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean | null
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          environment: string
+          id: string
+          paddle_customer_id: string
+          paddle_subscription_id: string
+          price_id: string
+          product_id: string
+          status: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          environment?: string
+          id?: string
+          paddle_customer_id: string
+          paddle_subscription_id: string
+          price_id: string
+          product_id: string
+          status?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean | null
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          environment?: string
+          id?: string
+          paddle_customer_id?: string
+          paddle_subscription_id?: string
+          price_id?: string
+          product_id?: string
+          status?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       system_alerts: {
         Row: {
           created_at: string
@@ -822,6 +923,47 @@ export type Database = {
           title?: string
         }
         Relationships: []
+      }
+      team_invites: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          id: string
+          invited_by: string | null
+          staff_role: Database["public"]["Enums"]["staff_role"]
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          id?: string
+          invited_by?: string | null
+          staff_role?: Database["public"]["Enums"]["staff_role"]
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          invited_by?: string | null
+          staff_role?: Database["public"]["Enums"]["staff_role"]
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_invites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -916,10 +1058,16 @@ export type Database = {
           header: string | null
           id: string
           language: string
+          meta_template_id: string | null
           name: string
+          rejection_reason: string | null
+          reviewed_at: string | null
           status: string
+          submitted_at: string | null
+          tenant_id: string | null
           updated_at: string
           variables: string[]
+          wa_number_id: string | null
         }
         Insert: {
           body?: string
@@ -929,10 +1077,16 @@ export type Database = {
           header?: string | null
           id?: string
           language?: string
+          meta_template_id?: string | null
           name: string
+          rejection_reason?: string | null
+          reviewed_at?: string | null
           status?: string
+          submitted_at?: string | null
+          tenant_id?: string | null
           updated_at?: string
           variables?: string[]
+          wa_number_id?: string | null
         }
         Update: {
           body?: string
@@ -942,12 +1096,33 @@ export type Database = {
           header?: string | null
           id?: string
           language?: string
+          meta_template_id?: string | null
           name?: string
+          rejection_reason?: string | null
+          reviewed_at?: string | null
           status?: string
+          submitted_at?: string | null
+          tenant_id?: string | null
           updated_at?: string
           variables?: string[]
+          wa_number_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "wa_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_templates_wa_number_id_fkey"
+            columns: ["wa_number_id"]
+            isOneToOne: false
+            referencedRelation: "wa_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       webhook_events: {
         Row: {
@@ -1000,6 +1175,10 @@ export type Database = {
     }
     Functions: {
       current_tenant_id: { Args: never; Returns: string }
+      has_active_subscription: {
+        Args: { check_env?: string; user_uuid: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
