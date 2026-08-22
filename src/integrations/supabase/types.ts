@@ -95,6 +95,8 @@ export type Database = {
       contacts: {
         Row: {
           company: string | null
+          consent_at: string | null
+          consent_given: boolean
           created_at: string
           email: string | null
           id: string
@@ -111,6 +113,8 @@ export type Database = {
         }
         Insert: {
           company?: string | null
+          consent_at?: string | null
+          consent_given?: boolean
           created_at?: string
           email?: string | null
           id?: string
@@ -127,6 +131,8 @@ export type Database = {
         }
         Update: {
           company?: string | null
+          consent_at?: string | null
+          consent_given?: boolean
           created_at?: string
           email?: string | null
           id?: string
@@ -277,6 +283,50 @@ export type Database = {
           },
         ]
       }
+      lead_routing_rules: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          match_field: string
+          match_value: string
+          name: string
+          priority: number
+          updated_at: string
+          wa_number_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          match_field?: string
+          match_value: string
+          name: string
+          priority?: number
+          updated_at?: string
+          wa_number_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          match_field?: string
+          match_value?: string
+          name?: string
+          priority?: number
+          updated_at?: string
+          wa_number_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_routing_rules_wa_number_id_fkey"
+            columns: ["wa_number_id"]
+            isOneToOne: false
+            referencedRelation: "wa_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_sites: {
         Row: {
           activated_at: string | null
@@ -331,6 +381,9 @@ export type Database = {
       leads: {
         Row: {
           assigned_to: string | null
+          assigned_wa_number_id: string | null
+          consent_at: string | null
+          consent_given: boolean
           contact_id: string | null
           created_at: string
           custom_fields: Json
@@ -349,6 +402,9 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          assigned_wa_number_id?: string | null
+          consent_at?: string | null
+          consent_given?: boolean
           contact_id?: string | null
           created_at?: string
           custom_fields?: Json
@@ -367,6 +423,9 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          assigned_wa_number_id?: string | null
+          consent_at?: string | null
+          consent_given?: boolean
           contact_id?: string | null
           created_at?: string
           custom_fields?: Json
@@ -389,6 +448,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_wa_number_id_fkey"
+            columns: ["assigned_wa_number_id"]
+            isOneToOne: false
+            referencedRelation: "wa_numbers"
             referencedColumns: ["id"]
           },
           {

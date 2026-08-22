@@ -23,6 +23,8 @@ export type Contact = {
   notes: string | null;
   owner_id: string | null;
   last_message_at: string | null;
+  consent_given?: boolean;
+  consent_at?: string | null;
   created_at: string;
 };
 

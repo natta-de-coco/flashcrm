@@ -3,12 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Download, Plus, Send } from "lucide-react";
+import { Copy, Download, Plus, Send, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -39,8 +40,33 @@ type Lead = {
   source: string;
   source_url: string | null;
   subscribed: boolean;
+  consent_given: boolean;
+  consent_at: string | null;
   created_at: string;
 };
+
+type RoutingRule = {
+  id: string;
+  name: string;
+  match_field: "tag" | "source" | "platform" | "email_domain";
+  match_value: string;
+  wa_number_id: string;
+  priority: number;
+  active: boolean;
+};
+
+type WaNumber = {
+  id: string;
+  label: string;
+  display_phone: string | null;
+};
+
+const MATCH_FIELDS = [
+  { id: "tag", label: "Lead tag", hint: "e.g. popup-chat, vip, wholesale" },
+  { id: "platform", label: "Platform", hint: "wordpress, shopify or other" },
+  { id: "source", label: "Source URL contains", hint: "e.g. /wholesale or dubai" },
+  { id: "email_domain", label: "Email domain", hint: "e.g. bigcompany.com" },
+] as const;
 
 type Site = {
   id: string;
@@ -72,6 +98,13 @@ function MarketingPage() {
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
   const [campaignForm, setCampaignForm] = useState({ name: "", subject: "", body: "" });
+  const [ruleForm, setRuleForm] = useState({
+    name: "",
+    match_field: "tag" as RoutingRule["match_field"],
+    match_value: "",
+    wa_number_id: "",
+    priority: "100",
+  });
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
 
   useEffect(() => setOrigin(window.location.origin), []);
@@ -111,6 +144,70 @@ function MarketingPage() {
       if (error) throw error;
       return data as unknown as Campaign[];
     },
+  });
+
+  const routingRules = useQuery({
+    queryKey: ["routing_rules"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lead_routing_rules")
+        .select("*")
+        .order("priority", { ascending: true });
+      if (error) throw error;
+      return data as unknown as RoutingRule[];
+    },
+  });
+
+  const waNumbers = useQuery({
+    queryKey: ["wa-numbers-basic"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("wa_numbers")
+        .select("id, label, display_phone")
+        .eq("active", true);
+      if (error) throw error;
+      return data as WaNumber[];
+    },
+  });
+
+  const createRule = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("lead_routing_rules").insert({
+        name: ruleForm.name.trim(),
+        match_field: ruleForm.match_field,
+        match_value: ruleForm.match_value.trim(),
+        wa_number_id: ruleForm.wa_number_id,
+        priority: Number(ruleForm.priority) || 100,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setRuleForm({ name: "", match_field: "tag", match_value: "", wa_number_id: "", priority: "100" });
+      toast.success("Routing rule added");
+      void qc.invalidateQueries({ queryKey: ["routing_rules"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggleRule = useMutation({
+    mutationFn: async ({ id, active }: { id: string; active: boolean }) => {
+      const { error } = await supabase.from("lead_routing_rules").update({ active }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["routing_rules"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteRule = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("lead_routing_rules").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Rule removed");
+      void qc.invalidateQueries({ queryKey: ["routing_rules"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const createSite = useMutation({
@@ -285,11 +382,18 @@ function MarketingPage() {
                     {activeSite.admin_email ? ` · ${activeSite.admin_email}` : ""}
                   </span>
                   <div className="ml-auto flex flex-wrap gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={`${origin}/api/public/plugin/download?siteKey=${activeSite.site_key}`}>
-                        <Download className="size-4" /> WordPress plugin
-                      </a>
-                    </Button>
+                    {activeSite.platform !== "other" && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a
+                          href={`${origin}/api/public/plugin/download?siteKey=${activeSite.site_key}&platform=${activeSite.platform === "shopify" ? "shopify" : "wordpress"}`}
+                        >
+                          <Download className="size-4" />
+                          {activeSite.platform === "shopify"
+                            ? "Shopify theme package"
+                            : "WordPress plugin"}
+                        </a>
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -331,6 +435,30 @@ function MarketingPage() {
                     <Copy className="size-4" /> Copy snippet
                   </Button>
                 </div>
+                <div className="rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+                  {activeSite.platform === "shopify" ? (
+                    <>
+                      <strong className="text-foreground">Shopify install:</strong> download the
+                      theme package, then in Shopify admin go to Online Store → Themes → Edit code,
+                      add the snippet under <em>Snippets</em> and render it before{" "}
+                      <code>&lt;/body&gt;</code> in <code>theme.liquid</code>. Full steps are in
+                      INSTALL.txt inside the ZIP.
+                    </>
+                  ) : activeSite.platform === "wordpress" ? (
+                    <>
+                      <strong className="text-foreground">WordPress install:</strong> Plugins → Add
+                      New → Upload Plugin, choose the ZIP, activate — or paste the snippet into a
+                      Custom HTML block.
+                    </>
+                  ) : (
+                    <>
+                      <strong className="text-foreground">Any website:</strong> paste the popup
+                      snippet just before <code>&lt;/body&gt;</code>.
+                    </>
+                  )}{" "}
+                  The site registers itself with Flas CRM on first visit — then activate it with the
+                  link above so the popup goes live.
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Already have a signup form? Add <code>class="flas-lead-form"</code> to it and the
                   plugin captures submissions automatically.
@@ -371,6 +499,18 @@ function MarketingPage() {
                   <Badge variant="secondary" className="capitalize">
                     {lead.source}
                   </Badge>
+                  {lead.consent_given ? (
+                    <Badge variant="outline" className="text-[10px]">
+                      Consented
+                      {lead.consent_at
+                        ? ` · ${new Date(lead.consent_at).toLocaleDateString()}`
+                        : ""}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      No consent
+                    </Badge>
+                  )}
                   <span className="text-[11px] text-muted-foreground">
                     {new Date(lead.created_at).toLocaleDateString()}
                   </span>
@@ -382,10 +522,151 @@ function MarketingPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="text-base">Lead routing rules</CardTitle>
+            <CardDescription>
+              Automatically assign each new website lead to the right WhatsApp number. Rules are
+              checked in priority order — the first match wins.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {(waNumbers.data ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Connect a WhatsApp number in Settings first, then create routing rules here.
+              </p>
+            ) : (
+              isAdmin && (
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="rule_name">Rule name</Label>
+                    <Input
+                      id="rule_name"
+                      placeholder="Shopify leads → sales line"
+                      value={ruleForm.name}
+                      onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="match_field">Match by</Label>
+                    <select
+                      id="match_field"
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      value={ruleForm.match_field}
+                      onChange={(e) =>
+                        setRuleForm({
+                          ...ruleForm,
+                          match_field: e.target.value as RoutingRule["match_field"],
+                        })
+                      }
+                    >
+                      {MATCH_FIELDS.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="match_value">Value</Label>
+                    <Input
+                      id="match_value"
+                      placeholder={
+                        MATCH_FIELDS.find((f) => f.id === ruleForm.match_field)?.hint ?? ""
+                      }
+                      value={ruleForm.match_value}
+                      onChange={(e) => setRuleForm({ ...ruleForm, match_value: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="rule_number">Assign to</Label>
+                    <select
+                      id="rule_number"
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      value={ruleForm.wa_number_id}
+                      onChange={(e) => setRuleForm({ ...ruleForm, wa_number_id: e.target.value })}
+                    >
+                      <option value="">Choose a number…</option>
+                      {(waNumbers.data ?? []).map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {n.label}
+                          {n.display_phone ? ` · ${n.display_phone}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid w-24 gap-1.5">
+                    <Label htmlFor="rule_priority">Priority</Label>
+                    <Input
+                      id="rule_priority"
+                      type="number"
+                      value={ruleForm.priority}
+                      onChange={(e) => setRuleForm({ ...ruleForm, priority: e.target.value })}
+                    />
+                  </div>
+                  <Button
+                    disabled={
+                      !ruleForm.name.trim() ||
+                      !ruleForm.match_value.trim() ||
+                      !ruleForm.wa_number_id ||
+                      createRule.isPending
+                    }
+                    onClick={() => createRule.mutate()}
+                  >
+                    <Plus className="size-4" /> Add rule
+                  </Button>
+                </div>
+              )
+            )}
+
+            <div className="space-y-2">
+              {(routingRules.data ?? []).length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No rules yet — leads go to your default WhatsApp number.
+                </p>
+              )}
+              {(routingRules.data ?? []).map((rule) => {
+                const number = (waNumbers.data ?? []).find((n) => n.id === rule.wa_number_id);
+                return (
+                  <div
+                    key={rule.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{rule.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {MATCH_FIELDS.find((f) => f.id === rule.match_field)?.label}:{" "}
+                        <code className="rounded bg-muted px-1">{rule.match_value}</code> →{" "}
+                        {number?.label ?? "Unknown number"} · priority {rule.priority}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={rule.active}
+                        onCheckedChange={(v) => toggleRule.mutate({ id: rule.id, active: v })}
+                      />
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteRule.mutate(rule.id)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle className="text-base">Marketing campaigns</CardTitle>
             <CardDescription>
-              Write a campaign for your subscribed leads. Sending activates once your email domain is
-              verified.
+              Write a campaign for your subscribed leads. Campaigns only ever go to leads who ticked
+              the consent box — that keeps you out of spam folders and on the right side of
+              WhatsApp and email regulations. Sending activates once your email domain is verified.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
