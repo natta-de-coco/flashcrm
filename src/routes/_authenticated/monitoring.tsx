@@ -206,6 +206,143 @@ function MonitoringPage() {
 
       <Card className="mb-6">
         <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BarChart3 className="size-4 text-primary" />
+                WhatsApp analytics — last {waAnalytics.data?.days ?? 30} days
+              </CardTitle>
+              <CardDescription>
+                Delivery and engagement from your workspace, synced with Meta where available.
+              </CardDescription>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => insightsMutation.mutate()}
+              disabled={insightsMutation.isPending || waAnalytics.isLoading}
+            >
+              {insightsMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              Ask Flash AI what to improve
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {waAnalytics.isLoading && (
+            <p className="text-sm text-muted-foreground">Crunching your messaging stats…</p>
+          )}
+          {waAnalytics.data && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  { label: "Inbound messages", value: waAnalytics.data.totals.inbound },
+                  { label: "Outbound messages", value: waAnalytics.data.totals.outbound },
+                  {
+                    label: "Delivered",
+                    value: `${waAnalytics.data.totals.delivered + waAnalytics.data.totals.read}${
+                      waAnalytics.data.totals.failed
+                        ? ` (${waAnalytics.data.totals.failed} failed)`
+                        : ""
+                    }`,
+                  },
+                  {
+                    label: "Read rate",
+                    value: waAnalytics.data.totals.outbound
+                      ? `${Math.round(
+                          (waAnalytics.data.totals.read / waAnalytics.data.totals.outbound) * 100,
+                        )}%`
+                      : "—",
+                  },
+                  {
+                    label: "Handled by bot",
+                    value: waAnalytics.data.totals.outbound
+                      ? `${Math.round(
+                          (waAnalytics.data.totals.botReplies /
+                            waAnalytics.data.totals.outbound) *
+                            100,
+                        )}%`
+                      : "—",
+                  },
+                  {
+                    label: "Avg first response",
+                    value:
+                      waAnalytics.data.avgFirstResponseMinutes != null
+                        ? waAnalytics.data.avgFirstResponseMinutes >= 60
+                          ? `${Math.round(waAnalytics.data.avgFirstResponseMinutes / 60)} h`
+                          : `${waAnalytics.data.avgFirstResponseMinutes} min`
+                        : "—",
+                  },
+                ].map((card) => (
+                  <div key={card.label} className="rounded-lg border p-3">
+                    <p className="text-xs text-muted-foreground">{card.label}</p>
+                    <p className="text-xl font-bold">{card.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {waAnalytics.data.perNumber.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold">Per WhatsApp number</p>
+                  {waAnalytics.data.perNumber.map((n) => (
+                    <div
+                      key={n.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">
+                          {n.label}
+                          {n.display_phone ? (
+                            <span className="font-normal text-muted-foreground">
+                              {" "}
+                              · {n.display_phone}
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {n.local.conversations} conversations · {n.local.unread} unread
+                        </p>
+                      </div>
+                      {n.meta.ok ? (
+                        <div className="flex gap-2">
+                          <Badge variant="secondary">Meta sent: {n.meta.sent}</Badge>
+                          <Badge variant="secondary">Meta delivered: {n.meta.delivered}</Badge>
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px]">
+                          Meta analytics unavailable{n.meta.error ? ` — ${n.meta.error}` : ""}
+                        </Badge>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {insights && (
+                <div className="rounded-lg border bg-muted/40 p-4">
+                  <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                    <Sparkles className="size-4 text-primary" /> Flash AI recommendations
+                  </p>
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+                    {insights}
+                  </p>
+                </div>
+              )}
+              {!insights && !insightsMutation.isPending && (
+                <p className="text-xs text-muted-foreground">
+                  Tip: run “Ask Flash AI what to improve” to get a plain-English action plan based
+                  on these numbers — deliverability, response time, bot balance and compliance.
+                </p>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <AlertTriangle className="size-4 text-destructive" />
             Alerts
