@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { useTenant } from "@/hooks/useTenant";
 import { completeOnboarding } from "@/lib/onboarding.functions";
+import { FlashLogoBadge } from "@/components/FlashLogoBadge";
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import flashLogoAsset from "@/assets/flash-logo.png.asset.json";
 
 /** Blocking 2-step onboarding for brand-new accounts: company + your name. */
 export function OnboardingModal() {
@@ -47,7 +47,7 @@ export function OnboardingModal() {
     <Dialog open>
       <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader className="items-center text-center">
-          <img src={flashLogoAsset.url} alt="Flash" className="mb-2 h-10 w-auto" />
+          <FlashLogoBadge className="mb-2 size-12" />
           <DialogTitle>Set up your company</DialogTitle>
           <DialogDescription>
             One quick step and your Flash workspace is ready — every account starts with a free

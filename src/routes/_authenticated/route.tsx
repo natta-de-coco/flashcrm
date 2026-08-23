@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
+import { FlashLogoBadge } from "@/components/FlashLogoBadge";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider } from "@/hooks/useTenant";
 import { cn } from "@/lib/utils";
-import flashLogoAsset from "@/assets/flash-logo.png.asset.json";
 import { Link, Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
@@ -62,8 +62,9 @@ function AuthenticatedLayout() {
       <OnboardingModal />
       <div className="flex min-h-screen bg-background">
         <aside className="hidden w-60 shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground md:flex">
-          <Link to="/dashboard" className="mb-8 flex items-center px-2">
-            <img src={flashLogoAsset.url} alt="Flash CRM" className="h-9 w-auto" />
+          <Link to="/dashboard" className="mb-8 flex items-center gap-3 px-2">
+            <FlashLogoBadge className="size-10" />
+            <span className="text-base font-bold tracking-tight">Flash CRM</span>
           </Link>
 
         <nav className="flex flex-1 flex-col gap-1">
