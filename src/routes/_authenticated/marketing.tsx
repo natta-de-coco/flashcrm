@@ -7,9 +7,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Download, Plus, Send, Trash2 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Copy, Download, Loader2, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -106,6 +108,14 @@ function MarketingPage() {
     priority: "100",
   });
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
+  const [aiForm, setAiForm] = useState({
+    goal: "",
+    audience: "",
+    tone: "friendly" as "friendly" | "professional" | "urgent" | "playful",
+    channel: "whatsapp" as "whatsapp" | "email",
+  });
+  const [aiDraft, setAiDraft] = useState("");
+  const draftWithFlashAi = useServerFn(draftCampaignMessage);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
