@@ -3,11 +3,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { retryWebhookEvent } from "@/lib/crm.functions";
+import { getAnalyticsInsights, getWhatsAppAnalytics } from "@/lib/flash-ai.functions";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, RotateCcw } from "lucide-react";
+import {
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -59,7 +68,22 @@ function MonitoringPage() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"all" | "failed" | "processed">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [insights, setInsights] = useState<string | null>(null);
   const retry = useServerFn(retryWebhookEvent);
+  const fetchAnalytics = useServerFn(getWhatsAppAnalytics);
+  const fetchInsights = useServerFn(getAnalyticsInsights);
+
+  const waAnalytics = useQuery({
+    queryKey: ["wa_analytics"],
+    refetchInterval: 60000,
+    queryFn: () => fetchAnalytics(),
+  });
+
+  const insightsMutation = useMutation({
+    mutationFn: () => fetchInsights(),
+    onSuccess: (res) => setInsights(res.insights),
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const events = useQuery({
     queryKey: ["webhook_events", filter],
