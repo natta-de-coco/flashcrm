@@ -1,3 +1,4 @@
+import { FlashLogoBadge } from "@/components/FlashLogoBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,7 +7,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { MessageSquare } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -111,10 +111,8 @@ function AuthPage() {
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-sidebar p-12 text-sidebar-foreground lg:flex">
-        <div className="flex items-center gap-2 text-lg font-bold">
-          <span className="grid size-9 place-items-center rounded-xl bg-brand text-brand-foreground">
-            <MessageSquare className="size-5" />
-          </span>
+        <div className="flex items-center gap-3 text-lg font-bold">
+          <FlashLogoBadge className="size-11" />
           Flas CRM
         </div>
         <div className="space-y-4">
