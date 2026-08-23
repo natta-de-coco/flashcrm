@@ -7,9 +7,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Copy, Download, Plus, Send, Trash2 } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Copy, Download, Loader2, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -106,6 +108,14 @@ function MarketingPage() {
     priority: "100",
   });
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
+  const [aiForm, setAiForm] = useState({
+    goal: "",
+    audience: "",
+    tone: "friendly" as "friendly" | "professional" | "urgent" | "playful",
+    channel: "whatsapp" as "whatsapp" | "email",
+  });
+  const [aiDraft, setAiDraft] = useState("");
+  const draftWithFlashAi = useServerFn(draftCampaignMessage);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -243,6 +253,34 @@ function MarketingPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const generateDraft = useMutation({
+    mutationFn: async () =>
+      draftWithFlashAi({
+        data: {
+          goal: aiForm.goal.trim(),
+          audience: aiForm.audience.trim() || undefined,
+          tone: aiForm.tone,
+          channel: aiForm.channel,
+        },
+      }),
+    onSuccess: (res) => {
+      setAiDraft(res.draft);
+      toast.success("Flash AI drafted your message");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  function useDraftInCampaign() {
+    if (!aiDraft.trim()) return;
+    const subjectMatch = aiDraft.match(/^Subject:\s*(.+)$/m);
+    setCampaignForm({
+      name: aiForm.goal.slice(0, 60) || "Flash AI campaign",
+      subject: aiForm.channel === "email" ? (subjectMatch?.[1] ?? "") : "",
+      body: aiForm.channel === "email" ? aiDraft.replace(/^Subject:.*\n?/m, "").trim() : aiDraft,
+    });
+    toast.success("Draft copied into the campaign form below");
+  }
 
   async function queueCampaign(id: string) {
     const { error } = await supabase
@@ -468,6 +506,112 @@ function MarketingPage() {
               <p className="text-sm text-muted-foreground">
                 No capture sites yet. {isAdmin ? "Add one above." : "Ask an admin to add one."}
               </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Sparkles className="size-4 text-primary" /> Flash AI campaign writer
+            </CardTitle>
+            <CardDescription>
+              Tell Flash AI your goal — it studies your business profile and lead data, then drafts
+              a compliant, ready-to-send message. Review it, then drop it into a campaign below.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="ai_goal">Campaign goal</Label>
+              <Textarea
+                id="ai_goal"
+                rows={2}
+                placeholder="e.g. Re-engage wholesale leads who went quiet last month with a 10% reorder offer"
+                value={aiForm.goal}
+                onChange={(e) => setAiForm({ ...aiForm, goal: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-1.5 sm:col-span-1">
+                <Label htmlFor="ai_audience">Audience (optional)</Label>
+                <Input
+                  id="ai_audience"
+                  placeholder="e.g. popup-chat leads"
+                  value={aiForm.audience}
+                  onChange={(e) => setAiForm({ ...aiForm, audience: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="ai_tone">Tone</Label>
+                <select
+                  id="ai_tone"
+                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                  value={aiForm.tone}
+                  onChange={(e) =>
+                    setAiForm({ ...aiForm, tone: e.target.value as typeof aiForm.tone })
+                  }
+                >
+                  <option value="friendly">Friendly</option>
+                  <option value="professional">Professional</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="playful">Playful</option>
+                </select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="ai_channel">Channel</Label>
+                <select
+                  id="ai_channel"
+                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                  value={aiForm.channel}
+                  onChange={(e) =>
+                    setAiForm({ ...aiForm, channel: e.target.value as typeof aiForm.channel })
+                  }
+                >
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="email">Email</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <Button
+                disabled={aiForm.goal.trim().length < 3 || generateDraft.isPending}
+                onClick={() => generateDraft.mutate()}
+              >
+                {generateDraft.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Sparkles className="size-4" />
+                )}
+                Draft with Flash AI
+              </Button>
+            </div>
+            {aiDraft && (
+              <div className="grid gap-2">
+                <Label htmlFor="ai_draft">Draft — edit anything before using it</Label>
+                <Textarea
+                  id="ai_draft"
+                  rows={7}
+                  value={aiDraft}
+                  onChange={(e) => setAiDraft(e.target.value)}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={useDraftInCampaign}>
+                    <Send className="size-4" /> Use in campaign form
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => generateDraft.mutate()}
+                    disabled={generateDraft.isPending}
+                  >
+                    Regenerate
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Campaigns only send to leads who gave consent — Flash AI already includes the
+                  required opt-out line.
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>
