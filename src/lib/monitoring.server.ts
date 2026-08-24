@@ -87,6 +87,75 @@ export async function finishWebhookEvent(
     .eq("id", id);
 }
 
+type WaNumberHealth = {
+  id: string;
+  label: string;
+  alerts_enabled: boolean;
+  deliverability_min: number;
+  read_rate_min: number;
+};
+
+/**
+ * Evaluates the last 24h of outbound messages for one connected number and
+ * raises alerts when the delivery success rate or read rate falls below the
+ * thresholds configured on that number.
+ */
+export async function checkNumberHealth(waNumberId: string | null) {
+  if (!waNumberId) return;
+  const { data: raw } = await supabaseAdmin
+    .from("wa_numbers")
+    .select("*")
+    .eq("id", waNumberId)
+    .maybeSingle();
+  const num = raw as WaNumberHealth | null;
+  if (!num || !num.alerts_enabled) return;
+
+  const { data: convs } = await supabaseAdmin
+    .from("conversations")
+    .select("id")
+    .eq("wa_number_id", waNumberId);
+  const convIds = (convs ?? []).map((c) => c.id);
+  if (convIds.length === 0) return;
+
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: msgs } = await supabaseAdmin
+    .from("messages")
+    .select("status")
+    .in("conversation_id", convIds)
+    .eq("direction", "outbound")
+    .gte("created_at", since);
+
+  const statuses = (msgs ?? []).map((m) => m.status);
+  const total = statuses.filter((s) => ["sent", "delivered", "read", "failed"].includes(s)).length;
+  if (total < 20) return; // too little traffic to judge
+
+  const failed = statuses.filter((s) => s === "failed").length;
+  const delivered = statuses.filter((s) => s === "delivered" || s === "read").length;
+  const read = statuses.filter((s) => s === "read").length;
+
+  const deliverability = (delivered / total) * 100;
+  const readRate = delivered > 0 ? (read / delivered) * 100 : 0;
+
+  if (deliverability < num.deliverability_min) {
+    await raiseAlert({
+      title: `Low deliverability on ${num.label}`,
+      message: `${deliverability.toFixed(1)}% of ${total} messages delivered in the last 24h (threshold ${num.deliverability_min}%). ${failed} failed — check the number's quality rating and credentials in Meta.`,
+      severity: "critical",
+      source: "health",
+      dedupeMinutes: 360,
+    });
+  }
+  if (readRate < num.read_rate_min) {
+    await raiseAlert({
+      title: `Low read rate on ${num.label}`,
+      message: `${readRate.toFixed(1)}% of delivered messages were read in the last 24h (threshold ${num.read_rate_min}%). Review message timing and content quality.`,
+      severity: "warning",
+      source: "health",
+      dedupeMinutes: 360,
+    });
+  }
+}
+
 /**
  * Processes a WhatsApp Cloud API webhook payload: stores inbound messages,
  * runs the chatbot, delivers replies and records delivery-status callbacks.
