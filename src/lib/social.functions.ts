@@ -120,7 +120,13 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
       .single();
 
     const { syncSocialAccount } = await import("@/lib/social.server");
-    const result = await syncSocialAccount({ ...account, access_token: secret?.access_token ?? null });
+    const result = await syncSocialAccount({
+      id: account.id,
+      tenant_id: account.tenant_id,
+      platform: account.platform as "instagram" | "facebook",
+      external_id: account.external_id,
+      access_token: secret?.access_token ?? null,
+    });
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
