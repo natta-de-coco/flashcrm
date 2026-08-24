@@ -60,12 +60,17 @@ function InboxPage() {
   const [reminderNote, setReminderNote] = useState("");
   const [reminderDue, setReminderDue] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const send = useServerFn(sendAgentMessage);
   const suggest = useServerFn(draftBotReply);
   const sendTemplate = useServerFn(sendTemplateMessage);
   const auditEvent = useServerFn(recordAuditEvent);
+  const translate = useServerFn(translateMessage);
+  const buildCatalog = useServerFn(buildCatalogMessage);
 
   /** Fire-and-forget compliance log entry for an inbox action. */
   function logAction(
