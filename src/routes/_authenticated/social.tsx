@@ -32,13 +32,19 @@ import {
   Archive,
   Facebook,
   Instagram,
+  Linkedin,
   Loader2,
   MessageCircle,
+  Music2,
   PenSquare,
   RefreshCw,
   Send,
   Sparkles,
+  Store,
   Trash2,
+  Twitter,
+  Youtube,
+  type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -63,14 +69,129 @@ export const Route = createFileRoute("/_authenticated/social")({
   component: SocialHubPage,
 });
 
+type PlatformId =
+  | "instagram"
+  | "facebook"
+  | "youtube"
+  | "twitter"
+  | "linkedin"
+  | "tiktok"
+  | "google_business";
+
 type Account = {
   id: string;
-  platform: "instagram" | "facebook";
+  platform: PlatformId;
   label: string;
   external_id: string | null;
   active: boolean;
   last_synced_at: string | null;
+  stats: Record<string, number> | null;
 };
+
+/** Per-platform connect form metadata: what the ID and token fields mean. */
+const PLATFORMS: {
+  id: PlatformId;
+  label: string;
+  icon: LucideIcon;
+  idLabel: string;
+  idPlaceholder: string;
+  tokenLabel: string;
+  tokenPlaceholder: string;
+  hint: string;
+}[] = [
+  {
+    id: "instagram",
+    label: "Instagram",
+    icon: Instagram,
+    idLabel: "IG user ID",
+    idPlaceholder: "Instagram professional account ID",
+    tokenLabel: "Meta access token",
+    tokenPlaceholder: "Long-lived Meta token",
+    hint: "Meta for Developers → your app → Instagram Graph API. Needs instagram_manage_comments.",
+  },
+  {
+    id: "facebook",
+    label: "Facebook Page",
+    icon: Facebook,
+    idLabel: "Page ID",
+    idPlaceholder: "Facebook Page ID",
+    tokenLabel: "Meta access token",
+    tokenPlaceholder: "Page access token",
+    hint: "Page token with pages_read_engagement (and pages_messaging for DMs).",
+  },
+  {
+    id: "youtube",
+    label: "YouTube channel",
+    icon: Youtube,
+    idLabel: "Channel ID",
+    idPlaceholder: "UC…",
+    tokenLabel: "YouTube Data API key",
+    tokenPlaceholder: "AIza…",
+    hint: "Google Cloud Console → enable YouTube Data API v3 → Credentials → API key.",
+  },
+  {
+    id: "twitter",
+    label: "X (Twitter)",
+    icon: Twitter,
+    idLabel: "Numeric user ID",
+    idPlaceholder: "e.g. 1234567890",
+    tokenLabel: "Bearer token",
+    tokenPlaceholder: "AAA…",
+    hint: "developer.x.com → your project app → Keys and Tokens → Bearer Token.",
+  },
+  {
+    id: "linkedin",
+    label: "LinkedIn Page",
+    icon: Linkedin,
+    idLabel: "Organization ID",
+    idPlaceholder: "Numbers only, e.g. 12345678",
+    tokenLabel: "OAuth access token",
+    tokenPlaceholder: "AQV…",
+    hint: "LinkedIn Developer app with w_organization_social scope.",
+  },
+  {
+    id: "tiktok",
+    label: "TikTok Business",
+    icon: Music2,
+    idLabel: "Open ID (optional)",
+    idPlaceholder: "Leave blank to use the token's account",
+    tokenLabel: "Access token",
+    tokenPlaceholder: "act.…",
+    hint: "TikTok for Developers → your app → video.list and user.info.basic scopes.",
+  },
+  {
+    id: "google_business",
+    label: "Google Business",
+    icon: Store,
+    idLabel: "Location path",
+    idPlaceholder: "accounts/123/locations/456",
+    tokenLabel: "Google OAuth token",
+    tokenPlaceholder: "ya29.…",
+    hint: "Pulls your latest Google reviews so Flash AI can draft responses.",
+  },
+];
+
+function platformMeta(id: string) {
+  return PLATFORMS.find((p) => p.id === id) ?? PLATFORMS[0]!;
+}
+
+/** First useful audience number from a sync, if any. */
+function audienceStat(stats: Account["stats"]): string | null {
+  if (!stats) return null;
+  const pick =
+    stats.followers ?? stats.subscribers ?? stats.reviews ?? stats.videos ?? stats.tweets;
+  if (typeof pick !== "number") return null;
+  const label = stats.followers != null
+    ? "followers"
+    : stats.subscribers != null
+      ? "subscribers"
+      : stats.reviews != null
+        ? "reviews"
+        : stats.videos != null
+          ? "videos"
+          : "posts";
+  return `${pick.toLocaleString()} ${label}`;
+}
 
 type Interaction = {
   id: string;
@@ -108,11 +229,8 @@ function timeAgo(iso: string) {
 }
 
 function PlatformIcon({ platform }: { platform: string }) {
-  return platform === "instagram" ? (
-    <Instagram className="size-3.5" />
-  ) : (
-    <Facebook className="size-3.5" />
-  );
+  const Icon = platformMeta(platform).icon;
+  return <Icon className="size-3.5" />;
 }
 
 function SocialHubPage() {
