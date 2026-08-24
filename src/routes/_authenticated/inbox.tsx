@@ -295,6 +295,30 @@ function InboxPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const translateMutation = useMutation({
+    mutationFn: async (messageId: string) =>
+      translate({ data: { messageId, targetLanguage: "English" } }),
+    onSuccess: (res, messageId) => {
+      setExpandedTranslations((prev) => new Set(prev).add(messageId));
+      logAction("message.translate", {
+        messageId,
+        detectedLanguage: res.detectedLanguage,
+      });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const catalogMutation = useMutation({
+    mutationFn: async () => buildCatalog({ data: { productIds: selectedProductIds } }),
+    onSuccess: (res) => {
+      setDraft((d) => (d ? `${d}\n\n${res.body}` : res.body));
+      setSelectedProductIds([]);
+      toast.success("Catalog message inserted — press Send to deliver");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   async function toggleReminderDone(id: string, done: boolean) {
     const { error } = await supabase.from("reminders").update({ done }).eq("id", id);
     if (error) toast.error(error.message);
