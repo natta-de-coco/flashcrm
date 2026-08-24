@@ -32,13 +32,19 @@ import {
   Archive,
   Facebook,
   Instagram,
+  Linkedin,
   Loader2,
   MessageCircle,
+  Music2,
   PenSquare,
   RefreshCw,
   Send,
   Sparkles,
+  Store,
   Trash2,
+  Twitter,
+  Youtube,
+  type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -63,14 +69,128 @@ export const Route = createFileRoute("/_authenticated/social")({
   component: SocialHubPage,
 });
 
+type PlatformId =
+  | "instagram"
+  | "facebook"
+  | "youtube"
+  | "twitter"
+  | "linkedin"
+  | "tiktok"
+  | "google_business";
+
 type Account = {
   id: string;
-  platform: "instagram" | "facebook";
+  platform: PlatformId;
   label: string;
   external_id: string | null;
   active: boolean;
   last_synced_at: string | null;
+  stats: Record<string, number> | null;
 };
+
+/** Per-platform connect form metadata: what the ID and token fields mean. */
+const PLATFORMS: {
+  id: PlatformId;
+  label: string;
+  icon: LucideIcon;
+  idLabel: string;
+  idPlaceholder: string;
+  tokenLabel: string;
+  tokenPlaceholder: string;
+  hint: string;
+}[] = [
+  {
+    id: "instagram",
+    label: "Instagram",
+    icon: Instagram,
+    idLabel: "IG user ID",
+    idPlaceholder: "Instagram professional account ID",
+    tokenLabel: "Meta access token",
+    tokenPlaceholder: "Long-lived Meta token",
+    hint: "Meta for Developers → your app → Instagram Graph API. Needs instagram_manage_comments.",
+  },
+  {
+    id: "facebook",
+    label: "Facebook Page",
+    icon: Facebook,
+    idLabel: "Page ID",
+    idPlaceholder: "Facebook Page ID",
+    tokenLabel: "Meta access token",
+    tokenPlaceholder: "Page access token",
+    hint: "Page token with pages_read_engagement (and pages_messaging for DMs).",
+  },
+  {
+    id: "youtube",
+    label: "YouTube channel",
+    icon: Youtube,
+    idLabel: "Channel ID",
+    idPlaceholder: "UC…",
+    tokenLabel: "YouTube Data API key",
+    tokenPlaceholder: "AIza…",
+    hint: "Google Cloud Console → enable YouTube Data API v3 → Credentials → API key.",
+  },
+  {
+    id: "twitter",
+    label: "X (Twitter)",
+    icon: Twitter,
+    idLabel: "Numeric user ID",
+    idPlaceholder: "e.g. 1234567890",
+    tokenLabel: "Bearer token",
+    tokenPlaceholder: "AAA…",
+    hint: "developer.x.com → your project app → Keys and Tokens → Bearer Token.",
+  },
+  {
+    id: "linkedin",
+    label: "LinkedIn Page",
+    icon: Linkedin,
+    idLabel: "Organization ID",
+    idPlaceholder: "Numbers only, e.g. 12345678",
+    tokenLabel: "OAuth access token",
+    tokenPlaceholder: "AQV…",
+    hint: "LinkedIn Developer app with w_organization_social scope.",
+  },
+  {
+    id: "tiktok",
+    label: "TikTok Business",
+    icon: Music2,
+    idLabel: "Open ID (optional)",
+    idPlaceholder: "Leave blank to use the token's account",
+    tokenLabel: "Access token",
+    tokenPlaceholder: "act.…",
+    hint: "TikTok for Developers → your app → video.list and user.info.basic scopes.",
+  },
+  {
+    id: "google_business",
+    label: "Google Business",
+    icon: Store,
+    idLabel: "Location path",
+    idPlaceholder: "accounts/123/locations/456",
+    tokenLabel: "Google OAuth token",
+    tokenPlaceholder: "ya29.…",
+    hint: "Pulls your latest Google reviews so Flash AI can draft responses.",
+  },
+];
+
+function platformMeta(id: string) {
+  return PLATFORMS.find((p) => p.id === id) ?? PLATFORMS[0]!;
+}
+
+/** First useful audience number from a sync, if any. */
+function audienceStat(stats: Account["stats"]): string | null {
+  if (!stats) return null;
+  const order: [string, string][] = [
+    ["followers", "followers"],
+    ["subscribers", "subscribers"],
+    ["reviews", "reviews"],
+    ["videos", "videos"],
+    ["tweets", "posts"],
+  ];
+  for (const [key, label] of order) {
+    const value = stats[key];
+    if (typeof value === "number") return `${value.toLocaleString()} ${label}`;
+  }
+  return null;
+}
 
 type Interaction = {
   id: string;
@@ -108,11 +228,8 @@ function timeAgo(iso: string) {
 }
 
 function PlatformIcon({ platform }: { platform: string }) {
-  return platform === "instagram" ? (
-    <Instagram className="size-3.5" />
-  ) : (
-    <Facebook className="size-3.5" />
-  );
+  const Icon = platformMeta(platform).icon;
+  return <Icon className="size-3.5" />;
 }
 
 function SocialHubPage() {
@@ -181,7 +298,7 @@ function AccountsCard({
   const remove = useServerFn(deleteSocialAccount);
   const sync = useServerFn(syncSocialAccountFn);
   const [form, setForm] = useState({
-    platform: "instagram" as "instagram" | "facebook",
+    platform: "instagram" as PlatformId,
     label: "",
     externalId: "",
     accessToken: "",
@@ -223,8 +340,8 @@ function AccountsCard({
         <div>
           <CardTitle className="text-base">Connected accounts</CardTitle>
           <CardDescription>
-            Link each client's Instagram professional account or Facebook Page with a Meta access
-            token, then sync to pull in comments, DMs and post stats.
+            Link Instagram, Facebook, YouTube, X, LinkedIn, TikTok and Google Business — then sync
+            to pull in comments, DMs, reviews, posts and audience stats.
           </CardDescription>
         </div>
         <Button size="sm" variant="outline" onClick={() => setShowForm((v) => !v)}>
@@ -238,16 +355,19 @@ function AccountsCard({
               <Label>Platform</Label>
               <Select
                 value={form.platform}
-                onValueChange={(v) =>
-                  setForm((f) => ({ ...f, platform: v as "instagram" | "facebook" }))
-                }
+                onValueChange={(v) => setForm((f) => ({ ...f, platform: v as PlatformId }))}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="instagram">Instagram</SelectItem>
-                  <SelectItem value="facebook">Facebook Page</SelectItem>
+                  {PLATFORMS.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="flex items-center gap-2">
+                        <p.icon className="size-3.5" /> {p.label}
+                      </span>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -260,22 +380,25 @@ function AccountsCard({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Meta account ID</Label>
+              <Label>{platformMeta(form.platform).idLabel}</Label>
               <Input
-                placeholder="IG user ID or Page ID"
+                placeholder={platformMeta(form.platform).idPlaceholder}
                 value={form.externalId}
                 onChange={(e) => setForm((f) => ({ ...f, externalId: e.target.value }))}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Access token</Label>
+              <Label>{platformMeta(form.platform).tokenLabel}</Label>
               <Input
                 type="password"
-                placeholder="Long-lived Meta token"
+                placeholder={platformMeta(form.platform).tokenPlaceholder}
                 value={form.accessToken}
                 onChange={(e) => setForm((f) => ({ ...f, accessToken: e.target.value }))}
               />
             </div>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              {platformMeta(form.platform).hint}
+            </p>
             <div className="sm:col-span-2">
               <Button
                 size="sm"
@@ -307,6 +430,7 @@ function AccountsCard({
                   <span className="truncate">{a.label}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
+                  {audienceStat(a.stats) ? `${audienceStat(a.stats)} · ` : ""}
                   {a.last_synced_at ? `Synced ${timeAgo(a.last_synced_at)}` : "Never synced"}
                 </p>
               </div>
