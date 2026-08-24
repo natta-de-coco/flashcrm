@@ -863,6 +863,27 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_thresholds: {
+        Row: {
+          deliverability_min: number
+          plan: string
+          read_rate_min: number
+          updated_at: string
+        }
+        Insert: {
+          deliverability_min?: number
+          plan: string
+          read_rate_min?: number
+          updated_at?: string
+        }
+        Update: {
+          deliverability_min?: number
+          plan?: string
+          read_rate_min?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           created_at: string
@@ -998,6 +1019,97 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      seo_articles: {
+        Row: {
+          author_id: string | null
+          content_html: string | null
+          created_at: string
+          excerpt: string | null
+          featured_image_url: string | null
+          id: string
+          meta_description: string | null
+          meta_title: string | null
+          primary_keyword: string | null
+          schema_markup: Json
+          secondary_keywords: string[]
+          seo_score: number
+          slug: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+          wp_post_id: number | null
+          wp_post_url: string | null
+          wp_site_id: string | null
+        }
+        Insert: {
+          author_id?: string | null
+          content_html?: string | null
+          created_at?: string
+          excerpt?: string | null
+          featured_image_url?: string | null
+          id?: string
+          meta_description?: string | null
+          meta_title?: string | null
+          primary_keyword?: string | null
+          schema_markup?: Json
+          secondary_keywords?: string[]
+          seo_score?: number
+          slug?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+          wp_post_id?: number | null
+          wp_post_url?: string | null
+          wp_site_id?: string | null
+        }
+        Update: {
+          author_id?: string | null
+          content_html?: string | null
+          created_at?: string
+          excerpt?: string | null
+          featured_image_url?: string | null
+          id?: string
+          meta_description?: string | null
+          meta_title?: string | null
+          primary_keyword?: string | null
+          schema_markup?: Json
+          secondary_keywords?: string[]
+          seo_score?: number
+          slug?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+          wp_post_id?: number | null
+          wp_post_url?: string | null
+          wp_site_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "seo_articles_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seo_articles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seo_articles_wp_site_id_fkey"
+            columns: ["wp_site_id"]
+            isOneToOne: false
+            referencedRelation: "wordpress_sites"
             referencedColumns: ["id"]
           },
         ]
@@ -1176,13 +1288,13 @@ export type Database = {
           alerts_enabled: boolean
           app_secret: string | null
           created_at: string
-          deliverability_min: number
+          deliverability_min: number | null
           display_phone: string | null
           id: string
           is_default: boolean
           label: string
           phone_number_id: string
-          read_rate_min: number
+          read_rate_min: number | null
         }
         Insert: {
           access_token: string
@@ -1190,13 +1302,13 @@ export type Database = {
           alerts_enabled?: boolean
           app_secret?: string | null
           created_at?: string
-          deliverability_min?: number
+          deliverability_min?: number | null
           display_phone?: string | null
           id?: string
           is_default?: boolean
           label: string
           phone_number_id: string
-          read_rate_min?: number
+          read_rate_min?: number | null
         }
         Update: {
           access_token?: string
@@ -1204,13 +1316,13 @@ export type Database = {
           alerts_enabled?: boolean
           app_secret?: string | null
           created_at?: string
-          deliverability_min?: number
+          deliverability_min?: number | null
           display_phone?: string | null
           id?: string
           is_default?: boolean
           label?: string
           phone_number_id?: string
-          read_rate_min?: number
+          read_rate_min?: number | null
         }
         Relationships: []
       }
@@ -1333,6 +1445,53 @@ export type Database = {
           wa_message_id?: string | null
         }
         Relationships: []
+      }
+      wordpress_sites: {
+        Row: {
+          app_password: string
+          created_at: string
+          created_by: string | null
+          default_author: string | null
+          id: string
+          label: string
+          seo_plugin: string
+          site_url: string
+          tenant_id: string
+          username: string
+        }
+        Insert: {
+          app_password: string
+          created_at?: string
+          created_by?: string | null
+          default_author?: string | null
+          id?: string
+          label: string
+          seo_plugin?: string
+          site_url: string
+          tenant_id: string
+          username: string
+        }
+        Update: {
+          app_password?: string
+          created_at?: string
+          created_by?: string | null
+          default_author?: string | null
+          id?: string
+          label?: string
+          seo_plugin?: string
+          site_url?: string
+          tenant_id?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wordpress_sites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

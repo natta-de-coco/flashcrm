@@ -22,7 +22,11 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated/inbox'
 import { Route as AuthenticatedMarketingRouteImport } from './routes/_authenticated/marketing'
 import { Route as AuthenticatedMonitoringRouteImport } from './routes/_authenticated/monitoring'
+import { Route as AuthenticatedSeoBlogRouteImport } from './routes/_authenticated/seo-blog'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedCompaniesOrgIdRouteImport } from './routes/_authenticated/companies.$orgId'
+import { Route as AuthenticatedSeoBlogIndexRouteImport } from './routes/_authenticated/seo-blog.index'
+import { Route as AuthenticatedSeoBlogStudioRouteImport } from './routes/_authenticated/seo-blog.studio'
 import { Route as ApiPublicLeadsCollectRouteImport } from './routes/api/public/leads/collect'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicPluginActivateRouteImport } from './routes/api/public/plugin/activate'
@@ -98,11 +102,34 @@ const AuthenticatedMonitoringRoute = AuthenticatedMonitoringRouteImport.update({
   path: '/monitoring',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSeoBlogRoute = AuthenticatedSeoBlogRouteImport.update({
+  id: '/seo-blog',
+  path: '/seo-blog',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCompaniesOrgIdRoute =
+  AuthenticatedCompaniesOrgIdRouteImport.update({
+    id: '/$orgId',
+    path: '/$orgId',
+    getParentRoute: () => AuthenticatedCompaniesRoute,
+  } as any)
+const AuthenticatedSeoBlogIndexRoute =
+  AuthenticatedSeoBlogIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedSeoBlogRoute,
+  } as any)
+const AuthenticatedSeoBlogStudioRoute =
+  AuthenticatedSeoBlogStudioRouteImport.update({
+    id: '/studio',
+    path: '/studio',
+    getParentRoute: () => AuthenticatedSeoBlogRoute,
+  } as any)
 const ApiPublicLeadsCollectRoute = ApiPublicLeadsCollectRouteImport.update({
   id: '/api/public/leads/collect',
   path: '/api/public/leads/collect',
@@ -164,14 +191,18 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
-  '/companies': typeof AuthenticatedCompaniesRoute
+  '/companies': typeof AuthenticatedCompaniesRouteWithChildren
   '/contacts': typeof AuthenticatedContactsRoute
   '/content': typeof AuthenticatedContentRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/inbox': typeof AuthenticatedInboxRoute
   '/marketing': typeof AuthenticatedMarketingRoute
   '/monitoring': typeof AuthenticatedMonitoringRoute
+  '/seo-blog': typeof AuthenticatedSeoBlogRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
+  '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
+  '/seo-blog/': typeof AuthenticatedSeoBlogIndexRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
@@ -189,7 +220,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
-  '/companies': typeof AuthenticatedCompaniesRoute
+  '/companies': typeof AuthenticatedCompaniesRouteWithChildren
   '/contacts': typeof AuthenticatedContactsRoute
   '/content': typeof AuthenticatedContentRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -197,6 +228,9 @@ export interface FileRoutesByTo {
   '/marketing': typeof AuthenticatedMarketingRoute
   '/monitoring': typeof AuthenticatedMonitoringRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
+  '/seo-blog': typeof AuthenticatedSeoBlogIndexRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
@@ -216,14 +250,18 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRoute
-  '/_authenticated/companies': typeof AuthenticatedCompaniesRoute
+  '/_authenticated/companies': typeof AuthenticatedCompaniesRouteWithChildren
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
   '/_authenticated/content': typeof AuthenticatedContentRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/inbox': typeof AuthenticatedInboxRoute
   '/_authenticated/marketing': typeof AuthenticatedMarketingRoute
   '/_authenticated/monitoring': typeof AuthenticatedMonitoringRoute
+  '/_authenticated/seo-blog': typeof AuthenticatedSeoBlogRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/_authenticated/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
+  '/_authenticated/seo-blog/': typeof AuthenticatedSeoBlogIndexRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
@@ -250,7 +288,11 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/marketing'
     | '/monitoring'
+    | '/seo-blog'
     | '/settings'
+    | '/companies/$orgId'
+    | '/seo-blog/studio'
+    | '/seo-blog/'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
@@ -276,6 +318,9 @@ export interface FileRouteTypes {
     | '/marketing'
     | '/monitoring'
     | '/settings'
+    | '/companies/$orgId'
+    | '/seo-blog/studio'
+    | '/seo-blog'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
@@ -301,7 +346,11 @@ export interface FileRouteTypes {
     | '/_authenticated/inbox'
     | '/_authenticated/marketing'
     | '/_authenticated/monitoring'
+    | '/_authenticated/seo-blog'
     | '/_authenticated/settings'
+    | '/_authenticated/companies/$orgId'
+    | '/_authenticated/seo-blog/studio'
+    | '/_authenticated/seo-blog/'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
@@ -424,12 +473,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMonitoringRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/seo-blog': {
+      id: '/_authenticated/seo-blog'
+      path: '/seo-blog'
+      fullPath: '/seo-blog'
+      preLoaderRoute: typeof AuthenticatedSeoBlogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/settings': {
       id: '/_authenticated/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/companies/$orgId': {
+      id: '/_authenticated/companies/$orgId'
+      path: '/$orgId'
+      fullPath: '/companies/$orgId'
+      preLoaderRoute: typeof AuthenticatedCompaniesOrgIdRouteImport
+      parentRoute: typeof AuthenticatedCompaniesRoute
+    }
+    '/_authenticated/seo-blog/': {
+      id: '/_authenticated/seo-blog/'
+      path: '/'
+      fullPath: '/seo-blog/'
+      preLoaderRoute: typeof AuthenticatedSeoBlogIndexRouteImport
+      parentRoute: typeof AuthenticatedSeoBlogRoute
+    }
+    '/_authenticated/seo-blog/studio': {
+      id: '/_authenticated/seo-blog/studio'
+      path: '/studio'
+      fullPath: '/seo-blog/studio'
+      preLoaderRoute: typeof AuthenticatedSeoBlogStudioRouteImport
+      parentRoute: typeof AuthenticatedSeoBlogRoute
     }
     '/api/public/leads/collect': {
       id: '/api/public/leads/collect'
@@ -504,29 +581,58 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthenticatedCompaniesRouteChildren {
+  AuthenticatedCompaniesOrgIdRoute: typeof AuthenticatedCompaniesOrgIdRoute
+}
+
+const AuthenticatedCompaniesRouteChildren: AuthenticatedCompaniesRouteChildren =
+  {
+    AuthenticatedCompaniesOrgIdRoute: AuthenticatedCompaniesOrgIdRoute,
+  }
+
+const AuthenticatedCompaniesRouteWithChildren =
+  AuthenticatedCompaniesRoute._addFileChildren(
+    AuthenticatedCompaniesRouteChildren,
+  )
+
+interface AuthenticatedSeoBlogRouteChildren {
+  AuthenticatedSeoBlogStudioRoute: typeof AuthenticatedSeoBlogStudioRoute
+  AuthenticatedSeoBlogIndexRoute: typeof AuthenticatedSeoBlogIndexRoute
+}
+
+const AuthenticatedSeoBlogRouteChildren: AuthenticatedSeoBlogRouteChildren = {
+  AuthenticatedSeoBlogStudioRoute: AuthenticatedSeoBlogStudioRoute,
+  AuthenticatedSeoBlogIndexRoute: AuthenticatedSeoBlogIndexRoute,
+}
+
+const AuthenticatedSeoBlogRouteWithChildren =
+  AuthenticatedSeoBlogRoute._addFileChildren(AuthenticatedSeoBlogRouteChildren)
+
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
   AuthenticatedChatbotRoute: typeof AuthenticatedChatbotRoute
-  AuthenticatedCompaniesRoute: typeof AuthenticatedCompaniesRoute
+  AuthenticatedCompaniesRoute: typeof AuthenticatedCompaniesRouteWithChildren
   AuthenticatedContactsRoute: typeof AuthenticatedContactsRoute
   AuthenticatedContentRoute: typeof AuthenticatedContentRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
   AuthenticatedMarketingRoute: typeof AuthenticatedMarketingRoute
   AuthenticatedMonitoringRoute: typeof AuthenticatedMonitoringRoute
+  AuthenticatedSeoBlogRoute: typeof AuthenticatedSeoBlogRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
   AuthenticatedChatbotRoute: AuthenticatedChatbotRoute,
-  AuthenticatedCompaniesRoute: AuthenticatedCompaniesRoute,
+  AuthenticatedCompaniesRoute: AuthenticatedCompaniesRouteWithChildren,
   AuthenticatedContactsRoute: AuthenticatedContactsRoute,
   AuthenticatedContentRoute: AuthenticatedContentRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInboxRoute: AuthenticatedInboxRoute,
   AuthenticatedMarketingRoute: AuthenticatedMarketingRoute,
   AuthenticatedMonitoringRoute: AuthenticatedMonitoringRoute,
+  AuthenticatedSeoBlogRoute: AuthenticatedSeoBlogRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
 }
 

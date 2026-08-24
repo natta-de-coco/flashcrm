@@ -116,3 +116,134 @@ export const updateCompanyStatus = createServerFn({ method: "POST" })
     });
     return { ok: true };
   });
+
+/**
+ * Manager portal: read-only "view as company" workspace for troubleshooting.
+ * Every view is recorded in the audit log. Never returns secrets (tokens, keys).
+ */
+export const getCompanyWorkspace = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ organizationId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await requireSuperAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    const orgId = data.organizationId;
+
+    await logAudit({
+      action: "company.impersonate_view",
+      tenantId: orgId,
+      actorId: context.userId,
+      entityType: "organization",
+      entityId: orgId,
+      details: { mode: "read_only_troubleshoot" },
+    });
+
+    const { data: org, error } = await supabaseAdmin
+      .from("organizations")
+      .select(
+        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, created_at",
+      )
+      .eq("id", orgId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!org) throw new Error("Company not found");
+
+    const [staff, leads, conversations, audit, numbers] = await Promise.all([
+      supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, email, staff_role, created_at")
+        .eq("tenant_id", orgId)
+        .order("created_at", { ascending: true }),
+      supabaseAdmin
+        .from("leads")
+        .select("id, name, email, phone, source, status, lead_score, consent_given, created_at")
+        .eq("tenant_id", orgId)
+        .order("created_at", { ascending: false })
+        .limit(10),
+      supabaseAdmin
+        .from("conversations")
+        .select(
+          "id, channel, status, unread_count, last_message_at, last_message_preview, contacts!inner(name, tenant_id)",
+        )
+        .eq("contacts.tenant_id", orgId)
+        .order("last_message_at", { ascending: false })
+        .limit(10),
+      supabaseAdmin
+        .from("audit_log")
+        .select("id, action, actor_label, entity_type, created_at")
+        .eq("tenant_id", orgId)
+        .order("created_at", { ascending: false })
+        .limit(15),
+      supabaseAdmin
+        .from("wa_numbers")
+        .select(
+          "id, label, display_phone, phone_number_id, is_default, active, alerts_enabled, deliverability_min, read_rate_min",
+        )
+        .order("created_at", { ascending: true }),
+    ]);
+
+    type WorkspaceLead = {
+      id: string;
+      name: string | null;
+      email: string;
+      phone: string | null;
+      source: string;
+      status: string;
+      lead_score: number;
+      consent_given: boolean;
+      created_at: string;
+    };
+    type WorkspaceConversation = {
+      id: string;
+      channel: string;
+      status: string;
+      unread_count: number;
+      last_message_at: string;
+      last_message_preview: string | null;
+      contacts: { name: string } | null;
+    };
+
+    return {
+      org,
+      staff: staff.data ?? [],
+      leads: (leads.data ?? []) as unknown as WorkspaceLead[],
+      conversations: (conversations.data ?? []) as unknown as WorkspaceConversation[],
+      audit: audit.data ?? [],
+      numbers: numbers.data ?? [],
+    };
+  });
+
+const PlanThresholdSchema = z.object({
+  plan: z.string().min(1).max(40),
+  deliverabilityMin: z.number().min(0).max(100),
+  readRateMin: z.number().min(0).max(100),
+});
+
+/** Manager portal: set the default health thresholds for a subscription plan. */
+export const updatePlanThresholds = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => PlanThresholdSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    await requireSuperAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { logAudit } = await import("@/lib/audit.server");
+
+    const { error } = await supabaseAdmin.from("plan_thresholds").upsert({
+      plan: data.plan,
+      deliverability_min: data.deliverabilityMin,
+      read_rate_min: data.readRateMin,
+    });
+    if (error) throw error;
+
+    await logAudit({
+      action: "plan.thresholds_update",
+      actorId: context.userId,
+      entityType: "plan_thresholds",
+      entityId: data.plan,
+      details: { deliverability_min: data.deliverabilityMin, read_rate_min: data.readRateMin },
+    });
+    return { ok: true };
+  });

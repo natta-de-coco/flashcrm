@@ -8,7 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { WordPressSitesCard } from "@/components/WordPressSitesCard";
 import { useAuth } from "@/hooks/useAuth";
+import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -36,6 +38,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
 
 function SettingsPage() {
   const { isAdmin, user } = useAuth();
+  const { tenant } = useTenant();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [form, setForm] = useState({ business_name: "", display_phone: "", phone_number_id: "" });
@@ -67,6 +70,22 @@ function SettingsPage() {
     },
     enabled: isAdmin,
   });
+
+  const planThresholds = useQuery({
+    queryKey: ["plan_thresholds"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("plan_thresholds")
+        .select("plan, deliverability_min, read_rate_min");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: isAdmin,
+  });
+
+  const planDefault =
+    planThresholds.data?.find((t) => t.plan === (tenant?.plan ?? "default")) ??
+    planThresholds.data?.find((t) => t.plan === "default");
 
   const addNumber = useMutation({
     mutationFn: async () => {
@@ -101,8 +120,8 @@ function SettingsPage() {
       active?: boolean;
       label?: string;
       alerts_enabled?: boolean;
-      deliverability_min?: number;
-      read_rate_min?: number;
+      deliverability_min?: number | null;
+      read_rate_min?: number | null;
     },
   ) {
     const { error } = await supabase.from("wa_numbers").update(patch).eq("id", id);
@@ -418,11 +437,15 @@ function SettingsPage() {
                           min={0}
                           max={100}
                           className="h-7 w-16 px-2 text-xs"
-                          defaultValue={n.deliverability_min}
+                          defaultValue={n.deliverability_min ?? ""}
+                          placeholder={
+                            planDefault ? String(Number(planDefault.deliverability_min)) : "plan"
+                          }
                           disabled={!n.alerts_enabled}
                           onBlur={(e) => {
-                            const v = Number(e.target.value);
-                            if (Number.isFinite(v) && v !== n.deliverability_min)
+                            const raw = e.target.value.trim();
+                            const v = raw === "" ? null : Number(raw);
+                            if ((v === null || Number.isFinite(v)) && v !== n.deliverability_min)
                               updateNumber(n.id, { deliverability_min: v });
                           }}
                         />
@@ -435,16 +458,27 @@ function SettingsPage() {
                           min={0}
                           max={100}
                           className="h-7 w-16 px-2 text-xs"
-                          defaultValue={n.read_rate_min}
+                          defaultValue={n.read_rate_min ?? ""}
+                          placeholder={
+                            planDefault ? String(Number(planDefault.read_rate_min)) : "plan"
+                          }
                           disabled={!n.alerts_enabled}
                           onBlur={(e) => {
-                            const v = Number(e.target.value);
-                            if (Number.isFinite(v) && v !== n.read_rate_min)
+                            const raw = e.target.value.trim();
+                            const v = raw === "" ? null : Number(raw);
+                            if ((v === null || Number.isFinite(v)) && v !== n.read_rate_min)
                               updateNumber(n.id, { read_rate_min: v });
                           }}
                         />
                         %
                       </label>
+                      {planDefault && (
+                        <span className="w-full text-[11px] text-muted-foreground">
+                          Leave blank to inherit your plan default (
+                          {Number(planDefault.deliverability_min)}% deliverability /{" "}
+                          {Number(planDefault.read_rate_min)}% read rate).
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -650,6 +684,8 @@ function SettingsPage() {
             ))}
           </CardContent>
         </Card>
+
+        <WordPressSitesCard />
       </div>
     </main>
   );
