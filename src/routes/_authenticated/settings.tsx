@@ -58,7 +58,9 @@ function SettingsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("wa_numbers")
-        .select("id, label, display_phone, phone_number_id, is_default, active, created_at")
+        .select(
+          "id, label, display_phone, phone_number_id, is_default, active, created_at, alerts_enabled, deliverability_min, read_rate_min",
+        )
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data ?? [];
@@ -94,7 +96,14 @@ function SettingsPage() {
 
   async function updateNumber(
     id: string,
-    patch: { is_default?: boolean; active?: boolean; label?: string },
+    patch: {
+      is_default?: boolean;
+      active?: boolean;
+      label?: string;
+      alerts_enabled?: boolean;
+      deliverability_min?: number;
+      read_rate_min?: number;
+    },
   ) {
     const { error } = await supabase.from("wa_numbers").update(patch).eq("id", id);
     if (error) toast.error(error.message);
