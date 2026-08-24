@@ -218,7 +218,7 @@ function DashboardPage() {
   const totalAudience = socialAccounts.reduce((sum, a) => {
     const s = a.stats;
     if (!s) return sum;
-    return sum + (s.followers ?? s.subscribers ?? 0);
+    return sum + (s["followers"] ?? s["subscribers"] ?? 0);
   }, 0);
 
   return (
