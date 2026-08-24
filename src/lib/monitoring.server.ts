@@ -24,14 +24,15 @@ export type WaWebhookBody = {
   }>;
 };
 
-/** Creates an alert, skipping duplicates of the same unresolved title within 10 minutes. */
+/** Creates an alert, skipping duplicates of the same unresolved title within a dedupe window. */
 export async function raiseAlert(args: {
   title: string;
   message?: string | null;
   severity?: "info" | "warning" | "critical";
   source?: string;
+  dedupeMinutes?: number;
 }) {
-  const since = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - (args.dedupeMinutes ?? 10) * 60 * 1000).toISOString();
   const { data: existing } = await supabaseAdmin
     .from("system_alerts")
     .select("id")
