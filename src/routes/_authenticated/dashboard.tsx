@@ -2,9 +2,19 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { STAGES, type Contact, type Conversation } from "@/lib/crm-types";
+import { getMetaSyncHealth } from "@/lib/meta-health.functions";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { Bot, Inbox, MessageSquare, Users } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  Inbox,
+  MessageSquare,
+  Users,
+  XCircle,
+} from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -46,6 +56,13 @@ function DashboardPage() {
         messages: msgs.data,
       };
     },
+  });
+
+  const metaHealthFn = useServerFn(getMetaSyncHealth);
+  const metaHealth = useQuery({
+    queryKey: ["meta_sync_health"],
+    queryFn: () => metaHealthFn(),
+    staleTime: 60_000,
   });
 
   const conversations = data.data?.conversations ?? [];
@@ -90,6 +107,79 @@ function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      <Card className="mt-4">
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle className="text-base">WhatsApp & Meta sync</CardTitle>
+          <Link to="/monitoring" className="text-xs font-medium text-brand hover:underline">
+            Full monitoring
+          </Link>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {metaHealth.isLoading && (
+            <p className="text-sm text-muted-foreground">Checking Meta connection…</p>
+          )}
+          {metaHealth.data?.numbers.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No WhatsApp numbers connected yet. Add one in{" "}
+              <Link to="/settings" className="font-medium text-brand hover:underline">
+                Settings
+              </Link>
+              .
+            </p>
+          )}
+          {(metaHealth.data?.numbers ?? []).map((n) => (
+            <div
+              key={n.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">
+                  {n.label}
+                  {n.isDefault && (
+                    <Badge variant="secondary" className="ml-2 text-[10px]">
+                      default
+                    </Badge>
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {n.displayPhone ?? "no display number"} · {n.conversations} chats ·{" "}
+                  {n.messages24h} msgs/24h
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {!n.active && (
+                  <Badge variant="outline" className="text-[10px]">
+                    inactive
+                  </Badge>
+                )}
+                {n.active && !n.credentialsPresent && (
+                  <Badge variant="destructive" className="gap-1 text-[10px]">
+                    <XCircle className="size-3" /> missing credentials
+                  </Badge>
+                )}
+                {n.active && n.credentialsPresent && n.apiOk && (
+                  <Badge className="gap-1 bg-brand text-[10px] text-brand-foreground">
+                    <CheckCircle2 className="size-3" />
+                    Meta connected
+                    {n.qualityRating ? ` · ${n.qualityRating.toLowerCase()} quality` : ""}
+                  </Badge>
+                )}
+                {n.active && n.credentialsPresent && !n.apiOk && (
+                  <Badge variant="destructive" className="gap-1 text-[10px]">
+                    <XCircle className="size-3" /> Meta unreachable
+                  </Badge>
+                )}
+                {n.analyticsMissing && (
+                  <Badge variant="secondary" className="gap-1 text-[10px]">
+                    <AlertTriangle className="size-3" /> analytics missing
+                  </Badge>
+                )}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">

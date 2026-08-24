@@ -24,14 +24,17 @@ export type WaWebhookBody = {
   }>;
 };
 
-/** Creates an alert, skipping duplicates of the same unresolved title within a dedupe window. */
+/**
+ * Creates an alert, skipping duplicates of the same unresolved title within a
+ * dedupe window. Returns true when a new alert row was actually inserted.
+ */
 export async function raiseAlert(args: {
   title: string;
   message?: string | null;
   severity?: "info" | "warning" | "critical";
   source?: string;
   dedupeMinutes?: number;
-}) {
+}): Promise<boolean> {
   const since = new Date(Date.now() - (args.dedupeMinutes ?? 10) * 60 * 1000).toISOString();
   const { data: existing } = await supabaseAdmin
     .from("system_alerts")
@@ -40,7 +43,7 @@ export async function raiseAlert(args: {
     .eq("resolved", false)
     .gte("created_at", since)
     .maybeSingle();
-  if (existing) return;
+  if (existing) return false;
 
   await supabaseAdmin.from("system_alerts").insert({
     title: args.title,
@@ -48,6 +51,7 @@ export async function raiseAlert(args: {
     severity: args.severity ?? "warning",
     source: args.source ?? "webhook",
   });
+  return true;
 }
 
 export async function logWebhookEvent(args: {
@@ -91,9 +95,66 @@ type WaNumberHealth = {
   id: string;
   label: string;
   alerts_enabled: boolean;
-  deliverability_min: number;
-  read_rate_min: number;
+  deliverability_min: number | null;
+  read_rate_min: number | null;
 };
+
+type EffectiveThresholds = {
+  deliverabilityMin: number;
+  readRateMin: number;
+  tenantId: string | null;
+  source: "number" | "plan";
+};
+
+/**
+ * Resolves the alert thresholds for a number: per-number overrides win; when a
+ * threshold is blank the default for the company's subscription plan applies
+ * (falling back to the platform-wide "default" row).
+ */
+async function resolveThresholds(num: WaNumberHealth): Promise<EffectiveThresholds> {
+  if (num.deliverability_min != null && num.read_rate_min != null) {
+    return {
+      deliverabilityMin: num.deliverability_min,
+      readRateMin: num.read_rate_min,
+      tenantId: null,
+      source: "number",
+    };
+  }
+
+  // Find the company using this number via a conversation's contact.
+  const { data: conv } = await supabaseAdmin
+    .from("conversations")
+    .select("contacts(tenant_id)")
+    .eq("wa_number_id", num.id)
+    .limit(1)
+    .maybeSingle();
+  const tenantId =
+    ((conv as { contacts?: { tenant_id?: string | null } | null } | null)?.contacts?.tenant_id ??
+      null) as string | null;
+
+  let plan = "default";
+  if (tenantId) {
+    const { data: org } = await supabaseAdmin
+      .from("organizations")
+      .select("plan")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (org?.plan) plan = org.plan;
+  }
+
+  const { data: rows } = await supabaseAdmin
+    .from("plan_thresholds")
+    .select("plan, deliverability_min, read_rate_min")
+    .in("plan", [plan, "default"]);
+  const row = rows?.find((r) => r.plan === plan) ?? rows?.find((r) => r.plan === "default");
+
+  return {
+    deliverabilityMin: Number(row?.deliverability_min ?? 95),
+    readRateMin: Number(row?.read_rate_min ?? 60),
+    tenantId,
+    source: "plan",
+  };
+}
 
 /**
  * Evaluates the last 24h of outbound messages for one connected number and
@@ -135,20 +196,22 @@ export async function checkNumberHealth(waNumberId: string | null) {
 
   const deliverability = (delivered / total) * 100;
   const readRate = delivered > 0 ? (read / delivered) * 100 : 0;
+  const thresholds = await resolveThresholds(num);
+  const basis = thresholds.source === "plan" ? "plan default" : "number override";
 
-  if (deliverability < num.deliverability_min) {
+  if (deliverability < thresholds.deliverabilityMin) {
     await raiseAlert({
       title: `Low deliverability on ${num.label}`,
-      message: `${deliverability.toFixed(1)}% of ${total} messages delivered in the last 24h (threshold ${num.deliverability_min}%). ${failed} failed — check the number's quality rating and credentials in Meta.`,
+      message: `${deliverability.toFixed(1)}% of ${total} messages delivered in the last 24h (${basis} threshold ${thresholds.deliverabilityMin}%). ${failed} failed — check the number's quality rating and credentials in Meta.`,
       severity: "critical",
       source: "health",
       dedupeMinutes: 360,
     });
   }
-  if (readRate < num.read_rate_min) {
+  if (readRate < thresholds.readRateMin) {
     await raiseAlert({
       title: `Low read rate on ${num.label}`,
-      message: `${readRate.toFixed(1)}% of delivered messages were read in the last 24h (threshold ${num.read_rate_min}%). Review message timing and content quality.`,
+      message: `${readRate.toFixed(1)}% of delivered messages were read in the last 24h (${basis} threshold ${thresholds.readRateMin}%). Review message timing and content quality.`,
       severity: "warning",
       source: "health",
       dedupeMinutes: 360,

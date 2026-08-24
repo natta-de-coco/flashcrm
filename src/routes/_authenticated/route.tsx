@@ -16,6 +16,7 @@ import {
   Mail,
   Package,
   Settings,
+  Sparkles,
   Users,
 } from "lucide-react";
 import { useEffect } from "react";
@@ -31,6 +32,7 @@ const NAV = [
   { to: "/marketing", label: "Leads & Marketing", icon: Mail },
   { to: "/catalog", label: "Product Catalog", icon: Package },
   { to: "/content", label: "Content & SEO", icon: FileText },
+  { to: "/seo-blog", label: "SEO Studio", icon: Sparkles },
   { to: "/chatbot", label: "Chatbot", icon: Bot },
   { to: "/monitoring", label: "Monitoring", icon: Activity },
   { to: "/settings", label: "Settings", icon: Settings },
