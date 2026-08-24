@@ -173,7 +173,7 @@ function ConnectPage() {
         {/* Step 1 — WhatsApp */}
         <StepCard
           number={1}
-          done={steps[0].done}
+          done={steps[0]?.done ?? false}
           title="Connect your WhatsApp number"
           description="Every conversation from this number flows into your Inbox, with bot replies, assignments and alerts."
         >
@@ -200,7 +200,7 @@ function ConnectPage() {
         {/* Step 2 — Website */}
         <StepCard
           number={2}
-          done={steps[1].done}
+          done={steps[1]?.done ?? false}
           title="Add your website"
           description="Create a site key, then install the Flash popup chatbot on WordPress, Shopify or any custom site. The popup asks for WhatsApp number and email before chatting — every visitor becomes a lead."
         >
@@ -333,7 +333,7 @@ function ConnectPage() {
         {/* Step 3 — Routing & consent */}
         <StepCard
           number={3}
-          done={steps[2].done}
+          done={steps[2]?.done ?? false}
           title="Route leads & stay compliant"
           description="Decide which WhatsApp number receives which leads (by tag, platform, page URL or email domain) and keep consent tracking on — it protects your sender reputation."
         >
@@ -352,7 +352,7 @@ function ConnectPage() {
         {/* Step 4 — AI growth */}
         <StepCard
           number={4}
-          done={steps[3].done}
+          done={steps[3]?.done ?? false}
           title="Let Flash AI grow the account"
           description="Draft campaigns, reply to social comments & DMs, and turn product photos into SEO articles — all from the same workspace."
         >
