@@ -1124,6 +1124,7 @@ export type Database = {
           label: string
           last_synced_at: string | null
           platform: string
+          stats: Json
           tenant_id: string
         }
         Insert: {
@@ -1135,6 +1136,7 @@ export type Database = {
           label: string
           last_synced_at?: string | null
           platform: string
+          stats?: Json
           tenant_id?: string
         }
         Update: {
@@ -1146,6 +1148,7 @@ export type Database = {
           label?: string
           last_synced_at?: string | null
           platform?: string
+          stats?: Json
           tenant_id?: string
         }
         Relationships: []

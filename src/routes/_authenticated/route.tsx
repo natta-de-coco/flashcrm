@@ -42,9 +42,11 @@ export const Route = createFileRoute("/_authenticated")({
  */
 const NAV_SECTIONS = [
   {
-    title: "Start here",
+    title: "Chats",
     items: [
-      { to: "/connect", label: "Connect & setup", desc: "Link WhatsApp & your website", icon: Plug },
+      { to: "/inbox", label: "Inbox", desc: "WhatsApp & website chats", icon: Inbox },
+      { to: "/social", label: "Social Hub", desc: "IG, FB, YouTube, X & more", icon: Megaphone },
+      { to: "/chatbot", label: "Chatbot", desc: "AI auto-replies", icon: Bot },
     ],
   },
   {
@@ -52,14 +54,6 @@ const NAV_SECTIONS = [
     items: [
       { to: "/dashboard", label: "Dashboard", desc: "Live pulse of every channel", icon: LayoutDashboard },
       { to: "/monitoring", label: "Monitoring", desc: "Alerts, webhooks & Meta health", icon: Activity },
-    ],
-  },
-  {
-    title: "Engage",
-    items: [
-      { to: "/inbox", label: "Inbox", desc: "WhatsApp & website chats", icon: Inbox },
-      { to: "/social", label: "Social Hub", desc: "Comments, DMs & reach", icon: Megaphone },
-      { to: "/chatbot", label: "Chatbot", desc: "AI auto-replies", icon: Bot },
     ],
   },
   {
@@ -75,6 +69,12 @@ const NAV_SECTIONS = [
   {
     title: "Manage",
     items: [{ to: "/settings", label: "Settings", desc: "Numbers, keys & team", icon: Settings }],
+  },
+  {
+    title: "Setup",
+    items: [
+      { to: "/connect", label: "Connect & setup", desc: "Link WhatsApp & your website", icon: Plug },
+    ],
   },
 ] as const;
 
@@ -195,7 +195,7 @@ function AuthenticatedLayout() {
             <span className="text-base font-bold tracking-tight">Flash CRM</span>
           </Link>
 
-          <nav className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
+          <nav className="flash-scroll flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
             <NavMenu sections={sections} />
           </nav>
 
@@ -239,7 +239,7 @@ function AuthenticatedLayout() {
               </SheetTrigger>
               <SheetContent
                 side="left"
-                className="w-72 overflow-y-auto border-sidebar-border bg-sidebar p-4 text-sidebar-foreground [&>button]:text-sidebar-foreground/70"
+                className="flash-scroll w-72 overflow-y-auto border-sidebar-border bg-sidebar p-4 text-sidebar-foreground [&>button]:text-sidebar-foreground/70"
               >
                 <SheetHeader className="mb-4">
                   <SheetTitle className="flex items-center gap-2 text-sidebar-foreground">
