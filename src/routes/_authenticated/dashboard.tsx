@@ -12,9 +12,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDashboardOverview } from "@/lib/dashboard.functions";
 import { getMetaSyncHealth } from "@/lib/meta-health.functions";
-import { useQuery } from "@tanstack/react-query";
+import { logWidgetError } from "@/lib/widget-error-log";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useRef } from "react";
 import {
   AlertTriangle,
   Bot,
