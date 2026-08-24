@@ -618,6 +618,74 @@ function InboxPage() {
                 </Button>
               </div>
 
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Package className="size-4 text-muted-foreground" />
+                  <Input
+                    className="h-8 w-48"
+                    placeholder="Search products"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={selectedProductIds.length === 0 || catalogMutation.isPending}
+                    onClick={() => catalogMutation.mutate()}
+                  >
+                    {catalogMutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Send className="size-4" />
+                    )}
+                    Insert catalog message
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(products.data ?? [])
+                    .filter((p) =>
+                      !productSearch ||
+                      p.title.toLowerCase().includes(productSearch.toLowerCase()) ||
+                      (p.sku ?? "").toLowerCase().includes(productSearch.toLowerCase()),
+                    )
+                    .slice(0, 8)
+                    .map((p) => {
+                      const selected = selectedProductIds.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedProductIds((prev) =>
+                              selected ? prev.filter((id) => id !== p.id) : [...prev, p.id],
+                            )
+                          }
+                          className={cn(
+                            "flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors",
+                            selected
+                              ? "border-brand bg-brand/10 text-brand"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "grid size-4 place-items-center rounded-full border",
+                              selected ? "border-brand bg-brand text-brand-foreground" : "border-current",
+                            )}
+                          >
+                            {selected && <Check className="size-3" />}
+                          </span>
+                          {p.title}
+                          {p.price != null && <span className="opacity-70">${p.price}</span>}
+                        </button>
+                      );
+                    })}
+                  {(products.data ?? []).length === 0 && (
+                    <p className="text-xs text-muted-foreground">No products in catalog yet.</p>
+                  )}
+                </div>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 <Bell className="size-4 text-muted-foreground" />
                 <Input
