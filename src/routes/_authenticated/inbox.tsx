@@ -74,7 +74,14 @@ function InboxPage() {
 
   /** Fire-and-forget compliance log entry for an inbox action. */
   function logAction(
-    action: "conversation.assign" | "conversation.tag" | "conversation.status" | "reminder.create" | "conversations.export" | "transcript.export",
+    action:
+      | "conversation.assign"
+      | "conversation.tag"
+      | "conversation.status"
+      | "reminder.create"
+      | "conversations.export"
+      | "transcript.export"
+      | "message.translate",
     details: Record<string, unknown> = {},
   ) {
     void auditEvent({
