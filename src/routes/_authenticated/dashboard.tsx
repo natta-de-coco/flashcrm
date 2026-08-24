@@ -12,6 +12,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDashboardOverview } from "@/lib/dashboard.functions";
 import { getMetaSyncHealth } from "@/lib/meta-health.functions";
+import { usePersistentTimestamp } from "@/hooks/usePersistentTimestamp";
 import { logWidgetError } from "@/lib/widget-error-log";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -77,8 +78,14 @@ function WidgetError({ message, onRetry }: { message: string; onRetry: () => voi
       <AlertTriangle className="size-5 text-destructive" />
       <p className="text-sm font-medium">Couldn't load this widget</p>
       <p className="max-w-xs text-xs text-muted-foreground">{message}</p>
-      <Button size="sm" variant="outline" className="mt-1 gap-1.5" onClick={onRetry}>
-        <RefreshCw className="size-3.5" /> Try again
+      <Button
+        size="sm"
+        variant="outline"
+        className="mt-1 gap-1.5"
+        onClick={onRetry}
+        aria-label="Retry this widget"
+      >
+        <RefreshCw className="size-3.5" /> Retry this widget
       </Button>
     </div>
   );
@@ -180,12 +187,16 @@ function DashboardPage() {
     void overview.refetch();
     void metaHealth.refetch();
   };
-  const overviewUpdatedAt = overview.dataUpdatedAt
-    ? new Date(overview.dataUpdatedAt).toLocaleTimeString()
-    : null;
-  const metaUpdatedAt = metaHealth.dataUpdatedAt
-    ? new Date(metaHealth.dataUpdatedAt).toLocaleTimeString()
-    : null;
+  // Persisted per-widget timestamps: survive reloads, replaced only after the
+  // next successful refresh of that widget's endpoint.
+  const overviewUpdatedAt = usePersistentTimestamp(
+    "flashdash:overview-updated-at",
+    overview.dataUpdatedAt,
+  );
+  const metaUpdatedAt = usePersistentTimestamp(
+    "flashdash:meta-updated-at",
+    metaHealth.dataUpdatedAt,
+  );
 
   const data = overview.data;
   const stats = [
