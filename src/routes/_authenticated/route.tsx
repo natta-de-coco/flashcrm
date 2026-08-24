@@ -1,4 +1,11 @@
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { FlashLogoBadge } from "@/components/FlashLogoBadge";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { useAuth } from "@/hooks/useAuth";
@@ -15,11 +22,13 @@ import {
   LogOut,
   Mail,
   Megaphone,
+  Menu,
   Package,
   Plug,
   Settings,
   Sparkles,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -80,10 +89,60 @@ const SIDEBAR_MIN = 224;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_KEY = "flash.sidebar.width";
 
+type NavSection = {
+  title: string;
+  items: readonly { to: string; label: string; desc: string; icon: LucideIcon }[];
+};
+
+/** Shared grouped nav — used by the desktop sidebar and the mobile drawer. */
+function NavMenu({
+  sections,
+  onNavigate,
+}: {
+  sections: readonly NavSection[];
+  onNavigate?: () => void;
+}) {
+  return (
+    <>
+      {sections.map((section) => (
+        <div key={section.title}>
+          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
+            {section.title}
+          </p>
+          <div className="flex flex-col gap-0.5">
+            {section.items.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                onClick={onNavigate}
+                className="flex items-start gap-3 rounded-lg px-3 py-2 text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                activeProps={{
+                  className: cn("bg-sidebar-accent text-sidebar-accent-foreground"),
+                }}
+              >
+                <item.icon className="mt-0.5 size-4 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium leading-tight">
+                    {item.label}
+                  </span>
+                  <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">
+                    {item.desc}
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function AuthenticatedLayout() {
   const { session, loading, signOut, user, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const [sidebarW, setSidebarW] = useState(264);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const sections = isSuperAdmin ? [...NAV_SECTIONS, MANAGER_SECTION] : NAV_SECTIONS;
 
@@ -126,8 +185,9 @@ function AuthenticatedLayout() {
     <TenantProvider>
       <OnboardingModal />
       <div className="flex min-h-screen bg-background">
+        {/* Fixed sidebar — stays pinned while the page scrolls (desktop only) */}
         <aside
-          className="relative hidden shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground md:flex"
+          className="sticky top-0 hidden h-screen shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground md:flex"
           style={{ width: sidebarW }}
         >
           <Link to="/dashboard" className="mb-6 flex items-center gap-3 px-2">
@@ -136,35 +196,7 @@ function AuthenticatedLayout() {
           </Link>
 
           <nav className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
-            {sections.map((section) => (
-              <div key={section.title}>
-                <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
-                  {section.title}
-                </p>
-                <div className="flex flex-col gap-0.5">
-                  {section.items.map((item) => (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      className="flex items-start gap-3 rounded-lg px-3 py-2 text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      activeProps={{
-                        className: cn("bg-sidebar-accent text-sidebar-accent-foreground"),
-                      }}
-                    >
-                      <item.icon className="mt-0.5 size-4 shrink-0" />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium leading-tight">
-                          {item.label}
-                        </span>
-                        <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">
-                          {item.desc}
-                        </span>
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ))}
+            <NavMenu sections={sections} />
           </nav>
 
           <div className="border-t border-sidebar-border pt-3">
@@ -192,21 +224,55 @@ function AuthenticatedLayout() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex gap-1 overflow-x-auto border-b bg-sidebar px-2 py-2 md:hidden">
-            {sections.flatMap((s) =>
-              s.items.map((item) => (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  className="flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-sidebar-foreground/75"
-                  activeProps={{ className: "bg-sidebar-accent text-sidebar-accent-foreground" }}
+          {/* Mobile header — sidebar is hidden on small screens; hamburger opens the full nav drawer */}
+          <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-sidebar-border bg-sidebar px-3 py-2 text-sidebar-foreground md:hidden">
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Open menu"
+                  className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
-                  <item.icon className="size-3.5" />
-                  {item.label}
-                </Link>
-              )),
-            )}
-          </div>
+                  <Menu className="size-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                className="w-72 overflow-y-auto border-sidebar-border bg-sidebar p-4 text-sidebar-foreground [&>button]:text-sidebar-foreground/70"
+              >
+                <SheetHeader className="mb-4">
+                  <SheetTitle className="flex items-center gap-2 text-sidebar-foreground">
+                    <FlashLogoBadge className="size-8" />
+                    Flash CRM
+                  </SheetTitle>
+                </SheetHeader>
+                <nav className="flex flex-col gap-4">
+                  <NavMenu sections={sections} onNavigate={() => setMobileOpen(false)} />
+                </nav>
+                <div className="mt-4 border-t border-sidebar-border pt-3">
+                  <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">
+                    {user?.email}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    onClick={() => {
+                      setMobileOpen(false);
+                      void signOut();
+                    }}
+                  >
+                    <LogOut className="size-4" />
+                    Sign out
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
+            <Link to="/dashboard" className="flex items-center gap-2">
+              <FlashLogoBadge className="size-8" />
+              <span className="text-sm font-bold tracking-tight">Flash CRM</span>
+            </Link>
+          </header>
           <Outlet />
         </div>
       </div>
