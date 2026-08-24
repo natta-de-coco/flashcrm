@@ -51,6 +51,8 @@ export type Message = {
   sender: "contact" | "agent" | "bot";
   sender_id: string | null;
   body: string;
+  translated_body: string | null;
+  detected_language: string | null;
   status: string;
   created_at: string;
 };
