@@ -1114,6 +1114,154 @@ export type Database = {
           },
         ]
       }
+      social_accounts: {
+        Row: {
+          access_token: string | null
+          active: boolean
+          created_at: string
+          external_id: string | null
+          id: string
+          label: string
+          last_synced_at: string | null
+          platform: string
+          tenant_id: string
+        }
+        Insert: {
+          access_token?: string | null
+          active?: boolean
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          label: string
+          last_synced_at?: string | null
+          platform: string
+          tenant_id?: string
+        }
+        Update: {
+          access_token?: string | null
+          active?: boolean
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          label?: string
+          last_synced_at?: string | null
+          platform?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      social_interactions: {
+        Row: {
+          account_id: string
+          ai_suggestion: string | null
+          author_handle: string | null
+          author_name: string | null
+          body: string
+          created_at: string
+          direction: string
+          external_id: string | null
+          id: string
+          kind: string
+          replied_at: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          account_id: string
+          ai_suggestion?: string | null
+          author_handle?: string | null
+          author_name?: string | null
+          body: string
+          created_at?: string
+          direction?: string
+          external_id?: string | null
+          id?: string
+          kind: string
+          replied_at?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Update: {
+          account_id?: string
+          ai_suggestion?: string | null
+          author_handle?: string | null
+          author_name?: string | null
+          body?: string
+          created_at?: string
+          direction?: string
+          external_id?: string | null
+          id?: string
+          kind?: string
+          replied_at?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_interactions_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_posts: {
+        Row: {
+          account_id: string | null
+          caption: string
+          comments_count: number
+          created_at: string
+          external_id: string | null
+          id: string
+          likes: number
+          published_at: string | null
+          reach: number
+          scheduled_at: string | null
+          shares: number
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          caption: string
+          comments_count?: number
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          likes?: number
+          published_at?: string | null
+          reach?: number
+          scheduled_at?: string | null
+          shares?: number
+          status?: string
+          tenant_id?: string
+        }
+        Update: {
+          account_id?: string | null
+          caption?: string
+          comments_count?: number
+          created_at?: string
+          external_id?: string | null
+          id?: string
+          likes?: number
+          published_at?: string | null
+          reach?: number
+          scheduled_at?: string | null
+          shares?: number
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_posts_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subscriptions: {
         Row: {
           cancel_at_period_end: boolean | null
