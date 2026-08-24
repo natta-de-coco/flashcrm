@@ -104,6 +104,18 @@ function InboxPage() {
     },
   });
 
+  const products = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, title, sku, price, description, images")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
   const conversations = useQuery({
     queryKey: ["conversations"],
     queryFn: async () => {
