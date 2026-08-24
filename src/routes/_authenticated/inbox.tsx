@@ -5,7 +5,13 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { recordAuditEvent } from "@/lib/audit.functions";
-import { draftBotReply, sendAgentMessage, sendTemplateMessage } from "@/lib/crm.functions";
+import {
+  buildCatalogMessage,
+  draftBotReply,
+  sendAgentMessage,
+  sendTemplateMessage,
+  translateMessage,
+} from "@/lib/crm.functions";
 import type { Conversation, Message } from "@/lib/crm-types";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadCsv, toCsv } from "@/lib/csv";
@@ -19,7 +25,9 @@ import {
   Check,
   Download,
   Globe,
+  Languages,
   Loader2,
+  Package,
   Search,
   Send,
   Sparkles,
