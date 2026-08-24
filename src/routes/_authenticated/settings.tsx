@@ -399,6 +399,53 @@ function SettingsPage() {
                     <p className="text-xs text-muted-foreground">
                       {n.display_phone ?? "No display number"} · ID {n.phone_number_id}
                     </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <label className="flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          className="accent-brand"
+                          checked={n.alerts_enabled}
+                          onChange={(e) =>
+                            updateNumber(n.id, { alerts_enabled: e.target.checked })
+                          }
+                        />
+                        Health alerts
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        Deliverability min
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="h-7 w-16 px-2 text-xs"
+                          defaultValue={n.deliverability_min}
+                          disabled={!n.alerts_enabled}
+                          onBlur={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v) && v !== n.deliverability_min)
+                              updateNumber(n.id, { deliverability_min: v });
+                          }}
+                        />
+                        %
+                      </label>
+                      <label className="flex items-center gap-1.5">
+                        Read rate min
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="h-7 w-16 px-2 text-xs"
+                          defaultValue={n.read_rate_min}
+                          disabled={!n.alerts_enabled}
+                          onBlur={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v) && v !== n.read_rate_min)
+                              updateNumber(n.id, { read_rate_min: v });
+                          }}
+                        />
+                        %
+                      </label>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1">
                     {!n.is_default && (
