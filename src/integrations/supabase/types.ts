@@ -779,36 +779,42 @@ export type Database = {
           body: string
           conversation_id: string
           created_at: string
+          detected_language: string | null
           direction: Database["public"]["Enums"]["msg_direction"]
           id: string
           media_url: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id: string | null
           status: string
+          translated_body: string | null
           wa_message_id: string | null
         }
         Insert: {
           body?: string
           conversation_id: string
           created_at?: string
+          detected_language?: string | null
           direction: Database["public"]["Enums"]["msg_direction"]
           id?: string
           media_url?: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
           status?: string
+          translated_body?: string | null
           wa_message_id?: string | null
         }
         Update: {
           body?: string
           conversation_id?: string
           created_at?: string
+          detected_language?: string | null
           direction?: Database["public"]["Enums"]["msg_direction"]
           id?: string
           media_url?: string | null
           sender?: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
           status?: string
+          translated_body?: string | null
           wa_message_id?: string | null
         }
         Relationships: [

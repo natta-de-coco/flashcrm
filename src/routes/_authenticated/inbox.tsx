@@ -5,7 +5,13 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { recordAuditEvent } from "@/lib/audit.functions";
-import { draftBotReply, sendAgentMessage, sendTemplateMessage } from "@/lib/crm.functions";
+import {
+  buildCatalogMessage,
+  draftBotReply,
+  sendAgentMessage,
+  sendTemplateMessage,
+  translateMessage,
+} from "@/lib/crm.functions";
 import type { Conversation, Message } from "@/lib/crm-types";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadCsv, toCsv } from "@/lib/csv";
@@ -19,7 +25,9 @@ import {
   Check,
   Download,
   Globe,
+  Languages,
   Loader2,
+  Package,
   Search,
   Send,
   Sparkles,
@@ -52,16 +60,28 @@ function InboxPage() {
   const [reminderNote, setReminderNote] = useState("");
   const [reminderDue, setReminderDue] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const send = useServerFn(sendAgentMessage);
   const suggest = useServerFn(draftBotReply);
   const sendTemplate = useServerFn(sendTemplateMessage);
   const auditEvent = useServerFn(recordAuditEvent);
+  const translate = useServerFn(translateMessage);
+  const buildCatalog = useServerFn(buildCatalogMessage);
 
   /** Fire-and-forget compliance log entry for an inbox action. */
   function logAction(
-    action: "conversation.assign" | "conversation.tag" | "conversation.status" | "reminder.create" | "conversations.export" | "transcript.export",
+    action:
+      | "conversation.assign"
+      | "conversation.tag"
+      | "conversation.status"
+      | "reminder.create"
+      | "conversations.export"
+      | "transcript.export"
+      | "message.translate",
     details: Record<string, unknown> = {},
   ) {
     void auditEvent({
@@ -86,6 +106,18 @@ function InboxPage() {
         .select("id, name, body, language")
         .eq("status", "approved")
         .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const products = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id, title, sku, price, description, images")
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
@@ -259,6 +291,30 @@ function InboxPage() {
       toast.success("Template sent");
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const translateMutation = useMutation({
+    mutationFn: async (messageId: string) =>
+      translate({ data: { messageId, targetLanguage: "English" } }),
+    onSuccess: (res, messageId) => {
+      setExpandedTranslations((prev) => new Set(prev).add(messageId));
+      logAction("message.translate", {
+        messageId,
+        detectedLanguage: res.detectedLanguage,
+      });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const catalogMutation = useMutation({
+    mutationFn: async () => buildCatalog({ data: { productIds: selectedProductIds } }),
+    onSuccess: (res) => {
+      setDraft((d) => (d ? `${d}\n\n${res.body}` : res.body));
+      setSelectedProductIds([]);
+      toast.success("Catalog message inserted — press Send to deliver");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -562,6 +618,74 @@ function InboxPage() {
                 </Button>
               </div>
 
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Package className="size-4 text-muted-foreground" />
+                  <Input
+                    className="h-8 w-48"
+                    placeholder="Search products"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={selectedProductIds.length === 0 || catalogMutation.isPending}
+                    onClick={() => catalogMutation.mutate()}
+                  >
+                    {catalogMutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Send className="size-4" />
+                    )}
+                    Insert catalog message
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(products.data ?? [])
+                    .filter((p) =>
+                      !productSearch ||
+                      p.title.toLowerCase().includes(productSearch.toLowerCase()) ||
+                      (p.sku ?? "").toLowerCase().includes(productSearch.toLowerCase()),
+                    )
+                    .slice(0, 8)
+                    .map((p) => {
+                      const selected = selectedProductIds.includes(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedProductIds((prev) =>
+                              selected ? prev.filter((id) => id !== p.id) : [...prev, p.id],
+                            )
+                          }
+                          className={cn(
+                            "flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors",
+                            selected
+                              ? "border-brand bg-brand/10 text-brand"
+                              : "bg-muted text-muted-foreground hover:bg-muted/80",
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "grid size-4 place-items-center rounded-full border",
+                              selected ? "border-brand bg-brand text-brand-foreground" : "border-current",
+                            )}
+                          >
+                            {selected && <Check className="size-3" />}
+                          </span>
+                          {p.title}
+                          {p.price != null && <span className="opacity-70">${p.price}</span>}
+                        </button>
+                      );
+                    })}
+                  {(products.data ?? []).length === 0 && (
+                    <p className="text-xs text-muted-foreground">No products in catalog yet.</p>
+                  )}
+                </div>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2">
                 <Bell className="size-4 text-muted-foreground" />
                 <Input
@@ -614,34 +738,67 @@ function InboxPage() {
 
 
             <div className="chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-              {(messages.data ?? []).map((m) => (
-                <div
-                  key={m.id}
-                  className={cn("flex", m.direction === "outbound" ? "justify-end" : "justify-start")}
-                >
+              {(messages.data ?? []).map((m) => {
+                const showTranslation = expandedTranslations.has(m.id);
+                const hasTranslation = Boolean(m.translated_body);
+                return (
                   <div
-                    className={cn(
-                      "max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-panel",
-                      m.direction === "outbound"
-                        ? "bg-bubble-out text-bubble-out-foreground"
-                        : "bg-bubble-in text-bubble-in-foreground",
-                    )}
+                    key={m.id}
+                    className={cn("flex", m.direction === "outbound" ? "justify-end" : "justify-start")}
                   >
-                    {m.sender === "bot" && (
-                      <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                        <Bot className="size-3" /> Assistant
-                      </span>
-                    )}
-                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                    <span className="mt-1 block text-right text-[10px] opacity-60">
-                      {new Date(m.created_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
+                    <div
+                      className={cn(
+                        "group relative max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-panel",
+                        m.direction === "outbound"
+                          ? "bg-bubble-out text-bubble-out-foreground"
+                          : "bg-bubble-in text-bubble-in-foreground",
+                      )}
+                    >
+                      {m.sender === "bot" && (
+                        <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                          <Bot className="size-3" /> Assistant
+                        </span>
+                      )}
+                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      {showTranslation && m.translated_body && (
+                        <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
+                          <p className="mb-1 font-semibold opacity-70">
+                            {m.detected_language ? `Translated from ${m.detected_language}` : "Translation"}
+                          </p>
+                          <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
+                        </div>
+                      )}
+                      <div className="mt-1 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedTranslations((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(m.id)) next.delete(m.id);
+                              else {
+                                next.add(m.id);
+                                if (!hasTranslation) translateMutation.mutate(m.id);
+                              }
+                              return next;
+                            })
+                          }
+                          disabled={translateMutation.isPending && !hasTranslation}
+                          className="flex items-center gap-1 text-[10px] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-40"
+                        >
+                          <Languages className="size-3" />
+                          {showTranslation ? "Hide" : hasTranslation ? "Show translation" : "Translate"}
+                        </button>
+                        <span className="text-[10px] opacity-60">
+                          {new Date(m.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={bottomRef} />
             </div>
 
