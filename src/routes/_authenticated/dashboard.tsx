@@ -140,6 +140,9 @@ function DashboardPage() {
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
     retry: 2,
+    // Progressive loading: skeletons show only until the first response
+    // lands; afterwards the previous data stays visible while refreshing.
+    placeholderData: keepPreviousData,
   });
 
   const metaHealthFn = useServerFn(getMetaSyncHealth);
@@ -150,7 +153,39 @@ function DashboardPage() {
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
     retry: 2,
+    placeholderData: keepPreviousData,
   });
+
+  // Widget error logging — report each distinct failure once per message so
+  // slow/flaky endpoints are visible in function logs and the audit trail.
+  const loggedRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const err = overview.error;
+    if (overview.isError && err && loggedRef.current.overview !== err.message) {
+      loggedRef.current.overview = err.message;
+      logWidgetError("dashboard-overview", "getDashboardOverview", err);
+    }
+  }, [overview.isError, overview.error]);
+
+  useEffect(() => {
+    const err = metaHealth.error;
+    if (metaHealth.isError && err && loggedRef.current.meta !== err.message) {
+      loggedRef.current.meta = err.message;
+      logWidgetError("meta-sync", "getMetaSyncHealth", err);
+    }
+  }, [metaHealth.isError, metaHealth.error]);
+
+  const refreshing = overview.isRefetching || metaHealth.isRefetching;
+  const refreshAll = () => {
+    void overview.refetch();
+    void metaHealth.refetch();
+  };
+  const overviewUpdatedAt = overview.dataUpdatedAt
+    ? new Date(overview.dataUpdatedAt).toLocaleTimeString()
+    : null;
+  const metaUpdatedAt = metaHealth.dataUpdatedAt
+    ? new Date(metaHealth.dataUpdatedAt).toLocaleTimeString()
+    : null;
 
   const data = overview.data;
   const stats = [
@@ -169,11 +204,21 @@ function DashboardPage() {
             Everything happening across WhatsApp, your website widget and your pipeline.
           </p>
         </div>
-        {overview.isFetching && !overview.isLoading && (
-          <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-            <RefreshCw className="size-3 animate-spin" /> refreshing
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={refreshAll}
+            disabled={refreshing}
+          >
+            <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <span className="text-[11px] text-muted-foreground">
+            {overviewUpdatedAt ? `Updated ${overviewUpdatedAt}` : "Loading…"}
           </span>
-        )}
+        </div>
       </header>
 
       {/* Stat cards */}
