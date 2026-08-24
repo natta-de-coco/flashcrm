@@ -188,6 +188,9 @@ export async function processWaPayload(body: WaWebhookBody) {
           });
         }
       }
+      if ((value?.statuses?.length ?? 0) > 0) {
+        await checkNumberHealth(waNumberId);
+      }
 
       for (const message of value?.messages ?? []) {
         const text = message.text?.body;
