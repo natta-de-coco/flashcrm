@@ -154,10 +154,10 @@ export function buildArticleJsonLd(input: {
   title: string;
   metaDescription: string;
   slug: string;
-  siteUrl?: string;
-  businessName?: string;
-  featuredImageUrl?: string | null;
-  faq?: Array<{ q: string; a: string }>;
+  siteUrl?: string | undefined;
+  businessName?: string | undefined;
+  featuredImageUrl?: string | null | undefined;
+  faq?: Array<{ q: string; a: string }> | undefined;
 }): Record<string, unknown> {
   const base = input.siteUrl?.replace(/\/+$/, "") ?? "";
   const article: Record<string, unknown> = {

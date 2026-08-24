@@ -63,7 +63,7 @@ function SeoBlogHub() {
           </p>
         </div>
         <Button asChild>
-          <Link to="/seo-blog/studio">
+          <Link to="/seo-blog/studio" search={{}}>
             <PenSquare className="size-4" /> New article
           </Link>
         </Button>
