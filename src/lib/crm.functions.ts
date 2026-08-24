@@ -330,7 +330,7 @@ export const buildCatalogMessage = createServerFn({ method: "POST" })
     });
 
     return {
-      body: [`Here are the products you asked about:", ""`, ...lines].join("\n"),
+      body: ["Here are the products you asked about:", "", ...lines].join("\n"),
       products: products.map((p) => ({ id: p.id, title: p.title, price: p.price })),
     };
   });
