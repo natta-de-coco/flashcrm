@@ -178,19 +178,18 @@ function platformMeta(id: string) {
 /** First useful audience number from a sync, if any. */
 function audienceStat(stats: Account["stats"]): string | null {
   if (!stats) return null;
-  const pick =
-    stats.followers ?? stats.subscribers ?? stats.reviews ?? stats.videos ?? stats.tweets;
-  if (typeof pick !== "number") return null;
-  const label = stats.followers != null
-    ? "followers"
-    : stats.subscribers != null
-      ? "subscribers"
-      : stats.reviews != null
-        ? "reviews"
-        : stats.videos != null
-          ? "videos"
-          : "posts";
-  return `${pick.toLocaleString()} ${label}`;
+  const order: [string, string][] = [
+    ["followers", "followers"],
+    ["subscribers", "subscribers"],
+    ["reviews", "reviews"],
+    ["videos", "videos"],
+    ["tweets", "posts"],
+  ];
+  for (const [key, label] of order) {
+    const value = stats[key];
+    if (typeof value === "number") return `${value.toLocaleString()} ${label}`;
+  }
+  return null;
 }
 
 type Interaction = {
