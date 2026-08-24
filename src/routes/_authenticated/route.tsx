@@ -149,12 +149,18 @@ function AuthenticatedLayout() {
   const navigate = useNavigate();
   const [sidebarW, setSidebarW] = useState(264);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const sections = isSuperAdmin ? [...NAV_SECTIONS, MANAGER_SECTION] : NAV_SECTIONS;
 
   useEffect(() => {
     if (!loading && !session) navigate({ to: "/auth" });
   }, [loading, session, navigate]);
+
+  // Auto-close the mobile drawer on any route change (nav links, back button, redirects).
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   // Restore the user's preferred sidebar width (client-only, after hydration).
   useEffect(() => {
@@ -191,17 +197,17 @@ function AuthenticatedLayout() {
     <TenantProvider>
       <OnboardingModal />
       <div className="flex min-h-screen bg-background">
-        {/* Fixed sidebar — stays pinned while the page scrolls (desktop only) */}
+        {/* Fixed sidebar — pinned, fits without scrolling, desktop (lg+) only */}
         <aside
-          className="sticky top-0 hidden h-screen shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground md:flex"
+          className="sticky top-0 hidden h-screen shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground lg:flex"
           style={{ width: sidebarW }}
         >
-          <Link to="/dashboard" className="mb-6 flex items-center gap-3 px-2">
+          <Link to="/dashboard" className="mb-4 flex items-center gap-3 px-2">
             <FlashLogoBadge className="size-10" />
             <span className="text-base font-bold tracking-tight">Flash CRM</span>
           </Link>
 
-          <nav className="flash-scroll flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
+          <nav className="flash-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain">
             <NavMenu sections={sections} />
           </nav>
 
@@ -230,8 +236,8 @@ function AuthenticatedLayout() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Mobile header — sidebar is hidden on small screens; hamburger opens the full nav drawer */}
-          <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-sidebar-border bg-sidebar px-3 py-2 text-sidebar-foreground md:hidden">
+          {/* Mobile/tablet header — sidebar hides below lg; hamburger opens the nav drawer */}
+          <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-sidebar-border bg-sidebar px-3 py-2 text-sidebar-foreground lg:hidden">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <Button
