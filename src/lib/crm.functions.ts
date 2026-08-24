@@ -236,5 +236,101 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       details: { template: template.name, waId },
     });
 
-    return { ok: true, waId, rendered, blockedReasons: [] as string[] };
+  return { ok: true, waId, rendered, blockedReasons: [] as string[] };
+});
+
+const TranslateSchema = z.object({
+  messageId: z.string().uuid(),
+  targetLanguage: z.string().min(2).max(50).default("English"),
+});
+
+/** Auto-translate a message using Flash AI and cache the result. */
+export const translateMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => TranslateSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { callFlashAi } = await import("@/lib/flash-ai.server");
+    const { logAudit } = await import("@/lib/audit.server");
+
+    const { data: message, error } = await supabaseAdmin
+      .from("messages")
+      .select("id, body, translated_body, detected_language")
+      .eq("id", data.messageId)
+      .single();
+    if (error || !message) throw new Error("Message not found");
+
+    if (message.translated_body) {
+      return { translatedBody: message.translated_body, detectedLanguage: message.detected_language };
+    }
+
+    const system = [
+      "You are a translation assistant inside Flash CRM.",
+      "Detect the language of the user's message and translate it into the requested target language.",
+      "Return ONLY a JSON object with two fields: 'detectedLanguage' (the original language name in English) and 'translation' (the translated text).",
+      "Do not add markdown, explanations, or wrapping. Preserve the original tone and formatting as much as possible.",
+    ].join(" ");
+
+    const user = `Target language: ${data.targetLanguage}\n\nMessage:\n${message.body}`;
+
+    let parsed: { detectedLanguage?: string; translation?: string } = {};
+    try {
+      const raw = await callFlashAi(system, user);
+      parsed = JSON.parse(raw) as typeof parsed;
+    } catch {
+      throw new Error("Translation failed — the AI did not return valid JSON. Try again.");
+    }
+
+    if (!parsed.translation) {
+      throw new Error("Translation failed — no translation returned.");
+    }
+
+    await supabaseAdmin
+      .from("messages")
+      .update({
+        translated_body: parsed.translation,
+        detected_language: parsed.detectedLanguage ?? null,
+      })
+      .eq("id", message.id);
+
+    await logAudit({
+      action: "message.translate",
+      actorId: context.userId,
+      entityType: "message",
+      entityId: message.id,
+      details: { targetLanguage: data.targetLanguage, detectedLanguage: parsed.detectedLanguage },
+    });
+
+    return { translatedBody: parsed.translation, detectedLanguage: parsed.detectedLanguage ?? null };
+  });
+
+const CatalogSchema = z.object({
+  productIds: z.array(z.string().uuid()).min(1).max(5),
+});
+
+/** Build a WhatsApp-friendly product message from the catalog. */
+export const buildCatalogMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => CatalogSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: products, error } = await supabaseAdmin
+      .from("products")
+      .select("id, title, sku, price, description, images")
+      .in("id", data.productIds);
+    if (error) throw new Error("Could not load products");
+    if (!products?.length) throw new Error("No products selected");
+
+    const lines = products.map((p) => {
+      const price = p.price != null ? `$${Number(p.price).toFixed(2)}` : "Price on request";
+      const sku = p.sku ? `SKU: ${p.sku}\n` : "";
+      const desc = p.description ? `${p.description}\n` : "";
+      const image = p.images?.[0] ? `\n${p.images[0]}` : "";
+      return `*${p.title}*\n${sku}${desc}Price: ${price}${image}`;
+    });
+
+    return {
+      body: [`Here are the products you asked about:", ""`, ...lines].join("\n"),
+      products: products.map((p) => ({ id: p.id, title: p.title, price: p.price })),
+    };
   });
