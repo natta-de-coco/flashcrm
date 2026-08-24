@@ -11,7 +11,13 @@ import { OnboardingModal } from "@/components/OnboardingModal";
 import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider } from "@/hooks/useTenant";
 import { cn } from "@/lib/utils";
-import { Link, Outlet, createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import {
   Activity,
   Bot,
@@ -106,7 +112,7 @@ function NavMenu({
     <>
       {sections.map((section) => (
         <div key={section.title}>
-          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
+          <p className="mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
             {section.title}
           </p>
           <div className="flex flex-col gap-0.5">
@@ -115,7 +121,7 @@ function NavMenu({
                 key={item.to}
                 to={item.to}
                 onClick={onNavigate}
-                className="flex items-start gap-3 rounded-lg px-3 py-2 text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                className="flex items-start gap-3 rounded-lg px-3 py-1.5 text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 activeProps={{
                   className: cn("bg-sidebar-accent text-sidebar-accent-foreground"),
                 }}
