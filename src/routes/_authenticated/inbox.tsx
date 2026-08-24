@@ -738,34 +738,67 @@ function InboxPage() {
 
 
             <div className="chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-              {(messages.data ?? []).map((m) => (
-                <div
-                  key={m.id}
-                  className={cn("flex", m.direction === "outbound" ? "justify-end" : "justify-start")}
-                >
+              {(messages.data ?? []).map((m) => {
+                const showTranslation = expandedTranslations.has(m.id);
+                const hasTranslation = Boolean(m.translated_body);
+                return (
                   <div
-                    className={cn(
-                      "max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-panel",
-                      m.direction === "outbound"
-                        ? "bg-bubble-out text-bubble-out-foreground"
-                        : "bg-bubble-in text-bubble-in-foreground",
-                    )}
+                    key={m.id}
+                    className={cn("flex", m.direction === "outbound" ? "justify-end" : "justify-start")}
                   >
-                    {m.sender === "bot" && (
-                      <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                        <Bot className="size-3" /> Assistant
-                      </span>
-                    )}
-                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                    <span className="mt-1 block text-right text-[10px] opacity-60">
-                      {new Date(m.created_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
+                    <div
+                      className={cn(
+                        "group relative max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-panel",
+                        m.direction === "outbound"
+                          ? "bg-bubble-out text-bubble-out-foreground"
+                          : "bg-bubble-in text-bubble-in-foreground",
+                      )}
+                    >
+                      {m.sender === "bot" && (
+                        <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                          <Bot className="size-3" /> Assistant
+                        </span>
+                      )}
+                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      {showTranslation && m.translated_body && (
+                        <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
+                          <p className="mb-1 font-semibold opacity-70">
+                            {m.detected_language ? `Translated from ${m.detected_language}` : "Translation"}
+                          </p>
+                          <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
+                        </div>
+                      )}
+                      <div className="mt-1 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedTranslations((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(m.id)) next.delete(m.id);
+                              else {
+                                next.add(m.id);
+                                if (!hasTranslation) translateMutation.mutate(m.id);
+                              }
+                              return next;
+                            })
+                          }
+                          disabled={translateMutation.isPending && !hasTranslation}
+                          className="flex items-center gap-1 text-[10px] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-40"
+                        >
+                          <Languages className="size-3" />
+                          {showTranslation ? "Hide" : hasTranslation ? "Show translation" : "Translate"}
+                        </button>
+                        <span className="text-[10px] opacity-60">
+                          {new Date(m.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={bottomRef} />
             </div>
 
