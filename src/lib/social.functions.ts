@@ -2,11 +2,21 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+const PLATFORMS = [
+  "instagram",
+  "facebook",
+  "youtube",
+  "twitter",
+  "linkedin",
+  "tiktok",
+  "google_business",
+] as const;
+
 const ConnectSchema = z.object({
-  platform: z.enum(["instagram", "facebook"]),
+  platform: z.enum(PLATFORMS),
   label: z.string().min(2).max(80),
-  externalId: z.string().max(120).optional(),
-  accessToken: z.string().max(500).optional(),
+  externalId: z.string().max(200).optional(),
+  accessToken: z.string().max(2000).optional(),
 });
 
 const IdSchema = z.object({ id: z.string().uuid() });
@@ -21,12 +31,12 @@ const StatusSchema = z.object({
 const ComposeSchema = z.object({
   topic: z.string().min(3).max(500),
   tone: z.enum(["friendly", "professional", "bold", "playful"]).default("friendly"),
-  platform: z.enum(["instagram", "facebook"]).default("instagram"),
+  platform: z.enum(PLATFORMS).default("instagram"),
 });
 
 const SavePostSchema = z.object({
   caption: z.string().min(1).max(4000),
-  platform: z.enum(["instagram", "facebook"]),
+  platform: z.enum(PLATFORMS),
   accountId: z.string().uuid().optional(),
   scheduledAt: z.string().datetime().optional(),
 });
@@ -39,7 +49,9 @@ export const getSocialHub = createServerFn({ method: "GET" })
     const [accounts, interactions, posts] = await Promise.all([
       supabase
         .from("social_accounts")
-        .select("id, tenant_id, platform, label, external_id, active, last_synced_at, created_at")
+        .select(
+          "id, tenant_id, platform, label, external_id, active, last_synced_at, created_at, stats",
+        )
         .order("created_at", { ascending: true }),
       supabase
         .from("social_interactions")
@@ -110,6 +122,7 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
       .eq("id", data.id)
       .single();
     if (error || !account) throw new Error("Account not found");
+    type SocialPlatform = import("@/lib/social.server").SocialPlatform;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: secret } = await supabaseAdmin
@@ -123,7 +136,7 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     const result = await syncSocialAccount({
       id: account.id,
       tenant_id: account.tenant_id,
-      platform: account.platform as "instagram" | "facebook",
+      platform: account.platform as SocialPlatform,
       external_id: account.external_id,
       access_token: secret?.access_token ?? null,
     });
