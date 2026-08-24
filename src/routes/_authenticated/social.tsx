@@ -298,7 +298,7 @@ function AccountsCard({
   const remove = useServerFn(deleteSocialAccount);
   const sync = useServerFn(syncSocialAccountFn);
   const [form, setForm] = useState({
-    platform: "instagram" as "instagram" | "facebook",
+    platform: "instagram" as PlatformId,
     label: "",
     externalId: "",
     accessToken: "",
@@ -340,8 +340,8 @@ function AccountsCard({
         <div>
           <CardTitle className="text-base">Connected accounts</CardTitle>
           <CardDescription>
-            Link each client's Instagram professional account or Facebook Page with a Meta access
-            token, then sync to pull in comments, DMs and post stats.
+            Link Instagram, Facebook, YouTube, X, LinkedIn, TikTok and Google Business — then sync
+            to pull in comments, DMs, reviews, posts and audience stats.
           </CardDescription>
         </div>
         <Button size="sm" variant="outline" onClick={() => setShowForm((v) => !v)}>
@@ -355,16 +355,19 @@ function AccountsCard({
               <Label>Platform</Label>
               <Select
                 value={form.platform}
-                onValueChange={(v) =>
-                  setForm((f) => ({ ...f, platform: v as "instagram" | "facebook" }))
-                }
+                onValueChange={(v) => setForm((f) => ({ ...f, platform: v as PlatformId }))}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="instagram">Instagram</SelectItem>
-                  <SelectItem value="facebook">Facebook Page</SelectItem>
+                  {PLATFORMS.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="flex items-center gap-2">
+                        <p.icon className="size-3.5" /> {p.label}
+                      </span>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -377,22 +380,25 @@ function AccountsCard({
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Meta account ID</Label>
+              <Label>{platformMeta(form.platform).idLabel}</Label>
               <Input
-                placeholder="IG user ID or Page ID"
+                placeholder={platformMeta(form.platform).idPlaceholder}
                 value={form.externalId}
                 onChange={(e) => setForm((f) => ({ ...f, externalId: e.target.value }))}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Access token</Label>
+              <Label>{platformMeta(form.platform).tokenLabel}</Label>
               <Input
                 type="password"
-                placeholder="Long-lived Meta token"
+                placeholder={platformMeta(form.platform).tokenPlaceholder}
                 value={form.accessToken}
                 onChange={(e) => setForm((f) => ({ ...f, accessToken: e.target.value }))}
               />
             </div>
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              {platformMeta(form.platform).hint}
+            </p>
             <div className="sm:col-span-2">
               <Button
                 size="sm"
@@ -424,6 +430,7 @@ function AccountsCard({
                   <span className="truncate">{a.label}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
+                  {audienceStat(a.stats) ? `${audienceStat(a.stats)} · ` : ""}
                   {a.last_synced_at ? `Synced ${timeAgo(a.last_synced_at)}` : "Never synced"}
                 </p>
               </div>
