@@ -1173,35 +1173,44 @@ export type Database = {
         Row: {
           access_token: string
           active: boolean
+          alerts_enabled: boolean
           app_secret: string | null
           created_at: string
+          deliverability_min: number
           display_phone: string | null
           id: string
           is_default: boolean
           label: string
           phone_number_id: string
+          read_rate_min: number
         }
         Insert: {
           access_token: string
           active?: boolean
+          alerts_enabled?: boolean
           app_secret?: string | null
           created_at?: string
+          deliverability_min?: number
           display_phone?: string | null
           id?: string
           is_default?: boolean
           label: string
           phone_number_id: string
+          read_rate_min?: number
         }
         Update: {
           access_token?: string
           active?: boolean
+          alerts_enabled?: boolean
           app_secret?: string | null
           created_at?: string
+          deliverability_min?: number
           display_phone?: string | null
           id?: string
           is_default?: boolean
           label?: string
           phone_number_id?: string
+          read_rate_min?: number
         }
         Relationships: []
       }
