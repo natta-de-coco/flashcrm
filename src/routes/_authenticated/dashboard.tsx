@@ -161,16 +161,16 @@ function DashboardPage() {
   const loggedRef = useRef<Record<string, string>>({});
   useEffect(() => {
     const err = overview.error;
-    if (overview.isError && err && loggedRef.current.overview !== err.message) {
-      loggedRef.current.overview = err.message;
+    if (overview.isError && err && loggedRef.current["overview"] !== err.message) {
+      loggedRef.current["overview"] = err.message;
       logWidgetError("dashboard-overview", "getDashboardOverview", err);
     }
   }, [overview.isError, overview.error]);
 
   useEffect(() => {
     const err = metaHealth.error;
-    if (metaHealth.isError && err && loggedRef.current.meta !== err.message) {
-      loggedRef.current.meta = err.message;
+    if (metaHealth.isError && err && loggedRef.current["meta"] !== err.message) {
+      loggedRef.current["meta"] = err.message;
       logWidgetError("meta-sync", "getMetaSyncHealth", err);
     }
   }, [metaHealth.isError, metaHealth.error]);
@@ -386,10 +386,31 @@ function DashboardPage() {
       {/* WhatsApp & Meta sync */}
       <Card className="mt-4">
         <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-base">WhatsApp & Meta sync</CardTitle>
-          <Link to="/monitoring" className="text-xs font-medium text-brand hover:underline">
-            Full monitoring
-          </Link>
+          <div>
+            <CardTitle className="text-base">WhatsApp & Meta sync</CardTitle>
+            {metaUpdatedAt && (
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Updated {metaUpdatedAt}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="size-7"
+              aria-label="Refresh Meta sync health"
+              onClick={() => void metaHealth.refetch()}
+              disabled={metaHealth.isRefetching}
+            >
+              <RefreshCw
+                className={`size-3.5 ${metaHealth.isRefetching ? "animate-spin" : ""}`}
+              />
+            </Button>
+            <Link to="/monitoring" className="text-xs font-medium text-brand hover:underline">
+              Full monitoring
+            </Link>
+          </div>
         </CardHeader>
         <CardContent className="space-y-2">
           {metaHealth.isLoading ? (
