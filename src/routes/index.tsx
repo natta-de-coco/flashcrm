@@ -6,20 +6,43 @@ import { useEffect } from "react";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Flas CRM — WhatsApp Chat CRM & AI Chatbot" },
+      { title: "Flash CRM — WhatsApp Chat CRM & AI Chatbot" },
       {
         name: "description",
         content:
-          "Monitor WhatsApp chats, run an AI chatbot on your website, and manage leads in one shared team inbox.",
+          "Monitor WhatsApp chats, run an AI chatbot on your website, and manage leads in one shared team inbox. Free for one month, then $20/month.",
       },
-      { property: "og:title", content: "Flas CRM — WhatsApp Chat CRM & AI Chatbot" },
+      { property: "og:title", content: "Flash CRM — WhatsApp Chat CRM & AI Chatbot" },
       {
         property: "og:description",
         content:
           "Monitor WhatsApp chats, run an AI chatbot on your website, and manage leads in one shared team inbox.",
       },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "Flash CRM",
+          applicationCategory: "BusinessApplication",
+          operatingSystem: "Web",
+          description:
+            "WhatsApp CRM with a shared team inbox, AI chatbot, website lead capture plugins and marketing automation.",
+          offers: {
+            "@type": "Offer",
+            price: "20",
+            priceCurrency: "USD",
+            description: "One month free trial, then $20 per month.",
+          },
+        }),
+      },
     ],
   }),
+
   component: Landing,
 });
 

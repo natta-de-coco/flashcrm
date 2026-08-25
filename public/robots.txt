@@ -12,3 +12,19 @@ Allow: /
 
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /inbox
+Disallow: /contacts
+Disallow: /companies
+Disallow: /settings
+Disallow: /marketing
+Disallow: /social
+Disallow: /monitoring
+Disallow: /catalog
+Disallow: /content
+Disallow: /chatbot
+Disallow: /connect
+Disallow: /seo-blog
+
+Sitemap: /sitemap.xml
