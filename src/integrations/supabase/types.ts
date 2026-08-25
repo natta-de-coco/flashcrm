@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -583,6 +583,7 @@ export type Database = {
           match_value: string
           name: string
           priority: number
+          tenant_id: string | null
           updated_at: string
           wa_number_id: string
         }
@@ -594,6 +595,7 @@ export type Database = {
           match_value: string
           name: string
           priority?: number
+          tenant_id?: string | null
           updated_at?: string
           wa_number_id: string
         }
@@ -605,6 +607,7 @@ export type Database = {
           match_value?: string
           name?: string
           priority?: number
+          tenant_id?: string | null
           updated_at?: string
           wa_number_id?: string
         }
@@ -634,6 +637,7 @@ export type Database = {
           popup_greeting: string
           site_key: string
           status: string
+          tenant_id: string | null
           webhook_secret: string
         }
         Insert: {
@@ -651,6 +655,7 @@ export type Database = {
           popup_greeting?: string
           site_key?: string
           status?: string
+          tenant_id?: string | null
           webhook_secret?: string
         }
         Update: {
@@ -668,6 +673,7 @@ export type Database = {
           popup_greeting?: string
           site_key?: string
           status?: string
+          tenant_id?: string | null
           webhook_secret?: string
         }
         Relationships: []
@@ -1452,6 +1458,7 @@ export type Database = {
           label: string
           phone_number_id: string
           read_rate_min: number | null
+          tenant_id: string | null
         }
         Insert: {
           access_token: string
@@ -1466,6 +1473,7 @@ export type Database = {
           label: string
           phone_number_id: string
           read_rate_min?: number | null
+          tenant_id?: string | null
         }
         Update: {
           access_token?: string
@@ -1480,6 +1488,7 @@ export type Database = {
           label?: string
           phone_number_id?: string
           read_rate_min?: number | null
+          tenant_id?: string | null
         }
         Relationships: []
       }
