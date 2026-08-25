@@ -62,6 +62,7 @@ export async function resolveSite(siteKey: string, req: Request) {
 
 export type LeadSite = {
   id: string;
+  tenant_id: string | null;
   name: string;
   platform: string;
   domain: string | null;
@@ -78,9 +79,13 @@ export async function ingestPlatformLead(
   if (!payload.email) {
     throw new Error("Platform leads require an email address");
   }
+  if (!site.tenant_id) {
+    throw new Error("This site is not linked to a workspace yet");
+  }
   const { ingestLead } = await import("@/lib/leads.server");
 
   await ingestLead({
+    tenantId: site.tenant_id,
     siteId: site.id,
     sitePlatform: platform,
     email: payload.email,
@@ -90,6 +95,7 @@ export async function ingestPlatformLead(
     consent: payload.consent ?? false,
     tags: payload.tags ?? [],
   });
+
 
   const { logAudit } = await import("@/lib/audit.server");
   await logAudit({
