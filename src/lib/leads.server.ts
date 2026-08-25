@@ -39,6 +39,12 @@ export function routeLead(
 }
 
 export type IngestLeadInput = {
+  /**
+   * Owning company. Resolved from the site key server-side — never from the
+   * request body. Without it, rows land with a NULL tenant_id and RLS hides
+   * them from the company that captured the lead.
+   */
+  tenantId: string;
   siteId: string;
   sitePlatform: string;
   email: string;
@@ -52,18 +58,26 @@ export type IngestLeadInput = {
 /**
  * Creates/updates the contact + lead records, applies consent and routing
  * rules, and writes compliance audit entries. Returns nothing; throws on error.
+ *
+ * Every query is scoped to `input.tenantId`: this runs with the service-role
+ * client (RLS bypassed) because public webhooks have no user session, so
+ * tenant isolation has to be enforced here in code.
  */
 export async function ingestLead(input: IngestLeadInput): Promise<void> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  const tenantId = input.tenantId;
+  if (!tenantId) throw new Error("ingestLead requires a tenantId");
 
   const email = input.email.toLowerCase();
   const consented = input.consent === true;
   const consentAt = consented ? new Date().toISOString() : null;
 
-  // Contact record for the CRM pipeline
+  // Contact record for the CRM pipeline — deduped within this company only.
   const { data: existingContact } = await supabaseAdmin
     .from("contacts")
     .select("id")
+    .eq("tenant_id", tenantId)
     .eq("email", email)
     .maybeSingle();
 
@@ -72,6 +86,7 @@ export async function ingestLead(input: IngestLeadInput): Promise<void> {
     const { data: created } = await supabaseAdmin
       .from("contacts")
       .insert({
+        tenant_id: tenantId,
         email,
         name: input.name || email,
         phone: input.phone ?? null,
@@ -88,10 +103,12 @@ export async function ingestLead(input: IngestLeadInput): Promise<void> {
       .eq("id", contactId);
   }
 
-  // Routing: assign the lead to the right WhatsApp number via admin-defined rules
+  // Routing: assign the lead to the right WhatsApp number via admin-defined
+  // rules belonging to this company.
   const { data: rules } = await supabaseAdmin
     .from("lead_routing_rules")
     .select("id, match_field, match_value, wa_number_id")
+    .eq("tenant_id", tenantId)
     .eq("active", true)
     .order("priority", { ascending: true });
 
@@ -104,6 +121,7 @@ export async function ingestLead(input: IngestLeadInput): Promise<void> {
 
   const { error } = await supabaseAdmin.from("leads").upsert(
     {
+      tenant_id: tenantId,
       email,
       name: input.name ?? null,
       phone: input.phone ?? null,
@@ -116,9 +134,10 @@ export async function ingestLead(input: IngestLeadInput): Promise<void> {
       // Never downgrade an existing subscriber; only consent can subscribe.
       ...(consented ? { consent_given: true, consent_at: consentAt, subscribed: true } : {}),
     },
-    { onConflict: "email" },
+    { onConflict: "tenant_id,email" },
   );
   if (error) throw error;
+
 
   const { logAudit } = await import("@/lib/audit.server");
   if (consented) {
