@@ -40,8 +40,9 @@ export const Route = createFileRoute("/")({
           },
         }),
       },
-
+    ],
   }),
+
   component: Landing,
 });
 
