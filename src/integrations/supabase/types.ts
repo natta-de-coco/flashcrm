@@ -583,6 +583,7 @@ export type Database = {
           match_value: string
           name: string
           priority: number
+          tenant_id: string | null
           updated_at: string
           wa_number_id: string
         }
@@ -594,6 +595,7 @@ export type Database = {
           match_value: string
           name: string
           priority?: number
+          tenant_id?: string | null
           updated_at?: string
           wa_number_id: string
         }
@@ -605,6 +607,7 @@ export type Database = {
           match_value?: string
           name?: string
           priority?: number
+          tenant_id?: string | null
           updated_at?: string
           wa_number_id?: string
         }
@@ -1455,6 +1458,7 @@ export type Database = {
           label: string
           phone_number_id: string
           read_rate_min: number | null
+          tenant_id: string | null
         }
         Insert: {
           access_token: string
@@ -1469,6 +1473,7 @@ export type Database = {
           label: string
           phone_number_id: string
           read_rate_min?: number | null
+          tenant_id?: string | null
         }
         Update: {
           access_token?: string
@@ -1483,6 +1488,7 @@ export type Database = {
           label?: string
           phone_number_id?: string
           read_rate_min?: number | null
+          tenant_id?: string | null
         }
         Relationships: []
       }
