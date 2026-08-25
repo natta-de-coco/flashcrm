@@ -18,13 +18,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({
     meta: [
-      { title: "Leads & Marketing — Flas CRM" },
+      { title: "Leads & Marketing — Flash CRM" },
       {
         name: "description",
         content:
           "Collect email leads from WordPress and Shopify, then build marketing campaigns for your list.",
       },
-      { property: "og:title", content: "Leads & Marketing — Flas CRM" },
+      { property: "og:title", content: "Leads & Marketing — Flash CRM" },
       {
         property: "og:description",
         content: "WordPress and Shopify lead capture plus email marketing campaigns.",
@@ -494,7 +494,7 @@ function MarketingPage() {
                       snippet just before <code>&lt;/body&gt;</code>.
                     </>
                   )}{" "}
-                  The site registers itself with Flas CRM on first visit — then activate it with the
+                  The site registers itself with Flash CRM on first visit — then activate it with the
                   link above so the popup goes live.
                 </div>
                 <p className="text-xs text-muted-foreground">

@@ -27,13 +27,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/connect")({
   head: () => ({
     meta: [
-      { title: "Connect & setup — Flas CRM" },
+      { title: "Connect & setup — Flash CRM" },
       {
         name: "description",
         content:
           "Guided setup: connect WhatsApp, install the Flash plugin on WordPress or Shopify, and start capturing leads.",
       },
-      { property: "og:title", content: "Connect & setup — Flas CRM" },
+      { property: "og:title", content: "Connect & setup — Flash CRM" },
       {
         property: "og:description",
         content: "Step-by-step guide to syncing your website and WhatsApp with Flash CRM.",

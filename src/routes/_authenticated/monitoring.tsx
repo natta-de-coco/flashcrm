@@ -23,13 +23,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/monitoring")({
   head: () => ({
     meta: [
-      { title: "Webhook Monitoring — Flas CRM" },
+      { title: "Webhook Monitoring — Flash CRM" },
       {
         name: "description",
         content:
           "Live WhatsApp webhook delivery status with event logs, one-click retries and failure alerts.",
       },
-      { property: "og:title", content: "Webhook Monitoring — Flas CRM" },
+      { property: "og:title", content: "Webhook Monitoring — Flash CRM" },
       {
         property: "og:description",
         content: "Round-the-clock monitoring of WhatsApp webhook deliveries, retries and alerts.",

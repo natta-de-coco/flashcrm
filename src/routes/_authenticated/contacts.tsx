@@ -34,12 +34,12 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/contacts")({
   head: () => ({
     meta: [
-      { title: "Contacts & Leads — Flas CRM" },
+      { title: "Contacts & Leads — Flash CRM" },
       {
         name: "description",
         content: "Track every WhatsApp lead through your sales pipeline stages.",
       },
-      { property: "og:title", content: "Contacts & Leads — Flas CRM" },
+      { property: "og:title", content: "Contacts & Leads — Flash CRM" },
       {
         property: "og:description",
         content: "Track every WhatsApp lead through your sales pipeline stages.",

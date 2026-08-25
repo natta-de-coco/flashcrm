@@ -21,12 +21,12 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/chatbot")({
   head: () => ({
     meta: [
-      { title: "AI Chatbot — Flas CRM" },
+      { title: "AI Chatbot — Flash CRM" },
       {
         name: "description",
         content: "Configure your AI WhatsApp and website chatbot, greeting and handoff rules.",
       },
-      { property: "og:title", content: "AI Chatbot — Flas CRM" },
+      { property: "og:title", content: "AI Chatbot — Flash CRM" },
       {
         property: "og:description",
         content: "Configure your AI WhatsApp and website chatbot, greeting and handoff rules.",

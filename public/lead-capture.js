@@ -1,5 +1,5 @@
 /**
- * Flas CRM lead capture plugin.
+ * Flash CRM lead capture plugin.
  * Works on WordPress, Shopify or any website:
  *   <script src="https://YOUR-APP/lead-capture.js" data-site-key="YOUR_KEY" async></script>
  * Renders a signup form into any <div data-flas-leads></div>, and also captures
