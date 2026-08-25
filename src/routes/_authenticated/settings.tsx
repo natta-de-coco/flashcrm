@@ -21,12 +21,12 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
-      { title: "Settings — Flas CRM" },
+      { title: "Settings — Flash CRM" },
       {
         name: "description",
         content: "Connect WhatsApp Cloud API, embed the website chat widget and manage your team.",
       },
-      { property: "og:title", content: "Settings — Flas CRM" },
+      { property: "og:title", content: "Settings — Flash CRM" },
       {
         property: "og:description",
         content: "Connect WhatsApp Cloud API, embed the website chat widget and manage your team.",

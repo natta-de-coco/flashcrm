@@ -5,10 +5,10 @@ const VERSION = "1.0.0";
 function php(origin: string, siteKey: string, greeting: string): string {
   return `<?php
 /**
- * Plugin Name: Flas CRM Chat & Lead Capture
- * Description: Slide-in AI chatbot that collects WhatsApp numbers and emails, syncing every lead into Flas CRM.
+ * Plugin Name: Flash CRM Chat & Lead Capture
+ * Description: Slide-in AI chatbot that collects WhatsApp numbers and emails, syncing every lead into Flash CRM.
  * Version: ${VERSION}
- * Author: Flas CRM
+ * Author: Flash CRM
  * License: GPLv2 or later
  */
 
@@ -71,7 +71,7 @@ function flas_crm_enqueue() {
 }
 add_action('wp_enqueue_scripts', 'flas_crm_enqueue');
 
-/** Calls the Flas CRM activation endpoint so the workspace can approve this site. */
+/** Calls the Flash CRM activation endpoint so the workspace can approve this site. */
 function flas_crm_request_activation() {
   $options = flas_crm_options();
   $response = wp_remote_post(FLAS_CRM_APP . '/api/public/plugin/activate', array(
@@ -102,7 +102,7 @@ register_activation_hook(__FILE__, 'flas_crm_request_activation');
 
 /** Settings screen. */
 function flas_crm_menu() {
-  add_options_page('Flas CRM', 'Flas CRM', 'manage_options', 'flas-crm', 'flas_crm_settings_page');
+  add_options_page('Flash CRM', 'Flash CRM', 'manage_options', 'flas-crm', 'flas_crm_settings_page');
 }
 add_action('admin_menu', 'flas_crm_menu');
 
@@ -121,14 +121,14 @@ function flas_crm_settings_page() {
     $options['admin_email'] = sanitize_email(wp_unslash($_POST['admin_email'] ?? ''));
     update_option('flas_crm_options', $options);
     flas_crm_request_activation();
-    echo '<div class="notice notice-success"><p>Saved. Activation request sent to Flas CRM.</p></div>';
+    echo '<div class="notice notice-success"><p>Saved. Activation request sent to Flash CRM.</p></div>';
   }
 
   $options = flas_crm_options();
   $status  = get_option('flas_crm_status', array('state' => 'unknown', 'message' => ''));
   ?>
   <div class="wrap">
-    <h1>Flas CRM Chat &amp; Lead Capture</h1>
+    <h1>Flash CRM Chat &amp; Lead Capture</h1>
     <p>Status:
       <strong><?php echo esc_html($status['state']); ?></strong>
       <?php if (!empty($status['message'])) : ?>
@@ -161,7 +161,7 @@ function flas_crm_settings_page() {
 }
 
 function readme(origin: string): string {
-  return `=== Flas CRM Chat & Lead Capture ===
+  return `=== Flash CRM Chat & Lead Capture ===
 Requires at least: 5.6
 Tested up to: 6.6
 Stable tag: ${VERSION}
@@ -169,14 +169,14 @@ License: GPLv2 or later
 
 == Description ==
 Adds a slide-in AI chatbot to your WordPress site. Visitors leave their name,
-WhatsApp number and email before chatting, and every lead lands in Flas CRM
+WhatsApp number and email before chatting, and every lead lands in Flash CRM
 where your team can reply on WhatsApp or by email.
 
 == Installation ==
 1. In WordPress go to Plugins > Add New > Upload Plugin and choose this ZIP.
-2. Activate the plugin. It automatically asks Flas CRM to activate this site.
+2. Activate the plugin. It automatically asks Flash CRM to activate this site.
 3. Open the activation email sent to your admin address and click the link.
-4. Fine tune the launcher text and colours under Settings > Flas CRM.
+4. Fine tune the launcher text and colours under Settings > Flash CRM.
 
 Your workspace: ${origin}
 `;

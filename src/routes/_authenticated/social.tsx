@@ -52,13 +52,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/social")({
   head: () => ({
     meta: [
-      { title: "Social Hub — Flas CRM" },
+      { title: "Social Hub — Flash CRM" },
       {
         name: "description",
         content:
           "Manage Instagram and Facebook comments, DMs, content reach and audience from Flash CRM.",
       },
-      { property: "og:title", content: "Social Hub — Flas CRM" },
+      { property: "og:title", content: "Social Hub — Flash CRM" },
       {
         property: "og:description",
         content:

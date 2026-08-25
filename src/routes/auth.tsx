@@ -13,9 +13,9 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Sign in — Flas CRM" },
-      { name: "description", content: "Sign in to the Flas CRM WhatsApp team inbox." },
-      { property: "og:title", content: "Sign in — Flas CRM" },
+      { title: "Sign in — Flash CRM" },
+      { name: "description", content: "Sign in to the Flash CRM WhatsApp team inbox." },
+      { property: "og:title", content: "Sign in — Flash CRM" },
       { property: "og:description", content: "Access your WhatsApp inbox, contacts and chatbot." },
       { name: "robots", content: "noindex" },
     ],
@@ -113,7 +113,7 @@ function AuthPage() {
       <div className="hidden flex-col justify-between bg-sidebar p-12 text-sidebar-foreground lg:flex">
         <div className="flex items-center gap-3 text-lg font-bold">
           <FlashLogoBadge className="size-11" />
-          Flas CRM
+          Flash CRM
         </div>
         <div className="space-y-4">
           <h1 className="text-4xl font-extrabold leading-tight">

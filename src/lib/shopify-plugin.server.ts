@@ -4,7 +4,7 @@ const VERSION = "1.0.0";
 
 function popupSnippet(origin: string, siteKey: string, greeting: string): string {
   return `{% comment %}
-  Flas CRM popup chatbot v${VERSION}
+  Flash CRM popup chatbot v${VERSION}
   Renders the slide-in AI chatbot that collects WhatsApp numbers and emails.
   Add {% render 'flas-crm-popup' %} just before </body> in layout/theme.liquid.
 {% endcomment %}
@@ -23,7 +23,7 @@ function popupSnippet(origin: string, siteKey: string, greeting: string): string
 
 function leadSection(origin: string, siteKey: string): string {
   return `{% comment %}
-  Flas CRM lead capture section v${VERSION}
+  Flash CRM lead capture section v${VERSION}
   Inline email / WhatsApp signup form. Add it from the theme editor
   (Customize -> Add section -> Flas lead capture) on any template.
 {% endcomment %}
@@ -58,12 +58,12 @@ function leadSection(origin: string, siteKey: string): string {
 }
 
 function install(origin: string, siteKey: string): string {
-  return `=== Flas CRM for Shopify === v${VERSION}
+  return `=== Flash CRM for Shopify === v${VERSION}
 
 What you get
 ------------
 1. A slide-in AI chatbot that asks visitors for their name, WhatsApp number
-   and email, then chats with them and files every lead into Flas CRM.
+   and email, then chats with them and files every lead into Flash CRM.
 2. An optional inline signup section for newsletters and offers.
 
 Install (2 minutes)
@@ -82,11 +82,11 @@ Install (2 minutes)
    paste sections/flas-lead-capture.liquid and save. You can now add the
    "Flas lead capture" block from the theme editor on any page.
 5. Open your storefront. The chat launcher appears bottom-right and your
-   shop registers itself with Flas CRM automatically.
+   shop registers itself with Flash CRM automatically.
 
 Go live
 -------
-6. In Flas CRM open Leads & Marketing, pick this site and either click
+6. In Flash CRM open Leads & Marketing, pick this site and either click
    "Activate now" (admins) or copy the activation link and open it once.
    Until the site is activated the popup collects nothing.
 

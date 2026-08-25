@@ -98,7 +98,7 @@ function Landing() {
           <span className="grid size-8 place-items-center rounded-lg bg-brand text-brand-foreground">
             <MessageSquare className="size-4" />
           </span>
-          Flas CRM
+          Flash CRM
         </span>
         <Button asChild size="sm">
           <Link to="/auth">Open app</Link>
@@ -144,7 +144,7 @@ function Landing() {
       </main>
 
       <footer className="border-t py-6 text-center text-xs text-muted-foreground">
-        Flas CRM · WhatsApp monitoring, AI chatbot and lead pipeline in one workspace.
+        Flash CRM · WhatsApp monitoring, AI chatbot and lead pipeline in one workspace.
       </footer>
     </div>
   );

@@ -33,6 +33,8 @@ import {
   Sparkles,
   Tag,
   X,
+  ChevronLeft,
+  Settings2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -40,9 +42,9 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/inbox")({
   head: () => ({
     meta: [
-      { title: "Inbox — Flas CRM" },
+      { title: "Inbox — Flash CRM" },
       { name: "description", content: "Monitor and reply to WhatsApp and website chats live." },
-      { property: "og:title", content: "Inbox — Flas CRM" },
+      { property: "og:title", content: "Inbox — Flash CRM" },
       { property: "og:description", content: "Live shared inbox for WhatsApp and website chats." },
     ],
   }),
@@ -53,6 +55,7 @@ function InboxPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [showTools, setShowTools] = useState(false);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
@@ -186,8 +189,13 @@ function InboxPage() {
 
   const active = list.find((c) => c.id === activeId) ?? null;
 
+  // Auto-open the newest thread on desktop only. On mobile the list is a full
+  // screen of its own, so auto-selecting would trap the user inside a chat.
   useEffect(() => {
-    if (!activeId && list.length) setActiveId(list[0]!.id);
+    if (activeId || !list.length) return;
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(min-width: 1024px)").matches) return;
+    setActiveId(list[0]!.id);
   }, [activeId, list]);
 
   useEffect(() => {
@@ -397,9 +405,14 @@ function InboxPage() {
 
 
   return (
-    <div className="flex h-[calc(100vh-0px)] min-h-0 flex-1">
+    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 lg:h-[100dvh]">
       {/* Conversation list */}
-      <div className="flex w-full max-w-sm shrink-0 flex-col border-r bg-card">
+      <div
+        className={cn(
+          "w-full shrink-0 flex-col border-r bg-card lg:flex lg:max-w-sm",
+          active ? "hidden" : "flex",
+        )}
+      >
         <div className="space-y-3 border-b p-4">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-bold">Inbox</h1>
@@ -500,22 +513,47 @@ function InboxPage() {
       </div>
 
       {/* Chat pane */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div
+        className={cn(
+          "min-w-0 flex-1 flex-col lg:flex",
+          active ? "flex" : "hidden",
+        )}
+      >
         {!active ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
             Select a conversation to start monitoring.
           </div>
         ) : (
           <>
-            <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-5 py-3">
-              <div className="min-w-0">
-                <h2 className="truncate font-semibold">{active.contacts?.name}</h2>
-                <p className="truncate text-xs text-muted-foreground">
-                  {active.contacts?.phone ?? "Website visitor"}
-                  {active.contacts?.company ? ` · ${active.contacts.company}` : ""}
-                </p>
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-3 lg:px-5">
+              <div className="flex min-w-0 items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="-ml-2 shrink-0 lg:hidden"
+                  onClick={() => setActiveId(null)}
+                  aria-label="Back to conversations"
+                >
+                  <ChevronLeft className="size-5" />
+                </Button>
+                <div className="min-w-0">
+                  <h2 className="truncate font-semibold">{active.contacts?.name}</h2>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {active.contacts?.phone ?? "Website visitor"}
+                    {active.contacts?.company ? ` · ${active.contacts.company}` : ""}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-1 flex-wrap items-center justify-end gap-2 lg:gap-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="lg:hidden"
+                  onClick={() => setShowTools((v) => !v)}
+                  aria-expanded={showTools}
+                >
+                  <Settings2 className="size-4" /> Tools
+                </Button>
                 <label className="flex items-center gap-2 text-xs font-medium">
                   <Switch
                     checked={active.bot_enabled}
@@ -565,7 +603,12 @@ function InboxPage() {
             </header>
 
             {/* Thread tools: tags, templates, follow-up reminders */}
-            <div className="space-y-3 border-b bg-card px-5 py-3">
+            <div
+              className={cn(
+                "space-y-3 border-b bg-card px-4 py-3 lg:block lg:px-5",
+                showTools ? "block" : "hidden",
+              )}
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <Tag className="size-4 text-muted-foreground" />
                 {(active.tags ?? []).map((tag) => (

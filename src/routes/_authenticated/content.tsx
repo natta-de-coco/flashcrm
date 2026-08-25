@@ -15,13 +15,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/content")({
   head: () => ({
     meta: [
-      { title: "Content & SEO — Flas CRM" },
+      { title: "Content & SEO — Flash CRM" },
       {
         name: "description",
         content:
           "Draft, schedule and publish content across platforms with SEO title, description and keyword metadata.",
       },
-      { property: "og:title", content: "Content & SEO — Flas CRM" },
+      { property: "og:title", content: "Content & SEO — Flash CRM" },
       {
         property: "og:description",
         content: "Multi-platform content scheduling with built-in SEO metadata.",
