@@ -39,12 +39,14 @@ export const Route = createFileRoute("/api/public/leads/collect")({
 
           const { data: site } = await supabaseAdmin
             .from("lead_sites")
-            .select("id, platform, active, status, domain")
+            .select("id, tenant_id, platform, active, status, domain")
             .eq("site_key", parsed.siteKey)
             .maybeSingle();
 
-          if (!site || !site.active) {
-            return new Response(JSON.stringify({ error: "Unknown site key" }), {
+          // `active` is the kill switch; `status` is the activation state machine
+          // (pending -> active -> revoked). A site only collects once activated.
+          if (!site || !site.active || site.status !== "active" || !site.tenant_id) {
+            return new Response(JSON.stringify({ error: "Unknown or inactive site key" }), {
               status: 401,
               headers: corsHeaders,
             });
@@ -64,6 +66,7 @@ export const Route = createFileRoute("/api/public/leads/collect")({
 
           const { ingestLead } = await import("@/lib/leads.server");
           await ingestLead({
+            tenantId: site.tenant_id,
             siteId: site.id,
             sitePlatform: site.platform,
             email: parsed.email,
@@ -73,6 +76,7 @@ export const Route = createFileRoute("/api/public/leads/collect")({
             consent: parsed.consent === true,
             tags: parsed.tags ?? [],
           });
+
 
           return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
         } catch (error) {
