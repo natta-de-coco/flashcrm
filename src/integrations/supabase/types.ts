@@ -634,6 +634,7 @@ export type Database = {
           popup_greeting: string
           site_key: string
           status: string
+          tenant_id: string | null
           webhook_secret: string
         }
         Insert: {
@@ -651,6 +652,7 @@ export type Database = {
           popup_greeting?: string
           site_key?: string
           status?: string
+          tenant_id?: string | null
           webhook_secret?: string
         }
         Update: {
@@ -668,6 +670,7 @@ export type Database = {
           popup_greeting?: string
           site_key?: string
           status?: string
+          tenant_id?: string | null
           webhook_secret?: string
         }
         Relationships: []
