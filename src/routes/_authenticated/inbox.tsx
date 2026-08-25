@@ -54,6 +54,7 @@ function InboxPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [showTools, setShowTools] = useState(false);
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
@@ -537,7 +538,16 @@ function InboxPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex flex-1 flex-wrap items-center justify-end gap-2 lg:gap-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="lg:hidden"
+                  onClick={() => setShowTools((v) => !v)}
+                  aria-expanded={showTools}
+                >
+                  <Settings2 className="size-4" /> Tools
+                </Button>
                 <label className="flex items-center gap-2 text-xs font-medium">
                   <Switch
                     checked={active.bot_enabled}
@@ -587,7 +597,12 @@ function InboxPage() {
             </header>
 
             {/* Thread tools: tags, templates, follow-up reminders */}
-            <div className="space-y-3 border-b bg-card px-5 py-3">
+            <div
+              className={cn(
+                "space-y-3 border-b bg-card px-4 py-3 lg:block lg:px-5",
+                showTools ? "block" : "hidden",
+              )}
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <Tag className="size-4 text-muted-foreground" />
                 {(active.tags ?? []).map((tag) => (
