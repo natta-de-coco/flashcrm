@@ -189,8 +189,13 @@ function InboxPage() {
 
   const active = list.find((c) => c.id === activeId) ?? null;
 
+  // Auto-open the newest thread on desktop only. On mobile the list is a full
+  // screen of its own, so auto-selecting would trap the user inside a chat.
   useEffect(() => {
-    if (!activeId && list.length) setActiveId(list[0]!.id);
+    if (activeId || !list.length) return;
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(min-width: 1024px)").matches) return;
+    setActiveId(list[0]!.id);
   }, [activeId, list]);
 
   useEffect(() => {
