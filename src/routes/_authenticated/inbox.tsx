@@ -437,8 +437,39 @@ function InboxPage() {
         )}
       >
         <div className="space-y-3 border-b p-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold">Inbox</h1>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="text-lg font-bold">Inbox</h1>
+              <span
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                  liveStatus === "live"
+                    ? "border-brand/30 bg-brand/10 text-brand"
+                    : liveStatus === "connecting"
+                      ? "border-border bg-muted text-muted-foreground"
+                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                )}
+                title={
+                  liveStatus === "live"
+                    ? lastEventAt
+                      ? `Live · last update ${new Date(lastEventAt).toLocaleTimeString()}`
+                      : "Live — new messages arrive instantly"
+                    : "Reconnecting — checking for new messages every 10 seconds"
+                }
+              >
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    liveStatus === "live"
+                      ? "animate-pulse bg-brand"
+                      : liveStatus === "connecting"
+                        ? "bg-muted-foreground"
+                        : "bg-destructive",
+                  )}
+                />
+                {liveStatus === "live" ? "Live" : liveStatus === "connecting" ? "Connecting" : "Polling"}
+              </span>
+            </div>
             <Button
               variant="ghost"
               size="sm"
