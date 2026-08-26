@@ -49,41 +49,34 @@ export const Route = createFileRoute("/_authenticated")({
  */
 const NAV_SECTIONS = [
   {
-    title: "Chats",
+    title: "Main",
     items: [
+      { to: "/dashboard", label: "Home", desc: "Live pulse of every channel", icon: LayoutDashboard },
       { to: "/inbox", label: "Inbox", desc: "WhatsApp & website chats", icon: Inbox },
-      { to: "/social", label: "Social Hub", desc: "IG, FB, YouTube, X & more", icon: Megaphone },
-      { to: "/chatbot", label: "Chatbot", desc: "AI auto-replies", icon: Bot },
-    ],
-  },
-  {
-    title: "Overview",
-    items: [
-      { to: "/dashboard", label: "Dashboard", desc: "Live pulse of every channel", icon: LayoutDashboard },
-      { to: "/monitoring", label: "Monitoring", desc: "Alerts, webhooks & Meta health", icon: Activity },
-    ],
-  },
-  {
-    title: "Grow",
-    items: [
       { to: "/contacts", label: "Contacts", desc: "People & pipeline", icon: Users },
       { to: "/marketing", label: "Leads & Marketing", desc: "Capture, consent, campaigns", icon: Mail },
-      { to: "/catalog", label: "Product Catalog", desc: "What you sell", icon: Package },
+      { to: "/social", label: "Social Hub", desc: "IG, FB, YouTube, X & more", icon: Megaphone },
       { to: "/content", label: "Content & SEO", desc: "Posts & articles", icon: FileText },
       { to: "/seo-blog", label: "SEO Studio", desc: "Image-to-post AI studio", icon: Sparkles },
     ],
   },
   {
-    title: "Manage",
-    items: [{ to: "/settings", label: "Settings", desc: "Numbers, keys & team", icon: Settings }],
+    title: "Business",
+    items: [
+      { to: "/catalog", label: "Products", desc: "What you sell", icon: Package },
+      { to: "/chatbot", label: "Chatbot", desc: "AI auto-replies", icon: Bot },
+    ],
   },
   {
-    title: "Setup",
+    title: "System",
     items: [
-      { to: "/connect", label: "Connect & setup", desc: "Link WhatsApp & your website", icon: Plug },
+      { to: "/monitoring", label: "Monitoring", desc: "Alerts, webhooks & Meta health", icon: Activity },
+      { to: "/connect", label: "Integrations", desc: "Link WhatsApp & your website", icon: Plug },
+      { to: "/settings", label: "Settings", desc: "Numbers, keys, billing & team", icon: Settings },
     ],
   },
 ] as const;
+
 
 const MANAGER_SECTION = {
   title: "Manager",
