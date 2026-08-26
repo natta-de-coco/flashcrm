@@ -10,7 +10,10 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { getDashboardOverview } from "@/lib/dashboard.functions";
+import { getDailyBrief } from "@/lib/brief.functions";
+import type { BusinessHealth, Trend } from "@/lib/dashboard.server";
 import { getMetaSyncHealth } from "@/lib/meta-health.functions";
 import { usePersistentTimestamp } from "@/hooks/usePersistentTimestamp";
 import { logWidgetError } from "@/lib/widget-error-log";
@@ -29,7 +32,10 @@ import {
   MessageSquare,
   Music2,
   RefreshCw,
+  Sparkles,
   Store,
+  TrendingDown,
+  TrendingUp,
   Twitter,
   Users,
   XCircle,
@@ -139,6 +145,72 @@ function ListSkeleton({ rows = 4 }: { rows?: number }) {
   );
 }
 
+/** Week-over-week change pill: up is good, flat and unknown stay neutral. */
+function TrendPill({ trend, label }: { trend?: Trend | undefined; label?: string | undefined }) {
+  if (!trend) return null;
+  if (trend.changePct === null) {
+    return (
+      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+        {trend.current} {label ?? "this week"}
+      </p>
+    );
+  }
+  const up = trend.changePct >= 0;
+  const Icon = up ? TrendingUp : TrendingDown;
+  return (
+    <p
+      className={`mt-1 flex items-center gap-1 truncate text-[11px] ${
+        up ? "text-brand" : "text-destructive"
+      }`}
+    >
+      <Icon className="size-3 shrink-0" />
+      {up ? "+" : ""}
+      {trend.changePct}%
+      <span className="truncate text-muted-foreground">{label ?? "vs last week"}</span>
+    </p>
+  );
+}
+
+/** Business Health Score: one weighted number plus the factors behind it. */
+function HealthCard({ health }: { health: BusinessHealth }) {
+  const tone =
+    health.score >= 85
+      ? "text-brand"
+      : health.score >= 70
+        ? "text-brand"
+        : health.score >= 50
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-destructive";
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between">
+        <div>
+          <CardTitle className="text-base">Business health score</CardTitle>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Responsiveness, inbox, leads, social and compliance combined.
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className={`text-3xl font-bold leading-none ${tone}`}>{health.score}</p>
+          <p className="text-[11px] text-muted-foreground">{health.grade}</p>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {health.factors.map((f) => (
+          <div key={f.key}>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium">{f.label}</span>
+              <span className="text-muted-foreground">{f.score}/100</span>
+            </div>
+            <Progress value={f.score} className="mt-1 h-1.5" />
+            <p className="mt-1 truncate text-[11px] text-muted-foreground">{f.detail}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function DashboardPage() {
   const overviewFn = useServerFn(getDashboardOverview);
   const overview = useQuery({
@@ -161,6 +233,18 @@ function DashboardPage() {
     refetchOnWindowFocus: true,
     retry: 2,
     placeholderData: keepPreviousData,
+  });
+
+  // Flash AI daily brief — costs a model call, so it's generated on demand
+  // and cached for the session rather than polled.
+  const briefFn = useServerFn(getDailyBrief);
+  const brief = useQuery({
+    queryKey: ["dashboard-daily-brief"],
+    queryFn: () => briefFn(),
+    staleTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 0,
+    enabled: false,
   });
 
   // Widget error logging — report each distinct failure once per message so
@@ -200,10 +284,34 @@ function DashboardPage() {
 
   const data = overview.data;
   const stats = [
-    { label: "Open conversations", value: data?.stats.open ?? 0, icon: Inbox },
-    { label: "Unread messages", value: data?.stats.unread ?? 0, icon: MessageSquare },
-    { label: "Contacts", value: data?.stats.contacts ?? 0, icon: Users },
-    { label: "Bot replies", value: data?.stats.botReplies ?? 0, icon: Bot },
+    {
+      label: "Open conversations",
+      value: data?.stats.open ?? 0,
+      icon: Inbox,
+      trend: data?.trends.inbound,
+      trendLabel: "inbound vs last week",
+    },
+    {
+      label: "Unread messages",
+      value: data?.stats.unread ?? 0,
+      icon: MessageSquare,
+      trend: undefined,
+      trendLabel: undefined,
+    },
+    {
+      label: "Contacts",
+      value: data?.stats.contacts ?? 0,
+      icon: Users,
+      trend: data?.trends.leads,
+      trendLabel: "new leads vs last week",
+    },
+    {
+      label: "Bot replies",
+      value: data?.stats.botReplies ?? 0,
+      icon: Bot,
+      trend: data?.trends.replies,
+      trendLabel: "replies sent vs last week",
+    },
   ];
 
   return (
@@ -255,12 +363,85 @@ function DashboardPage() {
                 <div className="min-w-0">
                   <p className="text-2xl font-bold leading-none">{s.value}</p>
                   <p className="truncate text-xs text-muted-foreground">{s.label}</p>
+                  <TrendPill trend={s.trend} label={s.trendLabel} />
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      {/* Flash AI daily brief + business health score */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex-row items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="size-4 text-brand" /> Flash AI daily brief
+              </CardTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                What changed this week and the three things worth doing today.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 gap-1.5"
+              onClick={() => void brief.refetch()}
+              disabled={brief.isFetching}
+            >
+              <RefreshCw className={`size-3.5 ${brief.isFetching ? "animate-spin" : ""}`} />
+              {brief.data ? "Regenerate" : "Generate brief"}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {brief.isFetching ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-56" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+            ) : brief.isError ? (
+              <WidgetError message={brief.error.message} onRetry={() => brief.refetch()} />
+            ) : brief.data ? (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold">{brief.data.headline}</p>
+                <p className="text-sm text-muted-foreground">{brief.data.summary}</p>
+                {brief.data.actions.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {brief.data.actions.map((a) => (
+                      <li key={a} className="flex items-start gap-2 text-sm">
+                        <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                        <span>{a}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Generated {new Date(brief.data.generatedAt).toLocaleTimeString()}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Ask Flash AI to read this week's numbers and tell you where to focus.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {overview.isLoading || !data ? (
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </CardContent>
+          </Card>
+        ) : (
+          <HealthCard health={data.health} />
+        )}
+      </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         {/* 7-day activity chart */}

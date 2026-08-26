@@ -22,9 +22,40 @@ export type RecentConversation = {
   lastMessageAt: string;
 };
 
+export type Trend = {
+  /** This period's value (last 7 days). */
+  current: number;
+  /** Previous 7-day period, for comparison. */
+  previous: number;
+  /** Percent change, null when the previous period was zero. */
+  changePct: number | null;
+};
+
+export type HealthFactor = {
+  key: string;
+  label: string;
+  /** 0-100 sub-score. */
+  score: number;
+  detail: string;
+};
+
+export type BusinessHealth = {
+  /** Weighted 0-100 overall score. */
+  score: number;
+  grade: "Excellent" | "Good" | "Needs work" | "At risk";
+  factors: HealthFactor[];
+};
+
 export type DashboardOverview = {
   stats: { open: number; unread: number; contacts: number; botReplies: number };
   activity: { buckets: DayBucket[]; weekTotal: number; todayTotal: number };
+  trends: {
+    messages: Trend;
+    inbound: Trend;
+    leads: Trend;
+    replies: Trend;
+  };
+  health: BusinessHealth;
   social: {
     accounts: SocialPulseAccount[];
     pendingTotal: number;
@@ -33,6 +64,14 @@ export type DashboardOverview = {
   };
   recentConversations: RecentConversation[];
 };
+
+function trend(current: number, previous: number): Trend {
+  return {
+    current,
+    previous,
+    changePct: previous > 0 ? Math.round(((current - previous) / previous) * 100) : null,
+  };
+}
 
 function dayKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -66,8 +105,12 @@ export async function getDashboardOverviewData(
   const weekStart = new Date();
   weekStart.setHours(0, 0, 0, 0);
   weekStart.setDate(weekStart.getDate() - 6);
+  // Previous comparison window starts 7 days before the current one.
+  const priorStart = new Date(weekStart);
+  priorStart.setDate(priorStart.getDate() - 7);
 
-  const [convs, contacts, msgs, weekMsgs, accounts, interactions] = await Promise.all([
+  const [convs, contacts, msgs, weekMsgs, accounts, interactions, leadRows] =
+    await Promise.all([
     supabase
       .from("conversations")
       .select(
@@ -80,8 +123,8 @@ export async function getDashboardOverviewData(
     supabase
       .from("messages")
       .select("id, sender, created_at")
-      .gte("created_at", weekStart.toISOString())
-      .limit(5000),
+      .gte("created_at", priorStart.toISOString())
+      .limit(10000),
     supabase
       .from("social_accounts")
       .select("id, platform, label, active, last_synced_at, stats"),
@@ -90,6 +133,11 @@ export async function getDashboardOverviewData(
       .select("id, account_id, kind, status, created_at")
       .order("created_at", { ascending: false })
       .limit(500),
+    supabase
+      .from("leads")
+      .select("id, created_at, consent_given")
+      .gte("created_at", priorStart.toISOString())
+      .limit(5000),
   ]);
 
   const firstError =
@@ -98,15 +146,24 @@ export async function getDashboardOverviewData(
     msgs.error ??
     weekMsgs.error ??
     accounts.error ??
-    interactions.error;
+    interactions.error ??
+    leadRows.error;
   if (firstError) throw new Error(firstError.message);
 
   const conversations = convs.data ?? [];
   const contactRows = contacts.data ?? [];
   const messageRows = msgs.data ?? [];
-  const weekMessageRows = weekMsgs.data ?? [];
+  const fortnightMessageRows = weekMsgs.data ?? [];
+  const weekStartMs = weekStart.getTime();
+  const weekMessageRows = fortnightMessageRows.filter(
+    (m) => new Date(m.created_at).getTime() >= weekStartMs,
+  );
+  const priorMessageRows = fortnightMessageRows.filter(
+    (m) => new Date(m.created_at).getTime() < weekStartMs,
+  );
   const accountRows = accounts.data ?? [];
   const interactionRows = interactions.data ?? [];
+  const leads = leadRows.data ?? [];
 
   // ---- 7-day activity buckets (received vs sent) ----
   const buckets: DayBucket[] = [];
@@ -161,14 +218,91 @@ export async function getDashboardOverviewData(
     return sum + (s["followers"] ?? s["subscribers"] ?? 0);
   }, 0);
 
+  // ---- Week-over-week trends ----
+  const inboundNow = weekMessageRows.filter((m) => m.sender === "contact").length;
+  const inboundPrev = priorMessageRows.filter((m) => m.sender === "contact").length;
+  const repliesNow = weekMessageRows.length - inboundNow;
+  const repliesPrev = priorMessageRows.length - inboundPrev;
+  const leadsNow = leads.filter(
+    (l) => new Date(l.created_at).getTime() >= weekStartMs,
+  ).length;
+  const leadsPrev = leads.length - leadsNow;
+
+  const trends = {
+    messages: trend(weekMessageRows.length, priorMessageRows.length),
+    inbound: trend(inboundNow, inboundPrev),
+    leads: trend(leadsNow, leadsPrev),
+    replies: trend(repliesNow, repliesPrev),
+  };
+
+  // ---- Business Health Score ----
+  const unreadTotal = conversations.reduce((sum, c) => sum + (c.unread_count ?? 0), 0);
+  const responsiveness =
+    inboundNow === 0 ? 70 : Math.max(0, Math.min(100, Math.round((repliesNow / inboundNow) * 100)));
+  const inboxHygiene = Math.max(0, 100 - unreadTotal * 5);
+  const pipeline = Math.min(100, leadsNow * 10);
+  const socialPresence = accountRows.length === 0
+    ? 0
+    : Math.min(100, Math.round((accountRows.filter((a) => a.active).length / accountRows.length) * 60) + Math.min(40, interactions7d * 4));
+  const consentRate = leads.length === 0
+    ? 60
+    : Math.round((leads.filter((l) => l.consent_given).length / leads.length) * 100);
+
+  const factors: HealthFactor[] = [
+    {
+      key: "responsiveness",
+      label: "Responsiveness",
+      score: responsiveness,
+      detail: `${repliesNow} replies to ${inboundNow} inbound messages this week`,
+    },
+    {
+      key: "inbox",
+      label: "Inbox hygiene",
+      score: inboxHygiene,
+      detail: unreadTotal === 0 ? "No unread messages" : `${unreadTotal} unread messages waiting`,
+    },
+    {
+      key: "pipeline",
+      label: "Lead flow",
+      score: pipeline,
+      detail: `${leadsNow} new leads in the last 7 days`,
+    },
+    {
+      key: "social",
+      label: "Social presence",
+      score: socialPresence,
+      detail:
+        accountRows.length === 0
+          ? "No social accounts connected"
+          : `${accountRows.filter((a) => a.active).length}/${accountRows.length} accounts active · ${interactions7d} interactions`,
+    },
+    {
+      key: "consent",
+      label: "Marketing compliance",
+      score: consentRate,
+      detail:
+        leads.length === 0
+          ? "No leads captured yet"
+          : `${consentRate}% of recent leads gave marketing consent`,
+    },
+  ];
+
+  const score = Math.round(
+    factors.reduce((sum, f) => sum + f.score, 0) / factors.length,
+  );
+  const grade: BusinessHealth["grade"] =
+    score >= 85 ? "Excellent" : score >= 70 ? "Good" : score >= 50 ? "Needs work" : "At risk";
+
   return {
     stats: {
       open: conversations.filter((c) => c.status === "open").length,
-      unread: conversations.reduce((sum, c) => sum + (c.unread_count ?? 0), 0),
+      unread: unreadTotal,
       contacts: contactRows.length,
       botReplies: messageRows.filter((m) => m.sender === "bot").length,
     },
     activity: { buckets, weekTotal, todayTotal },
+    trends,
+    health: { score, grade, factors },
     social: {
       accounts: pulseAccounts,
       pendingTotal,
