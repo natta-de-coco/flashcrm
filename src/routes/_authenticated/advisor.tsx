@@ -13,6 +13,8 @@ import {
   runAdvisorAnalysis,
   saveAdvisorContext,
 } from "@/lib/advisor.functions";
+import { FollowUpCard } from "@/components/advisor/FollowUpCard";
+import { KpiTargetsCard } from "@/components/advisor/KpiTargetsCard";
 import type { AdvisorAnalysis } from "@/lib/advisor.server";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -21,6 +23,7 @@ import {
   AlertTriangle,
   Briefcase,
   CalendarClock,
+  FileDown,
   Globe2,
   Lightbulb,
   MapPin,
@@ -395,6 +398,10 @@ function AdvisorPage() {
               </Section>
             ) : null}
           </div>
+
+          <KpiTargetsCard />
+
+          <FollowUpCard />
 
           <Card>
             <CardHeader>
