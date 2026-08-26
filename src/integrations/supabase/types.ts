@@ -462,6 +462,44 @@ export type Database = {
           },
         ]
       }
+      daily_briefs: {
+        Row: {
+          actions: Json
+          brief_date: string
+          created_at: string
+          headline: string
+          id: string
+          summary: string
+          tenant_id: string
+        }
+        Insert: {
+          actions?: Json
+          brief_date?: string
+          created_at?: string
+          headline: string
+          id?: string
+          summary: string
+          tenant_id: string
+        }
+        Update: {
+          actions?: Json
+          brief_date?: string
+          created_at?: string
+          headline?: string
+          id?: string
+          summary?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_briefs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       deletion_requests: {
         Row: {
           created_at: string

@@ -17,7 +17,7 @@ import type { BusinessHealth, Trend } from "@/lib/dashboard.server";
 import { getMetaSyncHealth } from "@/lib/meta-health.functions";
 import { usePersistentTimestamp } from "@/hooks/usePersistentTimestamp";
 import { logWidgetError } from "@/lib/widget-error-log";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useRef } from "react";
@@ -235,17 +235,24 @@ function DashboardPage() {
     placeholderData: keepPreviousData,
   });
 
-  // Flash AI daily brief — costs a model call, so it's generated on demand
-  // and cached for the session rather than polled.
+  // Flash AI daily brief — generated once per day per workspace on the server and
+  // reused on every refresh, so loading it on mount costs at most one model call a day.
   const briefFn = useServerFn(getDailyBrief);
   const brief = useQuery({
     queryKey: ["dashboard-daily-brief"],
-    queryFn: () => briefFn(),
-    staleTime: 30 * 60_000,
+    queryFn: () => briefFn({ data: {} }),
+    staleTime: 60 * 60_000,
     refetchOnWindowFocus: false,
     retry: 0,
-    enabled: false,
   });
+  const qc = useQueryClient();
+  const regenerateBrief = useMutation({
+    mutationFn: () => briefFn({ data: { force: true } }),
+    onSuccess: (data) => {
+      qc.setQueryData(["dashboard-daily-brief"], data);
+    },
+  });
+  const briefBusy = brief.isFetching || regenerateBrief.isPending;
 
   // Widget error logging — report each distinct failure once per message so
   // slow/flaky endpoints are visible in function logs and the audit trail.
@@ -387,15 +394,15 @@ function DashboardPage() {
               size="sm"
               variant="outline"
               className="shrink-0 gap-1.5"
-              onClick={() => void brief.refetch()}
-              disabled={brief.isFetching}
+              onClick={() => regenerateBrief.mutate()}
+              disabled={briefBusy}
             >
-              <RefreshCw className={`size-3.5 ${brief.isFetching ? "animate-spin" : ""}`} />
+              <RefreshCw className={`size-3.5 ${briefBusy ? "animate-spin" : ""}`} />
               {brief.data ? "Regenerate" : "Generate brief"}
             </Button>
           </CardHeader>
           <CardContent>
-            {brief.isFetching ? (
+            {briefBusy ? (
               <div className="space-y-2">
                 <Skeleton className="h-4 w-56" />
                 <Skeleton className="h-3 w-full" />
@@ -419,7 +426,9 @@ function DashboardPage() {
                   </ul>
                 )}
                 <p className="text-[11px] text-muted-foreground">
-                  Generated {new Date(brief.data.generatedAt).toLocaleTimeString()}
+                  {brief.data.cached ? "Today's brief, generated" : "Generated"}{" "}
+                  {new Date(brief.data.generatedAt).toLocaleTimeString()}
+                  {brief.data.cached ? " · reused until tomorrow" : ""}
                 </p>
               </div>
             ) : (

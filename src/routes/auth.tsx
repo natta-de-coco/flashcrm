@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -244,6 +244,17 @@ function AuthPage() {
           <Button variant="outline" className="w-full" onClick={google}>
             Continue with Google
           </Button>
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            By continuing you agree to our{" "}
+            <Link to="/terms" className="underline">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link to="/privacy" className="underline">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </div>
       </div>
     </main>

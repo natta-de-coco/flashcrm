@@ -153,21 +153,44 @@ function InboxPage() {
     },
   });
 
+  // Near real-time inbox: realtime stream first, short polling as a fallback
+  // whenever the socket is not connected, plus a visible connection indicator.
+  const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "offline">("connecting");
+  const [lastEventAt, setLastEventAt] = useState<number | null>(null);
+
   useEffect(() => {
+    const bump = () => setLastEventAt(Date.now());
     const channel = supabase
       .channel("inbox-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
+        bump();
         void qc.invalidateQueries({ queryKey: ["messages"] });
         void qc.invalidateQueries({ queryKey: ["conversations"] });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => {
+        bump();
         void qc.invalidateQueries({ queryKey: ["conversations"] });
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") setLiveStatus("live");
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED")
+          setLiveStatus("offline");
+        else setLiveStatus("connecting");
+      });
     return () => {
       void supabase.removeChannel(channel);
     };
   }, [qc]);
+
+  // Polling fallback — only runs while the realtime socket is not connected.
+  useEffect(() => {
+    if (liveStatus === "live") return;
+    const timer = window.setInterval(() => {
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      void qc.invalidateQueries({ queryKey: ["messages"] });
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [liveStatus, qc]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -414,8 +437,39 @@ function InboxPage() {
         )}
       >
         <div className="space-y-3 border-b p-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold">Inbox</h1>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="text-lg font-bold">Inbox</h1>
+              <span
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                  liveStatus === "live"
+                    ? "border-brand/30 bg-brand/10 text-brand"
+                    : liveStatus === "connecting"
+                      ? "border-border bg-muted text-muted-foreground"
+                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                )}
+                title={
+                  liveStatus === "live"
+                    ? lastEventAt
+                      ? `Live · last update ${new Date(lastEventAt).toLocaleTimeString()}`
+                      : "Live — new messages arrive instantly"
+                    : "Reconnecting — checking for new messages every 10 seconds"
+                }
+              >
+                <span
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    liveStatus === "live"
+                      ? "animate-pulse bg-brand"
+                      : liveStatus === "connecting"
+                        ? "bg-muted-foreground"
+                        : "bg-destructive",
+                  )}
+                />
+                {liveStatus === "live" ? "Live" : liveStatus === "connecting" ? "Connecting" : "Polling"}
+              </span>
+            </div>
             <Button
               variant="ghost"
               size="sm"
