@@ -63,9 +63,11 @@
 
   var css = document.createElement("style");
   css.textContent = [
-    ".flasp{position:fixed;right:0;bottom:0;z-index:2147483000;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}",
-    ".flasp-launch{position:fixed;right:20px;bottom:20px;display:flex;align-items:center;gap:10px;border:0;border-radius:999px;padding:14px 20px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.22)}",
-    ".flasp-panel{position:fixed;top:0;right:0;height:100%;width:380px;max-width:100vw;background:#fff;display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .28s ease}",
+    // pointer-events:none on the root so the (invisible) wrapper never blocks
+    // clicks on the host page; the launcher and panel re-enable them.
+    ".flasp{position:fixed;right:0;bottom:0;z-index:2147483000;pointer-events:none;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}",
+    ".flasp-launch{pointer-events:auto;position:fixed;right:max(20px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;border:0;border-radius:999px;padding:14px 20px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.22)}",
+    ".flasp-panel{pointer-events:auto;position:fixed;top:0;right:0;height:100dvh;width:380px;max-width:100vw;background:#fff;display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .28s ease}",
     ".flasp-panel.open{transform:translateX(0)}",
     ".flasp-head{color:#fff;padding:18px 20px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}",
     ".flasp-head h3{margin:0;font-size:16px;font-weight:700}",
