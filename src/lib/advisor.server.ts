@@ -85,9 +85,12 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
       `Conversations open ${overview.stats.open}, unread ${overview.stats.unread}, contacts ${overview.stats.contacts}`,
     );
     lines.push(
-      `Daily traffic (last 7 days): ${overview.days
+      `Daily traffic (last 7 days): ${overview.activity.buckets
         .map((d) => `${d.day} in=${d.received} out=${d.sent}`)
         .join(", ")}`,
+    );
+    lines.push(
+      `Social: ${overview.social.accounts.length} accounts, audience ${overview.social.totalAudience}, ${overview.social.interactions7d} interactions in 7 days, ${overview.social.pendingTotal} awaiting reply`,
     );
   }
 
