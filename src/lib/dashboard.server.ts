@@ -218,14 +218,91 @@ export async function getDashboardOverviewData(
     return sum + (s["followers"] ?? s["subscribers"] ?? 0);
   }, 0);
 
+  // ---- Week-over-week trends ----
+  const inboundNow = weekMessageRows.filter((m) => m.sender === "contact").length;
+  const inboundPrev = priorMessageRows.filter((m) => m.sender === "contact").length;
+  const repliesNow = weekMessageRows.length - inboundNow;
+  const repliesPrev = priorMessageRows.length - inboundPrev;
+  const leadsNow = leads.filter(
+    (l) => new Date(l.created_at).getTime() >= weekStartMs,
+  ).length;
+  const leadsPrev = leads.length - leadsNow;
+
+  const trends = {
+    messages: trend(weekMessageRows.length, priorMessageRows.length),
+    inbound: trend(inboundNow, inboundPrev),
+    leads: trend(leadsNow, leadsPrev),
+    replies: trend(repliesNow, repliesPrev),
+  };
+
+  // ---- Business Health Score ----
+  const unreadTotal = conversations.reduce((sum, c) => sum + (c.unread_count ?? 0), 0);
+  const responsiveness =
+    inboundNow === 0 ? 70 : Math.max(0, Math.min(100, Math.round((repliesNow / inboundNow) * 100)));
+  const inboxHygiene = Math.max(0, 100 - unreadTotal * 5);
+  const pipeline = Math.min(100, leadsNow * 10);
+  const socialPresence = accountRows.length === 0
+    ? 0
+    : Math.min(100, Math.round((accountRows.filter((a) => a.active).length / accountRows.length) * 60) + Math.min(40, interactions7d * 4));
+  const consentRate = leads.length === 0
+    ? 60
+    : Math.round((leads.filter((l) => l.consent_given).length / leads.length) * 100);
+
+  const factors: HealthFactor[] = [
+    {
+      key: "responsiveness",
+      label: "Responsiveness",
+      score: responsiveness,
+      detail: `${repliesNow} replies to ${inboundNow} inbound messages this week`,
+    },
+    {
+      key: "inbox",
+      label: "Inbox hygiene",
+      score: inboxHygiene,
+      detail: unreadTotal === 0 ? "No unread messages" : `${unreadTotal} unread messages waiting`,
+    },
+    {
+      key: "pipeline",
+      label: "Lead flow",
+      score: pipeline,
+      detail: `${leadsNow} new leads in the last 7 days`,
+    },
+    {
+      key: "social",
+      label: "Social presence",
+      score: socialPresence,
+      detail:
+        accountRows.length === 0
+          ? "No social accounts connected"
+          : `${accountRows.filter((a) => a.active).length}/${accountRows.length} accounts active · ${interactions7d} interactions`,
+    },
+    {
+      key: "consent",
+      label: "Marketing compliance",
+      score: consentRate,
+      detail:
+        leads.length === 0
+          ? "No leads captured yet"
+          : `${consentRate}% of recent leads gave marketing consent`,
+    },
+  ];
+
+  const score = Math.round(
+    factors.reduce((sum, f) => sum + f.score, 0) / factors.length,
+  );
+  const grade: BusinessHealth["grade"] =
+    score >= 85 ? "Excellent" : score >= 70 ? "Good" : score >= 50 ? "Needs work" : "At risk";
+
   return {
     stats: {
       open: conversations.filter((c) => c.status === "open").length,
-      unread: conversations.reduce((sum, c) => sum + (c.unread_count ?? 0), 0),
+      unread: unreadTotal,
       contacts: contactRows.length,
       botReplies: messageRows.filter((m) => m.sender === "bot").length,
     },
     activity: { buckets, weekTotal, todayTotal },
+    trends,
+    health: { score, grade, factors },
     social: {
       accounts: pulseAccounts,
       pendingTotal,
