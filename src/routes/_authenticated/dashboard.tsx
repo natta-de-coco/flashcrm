@@ -363,6 +363,7 @@ function DashboardPage() {
                 <div className="min-w-0">
                   <p className="text-2xl font-bold leading-none">{s.value}</p>
                   <p className="truncate text-xs text-muted-foreground">{s.label}</p>
+                  <TrendPill trend={s.trend} label={s.trendLabel} />
                 </div>
               </CardContent>
             </Card>
