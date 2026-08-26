@@ -371,6 +371,78 @@ function DashboardPage() {
         </div>
       )}
 
+      {/* Flash AI daily brief + business health score */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex-row items-start justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="size-4 text-brand" /> Flash AI daily brief
+              </CardTitle>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                What changed this week and the three things worth doing today.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0 gap-1.5"
+              onClick={() => void brief.refetch()}
+              disabled={brief.isFetching}
+            >
+              <RefreshCw className={`size-3.5 ${brief.isFetching ? "animate-spin" : ""}`} />
+              {brief.data ? "Regenerate" : "Generate brief"}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {brief.isFetching ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-56" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-4/5" />
+                <Skeleton className="h-3 w-2/3" />
+              </div>
+            ) : brief.isError ? (
+              <WidgetError message={brief.error.message} onRetry={() => brief.refetch()} />
+            ) : brief.data ? (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold">{brief.data.headline}</p>
+                <p className="text-sm text-muted-foreground">{brief.data.summary}</p>
+                {brief.data.actions.length > 0 && (
+                  <ul className="space-y-1.5">
+                    {brief.data.actions.map((a) => (
+                      <li key={a} className="flex items-start gap-2 text-sm">
+                        <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                        <span>{a}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Generated {new Date(brief.data.generatedAt).toLocaleTimeString()}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Ask Flash AI to read this week's numbers and tell you where to focus.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {overview.isLoading || !data ? (
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </CardContent>
+          </Card>
+        ) : (
+          <HealthCard health={data.health} />
+        )}
+      </div>
+
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         {/* 7-day activity chart */}
         <Card className="lg:col-span-2">
