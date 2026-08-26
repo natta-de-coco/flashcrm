@@ -153,21 +153,44 @@ function InboxPage() {
     },
   });
 
+  // Near real-time inbox: realtime stream first, short polling as a fallback
+  // whenever the socket is not connected, plus a visible connection indicator.
+  const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "offline">("connecting");
+  const [lastEventAt, setLastEventAt] = useState<number | null>(null);
+
   useEffect(() => {
+    const bump = () => setLastEventAt(Date.now());
     const channel = supabase
       .channel("inbox-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
+        bump();
         void qc.invalidateQueries({ queryKey: ["messages"] });
         void qc.invalidateQueries({ queryKey: ["conversations"] });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, () => {
+        bump();
         void qc.invalidateQueries({ queryKey: ["conversations"] });
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") setLiveStatus("live");
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED")
+          setLiveStatus("offline");
+        else setLiveStatus("connecting");
+      });
     return () => {
       void supabase.removeChannel(channel);
     };
   }, [qc]);
+
+  // Polling fallback — only runs while the realtime socket is not connected.
+  useEffect(() => {
+    if (liveStatus === "live") return;
+    const timer = window.setInterval(() => {
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      void qc.invalidateQueries({ queryKey: ["messages"] });
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [liveStatus, qc]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
