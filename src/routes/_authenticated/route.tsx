@@ -203,7 +203,14 @@ function AuthenticatedLayout() {
             <Skeleton key={i} className="h-8 w-full bg-sidebar-accent/40" />
           ))}
         </aside>
-        <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Mirrors the real mobile/tablet header so nothing jumps on hydration. */}
+          <div className="flex h-14 items-center gap-3 border-b border-sidebar-border bg-sidebar px-3 lg:hidden">
+            <Skeleton className="size-9 rounded-md bg-sidebar-accent/60" />
+            <Skeleton className="size-8 rounded-full bg-sidebar-accent/60" />
+            <Skeleton className="h-4 w-24 bg-sidebar-accent/60" />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-4 w-64" />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
