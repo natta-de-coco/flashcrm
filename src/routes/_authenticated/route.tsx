@@ -36,6 +36,7 @@ import {
   Menu,
   Package,
   Plug,
+  Search,
   Settings,
   Sparkles,
   Users,
@@ -147,6 +148,7 @@ function AuthenticatedLayout() {
   const navigate = useNavigate();
   const [sidebarW, setSidebarW] = useState(264);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const sections = isSuperAdmin ? [...NAV_SECTIONS, MANAGER_SECTION] : NAV_SECTIONS;
