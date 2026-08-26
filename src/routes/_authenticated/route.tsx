@@ -219,7 +219,8 @@ function AuthenticatedLayout() {
             ))}
           </div>
           <Skeleton className="h-64 w-full" />
-          <span className="sr-only">Loading your workspace…</span>
+            <span className="sr-only">Loading your workspace…</span>
+          </div>
         </div>
       </div>
     );
