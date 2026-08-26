@@ -1,6 +1,7 @@
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { BillingCard } from "@/components/settings/BillingCard";
 import { AuditLogCard } from "@/components/settings/AuditLogCard";
+import { DataPrivacyCard } from "@/components/settings/DataPrivacyCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -656,6 +657,8 @@ function SettingsPage() {
         )}
 
         <SecurityCard />
+
+        <DataPrivacyCard />
 
         <Card>
           <CardHeader>
