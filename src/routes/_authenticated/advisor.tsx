@@ -73,7 +73,7 @@ function Section({
 }: {
   icon: typeof Sparkles;
   title: string;
-  description?: string;
+  description?: string | undefined;
   children: React.ReactNode;
 }) {
   return (
@@ -274,7 +274,7 @@ function AdvisorPage() {
                 <div key={o.title} className="rounded-lg border p-3">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="font-medium">{o.title}</span>
-                    <Badge variant="outline" className={IMPACT_STYLES[o.impact] ?? IMPACT_STYLES.low}>
+                    <Badge variant="outline" className={IMPACT_STYLES[o.impact] ?? IMPACT_STYLES["low"]}>
                       {o.impact} impact
                     </Badge>
                   </div>
