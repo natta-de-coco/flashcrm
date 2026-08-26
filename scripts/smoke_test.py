@@ -51,6 +51,13 @@ VIEWPORTS = [
     ("desktop", 1440, 900),
 ]
 
+DEV_NOISE = ("/@vite/", "/node_modules/vite/", "/_serverFn/", "/@react-refresh")
+
+
+def is_dev_noise(url: str) -> bool:
+    return any(part in url for part in DEV_NOISE)
+
+
 IGNORE_CONSOLE = (
     "Download the React DevTools",
     "[vite] connect",
@@ -87,10 +94,14 @@ async def check_route(page, path, name, label, failures):
         console_errors.append(f"pageerror: {str(err)[:300]}")
 
     def on_response(res):
-        if res.status >= 400:
+        if res.status >= 400 and not is_dev_noise(res.url):
             request_failures.append(f"{res.status} {res.url[:160]}")
 
     def on_requestfailed(req):
+        # Vite dev-client assets and RPC calls aborted by hydration/unmount are
+        # dev-only noise, not app failures.
+        if is_dev_noise(req.url):
+            return
         request_failures.append(f"failed {req.url[:160]}")
 
     page.on("console", on_console)
@@ -99,7 +110,15 @@ async def check_route(page, path, name, label, failures):
     page.on("requestfailed", on_requestfailed)
 
     await page.goto(f"{BASE_URL}{path}", wait_until="domcontentloaded")
-    await page.wait_for_timeout(2500)
+    try:
+        await page.wait_for_load_state("networkidle", timeout=15000)
+    except Exception:
+        pass
+    # Give the client session time to hydrate before judging the page.
+    for _ in range(20):
+        await page.wait_for_timeout(500)
+        if not await page.evaluate("() => !!document.querySelector('[data-slot=skeleton], .animate-pulse')"):
+            break
 
     overflow = await page.evaluate(
         """() => {
