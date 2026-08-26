@@ -10,6 +10,7 @@ export type DailyBrief = {
   summary: string;
   actions: string[];
   generatedAt: string;
+  cached: boolean;
 };
 
 function trendLine(label: string, t: { current: number; previous: number; changePct: number | null }) {
@@ -21,7 +22,7 @@ function trendLine(label: string, t: { current: number; previous: number; change
  * Builds the daily brief: aggregates the dashboard overview, adds business
  * context, and returns a headline, a two-sentence summary and 3 next actions.
  */
-export async function buildDailyBrief(supabase: SupabaseClient): Promise<DailyBrief> {
+async function generateDailyBrief(supabase: SupabaseClient): Promise<DailyBrief> {
   const [overview, profile] = await Promise.all([
     getDashboardOverviewData(supabase),
     getBusinessContext(supabase as never).catch(() => null),
@@ -65,5 +66,60 @@ export async function buildDailyBrief(supabase: SupabaseClient): Promise<DailyBr
     summary: parsed.summary?.trim() || "No summary available right now.",
     actions: (parsed.actions ?? []).filter((a) => typeof a === "string" && a.trim()).slice(0, 3),
     generatedAt: new Date().toISOString(),
+    cached: false,
   };
+}
+
+function utcDay(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Returns today's brief for the caller's tenant. Generated once per UTC day and
+ * reused on every refresh; pass force to regenerate and overwrite the cache.
+ */
+export async function buildDailyBrief(
+  supabase: SupabaseClient,
+  opts: { force?: boolean } = {},
+): Promise<DailyBrief> {
+  const today = utcDay();
+
+  const { data: tenantId } = await supabase.rpc("current_tenant_id");
+  if (!tenantId) return generateDailyBrief(supabase);
+
+  if (!opts.force) {
+    const { data: existing } = await supabase
+      .from("daily_briefs")
+      .select("headline, summary, actions, created_at")
+      .eq("tenant_id", tenantId as string)
+      .eq("brief_date", today)
+      .maybeSingle();
+    if (existing) {
+      return {
+        headline: existing.headline,
+        summary: existing.summary,
+        actions: Array.isArray(existing.actions) ? (existing.actions as string[]) : [],
+        generatedAt: existing.created_at,
+        cached: true,
+      };
+    }
+  }
+
+  const fresh = await generateDailyBrief(supabase);
+
+  await supabase
+    .from("daily_briefs")
+    .upsert(
+      {
+        tenant_id: tenantId as string,
+        brief_date: today,
+        headline: fresh.headline,
+        summary: fresh.summary,
+        actions: fresh.actions,
+        created_at: fresh.generatedAt,
+      },
+      { onConflict: "tenant_id,brief_date" },
+    );
+
+  return fresh;
 }
