@@ -235,17 +235,21 @@ function DashboardPage() {
     placeholderData: keepPreviousData,
   });
 
-  // Flash AI daily brief — costs a model call, so it's generated on demand
-  // and cached for the session rather than polled.
+  // Flash AI daily brief — generated once per day per workspace on the server and
+  // reused on every refresh, so loading it on mount costs at most one model call a day.
   const briefFn = useServerFn(getDailyBrief);
   const brief = useQuery({
     queryKey: ["dashboard-daily-brief"],
-    queryFn: () => briefFn(),
-    staleTime: 30 * 60_000,
+    queryFn: () => briefFn({ data: {} }),
+    staleTime: 60 * 60_000,
     refetchOnWindowFocus: false,
     retry: 0,
-    enabled: false,
   });
+  const regenerateBrief = useMutation({
+    mutationFn: () => briefFn({ data: { force: true } }),
+    onSuccess: (data) => qc.setQueryData(["dashboard-daily-brief"], data),
+  });
+  const briefBusy = brief.isFetching || regenerateBrief.isPending;
 
   // Widget error logging — report each distinct failure once per message so
   // slow/flaky endpoints are visible in function logs and the audit trail.
