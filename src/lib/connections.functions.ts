@@ -82,6 +82,14 @@ export const startConnect = createServerFn({ method: "POST" })
     const tenantId = await callerTenantId(context.supabase, context.userId);
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
     const { startAuthorization } = await import("@/lib/oauth.server");
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "connection.authorize_started",
+      tenantId,
+      actorId: context.userId,
+      entityType: "platform",
+      entityId: data.platform,
+    });
     return startAuthorization({
       platform: data.platform,
       origin: data.origin.replace(/\/$/, ""),
@@ -132,6 +140,15 @@ export const scanConnectedAccount = createServerFn({ method: "POST" })
       suggestions: { measured: result.measured, estimated: result.estimated } as never,
     });
     if (insertError) throw insertError;
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "connection.scanned",
+      tenantId: account.tenant_id,
+      actorId: context.userId,
+      entityType: "social_account",
+      entityId: data.id,
+      details: { platform: account.platform, overall: result.overall },
+    });
     return result;
   });
 
@@ -179,5 +196,35 @@ export const disconnectConnection = createServerFn({ method: "POST" })
       .update({ active: false, health: "disconnected" })
       .eq("id", data.id);
     if (error) throw error;
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "connection.disconnected",
+      actorId: context.userId,
+      entityType: "social_account",
+      entityId: data.id,
+    });
     return { ok: true };
+  });
+
+/** Integration activity log: connections, scans, plugin pings and webhooks. */
+export const getIntegrationLogs = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const supabase = context.supabase;
+    const [audit, webhooks] = await Promise.all([
+      supabase
+        .from("audit_log")
+        .select("id, action, actor_label, entity_type, entity_id, details, created_at")
+        .or(
+          "action.like.connection.%,action.like.integration.%,action.like.site.%,action.like.wa_number.%,action.like.website.%",
+        )
+        .order("created_at", { ascending: false })
+        .limit(40),
+      supabase
+        .from("webhook_events")
+        .select("id, source, event_type, status, error, attempts, created_at")
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+    return { audit: audit.data ?? [], webhooks: webhooks.data ?? [] };
   });
