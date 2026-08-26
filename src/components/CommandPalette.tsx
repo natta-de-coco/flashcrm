@@ -1,5 +1,4 @@
 import {
-  Briefcase,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -10,6 +9,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  Briefcase,
   FileText,
   Inbox,
   LayoutDashboard,
