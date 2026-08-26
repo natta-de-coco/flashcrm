@@ -10,7 +10,7 @@ import { ArrowLeft, Eye } from "lucide-react";
 export const Route = createFileRoute("/_authenticated/companies/$orgId")({
   head: () => ({
     meta: [
-      { title: "Company workspace — Flas Manager" },
+      { title: "Company workspace — Flash Manager" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -33,7 +33,7 @@ function CompanyWorkspacePage() {
     return (
       <main className="grid flex-1 place-items-center p-6">
         <p className="text-sm text-muted-foreground">
-          This area is only available to the Flas platform manager.
+          This area is only available to the Flash platform manager.
         </p>
       </main>
     );

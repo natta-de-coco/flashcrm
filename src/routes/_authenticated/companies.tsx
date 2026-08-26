@@ -18,7 +18,7 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/companies")({
   head: () => ({
     meta: [
-      { title: "Companies — Flas Manager" },
+      { title: "Companies — Flash Manager" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -83,7 +83,7 @@ function CompaniesPage() {
     return (
       <main className="grid flex-1 place-items-center p-6">
         <p className="text-sm text-muted-foreground">
-          This area is only available to the Flas platform manager.
+          This area is only available to the Flash platform manager.
         </p>
       </main>
     );

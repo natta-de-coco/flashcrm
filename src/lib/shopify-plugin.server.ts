@@ -25,7 +25,7 @@ function leadSection(origin: string, siteKey: string): string {
   return `{% comment %}
   Flash CRM lead capture section v${VERSION}
   Inline email / WhatsApp signup form. Add it from the theme editor
-  (Customize -> Add section -> Flas lead capture) on any template.
+  (Customize -> Add section -> Flash lead capture) on any template.
 {% endcomment %}
 <div
   data-flas-leads
@@ -36,7 +36,7 @@ function leadSection(origin: string, siteKey: string): string {
 
 {% schema %}
 {
-  "name": "Flas lead capture",
+  "name": "Flash lead capture",
   "settings": [
     {
       "type": "text",
@@ -51,7 +51,7 @@ function leadSection(origin: string, siteKey: string): string {
       "default": "Subscribe"
     }
   ],
-  "presets": [{ "name": "Flas lead capture" }]
+  "presets": [{ "name": "Flash lead capture" }]
 }
 {% endschema %}
 `;
@@ -80,7 +80,7 @@ Install (2 minutes)
 4. (Optional) Under "Sections" click "Add a new section", name it
       flas-lead-capture
    paste sections/flas-lead-capture.liquid and save. You can now add the
-   "Flas lead capture" block from the theme editor on any page.
+   "Flash lead capture" block from the theme editor on any page.
 5. Open your storefront. The chat launcher appears bottom-right and your
    shop registers itself with Flash CRM automatically.
 
