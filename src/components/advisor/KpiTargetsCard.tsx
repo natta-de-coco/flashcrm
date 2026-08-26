@@ -1,0 +1,283 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  generateKpiTargetsFromAdvisor,
+  getKpiOverview,
+  resolveKpiAlert,
+  runKpiCheck,
+  saveKpiTargets,
+} from "@/lib/kpi.functions";
+import { cn } from "@/lib/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { BellRing, Check, Gauge, RefreshCw, Save, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
+type Definition = {
+  metric: string;
+  label: string;
+  unit: string;
+  direction: "higher" | "lower";
+  hint: string;
+};
+
+/** Advisor-set KPI targets with live readings and missed-target alerts. */
+export function KpiTargetsCard() {
+  const qc = useQueryClient();
+  const load = useServerFn(getKpiOverview);
+  const save = useServerFn(saveKpiTargets);
+  const generate = useServerFn(generateKpiTargetsFromAdvisor);
+  const check = useServerFn(runKpiCheck);
+  const resolve = useServerFn(resolveKpiAlert);
+
+  const overview = useQuery({
+    queryKey: ["kpi_overview"],
+    queryFn: () => load({}),
+    refetchInterval: 120_000,
+  });
+
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const rows = overview.data?.targets ?? [];
+    if (rows.length === 0) return;
+    setDrafts((prev) => {
+      const next = { ...prev };
+      for (const t of rows as Array<{ metric: string; target_value: number }>) {
+        if (next[t.metric] === undefined) next[t.metric] = String(t.target_value);
+      }
+      return next;
+    });
+  }, [overview.data]);
+
+  const refresh = () => {
+    void qc.invalidateQueries({ queryKey: ["kpi_overview"] });
+  };
+
+  const generateTargets = useMutation({
+    mutationFn: () => generate({}),
+    onSuccess: (res) => {
+      setDrafts({});
+      toast.success(
+        res.saved > 0
+          ? `Advisor set ${res.saved} KPI targets`
+          : "The advisor could not set targets yet — add more data first",
+      );
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const saveTargets = useMutation({
+    mutationFn: () => {
+      const rows = (overview.data?.definitions ?? [])
+        .map((d: Definition) => ({ d, raw: drafts[d.metric] }))
+        .filter((r) => r.raw !== undefined && r.raw !== "" && Number.isFinite(Number(r.raw)))
+        .map((r) => ({
+          metric: r.d.metric as never,
+          target_value: Number(r.raw),
+          note: null,
+          active: true,
+        }));
+      if (rows.length === 0) throw new Error("Enter at least one target value");
+      return save({ data: { targets: rows, source: "manual" } });
+    },
+    onSuccess: () => {
+      toast.success("KPI targets saved");
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const runCheck = useMutation({
+    mutationFn: () => check({}),
+    onSuccess: (res) => {
+      toast[res.newAlerts > 0 ? "warning" : "success"](
+        res.newAlerts > 0
+          ? `${res.newAlerts} target${res.newAlerts === 1 ? "" : "s"} missed — alerts raised`
+          : "All targets on track",
+      );
+      refresh();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const clearAlert = useMutation({
+    mutationFn: (id: string) => resolve({ data: { id } }),
+    onSuccess: refresh,
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const definitions = (overview.data?.definitions ?? []) as Definition[];
+  const measurements = (overview.data?.measurements ?? []) as Array<
+    Definition & { value: number | null }
+  >;
+  const targets = (overview.data?.targets ?? []) as Array<{
+    id: string;
+    metric: string;
+    target_value: number;
+    source: string;
+    note: string | null;
+  }>;
+  const alerts = (overview.data?.alerts ?? []) as Array<{
+    id: string;
+    label: string;
+    message: string;
+    severity: string;
+    resolved: boolean;
+    created_at: string;
+  }>;
+  const openAlerts = alerts.filter((a) => !a.resolved);
+
+  const targetByMetric = new Map(targets.map((t) => [t.metric, t]));
+
+  return (
+    <Card>
+      <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
+        <div>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Gauge className="size-4 text-brand" /> KPI targets & alerts
+          </CardTitle>
+          <CardDescription>
+            Response time, conversion, lead velocity and social backlog — measured live against the
+            targets your advisor sets.
+          </CardDescription>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => generateTargets.mutate()}
+            disabled={generateTargets.isPending}
+          >
+            <Sparkles className="size-4" />
+            {generateTargets.isPending ? "Setting…" : "Let advisor set targets"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => runCheck.mutate()}
+            disabled={runCheck.isPending || targets.length === 0}
+          >
+            <RefreshCw className={cn("size-4", runCheck.isPending && "animate-spin")} /> Check now
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 text-sm">
+        {overview.isLoading ? (
+          <>
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </>
+        ) : (
+          <>
+            {openAlerts.length > 0 ? (
+              <div className="grid gap-2">
+                {openAlerts.map((a) => (
+                  <div
+                    key={a.id}
+                    className={cn(
+                      "flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3",
+                      a.severity === "critical"
+                        ? "border-destructive/40 bg-destructive/10"
+                        : "border-amber-500/40 bg-amber-500/10",
+                    )}
+                  >
+                    <div className="flex min-w-0 items-start gap-2">
+                      <BellRing className="mt-0.5 size-4 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="font-medium">{a.label}</p>
+                        <p className="text-xs text-muted-foreground">{a.message}</p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => clearAlert.mutate(a.id)}
+                      disabled={clearAlert.isPending}
+                    >
+                      <Check className="size-4" /> Resolve
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="grid gap-2">
+              {definitions.map((d) => {
+                const measured = measurements.find((m) => m.metric === d.metric)?.value ?? null;
+                const target = targetByMetric.get(d.metric);
+                const missed =
+                  target != null && measured != null
+                    ? d.direction === "lower"
+                      ? measured > Number(target.target_value)
+                      : measured < Number(target.target_value)
+                    : false;
+                return (
+                  <div
+                    key={d.metric}
+                    className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{d.label}</span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {d.direction === "lower" ? "lower is better" : "higher is better"}
+                        </Badge>
+                        {target?.source === "advisor" ? (
+                          <Badge className="bg-brand text-brand-foreground text-[10px]">
+                            advisor
+                          </Badge>
+                        ) : null}
+                        {missed ? (
+                          <Badge variant="destructive" className="text-[10px]">
+                            off target
+                          </Badge>
+                        ) : target && measured != null ? (
+                          <Badge variant="secondary" className="text-[10px]">
+                            on track
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Now:{" "}
+                        <span className="font-medium text-foreground">
+                          {measured != null ? `${measured}${d.unit}` : "not enough data"}
+                        </span>{" "}
+                        · {target?.note ?? d.hint}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 sm:justify-end">
+                      <Input
+                        className="h-9 w-28"
+                        inputMode="decimal"
+                        placeholder="target"
+                        value={drafts[d.metric] ?? ""}
+                        onChange={(e) => setDrafts({ ...drafts, [d.metric]: e.target.value })}
+                      />
+                      <span className="w-16 text-xs text-muted-foreground">{d.unit}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <Button
+              variant="secondary"
+              className="justify-self-start"
+              onClick={() => saveTargets.mutate()}
+              disabled={saveTargets.isPending}
+            >
+              <Save className="size-4" /> Save targets
+            </Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
