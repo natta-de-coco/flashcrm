@@ -36,7 +36,7 @@ export type AdvisorSnapshot = {
 
 /** Gathers everything the advisor reasons about, as plain-text facts. */
 export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<AdvisorSnapshot> {
-  const [profile, overview, leads, messaging, products, social] = await Promise.all([
+  const [profile, overview, leads, messaging, products, social, socialPosts] = await Promise.all([
     getAdvisorProfile(supabase).catch(() => null),
     getDashboardOverviewData(supabase).catch(() => null),
     gatherLeadSummary(supabase as never).catch(() => null),
@@ -50,7 +50,14 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
       .from("social_accounts")
       .select("platform, label, stats, last_synced_at, active")
       .then((r) => r.data ?? []),
+    supabase
+      .from("social_posts")
+      .select("caption, platform:account_id, reach, likes, comments_count, shares, status, published_at")
+      .order("published_at", { ascending: false })
+      .limit(30)
+      .then((r) => r.data ?? []),
   ]);
+
 
   const lines: string[] = [];
 
