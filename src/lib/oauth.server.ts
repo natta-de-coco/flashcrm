@@ -101,7 +101,10 @@ export type StartResult =
   | { ready: false; reason: string; missing: string[] };
 
 /** Credentials the workspace owner must add before a platform can be authorized. */
-export function providerCredentials(provider: Provider): { id?: string; secret?: string } {
+export function providerCredentials(provider: Provider): {
+  id: string | undefined;
+  secret: string | undefined;
+} {
   const cfg = PROVIDERS[provider];
   return { id: process.env[cfg.idEnv], secret: process.env[cfg.secretEnv] };
 }
