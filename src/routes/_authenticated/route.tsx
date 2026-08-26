@@ -306,13 +306,46 @@ function AuthenticatedLayout() {
                 </div>
               </SheetContent>
             </Sheet>
-            <Link to="/dashboard" className="flex items-center gap-2">
+            <Link to="/dashboard" className="flex min-w-0 flex-1 items-center gap-2">
               <FlashLogoBadge className="size-8" />
-              <span className="text-sm font-bold">Flash&nbsp;CRM</span>
+              <span className="truncate text-sm font-bold">Flash&nbsp;CRM</span>
             </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Search Flash"
+              onClick={() => setPaletteOpen(true)}
+              className="shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            >
+              <Search className="size-5" />
+            </Button>
+            <QuickCreate compact />
           </header>
+
+          {/* Desktop top bar — universal search and the Create shortcut */}
+          <header className="sticky top-0 z-30 hidden h-14 items-center gap-3 border-b bg-background/95 px-6 backdrop-blur lg:flex">
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="flex h-9 w-full max-w-md items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
+            >
+              <Search className="size-4" />
+              Search Flash…
+              <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
+                ⌘K
+              </kbd>
+            </button>
+            <div className="ml-auto">
+              <QuickCreate />
+            </div>
+          </header>
+
           <Outlet />
+          <MobileBottomNav onMore={() => setMobileOpen(true)} />
         </div>
+      </div>
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+
       </div>
     </TenantProvider>
   );
