@@ -58,6 +58,20 @@ function InboxPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showTools, setShowTools] = useState(false);
   const [channel, setChannel] = useState<"chats" | "social">("chats");
+  // Badge count of social DMs/comments still waiting for a reply.
+  const socialPendingQuery = useQuery({
+    queryKey: ["social_pending_count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("social_interactions")
+        .select("id", { count: "exact", head: true })
+        .eq("direction", "in")
+        .eq("status", "open");
+      return count ?? 0;
+    },
+    refetchInterval: 60_000,
+  });
+  const socialPending = socialPendingQuery.data ?? 0;
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
