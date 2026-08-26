@@ -14,7 +14,7 @@
     // Column flex + align-items:flex-end keeps the launcher pinned to the
     // bottom-right corner. Without it the button sits at the left edge of the
     // open panel and overlaps the page content.
-    ".flasw{position:fixed;right:20px;bottom:20px;z-index:2147483000;display:flex;flex-direction:column;align-items:flex-end;gap:12px;pointer-events:none;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}",
+    ".flasw{position:fixed;right:max(20px,env(safe-area-inset-right));bottom:max(20px,env(safe-area-inset-bottom));z-index:2147483000;display:flex;flex-direction:column;align-items:flex-end;gap:12px;pointer-events:none;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}",
     ".flasw-btn{pointer-events:auto;flex:0 0 auto;width:56px;height:56px;border-radius:999px;border:0;background:#25D366;color:#fff;box-shadow:0 10px 25px rgba(0,0,0,.2);cursor:pointer;font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}",
     ".flasw-panel{pointer-events:auto;display:none;flex-direction:column;width:340px;max-width:calc(100vw - 40px);height:460px;max-height:calc(100vh - 120px);background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.25)}",
     ".flasw-panel.open{display:flex}",
