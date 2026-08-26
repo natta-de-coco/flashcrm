@@ -11,16 +11,16 @@ import { callFlashAi } from "./flash-ai.server";
 export type ConnectionHealth = "connected" | "attention" | "disconnected" | "unknown";
 
 export type DiscoveredProfile = {
-  name?: string;
-  username?: string;
-  picture?: string;
-  bio?: string;
-  website?: string;
-  category?: string;
-  followers?: number;
-  profile_url?: string;
-  external_id?: string;
-  ad_accounts?: string[];
+  name?: string | undefined;
+  username?: string | undefined;
+  picture?: string | undefined;
+  bio?: string | undefined;
+  website?: string | undefined;
+  category?: string | undefined;
+  followers?: number | undefined;
+  profile_url?: string | undefined;
+  external_id?: string | undefined;
+  ad_accounts?: string[] | undefined;
 };
 
 /** Best-effort profile discovery straight after authorization. */
@@ -153,8 +153,8 @@ export async function saveAuthorizedConnection(args: {
     active: true,
     health: "connected",
     connect_method: "oauth",
-    profile: args.profile as unknown as Record<string, unknown>,
-    permissions: { granted: args.permissions } as unknown as Record<string, unknown>,
+    profile: args.profile as unknown as never,
+    permissions: { granted: args.permissions } as unknown as never,
     profile_url: args.profile.profile_url ?? meta?.manageUrl ?? null,
   };
 
