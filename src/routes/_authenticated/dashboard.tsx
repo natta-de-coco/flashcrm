@@ -200,10 +200,34 @@ function DashboardPage() {
 
   const data = overview.data;
   const stats = [
-    { label: "Open conversations", value: data?.stats.open ?? 0, icon: Inbox },
-    { label: "Unread messages", value: data?.stats.unread ?? 0, icon: MessageSquare },
-    { label: "Contacts", value: data?.stats.contacts ?? 0, icon: Users },
-    { label: "Bot replies", value: data?.stats.botReplies ?? 0, icon: Bot },
+    {
+      label: "Open conversations",
+      value: data?.stats.open ?? 0,
+      icon: Inbox,
+      trend: data?.trends.inbound,
+      trendLabel: "inbound vs last week",
+    },
+    {
+      label: "Unread messages",
+      value: data?.stats.unread ?? 0,
+      icon: MessageSquare,
+      trend: undefined,
+      trendLabel: undefined,
+    },
+    {
+      label: "Contacts",
+      value: data?.stats.contacts ?? 0,
+      icon: Users,
+      trend: data?.trends.leads,
+      trendLabel: "new leads vs last week",
+    },
+    {
+      label: "Bot replies",
+      value: data?.stats.botReplies ?? 0,
+      icon: Bot,
+      trend: data?.trends.replies,
+      trendLabel: "replies sent vs last week",
+    },
   ];
 
   return (
