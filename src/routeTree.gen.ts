@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as AuthenticatedAdvisorRouteImport } from './routes/_authenticated/advisor'
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
 import { Route as AuthenticatedCompaniesRouteImport } from './routes/_authenticated/companies'
@@ -70,6 +71,11 @@ const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedAdvisorRoute = AuthenticatedAdvisorRouteImport.update({
+  id: '/advisor',
+  path: '/advisor',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedCatalogRoute = AuthenticatedCatalogRouteImport.update({
   id: '/catalog',
@@ -215,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/advisor': typeof AuthenticatedAdvisorRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
   '/companies': typeof AuthenticatedCompaniesRouteWithChildren
@@ -248,6 +255,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/advisor': typeof AuthenticatedAdvisorRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
   '/companies': typeof AuthenticatedCompaniesRouteWithChildren
@@ -282,6 +290,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/_authenticated/advisor': typeof AuthenticatedAdvisorRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRoute
   '/_authenticated/companies': typeof AuthenticatedCompaniesRouteWithChildren
@@ -317,6 +326,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sitemap.xml'
     | '/terms'
+    | '/advisor'
     | '/catalog'
     | '/chatbot'
     | '/companies'
@@ -350,6 +360,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sitemap.xml'
     | '/terms'
+    | '/advisor'
     | '/catalog'
     | '/chatbot'
     | '/companies'
@@ -383,6 +394,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/sitemap.xml'
     | '/terms'
+    | '/_authenticated/advisor'
     | '/_authenticated/catalog'
     | '/_authenticated/chatbot'
     | '/_authenticated/companies'
@@ -473,6 +485,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/advisor': {
+      id: '/_authenticated/advisor'
+      path: '/advisor'
+      fullPath: '/advisor'
+      preLoaderRoute: typeof AuthenticatedAdvisorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/catalog': {
       id: '/_authenticated/catalog'
@@ -687,6 +706,7 @@ const AuthenticatedSeoBlogRouteWithChildren =
   AuthenticatedSeoBlogRoute._addFileChildren(AuthenticatedSeoBlogRouteChildren)
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdvisorRoute: typeof AuthenticatedAdvisorRoute
   AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
   AuthenticatedChatbotRoute: typeof AuthenticatedChatbotRoute
   AuthenticatedCompaniesRoute: typeof AuthenticatedCompaniesRouteWithChildren
@@ -703,6 +723,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdvisorRoute: AuthenticatedAdvisorRoute,
   AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
   AuthenticatedChatbotRoute: AuthenticatedChatbotRoute,
   AuthenticatedCompaniesRoute: AuthenticatedCompaniesRouteWithChildren,
