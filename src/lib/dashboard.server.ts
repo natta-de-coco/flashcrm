@@ -105,8 +105,12 @@ export async function getDashboardOverviewData(
   const weekStart = new Date();
   weekStart.setHours(0, 0, 0, 0);
   weekStart.setDate(weekStart.getDate() - 6);
+  // Previous comparison window starts 7 days before the current one.
+  const priorStart = new Date(weekStart);
+  priorStart.setDate(priorStart.getDate() - 7);
 
-  const [convs, contacts, msgs, weekMsgs, accounts, interactions] = await Promise.all([
+  const [convs, contacts, msgs, weekMsgs, accounts, interactions, leadRows] =
+    await Promise.all([
     supabase
       .from("conversations")
       .select(
