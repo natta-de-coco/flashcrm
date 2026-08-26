@@ -102,15 +102,12 @@ export function ConnectBusiness() {
   const connect = useMutation({
     mutationFn: async (platform: string) =>
       start({ data: { platform: platform as never, origin: window.location.origin } }),
-    onSuccess: (result: { authorizeUrl?: string; manual?: boolean; reason?: string }) => {
-      if (result.authorizeUrl) {
-        window.location.href = result.authorizeUrl;
+    onSuccess: (result) => {
+      if (result.ready) {
+        window.location.href = result.url;
         return;
       }
-      toast.info(
-        result.reason ??
-          "This platform needs its app credentials before one-click connect works. Add them in Settings → Integrations keys.",
-      );
+      toast.info(result.reason);
     },
     onError: (e: Error) => toast.error(e.message),
   });
