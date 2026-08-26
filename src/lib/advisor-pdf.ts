@@ -102,7 +102,7 @@ export function downloadAdvisorPdf(analysis: AdvisorAnalysis, brief: BriefLike =
       doc.setFontSize(10.5);
       doc.text(`${s.label} — ${s.score}/100`, MARGIN, y);
       y += 12;
-      doc.setFillColor(235);
+      doc.setFillColor(235, 235, 235);
       doc.rect(MARGIN, y, maxWidth, 6, "F");
       doc.setFillColor(BRAND[0], BRAND[1], BRAND[2]);
       doc.rect(MARGIN, y, (maxWidth * Math.max(0, Math.min(100, s.score))) / 100, 6, "F");
