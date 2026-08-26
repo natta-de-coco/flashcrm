@@ -9,6 +9,10 @@ import {
 } from "@/components/ui/sheet";
 import { FlashLogoBadge } from "@/components/FlashLogoBadge";
 import { OnboardingModal } from "@/components/OnboardingModal";
+import { CommandPalette } from "@/components/CommandPalette";
+import { QuickCreate } from "@/components/QuickCreate";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
+
 import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider } from "@/hooks/useTenant";
 import { cn } from "@/lib/utils";
