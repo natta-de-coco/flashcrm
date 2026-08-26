@@ -48,14 +48,15 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
       .then((r) => r.data ?? []),
     supabase
       .from("social_accounts")
-      .select("platform, label, stats, last_synced_at, active")
+      .select("id, platform, label, stats, last_synced_at, active")
       .then((r) => r.data ?? []),
     supabase
       .from("social_posts")
-      .select("caption, platform:account_id, reach, likes, comments_count, shares, status, published_at")
+      .select("caption, account_id, reach, likes, comments_count, shares, status, published_at")
       .order("published_at", { ascending: false })
-      .limit(30)
+      .limit(40)
       .then((r) => r.data ?? []),
+
   ]);
 
 
