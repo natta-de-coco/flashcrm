@@ -319,3 +319,158 @@ export async function askAdvisorQuestion(
 
   return callFlashAi(system, user);
 }
+
+/* ---------------- KPI targets ---------------- */
+
+export type KpiProposal = {
+  metric:
+    | "response_minutes"
+    | "read_rate"
+    | "conversion_rate"
+    | "lead_velocity"
+    | "social_pending"
+    | "unread_backlog";
+  target_value: number;
+  rationale: string;
+};
+
+const KPI_MENU = [
+  'response_minutes — average first response in minutes (lower is better)',
+  'read_rate — % of outbound WhatsApp messages read (higher is better)',
+  'conversion_rate — % of contacts reaching Won (higher is better)',
+  'lead_velocity — new leads per week (higher is better)',
+  'social_pending — social comments/DMs still waiting (lower is better)',
+  'unread_backlog — unread chats right now (lower is better)',
+].join("\n");
+
+/**
+ * Turns the advisor's read of the business into concrete, measurable targets
+ * for the six KPIs Flash can actually measure from live data.
+ */
+export async function proposeKpiTargets(supabase: SupabaseClient): Promise<KpiProposal[]> {
+  const { facts } = await gatherAdvisorSnapshot(supabase);
+
+  const system = [
+    ADVISOR_PERSONA,
+    "Set realistic 30-day targets — ambitious but reachable from the current numbers, never a fantasy jump.",
+    "Only use these metric keys:",
+    KPI_MENU,
+    'Return STRICT JSON only: {"targets": [{"metric": string, "target_value": number, "rationale": string (max 160 chars)}]}',
+    "Include 4 to 6 targets. target_value must be a plain number in the metric's unit.",
+  ].join("\n");
+
+  const raw = await callFlashAi(system, facts);
+  let parsed: { targets?: KpiProposal[] } = {};
+  try {
+    parsed = JSON.parse(stripFences(raw)) as { targets?: KpiProposal[] };
+  } catch {
+    parsed = {};
+  }
+
+  const allowed = new Set([
+    "response_minutes",
+    "read_rate",
+    "conversion_rate",
+    "lead_velocity",
+    "social_pending",
+    "unread_backlog",
+  ]);
+
+  const seen = new Set<string>();
+  return (parsed.targets ?? [])
+    .filter((t) => t && allowed.has(t.metric) && Number.isFinite(Number(t.target_value)))
+    .filter((t) => (seen.has(t.metric) ? false : (seen.add(t.metric), true)))
+    .slice(0, 6)
+    .map((t) => ({
+      metric: t.metric,
+      target_value: Math.max(0, Math.round(Number(t.target_value) * 10) / 10),
+      rationale: (t.rationale ?? "").slice(0, 160),
+    }));
+}
+
+/* ---------------- Follow-up mode ---------------- */
+
+export type FollowUpQuestion = { id: string; question: string; why: string };
+
+/**
+ * Structured follow-up: before giving next actions the advisor asks 3-5
+ * clarifying questions grounded in the workspace's live traffic and products.
+ */
+export async function buildFollowUpQuestions(
+  supabase: SupabaseClient,
+): Promise<FollowUpQuestion[]> {
+  const { facts } = await gatherAdvisorSnapshot(supabase);
+
+  const system = [
+    ADVISOR_PERSONA,
+    "You are starting a short diagnostic interview with the owner before recommending actions.",
+    "Ask only what the data cannot tell you and what would change your advice — capacity, margins, stock,",
+    "staffing, budget, seasonality, sales process, or which product they actually want to push.",
+    "Reference the real numbers you were given inside the 'why'.",
+    'Return STRICT JSON only: {"questions": [{"question": string (max 180 chars), "why": string (max 140 chars)}]}',
+    "Exactly 3 to 5 questions, ordered by how much the answer changes your recommendation.",
+  ].join("\n");
+
+  const raw = await callFlashAi(system, facts);
+  let parsed: { questions?: Array<{ question?: string; why?: string }> } = {};
+  try {
+    parsed = JSON.parse(stripFences(raw)) as typeof parsed;
+  } catch {
+    parsed = {};
+  }
+
+  return (parsed.questions ?? [])
+    .filter((q) => (q.question ?? "").trim().length > 5)
+    .slice(0, 5)
+    .map((q, i) => ({
+      id: `q${i + 1}`,
+      question: (q.question ?? "").trim().slice(0, 180),
+      why: (q.why ?? "").trim().slice(0, 140),
+    }));
+}
+
+export type FollowUpPlan = {
+  summary: string;
+  actions: { action: string; why: string; owner: string; when: string; impact: "high" | "medium" | "low" }[];
+  watchouts: string[];
+  generatedAt: string;
+};
+
+/** Turns the owner's answers plus live data into a prioritised next-action plan. */
+export async function buildFollowUpPlan(
+  supabase: SupabaseClient,
+  answers: { question: string; answer: string }[],
+): Promise<FollowUpPlan> {
+  const { facts } = await gatherAdvisorSnapshot(supabase);
+
+  const system = [
+    ADVISOR_PERSONA,
+    "You just interviewed the owner. Combine their answers with the live data and give the next actions.",
+    'Return STRICT JSON only: {"summary": string (max 400 chars),',
+    '"actions": [4-6 {"action": string, "why": string, "owner": string, "when": string, "impact": "high"|"medium"|"low"}],',
+    '"watchouts": [2-4 strings]}',
+    "'when' is a concrete window like 'today', 'this week' or 'within 30 days'.",
+  ].join("\n");
+
+  const user = [
+    "BUSINESS DATA:",
+    facts,
+    "\nOWNER'S ANSWERS:",
+    ...answers.map((a) => `Q: ${a.question}\nA: ${a.answer}`),
+  ].join("\n");
+
+  const raw = await callFlashAi(system, user);
+  let parsed: Partial<FollowUpPlan> = {};
+  try {
+    parsed = JSON.parse(stripFences(raw)) as Partial<FollowUpPlan>;
+  } catch {
+    parsed = { summary: raw.slice(0, 400) };
+  }
+
+  return {
+    summary: parsed.summary?.trim() || "No summary returned.",
+    actions: Array.isArray(parsed.actions) ? parsed.actions.slice(0, 6) : [],
+    watchouts: Array.isArray(parsed.watchouts) ? parsed.watchouts.slice(0, 4) : [],
+    generatedAt: new Date().toISOString(),
+  };
+}
