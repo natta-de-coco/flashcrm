@@ -144,7 +144,15 @@ function Landing() {
       </main>
 
       <footer className="border-t py-6 text-center text-xs text-muted-foreground">
-        Flash CRM · WhatsApp monitoring, AI chatbot and lead pipeline in one workspace.
+        <p>Flash CRM · WhatsApp monitoring, AI chatbot and lead pipeline in one workspace.</p>
+        <p className="mt-2 flex items-center justify-center gap-3">
+          <Link to="/privacy" className="underline">
+            Privacy Policy
+          </Link>
+          <Link to="/terms" className="underline">
+            Terms of Service
+          </Link>
+        </p>
       </footer>
     </div>
   );
