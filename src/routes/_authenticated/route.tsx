@@ -346,7 +346,6 @@ function AuthenticatedLayout() {
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
-      </div>
     </TenantProvider>
   );
 }
