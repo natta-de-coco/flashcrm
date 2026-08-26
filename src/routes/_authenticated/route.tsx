@@ -38,6 +38,7 @@ import {
   Plug,
   Search,
   Settings,
+  Briefcase,
   Sparkles,
   Users,
   type LucideIcon,
@@ -68,6 +69,7 @@ const NAV_SECTIONS = [
   {
     title: "Business",
     items: [
+      { to: "/advisor", label: "Business Advisor", desc: "Expert AI growth guidance", icon: Briefcase },
       { to: "/catalog", label: "Products", desc: "What you sell", icon: Package },
       { to: "/chatbot", label: "Chatbot", desc: "AI auto-replies", icon: Bot },
     ],
