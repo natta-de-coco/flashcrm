@@ -11,8 +11,9 @@ import {
 } from "@/lib/companies.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { exportCompanyData, listCompanyPresence } from "@/lib/presence.functions";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, Stethoscope } from "lucide-react";
+import { Building2, Circle, Download, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/companies")({
@@ -43,6 +44,33 @@ function CompaniesPage() {
   const fetchCompanies = useServerFn(listCompanies);
   const saveStatus = useServerFn(updateCompanyStatus);
   const savePlanThresholds = useServerFn(updatePlanThresholds);
+  const fetchPresence = useServerFn(listCompanyPresence);
+  const runExport = useServerFn(exportCompanyData);
+
+  const presence = useQuery({
+    queryKey: ["manager-presence"],
+    queryFn: () => fetchPresence(),
+    enabled: isSuperAdmin,
+    refetchInterval: 30_000,
+  });
+  const presenceFor = (tenantId: string) =>
+    presence.data?.tenants.find((t) => t.tenantId === tenantId);
+
+  const exportMutation = useMutation({
+    mutationFn: (input: { organizationId: string; name: string }) =>
+      runExport({ data: { organizationId: input.organizationId } }),
+    onSuccess: (payload, input) => {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `flash-${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-data.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Company data exported");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Export failed"),
+  });
 
   const companies = useQuery({
     queryKey: ["manager-companies"],
@@ -98,6 +126,48 @@ function CompaniesPage() {
           troubleshoot a company's workspace.
         </p>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-base">Who is online right now</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            A company counts as online when one of its team members was active in Flash in the last
+            5 minutes.
+          </p>
+          {(presence.data?.tenants ?? []).length === 0 && (
+            <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+          )}
+          {(presence.data?.tenants ?? []).map((t) => {
+            const org = (companies.data ?? []).find((c) => c.id === t.tenantId);
+            return (
+              <div
+                key={t.tenantId}
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border p-3 text-sm"
+              >
+                <Circle
+                  className={
+                    t.online > 0
+                      ? "size-2.5 fill-brand text-brand"
+                      : "size-2.5 fill-muted-foreground/40 text-muted-foreground/40"
+                  }
+                />
+                <span className="font-medium">{org?.name ?? t.tenantId.slice(0, 8)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t.online > 0 ? `${t.online} online now` : "offline"} · {t.users} team members
+                  {t.lastSeenAt ? ` · last seen ${new Date(t.lastSeenAt).toLocaleString()}` : ""}
+                </span>
+                {t.lastActions[0] && (
+                  <span className="text-xs text-muted-foreground">
+                    latest: {t.lastActions[0].action}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
 
       <Card className="mb-6">
         <CardHeader>
@@ -190,6 +260,11 @@ function CompaniesPage() {
               <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                 <span>{org.slug}</span>
                 <span>{org.users} users</span>
+                <span>
+                  {(presenceFor(org.id)?.online ?? 0) > 0
+                    ? `${presenceFor(org.id)?.online} online`
+                    : "offline"}
+                </span>
                 <span>{org.leads} leads</span>
                 <span>{org.conversations} chats</span>
                 <span>
@@ -204,6 +279,16 @@ function CompaniesPage() {
                   <Link to="/companies/$orgId" params={{ orgId: org.id }}>
                     <Stethoscope className="size-3.5" /> Troubleshoot
                   </Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={exportMutation.isPending}
+                  onClick={() =>
+                    exportMutation.mutate({ organizationId: org.id, name: org.name })
+                  }
+                >
+                  <Download className="size-3.5" /> Export all data
                 </Button>
                 {org.subscription_status !== "active" && (
                   <Button
