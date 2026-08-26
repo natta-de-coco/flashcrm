@@ -1,3 +1,4 @@
+import { SocialInbox } from "@/components/inbox/SocialInbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,21 @@ function InboxPage() {
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showTools, setShowTools] = useState(false);
+  const [channel, setChannel] = useState<"chats" | "social">("chats");
+  // Badge count of social DMs/comments still waiting for a reply.
+  const socialPendingQuery = useQuery({
+    queryKey: ["social_pending_count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("social_interactions")
+        .select("id", { count: "exact", head: true })
+        .eq("direction", "in")
+        .eq("status", "open");
+      return count ?? 0;
+    },
+    refetchInterval: 60_000,
+  });
+  const socialPending = socialPendingQuery.data ?? 0;
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
@@ -427,6 +443,18 @@ function InboxPage() {
   }
 
 
+  if (channel === "social") {
+    return (
+      <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 flex-col lg:h-[100dvh]">
+        <div className="flex items-center gap-2 border-b bg-card px-4 py-3">
+          <h1 className="text-lg font-bold">Inbox</h1>
+          <ChannelSwitch channel={channel} onChange={setChannel} pending={socialPending} />
+        </div>
+        <SocialInbox />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 lg:h-[100dvh]">
       {/* Conversation list */}
@@ -440,6 +468,7 @@ function InboxPage() {
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <h1 className="text-lg font-bold">Inbox</h1>
+              <ChannelSwitch channel={channel} onChange={setChannel} pending={socialPending} />
               <span
                 className={cn(
                   "flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
@@ -938,6 +967,39 @@ function InboxPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Toggle between WhatsApp/website chats and social DMs & comments. */
+function ChannelSwitch({
+  channel,
+  onChange,
+  pending,
+}: {
+  channel: "chats" | "social";
+  onChange: (c: "chats" | "social") => void;
+  pending: number;
+}) {
+  return (
+    <div className="flex shrink-0 rounded-full bg-muted p-0.5 text-xs font-medium">
+      {(["chats", "social"] as const).map((c) => (
+        <button
+          key={c}
+          onClick={() => onChange(c)}
+          className={cn(
+            "flex items-center gap-1 rounded-full px-3 py-1 capitalize transition-colors",
+            channel === c ? "bg-background shadow-sm" : "text-muted-foreground",
+          )}
+        >
+          {c}
+          {c === "social" && pending > 0 ? (
+            <span className="rounded-full bg-brand px-1.5 text-[10px] text-brand-foreground">
+              {pending}
+            </span>
+          ) : null}
+        </button>
+      ))}
     </div>
   );
 }

@@ -13,6 +13,8 @@ import {
   runAdvisorAnalysis,
   saveAdvisorContext,
 } from "@/lib/advisor.functions";
+import { FollowUpCard } from "@/components/advisor/FollowUpCard";
+import { KpiTargetsCard } from "@/components/advisor/KpiTargetsCard";
 import type { AdvisorAnalysis } from "@/lib/advisor.server";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -21,6 +23,7 @@ import {
   AlertTriangle,
   Briefcase,
   CalendarClock,
+  FileDown,
   Globe2,
   Lightbulb,
   MapPin,
@@ -224,11 +227,32 @@ function AdvisorPage() {
                     : "Run a review to get scores, opportunities, risks and a 7-day plan."}
                 </CardDescription>
               </div>
-              <Button onClick={() => review.mutate()} disabled={review.isPending}>
-                <TrendingUp className="size-4" />
-                {review.isPending ? "Analyzing…" : analysis ? "Re-analyze" : "Analyze my business"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {analysis ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          const { downloadAdvisorPdf } = await import("@/lib/advisor-pdf");
+                          downloadAdvisorPdf(analysis, brief);
+                          toast.success("PDF report downloaded");
+                        } catch {
+                          toast.error("Could not build the PDF report");
+                        }
+                      })();
+                    }}
+                  >
+                    <FileDown className="size-4" /> Export PDF
+                  </Button>
+                ) : null}
+                <Button onClick={() => review.mutate()} disabled={review.isPending}>
+                  <TrendingUp className="size-4" />
+                  {review.isPending ? "Analyzing…" : analysis ? "Re-analyze" : "Analyze my business"}
+                </Button>
+              </div>
             </CardHeader>
+
             {review.isPending && !analysis ? (
               <CardContent className="grid gap-2">
                 <Skeleton className="h-5 w-2/3" />
@@ -374,6 +398,10 @@ function AdvisorPage() {
               </Section>
             ) : null}
           </div>
+
+          <KpiTargetsCard />
+
+          <FollowUpCard />
 
           <Card>
             <CardHeader>

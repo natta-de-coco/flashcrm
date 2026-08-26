@@ -25,6 +25,13 @@ const AskSchema = z.object({
     .default([]),
 });
 
+const FollowUpSchema = z.object({
+  answers: z
+    .array(z.object({ question: z.string().min(3).max(300), answer: z.string().min(1).max(1500) }))
+    .min(1)
+    .max(6),
+});
+
 /** Business profile used by the advisor (location, niche, goals). */
 export const getAdvisorContext = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -110,4 +117,32 @@ export const askAdvisor = createServerFn({ method: "POST" })
       });
     }
     return { answer };
+  });
+
+/** Structured follow-up mode: the advisor interviews the owner first. */
+export const startAdvisorFollowUp = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { buildFollowUpQuestions } = await import("@/lib/advisor.server");
+    return { questions: await buildFollowUpQuestions(context.supabase) };
+  });
+
+/** Turns the owner's answers into a prioritised next-action plan. */
+export const completeAdvisorFollowUp = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => FollowUpSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { buildFollowUpPlan } = await import("@/lib/advisor.server");
+    const plan = await buildFollowUpPlan(context.supabase, data.answers);
+
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    if (tenantId) {
+      await context.supabase.from("advisor_reports").insert({
+        tenant_id: tenantId as string,
+        kind: "followup",
+        content: plan as never,
+        created_by: context.userId,
+      });
+    }
+    return plan;
   });

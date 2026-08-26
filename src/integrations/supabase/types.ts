@@ -674,6 +674,107 @@ export type Database = {
           },
         ]
       }
+      kpi_alerts: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          message: string
+          metric: string
+          resolved: boolean
+          severity: string
+          target_id: string | null
+          target_value: number | null
+          tenant_id: string
+          value: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label: string
+          message: string
+          metric: string
+          resolved?: boolean
+          severity?: string
+          target_id?: string | null
+          target_value?: number | null
+          tenant_id?: string
+          value?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          message?: string
+          metric?: string
+          resolved?: boolean
+          severity?: string
+          target_id?: string | null
+          target_value?: number | null
+          tenant_id?: string
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kpi_alerts_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "kpi_targets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kpi_targets: {
+        Row: {
+          active: boolean
+          created_at: string
+          direction: string
+          id: string
+          label: string
+          last_checked_at: string | null
+          last_value: number | null
+          metric: string
+          note: string | null
+          source: string
+          target_value: number
+          tenant_id: string
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          direction?: string
+          id?: string
+          label: string
+          last_checked_at?: string | null
+          last_value?: number | null
+          metric: string
+          note?: string | null
+          source?: string
+          target_value: number
+          tenant_id?: string
+          unit?: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          direction?: string
+          id?: string
+          label?: string
+          last_checked_at?: string | null
+          last_value?: number | null
+          metric?: string
+          note?: string | null
+          source?: string
+          target_value?: number
+          tenant_id?: string
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_routing_rules: {
         Row: {
           active: boolean
