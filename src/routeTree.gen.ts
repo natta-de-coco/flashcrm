@@ -32,6 +32,7 @@ import { Route as AuthenticatedSocialRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedCompaniesOrgIdRouteImport } from './routes/_authenticated/companies.$orgId'
 import { Route as AuthenticatedSeoBlogIndexRouteImport } from './routes/_authenticated/seo-blog.index'
 import { Route as AuthenticatedSeoBlogStudioRouteImport } from './routes/_authenticated/seo-blog.studio'
+import { Route as ApiPublicOauthCallbackRouteImport } from './routes/api/public/oauth-callback'
 import { Route as ApiPublicLeadsCollectRouteImport } from './routes/api/public/leads/collect'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicPluginActivateRouteImport } from './routes/api/public/plugin/activate'
@@ -160,6 +161,11 @@ const AuthenticatedSeoBlogStudioRoute =
     path: '/studio',
     getParentRoute: () => AuthenticatedSeoBlogRoute,
   } as any)
+const ApiPublicOauthCallbackRoute = ApiPublicOauthCallbackRouteImport.update({
+  id: '/api/public/oauth-callback',
+  path: '/api/public/oauth-callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicLeadsCollectRoute = ApiPublicLeadsCollectRouteImport.update({
   id: '/api/public/leads/collect',
   path: '/api/public/leads/collect',
@@ -237,6 +243,7 @@ export interface FileRoutesByFullPath {
   '/social': typeof AuthenticatedSocialRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
+  '/api/public/oauth-callback': typeof ApiPublicOauthCallbackRoute
   '/seo-blog/': typeof AuthenticatedSeoBlogIndexRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -270,6 +277,7 @@ export interface FileRoutesByTo {
   '/social': typeof AuthenticatedSocialRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
+  '/api/public/oauth-callback': typeof ApiPublicOauthCallbackRoute
   '/seo-blog': typeof AuthenticatedSeoBlogIndexRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -306,6 +314,7 @@ export interface FileRoutesById {
   '/_authenticated/social': typeof AuthenticatedSocialRoute
   '/_authenticated/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/_authenticated/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
+  '/api/public/oauth-callback': typeof ApiPublicOauthCallbackRoute
   '/_authenticated/seo-blog/': typeof AuthenticatedSeoBlogIndexRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
@@ -342,6 +351,7 @@ export interface FileRouteTypes {
     | '/social'
     | '/companies/$orgId'
     | '/seo-blog/studio'
+    | '/api/public/oauth-callback'
     | '/seo-blog/'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
@@ -375,6 +385,7 @@ export interface FileRouteTypes {
     | '/social'
     | '/companies/$orgId'
     | '/seo-blog/studio'
+    | '/api/public/oauth-callback'
     | '/seo-blog'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/_authenticated/social'
     | '/_authenticated/companies/$orgId'
     | '/_authenticated/seo-blog/studio'
+    | '/api/public/oauth-callback'
     | '/_authenticated/seo-blog/'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
@@ -430,6 +442,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  ApiPublicOauthCallbackRoute: typeof ApiPublicOauthCallbackRoute
   ApiPublicLeadsCollectRoute: typeof ApiPublicLeadsCollectRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicPluginActivateRoute: typeof ApiPublicPluginActivateRoute
@@ -605,6 +618,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSeoBlogStudioRouteImport
       parentRoute: typeof AuthenticatedSeoBlogRoute
     }
+    '/api/public/oauth-callback': {
+      id: '/api/public/oauth-callback'
+      path: '/api/public/oauth-callback'
+      fullPath: '/api/public/oauth-callback'
+      preLoaderRoute: typeof ApiPublicOauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/leads/collect': {
       id: '/api/public/leads/collect'
       path: '/api/public/leads/collect'
@@ -749,6 +769,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  ApiPublicOauthCallbackRoute: ApiPublicOauthCallbackRoute,
   ApiPublicLeadsCollectRoute: ApiPublicLeadsCollectRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicPluginActivateRoute: ApiPublicPluginActivateRoute,
