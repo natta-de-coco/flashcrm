@@ -104,11 +104,19 @@ export function ConnectBusiness() {
       start({ data: { platform: platform as never, origin: window.location.origin } }),
     onSuccess: (result) => {
       if (result.ready) {
-        window.location.href = result.url;
+        // Providers like Facebook/Google refuse to render inside an iframe
+        // (ERR_BLOCKED_BY_RESPONSE), so always hand off to a real browser tab.
+        const opened = window.open(result.url, "_blank", "noopener,noreferrer");
+        if (!opened) {
+          toast.error("Allow pop-ups, then click Connect again to open the secure login page.");
+          return;
+        }
+        toast.info("Finish signing in on the new tab, then come back here.");
         return;
       }
       toast.info(result.reason);
     },
+
     onError: (e: Error) => toast.error(e.message),
   });
 
