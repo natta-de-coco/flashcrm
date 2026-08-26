@@ -16,6 +16,7 @@ import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider } from "@/hooks/useTenant";
 import { cn } from "@/lib/utils";
+import { touchPresence } from "@/lib/presence.functions";
 import {
   Link,
   Outlet,
@@ -78,7 +79,7 @@ const NAV_SECTIONS = [
     title: "System",
     items: [
       { to: "/monitoring", label: "Monitoring", desc: "Alerts, webhooks & Meta health", icon: Activity },
-      { to: "/connect", label: "Integrations", desc: "Link WhatsApp & your website", icon: Plug },
+      { to: "/connect", label: "Integrations", desc: "All connections & logs", icon: Plug },
       { to: "/settings", label: "Settings", desc: "Numbers, keys, billing & team", icon: Settings },
     ],
   },
@@ -163,6 +164,23 @@ function AuthenticatedLayout() {
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  // Presence heartbeat so the platform manager can see who is online.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    const beat = () => {
+      void touchPresence({ data: undefined }).catch(() => undefined);
+    };
+    beat();
+    const timer = window.setInterval(() => {
+      if (!cancelled && document.visibilityState === "visible") beat();
+    }, 120_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [session]);
 
   // Restore the user's preferred sidebar width (client-only, after hydration).
   useEffect(() => {

@@ -1,4 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
+import { ConnectBusiness } from "@/components/integrations/ConnectBusiness";
+import { IntegrationLogs } from "@/components/integrations/IntegrationLogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -134,9 +136,26 @@ function ConnectPage() {
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <PageHeader
-        title="Connect & setup"
-        description="Four steps to a fully wired workspace: WhatsApp in, website leads in, routing on, AI growing your business."
+        title="Integrations"
+        description="Every connection in one place: platforms, WhatsApp, your website and stores, plus a full activity log."
       />
+
+      {/* Section jump links */}
+      <nav className="mb-6 flex flex-wrap gap-2">
+        {[
+          { href: "#platforms", label: "Platform connections" },
+          { href: "#setup", label: "Guided setup" },
+          { href: "#logs", label: "Integration logs" },
+        ].map((s) => (
+          <Button key={s.href} asChild variant="outline" size="sm">
+            <a href={s.href}>{s.label}</a>
+          </Button>
+        ))}
+      </nav>
+
+      <div className="mb-8">
+        <ConnectBusiness />
+      </div>
 
       {/* How it works */}
       <Card className="mb-6 max-w-4xl">
@@ -158,6 +177,10 @@ function ConnectPage() {
           </Badge>
         </CardContent>
       </Card>
+
+      <h2 id="setup" className="mb-3 text-lg font-semibold">
+        Guided setup
+      </h2>
 
       <div className="mb-6 max-w-4xl">
         <div className="mb-2 flex items-center justify-between text-sm">
@@ -370,6 +393,10 @@ function ConnectPage() {
             </Button>
           </div>
         </StepCard>
+      </div>
+
+      <div className="mt-8">
+        <IntegrationLogs />
       </div>
     </main>
   );
