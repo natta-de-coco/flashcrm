@@ -222,63 +222,123 @@ export type Database = {
       }
       business_profiles: {
         Row: {
+          avoid_products: string | null
+          brand_personality: string | null
+          brands: string | null
           business_name: string | null
           business_stage: string | null
           city: string | null
           competitors: string | null
+          compliance_rules: string | null
+          contact_details: string | null
           country: string | null
           created_at: string
           currency: string | null
           description: string | null
+          forbidden_words: string | null
           id: string
           industry: string | null
+          keywords: string | null
           learned_facts: string | null
+          locations: string | null
           main_goal: string | null
+          marketing_goals: string | null
           monthly_revenue_target: number | null
           niche: string | null
+          preferred_cta: string | null
+          pricing_approach: string | null
+          priority_products: string | null
+          products_summary: string | null
           qa: Json
+          seasonal_campaigns: string | null
+          services_summary: string | null
+          target_cities: string | null
+          target_countries: string | null
+          target_customers: string | null
           tenant_id: string
+          tone: string | null
           updated_at: string
+          usp: string | null
           website_url: string | null
         }
         Insert: {
+          avoid_products?: string | null
+          brand_personality?: string | null
+          brands?: string | null
           business_name?: string | null
           business_stage?: string | null
           city?: string | null
           competitors?: string | null
+          compliance_rules?: string | null
+          contact_details?: string | null
           country?: string | null
           created_at?: string
           currency?: string | null
           description?: string | null
+          forbidden_words?: string | null
           id?: string
           industry?: string | null
+          keywords?: string | null
           learned_facts?: string | null
+          locations?: string | null
           main_goal?: string | null
+          marketing_goals?: string | null
           monthly_revenue_target?: number | null
           niche?: string | null
+          preferred_cta?: string | null
+          pricing_approach?: string | null
+          priority_products?: string | null
+          products_summary?: string | null
           qa?: Json
+          seasonal_campaigns?: string | null
+          services_summary?: string | null
+          target_cities?: string | null
+          target_countries?: string | null
+          target_customers?: string | null
           tenant_id: string
+          tone?: string | null
           updated_at?: string
+          usp?: string | null
           website_url?: string | null
         }
         Update: {
+          avoid_products?: string | null
+          brand_personality?: string | null
+          brands?: string | null
           business_name?: string | null
           business_stage?: string | null
           city?: string | null
           competitors?: string | null
+          compliance_rules?: string | null
+          contact_details?: string | null
           country?: string | null
           created_at?: string
           currency?: string | null
           description?: string | null
+          forbidden_words?: string | null
           id?: string
           industry?: string | null
+          keywords?: string | null
           learned_facts?: string | null
+          locations?: string | null
           main_goal?: string | null
+          marketing_goals?: string | null
           monthly_revenue_target?: number | null
           niche?: string | null
+          preferred_cta?: string | null
+          pricing_approach?: string | null
+          priority_products?: string | null
+          products_summary?: string | null
           qa?: Json
+          seasonal_campaigns?: string | null
+          services_summary?: string | null
+          target_cities?: string | null
+          target_countries?: string | null
+          target_customers?: string | null
           tenant_id?: string
+          tone?: string | null
           updated_at?: string
+          usp?: string | null
           website_url?: string | null
         }
         Relationships: [
@@ -1327,42 +1387,107 @@ export type Database = {
           },
         ]
       }
+      social_account_scans: {
+        Row: {
+          account_id: string
+          created_at: string
+          findings: Json
+          id: string
+          overall: number
+          scores: Json
+          suggestions: Json
+          tenant_id: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          findings?: Json
+          id?: string
+          overall?: number
+          scores?: Json
+          suggestions?: Json
+          tenant_id?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          findings?: Json
+          id?: string
+          overall?: number
+          scores?: Json
+          suggestions?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_account_scans_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       social_accounts: {
         Row: {
           access_token: string | null
           active: boolean
+          connect_method: string
           created_at: string
           external_id: string | null
+          health: string
           id: string
           label: string
+          last_analytics_sync_at: string | null
+          last_post_at: string | null
           last_synced_at: string | null
+          permissions: Json
           platform: string
+          profile: Json
+          profile_url: string | null
           stats: Json
           tenant_id: string
+          token_expires_at: string | null
         }
         Insert: {
           access_token?: string | null
           active?: boolean
+          connect_method?: string
           created_at?: string
           external_id?: string | null
+          health?: string
           id?: string
           label: string
+          last_analytics_sync_at?: string | null
+          last_post_at?: string | null
           last_synced_at?: string | null
+          permissions?: Json
           platform: string
+          profile?: Json
+          profile_url?: string | null
           stats?: Json
           tenant_id?: string
+          token_expires_at?: string | null
         }
         Update: {
           access_token?: string | null
           active?: boolean
+          connect_method?: string
           created_at?: string
           external_id?: string | null
+          health?: string
           id?: string
           label?: string
+          last_analytics_sync_at?: string | null
+          last_post_at?: string | null
           last_synced_at?: string | null
+          permissions?: Json
           platform?: string
+          profile?: Json
+          profile_url?: string | null
           stats?: Json
           tenant_id?: string
+          token_expires_at?: string | null
         }
         Relationships: []
       }
@@ -1810,6 +1935,81 @@ export type Database = {
           source?: string
           status?: string
           wa_message_id?: string | null
+        }
+        Relationships: []
+      }
+      website_pages: {
+        Row: {
+          id: string
+          indexed_at: string
+          keywords: string | null
+          kind: string
+          summary: string | null
+          tenant_id: string
+          title: string | null
+          url: string
+          word_count: number
+        }
+        Insert: {
+          id?: string
+          indexed_at?: string
+          keywords?: string | null
+          kind?: string
+          summary?: string | null
+          tenant_id?: string
+          title?: string | null
+          url: string
+          word_count?: number
+        }
+        Update: {
+          id?: string
+          indexed_at?: string
+          keywords?: string | null
+          kind?: string
+          summary?: string | null
+          tenant_id?: string
+          title?: string | null
+          url?: string
+          word_count?: number
+        }
+        Relationships: []
+      }
+      website_sync_state: {
+        Row: {
+          blog_posts: number
+          error: string | null
+          last_synced_at: string | null
+          pages: number
+          products: number
+          services: number
+          site_url: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          blog_posts?: number
+          error?: string | null
+          last_synced_at?: string | null
+          pages?: number
+          products?: number
+          services?: number
+          site_url?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Update: {
+          blog_posts?: number
+          error?: string | null
+          last_synced_at?: string | null
+          pages?: number
+          products?: number
+          services?: number
+          site_url?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
         }
         Relationships: []
       }
