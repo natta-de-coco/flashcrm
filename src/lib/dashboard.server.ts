@@ -123,8 +123,8 @@ export async function getDashboardOverviewData(
     supabase
       .from("messages")
       .select("id, sender, created_at")
-      .gte("created_at", weekStart.toISOString())
-      .limit(5000),
+      .gte("created_at", priorStart.toISOString())
+      .limit(10000),
     supabase
       .from("social_accounts")
       .select("id, platform, label, active, last_synced_at, stats"),
@@ -133,6 +133,11 @@ export async function getDashboardOverviewData(
       .select("id, account_id, kind, status, created_at")
       .order("created_at", { ascending: false })
       .limit(500),
+    supabase
+      .from("leads")
+      .select("id, created_at, consent_given")
+      .gte("created_at", priorStart.toISOString())
+      .limit(5000),
   ]);
 
   const firstError =
@@ -141,15 +146,24 @@ export async function getDashboardOverviewData(
     msgs.error ??
     weekMsgs.error ??
     accounts.error ??
-    interactions.error;
+    interactions.error ??
+    leadRows.error;
   if (firstError) throw new Error(firstError.message);
 
   const conversations = convs.data ?? [];
   const contactRows = contacts.data ?? [];
   const messageRows = msgs.data ?? [];
-  const weekMessageRows = weekMsgs.data ?? [];
+  const fortnightMessageRows = weekMsgs.data ?? [];
+  const weekStartMs = weekStart.getTime();
+  const weekMessageRows = fortnightMessageRows.filter(
+    (m) => new Date(m.created_at).getTime() >= weekStartMs,
+  );
+  const priorMessageRows = fortnightMessageRows.filter(
+    (m) => new Date(m.created_at).getTime() < weekStartMs,
+  );
   const accountRows = accounts.data ?? [];
   const interactionRows = interactions.data ?? [];
+  const leads = leadRows.data ?? [];
 
   // ---- 7-day activity buckets (received vs sent) ----
   const buckets: DayBucket[] = [];
