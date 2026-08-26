@@ -1,4 +1,5 @@
 import {
+  Briefcase,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -30,6 +31,7 @@ const PAGES: Hit[] = [
   { id: "p-social", label: "Social Hub", sub: "Accounts & engagement", to: "/social" },
   { id: "p-content", label: "Content & SEO", sub: "Posts & articles", to: "/content" },
   { id: "p-seo", label: "SEO Studio", sub: "Image-to-post AI", to: "/seo-blog" },
+  { id: "p-advisor", label: "Business Advisor", sub: "Expert AI growth guidance", to: "/advisor" },
   { id: "p-catalog", label: "Products", sub: "Catalog", to: "/catalog" },
   { id: "p-monitor", label: "Monitoring", sub: "Alerts & webhooks", to: "/monitoring" },
   { id: "p-settings", label: "Settings", sub: "Numbers, keys & team", to: "/settings" },
@@ -43,6 +45,7 @@ const ICONS: Record<string, typeof Inbox> = {
   "/social": Megaphone,
   "/content": FileText,
   "/seo-blog": FileText,
+  "/advisor": Briefcase,
   "/catalog": Package,
   "/monitoring": Settings,
   "/settings": Settings,
