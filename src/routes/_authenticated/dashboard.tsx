@@ -235,6 +235,18 @@ function DashboardPage() {
     placeholderData: keepPreviousData,
   });
 
+  // Flash AI daily brief — costs a model call, so it's generated on demand
+  // and cached for the session rather than polled.
+  const briefFn = useServerFn(getDailyBrief);
+  const brief = useQuery({
+    queryKey: ["dashboard-daily-brief"],
+    queryFn: () => briefFn(),
+    staleTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: 0,
+    enabled: false,
+  });
+
   // Widget error logging — report each distinct failure once per message so
   // slow/flaky endpoints are visible in function logs and the audit trail.
   const loggedRef = useRef<Record<string, string>>({});
