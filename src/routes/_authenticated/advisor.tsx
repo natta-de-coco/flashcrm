@@ -224,11 +224,32 @@ function AdvisorPage() {
                     : "Run a review to get scores, opportunities, risks and a 7-day plan."}
                 </CardDescription>
               </div>
-              <Button onClick={() => review.mutate()} disabled={review.isPending}>
-                <TrendingUp className="size-4" />
-                {review.isPending ? "Analyzing…" : analysis ? "Re-analyze" : "Analyze my business"}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {analysis ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          const { downloadAdvisorPdf } = await import("@/lib/advisor-pdf");
+                          downloadAdvisorPdf(analysis, brief);
+                          toast.success("PDF report downloaded");
+                        } catch {
+                          toast.error("Could not build the PDF report");
+                        }
+                      })();
+                    }}
+                  >
+                    <FileDown className="size-4" /> Export PDF
+                  </Button>
+                ) : null}
+                <Button onClick={() => review.mutate()} disabled={review.isPending}>
+                  <TrendingUp className="size-4" />
+                  {review.isPending ? "Analyzing…" : analysis ? "Re-analyze" : "Analyze my business"}
+                </Button>
+              </div>
             </CardHeader>
+
             {review.isPending && !analysis ? (
               <CardContent className="grid gap-2">
                 <Skeleton className="h-5 w-2/3" />
