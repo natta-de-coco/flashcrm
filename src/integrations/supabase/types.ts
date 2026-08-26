@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      advisor_reports: {
+        Row: {
+          content: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          kind: string
+          question: string | null
+          tenant_id: string
+        }
+        Insert: {
+          content?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          question?: string | null
+          tenant_id: string
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          kind?: string
+          question?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advisor_reports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_provider_keys: {
         Row: {
           active: boolean
@@ -185,11 +223,19 @@ export type Database = {
       business_profiles: {
         Row: {
           business_name: string | null
+          business_stage: string | null
+          city: string | null
+          competitors: string | null
+          country: string | null
           created_at: string
+          currency: string | null
           description: string | null
           id: string
           industry: string | null
           learned_facts: string | null
+          main_goal: string | null
+          monthly_revenue_target: number | null
+          niche: string | null
           qa: Json
           tenant_id: string
           updated_at: string
@@ -197,11 +243,19 @@ export type Database = {
         }
         Insert: {
           business_name?: string | null
+          business_stage?: string | null
+          city?: string | null
+          competitors?: string | null
+          country?: string | null
           created_at?: string
+          currency?: string | null
           description?: string | null
           id?: string
           industry?: string | null
           learned_facts?: string | null
+          main_goal?: string | null
+          monthly_revenue_target?: number | null
+          niche?: string | null
           qa?: Json
           tenant_id: string
           updated_at?: string
@@ -209,11 +263,19 @@ export type Database = {
         }
         Update: {
           business_name?: string | null
+          business_stage?: string | null
+          city?: string | null
+          competitors?: string | null
+          country?: string | null
           created_at?: string
+          currency?: string | null
           description?: string | null
           id?: string
           industry?: string | null
           learned_facts?: string | null
+          main_goal?: string | null
+          monthly_revenue_target?: number | null
+          niche?: string | null
           qa?: Json
           tenant_id?: string
           updated_at?: string
