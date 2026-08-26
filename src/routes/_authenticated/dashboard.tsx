@@ -145,6 +145,72 @@ function ListSkeleton({ rows = 4 }: { rows?: number }) {
   );
 }
 
+/** Week-over-week change pill: up is good, flat and unknown stay neutral. */
+function TrendPill({ trend, label }: { trend?: Trend; label?: string }) {
+  if (!trend) return null;
+  if (trend.changePct === null) {
+    return (
+      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+        {trend.current} {label ?? "this week"}
+      </p>
+    );
+  }
+  const up = trend.changePct >= 0;
+  const Icon = up ? TrendingUp : TrendingDown;
+  return (
+    <p
+      className={`mt-1 flex items-center gap-1 truncate text-[11px] ${
+        up ? "text-brand" : "text-destructive"
+      }`}
+    >
+      <Icon className="size-3 shrink-0" />
+      {up ? "+" : ""}
+      {trend.changePct}%
+      <span className="truncate text-muted-foreground">{label ?? "vs last week"}</span>
+    </p>
+  );
+}
+
+/** Business Health Score: one weighted number plus the factors behind it. */
+function HealthCard({ health }: { health: BusinessHealth }) {
+  const tone =
+    health.score >= 85
+      ? "text-brand"
+      : health.score >= 70
+        ? "text-brand"
+        : health.score >= 50
+          ? "text-amber-600 dark:text-amber-400"
+          : "text-destructive";
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between">
+        <div>
+          <CardTitle className="text-base">Business health score</CardTitle>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Responsiveness, inbox, leads, social and compliance combined.
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className={`text-3xl font-bold leading-none ${tone}`}>{health.score}</p>
+          <p className="text-[11px] text-muted-foreground">{health.grade}</p>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {health.factors.map((f) => (
+          <div key={f.key}>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium">{f.label}</span>
+              <span className="text-muted-foreground">{f.score}/100</span>
+            </div>
+            <Progress value={f.score} className="mt-1 h-1.5" />
+            <p className="mt-1 truncate text-[11px] text-muted-foreground">{f.detail}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function DashboardPage() {
   const overviewFn = useServerFn(getDashboardOverview);
   const overview = useQuery({
