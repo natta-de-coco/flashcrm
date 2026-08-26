@@ -88,7 +88,7 @@
     ".flasp-foot.on{display:flex}",
     ".flasp-input{flex:1;border:1px solid #d8dcda;border-radius:999px;padding:10px 14px;font-size:13px;outline:none}",
     ".flasp-send{border:0;color:#fff;border-radius:999px;padding:0 18px;font-size:13px;font-weight:600;cursor:pointer}",
-    "@media(max-width:520px){.flasp-panel{width:100vw}}",
+    "@media(max-width:520px){.flasp-panel{width:100vw}.flasp-launch{padding:12px 16px;font-size:13px}}",
   ].join("");
   document.head.appendChild(css);
 
