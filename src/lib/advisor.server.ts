@@ -136,15 +136,17 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
     );
   }
 
-  lines.push("\n## Social accounts");
-  if (social.length === 0) lines.push("No social accounts connected.");
-  for (const a of social as Array<{
+  lines.push("\n## Social accounts (latest sync)");
+  const accountRows = social as Array<{
+    id: string;
     platform: string;
     label: string;
     stats: unknown;
     last_synced_at: string | null;
     active: boolean;
-  }>) {
+  }>;
+  if (accountRows.length === 0) lines.push("No social accounts connected.");
+  for (const a of accountRows) {
     const s = (a.stats ?? {}) as Record<string, number | string>;
     const statText = Object.entries(s)
       .slice(0, 8)
@@ -154,6 +156,55 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
       `- ${a.platform} (${a.label})${a.active ? "" : " [inactive]"}: ${statText || "no stats yet"}; last synced ${a.last_synced_at ?? "never"}`,
     );
   }
+
+  // Post-level performance so recommendations reference what actually worked.
+  const platformById = new Map(accountRows.map((a) => [a.id, a.platform]));
+  const postRows = socialPosts as Array<{
+    caption: string;
+    account_id: string | null;
+    reach: number;
+    likes: number;
+    comments_count: number;
+    shares: number;
+    status: string;
+    published_at: string | null;
+  }>;
+  const published = postRows.filter((p) => p.status === "published" || p.published_at);
+  lines.push("\n## Post performance (most recent 40 posts)");
+  if (published.length === 0) {
+    lines.push("No published post metrics synced yet.");
+  } else {
+    const totalReach = published.reduce((s, p) => s + (p.reach ?? 0), 0);
+    const totalEngagement = published.reduce(
+      (s, p) => s + (p.likes ?? 0) + (p.comments_count ?? 0) + (p.shares ?? 0),
+      0,
+    );
+    lines.push(
+      `Published ${published.length} posts, total reach ${totalReach}, total engagement ${totalEngagement}` +
+        (totalReach > 0
+          ? `, engagement rate ${((totalEngagement / totalReach) * 100).toFixed(1)}%`
+          : ""),
+    );
+    const ranked = [...published]
+      .sort(
+        (a, b) =>
+          (b.likes ?? 0) + (b.comments_count ?? 0) + (b.shares ?? 0) - ((a.likes ?? 0) + (a.comments_count ?? 0) + (a.shares ?? 0)),
+      )
+      .slice(0, 5);
+    for (const p of ranked) {
+      lines.push(
+        `- [${platformById.get(p.account_id ?? "") ?? "unknown"}] reach ${p.reach ?? 0}, likes ${p.likes ?? 0}, comments ${p.comments_count ?? 0}, shares ${p.shares ?? 0}: "${p.caption.slice(0, 120)}"`,
+      );
+    }
+    const scheduled = postRows.filter((p) => p.status === "scheduled").length;
+    if (scheduled > 0) lines.push(`Scheduled but not yet published: ${scheduled}`);
+  }
+  if (overview) {
+    lines.push(
+      `Replies waiting across social inboxes: ${overview.social.pendingTotal} (7-day interactions ${overview.social.interactions7d}, audience ${overview.social.totalAudience})`,
+    );
+  }
+
 
   lines.push("\n## Products");
   if (products.length === 0) lines.push("No products in the catalog.");
