@@ -22,9 +22,40 @@ export type RecentConversation = {
   lastMessageAt: string;
 };
 
+export type Trend = {
+  /** This period's value (last 7 days). */
+  current: number;
+  /** Previous 7-day period, for comparison. */
+  previous: number;
+  /** Percent change, null when the previous period was zero. */
+  changePct: number | null;
+};
+
+export type HealthFactor = {
+  key: string;
+  label: string;
+  /** 0-100 sub-score. */
+  score: number;
+  detail: string;
+};
+
+export type BusinessHealth = {
+  /** Weighted 0-100 overall score. */
+  score: number;
+  grade: "Excellent" | "Good" | "Needs work" | "At risk";
+  factors: HealthFactor[];
+};
+
 export type DashboardOverview = {
   stats: { open: number; unread: number; contacts: number; botReplies: number };
   activity: { buckets: DayBucket[]; weekTotal: number; todayTotal: number };
+  trends: {
+    messages: Trend;
+    inbound: Trend;
+    leads: Trend;
+    replies: Trend;
+  };
+  health: BusinessHealth;
   social: {
     accounts: SocialPulseAccount[];
     pendingTotal: number;
@@ -33,6 +64,14 @@ export type DashboardOverview = {
   };
   recentConversations: RecentConversation[];
 };
+
+function trend(current: number, previous: number): Trend {
+  return {
+    current,
+    previous,
+    changePct: previous > 0 ? Math.round(((current - previous) / previous) * 100) : null,
+  };
+}
 
 function dayKey(d: Date) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
