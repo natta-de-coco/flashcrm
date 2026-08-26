@@ -1094,6 +1094,42 @@ export type Database = {
           },
         ]
       }
+      oauth_states: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          platform: string
+          redirect_uri: string
+          state: string
+          tenant_id: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          platform: string
+          redirect_uri: string
+          state: string
+          tenant_id?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          platform?: string
+          redirect_uri?: string
+          state?: string
+          tenant_id?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       organizations: {
         Row: {
           created_at: string
