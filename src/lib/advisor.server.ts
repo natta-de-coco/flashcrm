@@ -1,0 +1,259 @@
+// Server-only logic for the Flash Business Advisor — a senior, niche-aware
+// business manager persona that reads the tenant's live data (channels, social,
+// leads, catalog, location) and returns a structured strategic review.
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { callFlashAi, gatherLeadSummary, gatherMessagingAnalytics } from "./flash-ai.server";
+import { getDashboardOverviewData } from "./dashboard.server";
+
+export type AdvisorProfile = {
+  business_name: string | null;
+  industry: string | null;
+  niche: string | null;
+  description: string | null;
+  website_url: string | null;
+  city: string | null;
+  country: string | null;
+  currency: string | null;
+  business_stage: string | null;
+  monthly_revenue_target: number | null;
+  main_goal: string | null;
+  competitors: string | null;
+  learned_facts: string | null;
+};
+
+const PROFILE_COLUMNS =
+  "business_name, industry, niche, description, website_url, city, country, currency, business_stage, monthly_revenue_target, main_goal, competitors, learned_facts";
+
+export async function getAdvisorProfile(supabase: SupabaseClient): Promise<AdvisorProfile | null> {
+  const { data } = await supabase.from("business_profiles").select(PROFILE_COLUMNS).maybeSingle();
+  return (data as AdvisorProfile | null) ?? null;
+}
+
+export type AdvisorSnapshot = {
+  profile: AdvisorProfile | null;
+  facts: string;
+};
+
+/** Gathers everything the advisor reasons about, as plain-text facts. */
+export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<AdvisorSnapshot> {
+  const [profile, overview, leads, messaging, products, social] = await Promise.all([
+    getAdvisorProfile(supabase).catch(() => null),
+    getDashboardOverviewData(supabase).catch(() => null),
+    gatherLeadSummary(supabase as never).catch(() => null),
+    gatherMessagingAnalytics(supabase as never, 30).catch(() => null),
+    supabase
+      .from("products")
+      .select("title, price, description")
+      .limit(40)
+      .then((r) => r.data ?? []),
+    supabase
+      .from("social_accounts")
+      .select("platform, label, stats, last_synced_at, active")
+      .then((r) => r.data ?? []),
+  ]);
+
+  const lines: string[] = [];
+
+  lines.push("## Business");
+  lines.push(`Name: ${profile?.business_name ?? "unknown"}`);
+  lines.push(`Industry: ${profile?.industry ?? "unknown"} / niche: ${profile?.niche ?? "unknown"}`);
+  lines.push(
+    `Location: ${[profile?.city, profile?.country].filter(Boolean).join(", ") || "not provided"}`,
+  );
+  lines.push(`Stage: ${profile?.business_stage ?? "unknown"}`);
+  lines.push(
+    `Revenue target: ${
+      profile?.monthly_revenue_target != null
+        ? `${profile.monthly_revenue_target} ${profile.currency ?? ""}/month`
+        : "not provided"
+    }`,
+  );
+  if (profile?.main_goal) lines.push(`Owner's main goal: ${profile.main_goal}`);
+  if (profile?.competitors) lines.push(`Named competitors: ${profile.competitors}`);
+  if (profile?.description) lines.push(`About: ${profile.description}`);
+  if (profile?.website_url) lines.push(`Website: ${profile.website_url}`);
+  if (profile?.learned_facts) lines.push(`Learned facts: ${profile.learned_facts}`);
+
+  if (overview) {
+    lines.push("\n## Channel performance");
+    lines.push(`Health score: ${overview.health.score}/100 (${overview.health.grade})`);
+    for (const f of overview.health.factors) lines.push(`- ${f.label}: ${f.score}/100 — ${f.detail}`);
+    lines.push(
+      `Messages this week ${overview.trends.messages.current} vs ${overview.trends.messages.previous} last week; inbound ${overview.trends.inbound.current} vs ${overview.trends.inbound.previous}; new leads ${overview.trends.leads.current} vs ${overview.trends.leads.previous}`,
+    );
+    lines.push(
+      `Conversations open ${overview.stats.open}, unread ${overview.stats.unread}, contacts ${overview.stats.contacts}`,
+    );
+    lines.push(
+      `Daily traffic (last 7 days): ${overview.days
+        .map((d) => `${d.day} in=${d.received} out=${d.sent}`)
+        .join(", ")}`,
+    );
+  }
+
+  if (messaging) {
+    lines.push("\n## WhatsApp delivery (30 days)");
+    lines.push(
+      `Inbound ${messaging.totals.inbound}, outbound ${messaging.totals.outbound} (bot ${messaging.totals.botReplies}, agent ${messaging.totals.agentReplies}), delivered ${messaging.totals.delivered}, read ${messaging.totals.read}, failed ${messaging.totals.failed}`,
+    );
+    lines.push(
+      `Average first response: ${
+        messaging.avgFirstResponseMinutes != null
+          ? `${messaging.avgFirstResponseMinutes} min`
+          : "not enough data"
+      }`,
+    );
+  }
+
+  if (leads) {
+    lines.push("\n## Leads & pipeline");
+    lines.push(`Total ${leads.totalLeads} leads, ${leads.consentedLeads} opted in`);
+    lines.push(
+      `By source: ${
+        Object.entries(leads.bySource)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(", ") || "none"
+      }`,
+    );
+    lines.push(`Top tags: ${leads.topTags.join(", ") || "none"}`);
+    lines.push(
+      `Pipeline stages: ${
+        Object.entries(leads.contactsByStage)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(", ") || "none"
+      }`,
+    );
+  }
+
+  lines.push("\n## Social accounts");
+  if (social.length === 0) lines.push("No social accounts connected.");
+  for (const a of social as Array<{
+    platform: string;
+    label: string;
+    stats: unknown;
+    last_synced_at: string | null;
+    active: boolean;
+  }>) {
+    const s = (a.stats ?? {}) as Record<string, number | string>;
+    const statText = Object.entries(s)
+      .slice(0, 8)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ");
+    lines.push(
+      `- ${a.platform} (${a.label})${a.active ? "" : " [inactive]"}: ${statText || "no stats yet"}; last synced ${a.last_synced_at ?? "never"}`,
+    );
+  }
+
+  lines.push("\n## Products");
+  if (products.length === 0) lines.push("No products in the catalog.");
+  for (const p of products as Array<{ title: string; price: number | null; description: string | null }>) {
+    lines.push(`- ${p.title}${p.price != null ? ` — ${p.price}` : ""}`);
+  }
+
+  return { profile, facts: lines.join("\n") };
+}
+
+const ADVISOR_PERSONA = [
+  "You are the Flash Business Advisor: a seasoned business owner and operator with 25+ years of hands-on experience across every major niche —",
+  "retail and e-commerce, restaurants and cafés, real estate, clinics and dental, salons and spas, fitness, education and coaching, travel,",
+  "construction and trades, automotive, logistics, professional services (legal, accounting, marketing), SaaS, manufacturing, events and weddings,",
+  "and local service businesses. You think like a CEO plus a CMO plus a CFO in one person.",
+  "You reason from the data you are given: channel traffic, response times, lead sources, pipeline stages, social account reach and engagement,",
+  "product mix and pricing, and the city/country the business operates in (local demand, purchasing power, seasonality, culture, language, payment habits, regulations).",
+  "Rules: never invent metrics that were not provided; when data is missing say exactly what to start tracking.",
+  "Be direct and commercially specific — name numbers, channels, prices, timelines, and who should do it.",
+].join(" ");
+
+export type AdvisorAnalysis = {
+  verdict: string;
+  positioning: string;
+  scores: { label: string; score: number; note: string }[];
+  opportunities: { title: string; why: string; action: string; impact: "high" | "medium" | "low" }[];
+  risks: string[];
+  local: string[];
+  socialPlan: { platform: string; recommendation: string }[];
+  pricing: string[];
+  next7Days: string[];
+  next90Days: string[];
+  kpis: { name: string; target: string }[];
+  generatedAt: string;
+};
+
+function stripFences(raw: string): string {
+  return raw
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/, "")
+    .trim();
+}
+
+/** Full strategic review, returned as structured JSON for the advisor page. */
+export async function buildAdvisorAnalysis(supabase: SupabaseClient): Promise<AdvisorAnalysis> {
+  const { facts } = await gatherAdvisorSnapshot(supabase);
+
+  const system = [
+    ADVISOR_PERSONA,
+    "Return STRICT JSON only (no markdown fences) matching exactly this shape:",
+    '{"verdict": string (max 300 chars), "positioning": string (max 400 chars),',
+    '"scores": [4-6 {"label": string, "score": 0-100 integer, "note": string (max 140 chars)}],',
+    '"opportunities": [4-6 {"title": string, "why": string, "action": string, "impact": "high"|"medium"|"low"}],',
+    '"risks": [3-5 strings], "local": [3-5 strings about the city/country market, demand, seasonality, pricing power, language, regulation],',
+    '"socialPlan": [1 entry per connected platform (or the 3 platforms you recommend starting) {"platform": string, "recommendation": string}],',
+    '"pricing": [2-4 strings about product mix, price points and offers],',
+    '"next7Days": [5 short imperative actions], "next90Days": [4 short strategic moves],',
+    '"kpis": [4-6 {"name": string, "target": string}]}',
+  ].join("\n");
+
+  const raw = await callFlashAi(system, facts);
+
+  let parsed: Partial<AdvisorAnalysis> = {};
+  try {
+    parsed = JSON.parse(stripFences(raw)) as Partial<AdvisorAnalysis>;
+  } catch {
+    parsed = { verdict: raw.slice(0, 300) };
+  }
+
+  return {
+    verdict: parsed.verdict?.trim() || "Not enough data yet for a verdict.",
+    positioning: parsed.positioning?.trim() || "",
+    scores: Array.isArray(parsed.scores) ? parsed.scores.slice(0, 6) : [],
+    opportunities: Array.isArray(parsed.opportunities) ? parsed.opportunities.slice(0, 6) : [],
+    risks: Array.isArray(parsed.risks) ? parsed.risks.slice(0, 5) : [],
+    local: Array.isArray(parsed.local) ? parsed.local.slice(0, 5) : [],
+    socialPlan: Array.isArray(parsed.socialPlan) ? parsed.socialPlan.slice(0, 8) : [],
+    pricing: Array.isArray(parsed.pricing) ? parsed.pricing.slice(0, 4) : [],
+    next7Days: Array.isArray(parsed.next7Days) ? parsed.next7Days.slice(0, 6) : [],
+    next90Days: Array.isArray(parsed.next90Days) ? parsed.next90Days.slice(0, 5) : [],
+    kpis: Array.isArray(parsed.kpis) ? parsed.kpis.slice(0, 6) : [],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/** Free-form question to the advisor, answered against the same live snapshot. */
+export async function askAdvisorQuestion(
+  supabase: SupabaseClient,
+  question: string,
+  history: { role: "user" | "assistant"; content: string }[] = [],
+): Promise<string> {
+  const { facts } = await gatherAdvisorSnapshot(supabase);
+
+  const system = [
+    ADVISOR_PERSONA,
+    "Answer the owner's question as their business manager. Use markdown: a one-line answer first,",
+    "then short bullets with concrete steps and numbers, then a final line starting with 'Do this first:'.",
+    "Keep it under 350 words.",
+  ].join(" ");
+
+  const convo = history
+    .slice(-8)
+    .map((m) => `${m.role === "user" ? "Owner" : "Advisor"}: ${m.content}`)
+    .join("\n");
+
+  const user = [
+    "BUSINESS DATA:",
+    facts,
+    convo ? `\nCONVERSATION SO FAR:\n${convo}` : "",
+    `\nQUESTION: ${question}`,
+  ].join("\n");
+
+  return callFlashAi(system, user);
+}
