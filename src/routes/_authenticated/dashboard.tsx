@@ -10,7 +10,10 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { getDashboardOverview } from "@/lib/dashboard.functions";
+import { getDailyBrief } from "@/lib/brief.functions";
+import type { BusinessHealth, Trend } from "@/lib/dashboard.server";
 import { getMetaSyncHealth } from "@/lib/meta-health.functions";
 import { usePersistentTimestamp } from "@/hooks/usePersistentTimestamp";
 import { logWidgetError } from "@/lib/widget-error-log";
