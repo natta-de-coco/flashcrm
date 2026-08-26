@@ -185,10 +185,34 @@ function AuthenticatedLayout() {
     window.addEventListener("pointerup", up);
   }
 
+  // Cold builds can take a moment to hydrate the session. Show the real shell
+  // as a calm skeleton instead of a jarring full-screen text flash.
   if (loading || !session) {
     return (
-      <div className="grid min-h-screen place-items-center bg-background text-sm text-muted-foreground">
-        Loading your workspace…
+      <div className="flex min-h-screen bg-background">
+        <aside
+          className="sticky top-0 hidden h-screen shrink-0 flex-col gap-3 bg-sidebar p-4 lg:flex"
+          style={{ width: sidebarW }}
+        >
+          <div className="mb-2 flex items-center gap-3 px-2">
+            <Skeleton className="size-10 rounded-full bg-sidebar-accent/60" />
+            <Skeleton className="h-4 w-24 bg-sidebar-accent/60" />
+          </div>
+          {Array.from({ length: 9 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full bg-sidebar-accent/40" />
+          ))}
+        </aside>
+        <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-4 w-64" />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full" />
+            ))}
+          </div>
+          <Skeleton className="h-64 w-full" />
+          <span className="sr-only">Loading your workspace…</span>
+        </div>
       </div>
     );
   }
