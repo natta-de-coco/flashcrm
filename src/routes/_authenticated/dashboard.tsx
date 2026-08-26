@@ -146,7 +146,7 @@ function ListSkeleton({ rows = 4 }: { rows?: number }) {
 }
 
 /** Week-over-week change pill: up is good, flat and unknown stay neutral. */
-function TrendPill({ trend, label }: { trend?: Trend; label?: string }) {
+function TrendPill({ trend, label }: { trend?: Trend | undefined; label?: string | undefined }) {
   if (!trend) return null;
   if (trend.changePct === null) {
     return (
