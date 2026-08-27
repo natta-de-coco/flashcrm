@@ -260,11 +260,18 @@ function ConnectorCard({
   // One clear state per card: Connected / Needs verification / Pending review /
   // Expired / Failing, always with the precise reason and the next action.
   const status = connectionStatus(accounts[0]);
+  const guide = setupGuide(connector.id);
   return (
-    <Card className={status.state === "connected" ? "border-primary/40" : undefined}>
+    <Card
+      className={`flex h-full min-w-0 flex-col ${
+        status.state === "connected" ? "border-primary/40" : ""
+      }`}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-sm font-semibold">{connector.name}</CardTitle>
+          <CardTitle className="min-w-0 break-words text-sm font-semibold">
+            {connector.name}
+          </CardTitle>
           <Badge
             variant={
               status.tone === "good"
@@ -275,7 +282,7 @@ function ConnectorCard({
                     ? "secondary"
                     : "outline"
             }
-            className="gap-1 whitespace-nowrap"
+            className="shrink-0 gap-1 whitespace-nowrap"
           >
             {status.tone === "good" ? (
               <CheckCircle2 className="size-3" />
@@ -287,10 +294,10 @@ function ConnectorCard({
         </div>
         <CardDescription className="text-xs">{connector.blurb}</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-2">
-        <div className="rounded-md border bg-muted/40 p-2 text-[11px] leading-snug">
-          <p className="font-medium">{status.reason}</p>
-          <p className="text-muted-foreground">Next: {status.fix}</p>
+      <CardContent className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="min-w-0 rounded-md border bg-muted/40 p-2 text-[11px] leading-snug">
+          <p className="break-words font-medium">{status.reason}</p>
+          <p className="break-words text-muted-foreground">Next: {status.fix}</p>
         </div>
         <div className="flex flex-wrap gap-1">
           {connector.capabilities.map((cap) => (
@@ -310,7 +317,7 @@ function ConnectorCard({
         </div>
 
         {accounts.map((a) => (
-          <div key={a.id} className="rounded-md border p-2 text-xs">
+          <div key={a.id} className="min-w-0 rounded-md border p-2 text-xs">
             <p className="truncate font-medium">{a.label}</p>
             <p className="text-muted-foreground">
               {a.last_synced_at
@@ -354,9 +361,15 @@ function ConnectorCard({
           </div>
         ))}
 
-        <ConnectorGuide id={connector.id} />
+        {/* Short summary only — the full step-by-step lives in the wizard so the
+            cards stay the same size and nothing overflows. */}
+        {guide ? (
+          <p className="line-clamp-2 min-w-0 break-words text-[11px] text-muted-foreground">
+            {guide.requires[0]}
+          </p>
+        ) : null}
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2">
           {connector.internalHref ? (
             <Button asChild size="sm" className="h-8 gap-1 text-xs">
               <Link to={connector.internalHref}>
@@ -371,7 +384,7 @@ function ConnectorCard({
               disabled={connecting}
               onClick={onConnect}
             >
-              {connected ? "Connect another" : ready ? "Connect securely" : "Connect"}
+              {connected ? "Connect another" : "Connect"}
             </Button>
           ) : (
             <Badge variant="outline" className="text-[10px]">
@@ -384,7 +397,7 @@ function ConnectorCard({
             className="h-8 gap-1 text-xs"
             onClick={() => setWizardOpen(true)}
           >
-            <Wand2 className="size-3" /> Setup wizard
+            <Wand2 className="size-3" /> Setup guide
           </Button>
           <Button asChild size="sm" variant="ghost" className="h-8 gap-1 text-xs">
             <a href={connector.manageUrl} target="_blank" rel="noreferrer noopener">
@@ -403,62 +416,5 @@ function ConnectorCard({
         />
       </CardContent>
     </Card>
-  );
-}
-
-/**
- * Plain-language, per-platform setup detail: what you must own, the exact
- * steps, the permissions Flash asks for, and the traps that usually block a
- * connection (Meta iframe blocks, unverified locations, review-gated APIs).
- */
-function ConnectorGuide({ id }: { id: string }) {
-  const guide = setupGuide(id);
-  if (!guide) return null;
-  return (
-    <details className="rounded-md border bg-muted/40 p-2 text-xs">
-      <summary className="cursor-pointer list-none font-medium">
-        How to connect this — step by step
-      </summary>
-      <div className="mt-2 grid gap-2">
-        <div>
-          <p className="font-semibold">You need</p>
-          <ul className="ml-4 list-disc text-muted-foreground">
-            {guide.requires.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <p className="font-semibold">Steps</p>
-          <ol className="ml-4 list-decimal text-muted-foreground">
-            {guide.steps.map((s) => (
-              <li key={s}>{s}</li>
-            ))}
-          </ol>
-        </div>
-        {guide.scopes && guide.scopes.length > 0 && (
-          <div>
-            <p className="font-semibold">Permissions Flash requests</p>
-            <p className="break-words font-mono text-[10px] text-muted-foreground">
-              {guide.scopes.join(" · ")}
-            </p>
-          </div>
-        )}
-        {guide.gotchas && guide.gotchas.length > 0 && (
-          <div>
-            <p className="font-semibold">Good to know</p>
-            <ul className="ml-4 list-disc text-muted-foreground">
-              {guide.gotchas.map((g) => (
-                <li key={g}>{g}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <p className="text-muted-foreground">
-          Redirect URI to whitelist in the provider app:{" "}
-          <span className="font-mono">https://flas.mobidigisol.com{OAUTH_REDIRECT_PATH}</span>
-        </p>
-      </div>
-    </details>
   );
 }
