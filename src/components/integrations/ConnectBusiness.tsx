@@ -84,6 +84,8 @@ type Account = {
   profile_url: string | null;
   last_synced_at: string | null;
   active: boolean;
+  token_expires_at: string | null;
+  permissions: string[] | null;
 };
 
 /**
@@ -150,7 +152,7 @@ export function ConnectBusiness() {
 
   const data = connections.data;
   const accounts = (data?.accounts ?? []) as Account[];
-  const accountsFor = (id: string) => accounts.filter((a) => a.platform === id && a.active);
+  const accountsFor = (id: string) => accounts.filter((a) => a.platform === id);
   const connectedCount = accounts.filter((a) => a.active).length;
 
   return (
