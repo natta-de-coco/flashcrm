@@ -62,15 +62,16 @@ export const sessionGuard = createMiddleware({ type: "function" })
       throw error;
     }
   })
-  .server(async ({ next, functionId }) => {
+  .server(async ({ next }) => {
     const request = getRequest();
+    const label = request?.url ? new URL(request.url).pathname : "serverFn";
     const authHeader = request?.headers?.get("authorization") ?? null;
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
     const shape = !token ? "missing" : token.split(".").length === 3 ? "jwt" : "opaque";
     const subject = shape === "jwt" ? peekSubject(token) : "none";
 
     console.info(
-      `[serverFn] ${functionId} auth_header=${authHeader ? "present" : "absent"} token=${shape} user=${subject}`,
+      `[serverFn] ${label} auth_header=${authHeader ? "present" : "absent"} token=${shape} user=${subject}`,
     );
 
     try {
@@ -80,11 +81,11 @@ export const sessionGuard = createMiddleware({ type: "function" })
       const message = error instanceof Error ? error.message : String(error);
       if (isUnauthorized(error)) {
         console.warn(
-          `[serverFn] ${functionId} rejected: ${message} (auth_header=${authHeader ? "present" : "absent"}, token=${shape}, user=${subject})`,
+          `[serverFn] ${label} rejected: ${message} (auth_header=${authHeader ? "present" : "absent"}, token=${shape}, user=${subject})`,
         );
         throw new Error(`Unauthorized: ${FRIENDLY}`);
       }
-      console.error(`[serverFn] ${functionId} failed: ${message}`);
+      console.error(`[serverFn] ${label} failed: ${message}`);
       throw error;
     }
   });
