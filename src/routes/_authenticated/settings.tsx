@@ -1,5 +1,6 @@
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { BillingCard } from "@/components/settings/BillingCard";
+import { RegionCard } from "@/components/settings/RegionCard";
 import { AuditLogCard } from "@/components/settings/AuditLogCard";
 import { DataPrivacyCard } from "@/components/settings/DataPrivacyCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
