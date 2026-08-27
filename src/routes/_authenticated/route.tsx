@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider } from "@/hooks/useTenant";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Link,
   Outlet,
