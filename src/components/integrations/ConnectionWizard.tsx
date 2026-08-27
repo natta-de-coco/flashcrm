@@ -177,7 +177,7 @@ export function ConnectionWizard({
               ) : null}
               <p className="text-xs text-muted-foreground">
                 Redirect URI to whitelist in your provider app:{" "}
-                <span className="font-mono">https://flas.mobidigisol.com{OAUTH_REDIRECT_PATH}</span>
+                <span className="break-all font-mono">https://flas.mobidigisol.com{OAUTH_REDIRECT_PATH}</span>
               </p>
             </section>
           )}
