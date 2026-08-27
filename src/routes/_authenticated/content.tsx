@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
+import { CONNECTORS } from "@/lib/connections-catalog";
+
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -44,7 +46,25 @@ type Post = {
   created_at: string;
 };
 
-const PLATFORMS = ["website", "wordpress", "linkedin", "instagram", "facebook", "x"] as const;
+/**
+ * Publish targets are derived from the connections catalogue, so this list can
+ * never drift from what the platform APIs actually allow. "Website" is the
+ * Flash-hosted blog feed (no plugin needed); "WordPress" pushes the same post
+ * into your own WordPress site through the Flash plugin.
+ */
+const PLATFORMS: { id: string; label: string; hint: string }[] = [
+  {
+    id: "website",
+    label: "Website (Flash blog)",
+    hint: "Published on your Flash-hosted blog feed and used as SEO content — no plugin required.",
+  },
+  ...CONNECTORS.filter((c) => c.capabilities.includes("publish")).map((c) => ({
+    id: c.id === "wordpress" ? "wordpress" : c.id,
+    label: c.id === "wordpress" ? "WordPress (your own site)" : c.name,
+    hint: c.blurb,
+  })),
+];
+
 const STATUS_STYLE: Record<string, string> = {
   draft: "secondary",
   scheduled: "outline",
@@ -165,29 +185,35 @@ function ContentPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Platforms</Label>
+              <Label>Publish to</Label>
               <div className="flex flex-wrap gap-1.5">
-                {PLATFORMS.map((platform) => {
-                  const on = platforms.includes(platform);
+                {PLATFORMS.map((p) => {
+                  const on = platforms.includes(p.id);
                   return (
                     <Button
-                      key={platform}
+                      key={p.id}
                       type="button"
                       size="sm"
+                      title={p.hint}
                       variant={on ? "default" : "outline"}
-                      className="capitalize"
                       onClick={() =>
                         setPlatforms(
-                          on ? platforms.filter((p) => p !== platform) : [...platforms, platform],
+                          on ? platforms.filter((x) => x !== p.id) : [...platforms, p.id],
                         )
                       }
                     >
-                      {platform}
+                      {p.label}
                     </Button>
                   );
                 })}
               </div>
+              <p className="text-xs text-muted-foreground">
+                Website is the Flash-hosted blog feed. WordPress pushes the same article into your
+                own site through the Flash plugin. Social targets require the account to be linked in
+                Integrations first.
+              </p>
             </div>
+
 
             <div className="space-y-1.5">
               <Label htmlFor="c-when">Schedule for</Label>
