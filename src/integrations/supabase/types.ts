@@ -184,6 +184,190 @@ export type Database = {
           },
         ]
       }
+      bank_accounts: {
+        Row: {
+          account_name: string | null
+          account_number: string | null
+          bank_name: string
+          branch: string | null
+          created_at: string
+          currency: string | null
+          iban: string | null
+          id: string
+          is_default: boolean
+          label: string
+          swift: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_name?: string | null
+          account_number?: string | null
+          bank_name: string
+          branch?: string | null
+          created_at?: string
+          currency?: string | null
+          iban?: string | null
+          id?: string
+          is_default?: boolean
+          label: string
+          swift?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_name?: string | null
+          account_number?: string | null
+          bank_name?: string
+          branch?: string | null
+          created_at?: string
+          currency?: string | null
+          iban?: string | null
+          id?: string
+          is_default?: boolean
+          label?: string
+          swift?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_settings: {
+        Row: {
+          address: string | null
+          approval_mode: string
+          country: string | null
+          created_at: string
+          custom_fields: Json
+          default_currency: string
+          default_notes: string | null
+          default_payment_terms: string | null
+          default_tax_rate: number
+          default_terms: string | null
+          discount_approval_threshold: number
+          email: string | null
+          legal_name: string | null
+          logo_url: string | null
+          numbering: Json
+          pdf_security: Json
+          phone: string | null
+          registration_number: string | null
+          reminder_rules: Json
+          show_flash_branding: boolean
+          show_qr_verification: boolean
+          signatory_name: string | null
+          signatory_position: string | null
+          signature_url: string | null
+          stamp_url: string | null
+          tax_enabled: boolean
+          tax_inclusive: boolean
+          tax_label: string
+          tenant_id: string
+          timezone: string
+          trade_name: string | null
+          updated_at: string
+          vat_number: string | null
+          watermark_enabled: boolean
+          watermark_opacity: number
+          watermark_scale: number
+          website: string | null
+        }
+        Insert: {
+          address?: string | null
+          approval_mode?: string
+          country?: string | null
+          created_at?: string
+          custom_fields?: Json
+          default_currency?: string
+          default_notes?: string | null
+          default_payment_terms?: string | null
+          default_tax_rate?: number
+          default_terms?: string | null
+          discount_approval_threshold?: number
+          email?: string | null
+          legal_name?: string | null
+          logo_url?: string | null
+          numbering?: Json
+          pdf_security?: Json
+          phone?: string | null
+          registration_number?: string | null
+          reminder_rules?: Json
+          show_flash_branding?: boolean
+          show_qr_verification?: boolean
+          signatory_name?: string | null
+          signatory_position?: string | null
+          signature_url?: string | null
+          stamp_url?: string | null
+          tax_enabled?: boolean
+          tax_inclusive?: boolean
+          tax_label?: string
+          tenant_id: string
+          timezone?: string
+          trade_name?: string | null
+          updated_at?: string
+          vat_number?: string | null
+          watermark_enabled?: boolean
+          watermark_opacity?: number
+          watermark_scale?: number
+          website?: string | null
+        }
+        Update: {
+          address?: string | null
+          approval_mode?: string
+          country?: string | null
+          created_at?: string
+          custom_fields?: Json
+          default_currency?: string
+          default_notes?: string | null
+          default_payment_terms?: string | null
+          default_tax_rate?: number
+          default_terms?: string | null
+          discount_approval_threshold?: number
+          email?: string | null
+          legal_name?: string | null
+          logo_url?: string | null
+          numbering?: Json
+          pdf_security?: Json
+          phone?: string | null
+          registration_number?: string | null
+          reminder_rules?: Json
+          show_flash_branding?: boolean
+          show_qr_verification?: boolean
+          signatory_name?: string | null
+          signatory_position?: string | null
+          signature_url?: string | null
+          stamp_url?: string | null
+          tax_enabled?: boolean
+          tax_inclusive?: boolean
+          tax_label?: string
+          tenant_id?: string
+          timezone?: string
+          trade_name?: string | null
+          updated_at?: string
+          vat_number?: string | null
+          watermark_enabled?: boolean
+          watermark_opacity?: number
+          watermark_scale?: number
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bot_settings: {
         Row: {
           bot_name: string
@@ -659,6 +843,263 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "deletion_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_activity: {
+        Row: {
+          actor_id: string | null
+          actor_label: string | null
+          created_at: string
+          details: Json
+          document_id: string | null
+          event: string
+          id: string
+          payment_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_label?: string | null
+          created_at?: string
+          details?: Json
+          document_id?: string | null
+          event: string
+          id?: string
+          payment_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_label?: string | null
+          created_at?: string
+          details?: Json
+          document_id?: string | null
+          event?: string
+          id?: string
+          payment_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_activity_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "sales_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_activity_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_activity_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_files: {
+        Row: {
+          byte_size: number | null
+          created_at: string
+          created_by: string | null
+          document_id: string | null
+          file_hash: string | null
+          id: string
+          kind: string
+          payment_id: string | null
+          storage_path: string
+          tenant_id: string
+          version: number
+        }
+        Insert: {
+          byte_size?: number | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          file_hash?: string | null
+          id?: string
+          kind?: string
+          payment_id?: string | null
+          storage_path: string
+          tenant_id: string
+          version?: number
+        }
+        Update: {
+          byte_size?: number | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          file_hash?: string | null
+          id?: string
+          kind?: string
+          payment_id?: string | null
+          storage_path?: string
+          tenant_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_files_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "sales_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_files_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_sequences: {
+        Row: {
+          doc_type: string
+          last_number: number
+          period: string
+          tenant_id: string
+        }
+        Insert: {
+          doc_type: string
+          last_number?: number
+          period: string
+          tenant_id: string
+        }
+        Update: {
+          doc_type?: string
+          last_number?: number
+          period?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_sequences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_versions: {
+        Row: {
+          created_at: string
+          document_id: string
+          finalized_at: string | null
+          finalized_by: string | null
+          id: string
+          pdf_hash: string | null
+          snapshot: Json
+          tenant_id: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          finalized_at?: string | null
+          finalized_by?: string | null
+          id?: string
+          pdf_hash?: string | null
+          snapshot: Json
+          tenant_id: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          finalized_at?: string | null
+          finalized_by?: string | null
+          id?: string
+          pdf_hash?: string | null
+          snapshot?: Json
+          tenant_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_versions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "sales_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_templates: {
+        Row: {
+          accent_color: string
+          created_at: string
+          font_family: string
+          id: string
+          is_default: boolean
+          logo_position: string
+          logo_scale: number
+          name: string
+          options: Json
+          primary_color: string
+          secondary_color: string
+          section_order: Json
+          style: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          accent_color?: string
+          created_at?: string
+          font_family?: string
+          id?: string
+          is_default?: boolean
+          logo_position?: string
+          logo_scale?: number
+          name: string
+          options?: Json
+          primary_color?: string
+          secondary_color?: string
+          section_order?: Json
+          style?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          accent_color?: string
+          created_at?: string
+          font_family?: string
+          id?: string
+          is_default?: boolean
+          logo_position?: string
+          logo_scale?: number
+          name?: string
+          options?: Json
+          primary_color?: string
+          secondary_color?: string
+          section_order?: Json
+          style?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_templates_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1172,6 +1613,124 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_allocations: {
+        Row: {
+          amount: number
+          created_at: string
+          document_id: string
+          id: string
+          payment_id: string
+          tenant_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          document_id: string
+          id?: string
+          payment_id: string
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          document_id?: string
+          id?: string
+          payment_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_allocations_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "sales_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_allocations_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_allocations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number
+          attachment_url: string | null
+          bank: string | null
+          contact_id: string | null
+          created_at: string
+          credit_amount: number
+          currency: string
+          id: string
+          method: Database["public"]["Enums"]["payment_method"]
+          notes: string | null
+          paid_at: string
+          receipt_number: string | null
+          recorded_by: string | null
+          reference: string | null
+          tenant_id: string
+        }
+        Insert: {
+          amount: number
+          attachment_url?: string | null
+          bank?: string | null
+          contact_id?: string | null
+          created_at?: string
+          credit_amount?: number
+          currency?: string
+          id?: string
+          method?: Database["public"]["Enums"]["payment_method"]
+          notes?: string | null
+          paid_at?: string
+          receipt_number?: string | null
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          attachment_url?: string | null
+          bank?: string | null
+          contact_id?: string | null
+          created_at?: string
+          credit_amount?: number
+          currency?: string
+          id?: string
+          method?: Database["public"]["Enums"]["payment_method"]
+          notes?: string | null
+          paid_at?: string
+          receipt_number?: string | null
+          recorded_by?: string | null
+          reference?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plan_thresholds: {
         Row: {
           deliverability_min: number
@@ -1331,6 +1890,334 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_document_items: {
+        Row: {
+          created_at: string
+          description_snapshot: string | null
+          discount_amount: number
+          discount_type: string
+          discount_value: number
+          document_id: string
+          id: string
+          image_snapshot: string | null
+          line_total: number
+          name_snapshot: string
+          notes: string | null
+          position: number
+          product_id: string | null
+          quantity: number
+          serial_number: string | null
+          service_period: string | null
+          sku_snapshot: string | null
+          tax_amount: number
+          tax_rate: number
+          tenant_id: string
+          unit: string
+          unit_price: number
+          warranty: string | null
+        }
+        Insert: {
+          created_at?: string
+          description_snapshot?: string | null
+          discount_amount?: number
+          discount_type?: string
+          discount_value?: number
+          document_id: string
+          id?: string
+          image_snapshot?: string | null
+          line_total?: number
+          name_snapshot: string
+          notes?: string | null
+          position?: number
+          product_id?: string | null
+          quantity?: number
+          serial_number?: string | null
+          service_period?: string | null
+          sku_snapshot?: string | null
+          tax_amount?: number
+          tax_rate?: number
+          tenant_id: string
+          unit?: string
+          unit_price?: number
+          warranty?: string | null
+        }
+        Update: {
+          created_at?: string
+          description_snapshot?: string | null
+          discount_amount?: number
+          discount_type?: string
+          discount_value?: number
+          document_id?: string
+          id?: string
+          image_snapshot?: string | null
+          line_total?: number
+          name_snapshot?: string
+          notes?: string | null
+          position?: number
+          product_id?: string | null
+          quantity?: number
+          serial_number?: string | null
+          service_period?: string | null
+          sku_snapshot?: string | null
+          tax_amount?: number
+          tax_rate?: number
+          tenant_id?: string
+          unit?: string
+          unit_price?: number
+          warranty?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_document_items_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "sales_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_document_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_document_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_documents: {
+        Row: {
+          acceptance: Json | null
+          accepted_at: string | null
+          additional_charges: number
+          adjustment: number
+          balance: number
+          bank_account_id: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
+          company_snapshot: Json
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          custom_fields: Json
+          customer_snapshot: Json
+          doc_number: string
+          due_date: string | null
+          finalized_at: string | null
+          finalized_by: string | null
+          grand_total: number
+          id: string
+          invoice_discount: number
+          issue_date: string
+          item_discount_total: number
+          kind: Database["public"]["Enums"]["sales_doc_kind"]
+          last_sent_at: string | null
+          lead_id: string | null
+          notes: string | null
+          original_invoice_id: string | null
+          paid_amount: number
+          payment_terms: string | null
+          pdf_hash: string | null
+          po_number: string | null
+          quotation_id: string | null
+          reference: string | null
+          reminders_paused: boolean
+          salesperson_id: string | null
+          share_token: string | null
+          shipping: number
+          status: Database["public"]["Enums"]["sales_doc_status"]
+          subtotal: number
+          tax_inclusive: boolean
+          tax_label: string
+          tax_total: number
+          taxable_amount: number
+          template_id: string | null
+          tenant_id: string
+          terms: string | null
+          updated_at: string
+          valid_until: string | null
+          verification_id: string | null
+          verification_token: string | null
+          version: number
+          viewed_at: string | null
+        }
+        Insert: {
+          acceptance?: Json | null
+          accepted_at?: string | null
+          additional_charges?: number
+          adjustment?: number
+          balance?: number
+          bank_account_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          company_snapshot?: Json
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          custom_fields?: Json
+          customer_snapshot?: Json
+          doc_number: string
+          due_date?: string | null
+          finalized_at?: string | null
+          finalized_by?: string | null
+          grand_total?: number
+          id?: string
+          invoice_discount?: number
+          issue_date?: string
+          item_discount_total?: number
+          kind: Database["public"]["Enums"]["sales_doc_kind"]
+          last_sent_at?: string | null
+          lead_id?: string | null
+          notes?: string | null
+          original_invoice_id?: string | null
+          paid_amount?: number
+          payment_terms?: string | null
+          pdf_hash?: string | null
+          po_number?: string | null
+          quotation_id?: string | null
+          reference?: string | null
+          reminders_paused?: boolean
+          salesperson_id?: string | null
+          share_token?: string | null
+          shipping?: number
+          status?: Database["public"]["Enums"]["sales_doc_status"]
+          subtotal?: number
+          tax_inclusive?: boolean
+          tax_label?: string
+          tax_total?: number
+          taxable_amount?: number
+          template_id?: string | null
+          tenant_id: string
+          terms?: string | null
+          updated_at?: string
+          valid_until?: string | null
+          verification_id?: string | null
+          verification_token?: string | null
+          version?: number
+          viewed_at?: string | null
+        }
+        Update: {
+          acceptance?: Json | null
+          accepted_at?: string | null
+          additional_charges?: number
+          adjustment?: number
+          balance?: number
+          bank_account_id?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
+          company_snapshot?: Json
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          custom_fields?: Json
+          customer_snapshot?: Json
+          doc_number?: string
+          due_date?: string | null
+          finalized_at?: string | null
+          finalized_by?: string | null
+          grand_total?: number
+          id?: string
+          invoice_discount?: number
+          issue_date?: string
+          item_discount_total?: number
+          kind?: Database["public"]["Enums"]["sales_doc_kind"]
+          last_sent_at?: string | null
+          lead_id?: string | null
+          notes?: string | null
+          original_invoice_id?: string | null
+          paid_amount?: number
+          payment_terms?: string | null
+          pdf_hash?: string | null
+          po_number?: string | null
+          quotation_id?: string | null
+          reference?: string | null
+          reminders_paused?: boolean
+          salesperson_id?: string | null
+          share_token?: string | null
+          shipping?: number
+          status?: Database["public"]["Enums"]["sales_doc_status"]
+          subtotal?: number
+          tax_inclusive?: boolean
+          tax_label?: string
+          tax_total?: number
+          taxable_amount?: number
+          template_id?: string | null
+          tenant_id?: string
+          terms?: string | null
+          updated_at?: string
+          valid_until?: string | null
+          verification_id?: string | null
+          verification_token?: string | null
+          version?: number
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_documents_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_original_invoice_id_fkey"
+            columns: ["original_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "sales_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_quotation_id_fkey"
+            columns: ["quotation_id"]
+            isOneToOne: false
+            referencedRelation: "sales_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_salesperson_id_fkey"
+            columns: ["salesperson_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -1719,6 +2606,41 @@ export type Database = {
           title?: string
         }
         Relationships: []
+      }
+      tax_rates: {
+        Row: {
+          created_at: string
+          id: string
+          is_default: boolean
+          label: string
+          rate: number
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          label: string
+          rate?: number
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          label?: string
+          rate?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tax_rates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       team_invites: {
         Row: {
@@ -2116,6 +3038,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      next_document_number: {
+        Args: { _doc_type: string; _tenant_id: string }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "agent"
@@ -2130,6 +3056,28 @@ export type Database = {
         | "lost"
       msg_direction: "inbound" | "outbound"
       msg_sender: "contact" | "agent" | "bot"
+      payment_method:
+        | "cash"
+        | "bank_transfer"
+        | "credit_card"
+        | "cheque"
+        | "online"
+        | "other"
+      sales_doc_kind: "quotation" | "invoice" | "credit_note" | "proforma"
+      sales_doc_status:
+        | "draft"
+        | "pending_approval"
+        | "sent"
+        | "viewed"
+        | "partially_paid"
+        | "paid"
+        | "overdue"
+        | "cancelled"
+        | "refunded"
+        | "accepted"
+        | "rejected"
+        | "expired"
+        | "converted"
       staff_role:
         | "super_admin"
         | "company_admin"
@@ -2276,6 +3224,30 @@ export const Constants = {
       ],
       msg_direction: ["inbound", "outbound"],
       msg_sender: ["contact", "agent", "bot"],
+      payment_method: [
+        "cash",
+        "bank_transfer",
+        "credit_card",
+        "cheque",
+        "online",
+        "other",
+      ],
+      sales_doc_kind: ["quotation", "invoice", "credit_note", "proforma"],
+      sales_doc_status: [
+        "draft",
+        "pending_approval",
+        "sent",
+        "viewed",
+        "partially_paid",
+        "paid",
+        "overdue",
+        "cancelled",
+        "refunded",
+        "accepted",
+        "rejected",
+        "expired",
+        "converted",
+      ],
       staff_role: [
         "super_admin",
         "company_admin",
