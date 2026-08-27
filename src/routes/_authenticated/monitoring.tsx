@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { IncidentsCard } from "@/components/monitoring/IncidentsCard";
 import { supabase } from "@/integrations/supabase/client";
 import { retryWebhookEvent } from "@/lib/crm.functions";
 import { getAnalyticsInsights, getWhatsAppAnalytics } from "@/lib/flash-ai.functions";
