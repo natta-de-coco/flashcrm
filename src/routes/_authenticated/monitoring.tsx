@@ -397,6 +397,8 @@ function MonitoringPage() {
         </CardContent>
       </Card>
 
+      <IncidentsCard />
+
       <Card>
         <CardHeader className="gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
