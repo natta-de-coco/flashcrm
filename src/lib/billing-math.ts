@@ -85,17 +85,18 @@ export function computeDocumentTotals(input: DocumentTotalsInput): DocumentTotal
   const invoiceDiscount = Math.min(netSum, Math.max(0, cents(input.invoice_discount ?? 0)));
   const ratio = netSum > 0 ? invoiceDiscount / netSum : 0;
 
+  // Spread the invoice discount in cents, giving the remainder to the last line
+  // so the parts always add up to the discount the user typed.
+  const shares = raw.map((l) => Math.round(l.net * ratio));
+  const spread = shares.reduce((s, v) => s + v, 0);
+  if (shares.length > 0) shares[shares.length - 1]! += invoiceDiscount - spread;
+
   const lines: LineTotals[] = [];
   let taxable = 0;
   let taxTotal = 0;
 
   raw.forEach((l, index) => {
-    const isLast = index === raw.length - 1;
-    // Give the rounding remainder to the last line so the sum always matches.
-    const share = isLast
-      ? invoiceDiscount - lines.reduce((s, _x, i) => s + (raw[i]!.net - Math.round(raw[i]!.net * (1 - ratio))), 0)
-      : raw[index]!.net - Math.round(raw[index]!.net * (1 - ratio));
-    const adjustedNet = Math.max(0, l.net - Math.max(0, share));
+    const adjustedNet = Math.max(0, l.net - Math.max(0, shares[index] ?? 0));
 
     const tax = inclusive
       ? adjustedNet - Math.round((adjustedNet * 10000) / (10000 + l.rate * 100))
@@ -109,9 +110,10 @@ export function computeDocumentTotals(input: DocumentTotalsInput): DocumentTotal
       discount_amount: money(l.discount),
       net: money(l.net),
       tax_amount: money(tax),
-      line_total: money(inclusive ? l.net : l.net),
+      line_total: money(l.net),
     });
   });
+
 
   const shipping = cents(input.shipping ?? 0);
   const charges = cents(input.additional_charges ?? 0);
