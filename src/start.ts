@@ -5,8 +5,13 @@ import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 import { sessionGuard } from "@/lib/session-guard";
 
 const errorMiddleware = createMiddleware().server(async ({ next, request }) => {
+  // Lovable email/webhook routes authenticate themselves — never wrap or redirect them.
+  if (request && new URL(request.url).pathname.startsWith("/lovable/")) {
+    return next();
+  }
   try {
     return await next();
+
   } catch (error) {
     if (error != null && typeof error === "object" && "statusCode" in error) {
       throw error;
