@@ -339,6 +339,8 @@ function ConnectorCard({
           </div>
         ))}
 
+        <ConnectorGuide id={connector.id} />
+
         <div className="flex flex-wrap items-center gap-1.5">
           {connector.internalHref ? (
             <Button asChild size="sm" className="h-8 gap-1 text-xs">
@@ -367,6 +369,7 @@ function ConnectorCard({
             </a>
           </Button>
         </div>
+
       </CardContent>
     </Card>
   );
