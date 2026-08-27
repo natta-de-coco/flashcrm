@@ -183,29 +183,35 @@ function ContentPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Platforms</Label>
+              <Label>Publish to</Label>
               <div className="flex flex-wrap gap-1.5">
-                {PLATFORMS.map((platform) => {
-                  const on = platforms.includes(platform);
+                {PLATFORMS.map((p) => {
+                  const on = platforms.includes(p.id);
                   return (
                     <Button
-                      key={platform}
+                      key={p.id}
                       type="button"
                       size="sm"
+                      title={p.hint}
                       variant={on ? "default" : "outline"}
-                      className="capitalize"
                       onClick={() =>
                         setPlatforms(
-                          on ? platforms.filter((p) => p !== platform) : [...platforms, platform],
+                          on ? platforms.filter((x) => x !== p.id) : [...platforms, p.id],
                         )
                       }
                     >
-                      {platform}
+                      {p.label}
                     </Button>
                   );
                 })}
               </div>
+              <p className="text-xs text-muted-foreground">
+                Website is the Flash-hosted blog feed. WordPress pushes the same article into your
+                own site through the Flash plugin. Social targets require the account to be linked in
+                Integrations first.
+              </p>
             </div>
+
 
             <div className="space-y-1.5">
               <Label htmlFor="c-when">Schedule for</Label>
