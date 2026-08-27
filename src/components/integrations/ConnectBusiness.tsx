@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
+import { OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
 import {
   disconnectConnection,
   getConnections,
@@ -372,5 +373,62 @@ function ConnectorCard({
 
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Plain-language, per-platform setup detail: what you must own, the exact
+ * steps, the permissions Flash asks for, and the traps that usually block a
+ * connection (Meta iframe blocks, unverified locations, review-gated APIs).
+ */
+function ConnectorGuide({ id }: { id: string }) {
+  const guide = setupGuide(id);
+  if (!guide) return null;
+  return (
+    <details className="rounded-md border bg-muted/40 p-2 text-xs">
+      <summary className="cursor-pointer list-none font-medium">
+        How to connect this — step by step
+      </summary>
+      <div className="mt-2 grid gap-2">
+        <div>
+          <p className="font-semibold">You need</p>
+          <ul className="ml-4 list-disc text-muted-foreground">
+            {guide.requires.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className="font-semibold">Steps</p>
+          <ol className="ml-4 list-decimal text-muted-foreground">
+            {guide.steps.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ol>
+        </div>
+        {guide.scopes && guide.scopes.length > 0 && (
+          <div>
+            <p className="font-semibold">Permissions Flash requests</p>
+            <p className="break-words font-mono text-[10px] text-muted-foreground">
+              {guide.scopes.join(" · ")}
+            </p>
+          </div>
+        )}
+        {guide.gotchas && guide.gotchas.length > 0 && (
+          <div>
+            <p className="font-semibold">Good to know</p>
+            <ul className="ml-4 list-disc text-muted-foreground">
+              {guide.gotchas.map((g) => (
+                <li key={g}>{g}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="text-muted-foreground">
+          Redirect URI to whitelist in the provider app:{" "}
+          <span className="font-mono">https://flas.mobidigisol.com{OAUTH_REDIRECT_PATH}</span>
+        </p>
+      </div>
+    </details>
   );
 }
