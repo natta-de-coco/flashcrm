@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
+import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
 import { OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
+import { connectionStatus } from "@/lib/connection-status";
 import {
   disconnectConnection,
   getConnections,
