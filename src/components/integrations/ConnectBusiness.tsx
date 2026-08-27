@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
-import { OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
+import { setupGuide } from "@/lib/connection-setup";
 import { connectionStatus } from "@/lib/connection-status";
 import {
   disconnectConnection,
@@ -190,7 +190,6 @@ export function ConnectBusiness() {
                   key={c.id}
                   connector={c}
                   accounts={accountsFor(c.id)}
-                  ready={data?.providerReady?.[c.provider ?? ""]?.ready ?? false}
                   connecting={connect.isPending && connect.variables === c.id}
                   onConnect={() => connect.mutate(c.id)}
                   onScan={(id) => runScan.mutate(id)}
@@ -237,7 +236,6 @@ export function ConnectBusiness() {
 function ConnectorCard({
   connector,
   accounts,
-  ready,
   connecting,
   busyId,
   onConnect,
@@ -247,7 +245,6 @@ function ConnectorCard({
 }: {
   connector: Connector;
   accounts: Account[];
-  ready: boolean;
   connecting: boolean;
   busyId: string | null;
   onConnect: () => void;
