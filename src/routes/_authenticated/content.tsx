@@ -44,7 +44,25 @@ type Post = {
   created_at: string;
 };
 
-const PLATFORMS = ["website", "wordpress", "linkedin", "instagram", "facebook", "x"] as const;
+/**
+ * Publish targets are derived from the connections catalogue, so this list can
+ * never drift from what the platform APIs actually allow. "Website" is the
+ * Flash-hosted blog feed (no plugin needed); "WordPress" pushes the same post
+ * into your own WordPress site through the Flash plugin.
+ */
+const PLATFORMS: { id: string; label: string; hint: string }[] = [
+  {
+    id: "website",
+    label: "Website (Flash blog)",
+    hint: "Published on your Flash-hosted blog feed and used as SEO content — no plugin required.",
+  },
+  ...CONNECTORS.filter((c) => c.capabilities.includes("publish")).map((c) => ({
+    id: c.id === "wordpress" ? "wordpress" : c.id,
+    label: c.id === "wordpress" ? "WordPress (your own site)" : c.name,
+    hint: c.blurb,
+  })),
+];
+
 const STATUS_STYLE: Record<string, string> = {
   draft: "secondary",
   scheduled: "outline",
