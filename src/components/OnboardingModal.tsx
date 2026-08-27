@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Building2, User } from "lucide-react";
 import { toast } from "sonner";
 
+import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/hooks/useTenant";
 import { completeOnboarding } from "@/lib/onboarding.functions";
 import { FlashLogoBadge } from "@/components/FlashLogoBadge";
@@ -34,6 +35,22 @@ export function OnboardingModal() {
     }
     setBusy(true);
     try {
+      // The server function requires a bearer token. If the local session has
+      // lapsed (expired token, signed out in another tab) the call would fail
+      // with "No authorization header provided" and blank the screen, so refresh
+      // first and send the user back to sign-in when there is nothing to refresh.
+      const { data: sessionData } = await supabase.auth.getSession();
+      let session = sessionData.session;
+      if (!session?.access_token) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        session = refreshed.session;
+      }
+      if (!session?.access_token) {
+        toast.error("Your session expired — please sign in again.");
+        setBusy(false);
+        window.location.href = "/auth";
+        return;
+      }
       await runOnboarding({ data: { companyName: companyName.trim(), fullName: fullName.trim() } });
       toast.success(`Welcome to Flash, ${fullName.trim()}! Your 1-month free trial has started.`);
       await refresh();
