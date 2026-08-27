@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  AlertTriangle,
   ArrowUpRight,
   BarChart3,
   CheckCircle2,
@@ -27,6 +28,7 @@ import {
   ShoppingBag,
   Sparkles,
   Unplug,
+  Wand2,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -68,14 +70,6 @@ const GROUPS: {
     icon: ShoppingBag,
   },
 ];
-
-const HEALTH_LABEL: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  healthy: { label: "Connected", variant: "default" },
-  stale: { label: "Needs sync", variant: "secondary" },
-  expiring: { label: "Token expiring", variant: "secondary" },
-  expired: { label: "Reconnect needed", variant: "destructive" },
-  disconnected: { label: "Disconnected", variant: "outline" },
-};
 
 type Account = {
   id: string;
