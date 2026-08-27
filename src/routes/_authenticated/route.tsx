@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider } from "@/hooks/useTenant";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Link,
   Outlet,
@@ -172,18 +173,31 @@ function AuthenticatedLayout() {
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
-    const beat = () => {
-      void touchPresence({ data: undefined }).catch(() => undefined);
+    const beat = async () => {
+      // Only send the heartbeat when a valid token exists, otherwise the
+      // authenticated server fn rejects the call with "No authorization header".
+      let { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        const refreshed = await supabase.auth.refreshSession();
+        data = refreshed.data;
+      }
+      if (cancelled || !data.session?.access_token) return;
+      try {
+        await touchPresence({ data: undefined });
+      } catch {
+        /* presence is best-effort */
+      }
     };
-    beat();
+    void beat();
     const timer = window.setInterval(() => {
-      if (!cancelled && document.visibilityState === "visible") beat();
+      if (!cancelled && document.visibilityState === "visible") void beat();
     }, 120_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, [session]);
+
 
   // Restore the user's preferred sidebar width (client-only, after hydration).
   useEffect(() => {
