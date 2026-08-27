@@ -29,16 +29,16 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/connect")({
   head: () => ({
     meta: [
-      { title: "Connect & setup — Flash CRM" },
+      { title: "Connect & setup — Flas CRM" },
       {
         name: "description",
         content:
-          "Guided setup: connect WhatsApp, install the Flash plugin on WordPress or Shopify, and start capturing leads.",
+          "Guided setup: connect WhatsApp, install the Flas plugin on WordPress or Shopify, and start capturing leads.",
       },
-      { property: "og:title", content: "Connect & setup — Flash CRM" },
+      { property: "og:title", content: "Connect & setup — Flas CRM" },
       {
         property: "og:description",
-        content: "Step-by-step guide to syncing your website and WhatsApp with Flash CRM.",
+        content: "Step-by-step guide to syncing your website and WhatsApp with Flas CRM.",
       },
     ],
   }),
@@ -165,7 +165,7 @@ function ConnectPage() {
           </Badge>
           <ArrowRight className="size-4 text-muted-foreground" />
           <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
-            <Download className="size-3.5" /> Flash captures the lead
+            <Download className="size-3.5" /> Flas captures the lead
           </Badge>
           <ArrowRight className="size-4 text-muted-foreground" />
           <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
@@ -173,7 +173,7 @@ function ConnectPage() {
           </Badge>
           <ArrowRight className="size-4 text-muted-foreground" />
           <Badge variant="secondary" className="gap-1.5 px-3 py-1.5">
-            <Sparkles className="size-3.5" /> Flash AI follows up
+            <Sparkles className="size-3.5" /> Flas AI follows up
           </Badge>
         </CardContent>
       </Card>
@@ -225,7 +225,7 @@ function ConnectPage() {
           number={2}
           done={steps[1]?.done ?? false}
           title="Add your website"
-          description="Create a site key, then install the Flash popup chatbot on WordPress, Shopify or any custom site. The popup asks for WhatsApp number and email before chatting — every visitor becomes a lead."
+          description="Create a site key, then install the Flas popup chatbot on WordPress, Shopify or any custom site. The popup asks for WhatsApp number and email before chatting — every visitor becomes a lead."
         >
           {isAdmin && (
             <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed p-3">
@@ -298,7 +298,7 @@ function ConnectPage() {
                       <a
                         href={`${origin}/api/public/plugin/download?siteKey=${site.site_key}&platform=wordpress`}
                       >
-                        <Download className="size-3.5" /> Download the Flash plugin (ZIP)
+                        <Download className="size-3.5" /> Download the Flas plugin (ZIP)
                       </a>
                     </Button>
                   </li>
@@ -307,7 +307,7 @@ function ConnectPage() {
                     ZIP and press <strong>Activate</strong>.
                   </li>
                   <li>
-                    The plugin activates itself with Flash CRM on first page view — the status above
+                    The plugin activates itself with Flas CRM on first page view — the status above
                     flips to <strong>Live</strong>. No keys to paste.
                   </li>
                 </ol>
@@ -346,7 +346,7 @@ function ConnectPage() {
               {site.platform === "custom" && (
                 <p className="text-sm text-muted-foreground">
                   Paste the snippet anywhere before <code>&lt;/body&gt;</code> on every page where
-                  the popup should appear. It registers itself with Flash CRM automatically.
+                  the popup should appear. It registers itself with Flas CRM automatically.
                 </p>
               )}
             </div>
@@ -376,7 +376,7 @@ function ConnectPage() {
         <StepCard
           number={4}
           done={steps[3]?.done ?? false}
-          title="Let Flash AI grow the account"
+          title="Let Flas AI grow the account"
           description="Draft campaigns, reply to social comments & DMs, and turn product photos into SEO articles — all from the same workspace."
         >
           <div className="flex flex-wrap gap-2">

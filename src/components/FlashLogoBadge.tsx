@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import flashLogoAsset from "@/assets/flash-logo.png.asset.json";
 
-/** Flash wordmark inside a white circular badge — legible on any background. */
+/** Flas wordmark inside a white circular badge — legible on any background. */
 export function FlashLogoBadge({
   className,
   imgClassName,
@@ -16,7 +16,7 @@ export function FlashLogoBadge({
         className,
       )}
     >
-      <img src={flashLogoAsset.url} alt="Flash" className={cn("w-[74%]", imgClassName)} />
+      <img src={flashLogoAsset.url} alt="Flas" className={cn("w-[74%]", imgClassName)} />
     </span>
   );
 }

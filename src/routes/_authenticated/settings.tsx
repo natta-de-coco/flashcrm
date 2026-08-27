@@ -1,5 +1,6 @@
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { BillingCard } from "@/components/settings/BillingCard";
+import { RegionCard } from "@/components/settings/RegionCard";
 import { AuditLogCard } from "@/components/settings/AuditLogCard";
 import { DataPrivacyCard } from "@/components/settings/DataPrivacyCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
@@ -22,12 +23,12 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
-      { title: "Settings — Flash CRM" },
+      { title: "Settings — Flas CRM" },
       {
         name: "description",
         content: "Connect WhatsApp Cloud API, embed the website chat widget and manage your team.",
       },
-      { property: "og:title", content: "Settings — Flash CRM" },
+      { property: "og:title", content: "Settings — Flas CRM" },
       {
         property: "og:description",
         content: "Connect WhatsApp Cloud API, embed the website chat widget and manage your team.",
@@ -646,6 +647,8 @@ function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <RegionCard />
 
         <BillingCard />
 

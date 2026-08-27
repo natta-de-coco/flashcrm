@@ -1,4 +1,4 @@
-// Server-only website knowledge sync. Flash reads the business's own public
+// Server-only website knowledge sync. Flas reads the business's own public
 // website (sitemap first, then homepage links), extracts readable text and
 // stores a compact knowledge record per page. No third-party sites are crawled.
 import type { Database } from "@/integrations/supabase/types";
@@ -134,7 +134,7 @@ export type SyncSummary = {
   lastSyncedAt: string;
 };
 
-/** Indexes the business's own website into the Flash knowledge base. */
+/** Indexes the business's own website into the Flas knowledge base. */
 export async function syncWebsiteKnowledge(
   supabase: Client,
   siteInput: string,
@@ -146,7 +146,7 @@ export async function syncWebsiteKnowledge(
   if (urls.length === 0) urls = await urlsFromHome(origin);
   if (urls.length === 0) {
     throw new Error(
-      "Flash could not read that website. Check the address is public and reachable, then try again.",
+      "Flas could not read that website. Check the address is public and reachable, then try again.",
     );
   }
   urls = urls.filter((u) => u.startsWith(origin)).slice(0, MAX_PAGES);

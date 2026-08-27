@@ -1,6 +1,6 @@
 // Shopify → CRM lead webhook. Accepts Shopify's native HMAC header
 // (X-Shopify-Hmac-Sha256, base64) so stores can point a native webhook at us,
-// plus the same X-Flash-Signature scheme used by the theme snippet.
+// plus the same X-Flas-Signature scheme used by the theme snippet.
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ingestPlatformLead,

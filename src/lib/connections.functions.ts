@@ -98,7 +98,7 @@ export const startConnect = createServerFn({ method: "POST" })
     });
   });
 
-/** Flash Account Scan for one connected account. */
+/** Flas Account Scan for one connected account. */
 export const scanConnectedAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
@@ -204,6 +204,51 @@ export const disconnectConnection = createServerFn({ method: "POST" })
       entityId: data.id,
     });
     return { ok: true };
+  });
+
+/** Exportable Integration Health Report for the signed-in workspace. */
+export const getIntegrationHealthReport = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const tenantId = await callerTenantId(context.supabase, context.userId);
+    if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
+    const { buildHealthReport } = await import("@/lib/integration-health.server");
+    return buildHealthReport(tenantId);
+  });
+
+/** Re-checks permissions and refreshes tokens for one or all connections. */
+export const retryConnections = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ accountId: z.string().uuid().optional() }).parse(input ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    const tenantId = await callerTenantId(context.supabase, context.userId);
+    if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
+    const { retryConnection, retryDueConnections } = await import(
+      "@/lib/integration-health.server"
+    );
+    const results = data.accountId
+      ? [
+          await retryConnection({
+            accountId: data.accountId,
+            tenantId,
+            trigger: "manual",
+            actorId: context.userId,
+          }),
+        ]
+      : await retryDueConnections({ tenantId, trigger: "manual" });
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "connection.retry",
+      tenantId,
+      actorId: context.userId,
+      entityType: "social_account",
+      entityId: data.accountId ?? "all",
+      details: { results } as never,
+    });
+    return { results };
   });
 
 /** Integration activity log: connections, scans, plugin pings and webhooks. */

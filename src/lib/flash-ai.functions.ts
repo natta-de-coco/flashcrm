@@ -9,7 +9,7 @@ const DraftSchema = z.object({
   channel: z.enum(["whatsapp", "email"]).default("whatsapp"),
 });
 
-/** Flash AI campaign writer: drafts a message from the tenant's lead data + goal. */
+/** Flas AI campaign writer: drafts a message from the tenant's lead data + goal. */
 export const draftCampaignMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => DraftSchema.parse(input))
@@ -26,7 +26,7 @@ export const draftCampaignMessage = createServerFn({ method: "POST" })
     ]);
 
     const system = [
-      "You are Flash AI, the built-in marketing assistant inside Flash CRM.",
+      "You are Flas AI, the built-in marketing assistant inside Flas CRM.",
       "You write short, high-converting marketing messages that strictly follow WhatsApp and email marketing rules:",
       "- only address an opted-in audience",
       "- always end WhatsApp messages with a line like: Reply STOP to opt out",
@@ -77,7 +77,7 @@ export const getWhatsAppAnalytics = createServerFn({ method: "GET" })
     return gatherMessagingAnalytics(context.supabase as never, 30);
   });
 
-/** Flash AI reads the analytics and returns concrete recommendations. */
+/** Flas AI reads the analytics and returns concrete recommendations. */
 export const getAnalyticsInsights = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -93,7 +93,7 @@ export const getAnalyticsInsights = createServerFn({ method: "POST" })
     ]);
 
     const system = [
-      "You are Flash AI, the operations advisor inside Flash CRM, a WhatsApp marketing platform.",
+      "You are Flas AI, the operations advisor inside Flas CRM, a WhatsApp marketing platform.",
       "You analyse WhatsApp Business messaging metrics and give concrete, practical advice.",
       "Format: exactly 5 numbered recommendations, each one or two sentences, then a final line starting with 'Focus first:' naming the single highest-impact fix.",
       "Reference the actual numbers. Cover deliverability, response time, bot vs human balance, and compliance (opt-outs, quality rating) where relevant.",

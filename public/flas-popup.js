@@ -1,5 +1,5 @@
 /**
- * Flash CRM side popup chatbot.
+ * Flas CRM side popup chatbot.
  * Embed anywhere:
  *   <script src="https://YOUR-APP/flas-popup.js" data-site-key="YOUR_KEY" async></script>
  * Slides in from the right, collects WhatsApp number + email, then chats with the AI assistant.
@@ -39,7 +39,7 @@
   }
   persist();
 
-  // One-time activation ping: registers the site's domain with Flash CRM so an
+  // One-time activation ping: registers the site's domain with Flas CRM so an
   // admin can activate it (WordPress does this from PHP; Shopify/others do it here).
   if (!state.pinged) {
     state.pinged = true;

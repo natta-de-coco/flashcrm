@@ -21,12 +21,12 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/chatbot")({
   head: () => ({
     meta: [
-      { title: "AI Chatbot — Flash CRM" },
+      { title: "AI Chatbot — Flas CRM" },
       {
         name: "description",
         content: "Configure your AI WhatsApp and website chatbot, greeting and handoff rules.",
       },
-      { property: "og:title", content: "AI Chatbot — Flash CRM" },
+      { property: "og:title", content: "AI Chatbot — Flas CRM" },
       {
         property: "og:description",
         content: "Configure your AI WhatsApp and website chatbot, greeting and handoff rules.",
@@ -37,9 +37,9 @@ export const Route = createFileRoute("/_authenticated/chatbot")({
 });
 
 const MODELS = [
-  { id: "google/gemini-3.7-flash", label: "Fast (Gemini 3.7 Flash)" },
+  { id: "google/gemini-3.7-flash", label: "Fast (Gemini 3.7 Flas)" },
   { id: "google/gemini-3.1-pro-preview", label: "Smartest (Gemini 3.1 Pro)" },
-  { id: "google/gemini-3.1-flash-lite", label: "Cheapest (Gemini 3.1 Flash Lite)" },
+  { id: "google/gemini-3.1-flash-lite", label: "Cheapest (Gemini 3.1 Flas Lite)" },
 ];
 
 function ChatbotPage() {

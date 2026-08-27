@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { captureError, installTelemetry } from "../lib/telemetry";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -41,6 +42,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    captureError(error, { kind: "error_boundary" });
   }, [error]);
 
   return (
@@ -79,13 +81,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Flash CRM — WhatsApp Inbox & Chatbot" },
+      { title: "Flas CRM — WhatsApp Inbox & Chatbot" },
       {
         name: "description",
         content:
-          "Flash CRM unifies WhatsApp conversations, website chat, contacts and an AI chatbot in one shared team inbox.",
+          "Flas CRM unifies WhatsApp conversations, website chat, contacts and an AI chatbot in one shared team inbox.",
       },
-      { property: "og:title", content: "Flash CRM — WhatsApp Inbox & Chatbot" },
+      { property: "og:title", content: "Flas CRM — WhatsApp Inbox & Chatbot" },
 
       {
         property: "og:description",
@@ -127,6 +129,14 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  // Frontend crashes, failed server actions and blank screens are captured with
+  // route + session context so support can trace any incident.
+  useEffect(() => {
+    installTelemetry();
+  }, []);
+
+
 
   return (
     <QueryClientProvider client={queryClient}>

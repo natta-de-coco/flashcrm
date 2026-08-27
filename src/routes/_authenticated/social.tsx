@@ -52,17 +52,17 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/social")({
   head: () => ({
     meta: [
-      { title: "Social Hub — Flash CRM" },
+      { title: "Social Hub — Flas CRM" },
       {
         name: "description",
         content:
-          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flash CRM.",
+          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flas CRM.",
       },
-      { property: "og:title", content: "Social Hub — Flash CRM" },
+      { property: "og:title", content: "Social Hub — Flas CRM" },
       {
         property: "og:description",
         content:
-          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flash CRM.",
+          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flas CRM.",
       },
     ],
   }),
@@ -167,7 +167,7 @@ const PLATFORMS: {
     idPlaceholder: "accounts/123/locations/456",
     tokenLabel: "Google OAuth token",
     tokenPlaceholder: "ya29.…",
-    hint: "Pulls your latest Google reviews so Flash AI can draft responses.",
+    hint: "Pulls your latest Google reviews so Flas AI can draft responses.",
   },
 ];
 
@@ -248,7 +248,7 @@ function SocialHubPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <PageHeader
         title="Social Hub"
-        description="Run your client's whole social presence from here: reply to comments & DMs with Flash AI, write posts, and watch reach and audience grow."
+        description="Run your client's whole social presence from here: reply to comments & DMs with Flas AI, write posts, and watch reach and audience grow."
       />
 
       <AccountsCard accounts={accounts} onChanged={refresh} />
@@ -503,7 +503,7 @@ function InboxTab({
     try {
       const { suggestion } = await suggest({ data: { id: i.id } });
       setDrafts((d) => ({ ...d, [i.id]: suggestion }));
-      toast.success("Flash AI drafted a reply");
+      toast.success("Flas AI drafted a reply");
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Drafting failed");
@@ -604,7 +604,7 @@ function InboxTab({
                     ) : (
                       <Sparkles className="size-3.5" />
                     )}
-                    {i.ai_suggestion || drafts[i.id] ? "Redraft with Flash AI" : "Suggest reply"}
+                    {i.ai_suggestion || drafts[i.id] ? "Redraft with Flas AI" : "Suggest reply"}
                   </Button>
                   {(drafts[i.id] ?? i.ai_suggestion) && (
                     <Button
@@ -655,7 +655,7 @@ function ComposerTab({ onChanged }: { onChanged: () => void }) {
     mutationFn: () => compose({ data: { topic: form.topic.trim(), tone: form.tone, platform: form.platform } }),
     onSuccess: (res) => {
       setCaption(res.caption);
-      toast.success("Flash AI wrote your caption");
+      toast.success("Flas AI wrote your caption");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -681,9 +681,9 @@ function ComposerTab({ onChanged }: { onChanged: () => void }) {
   return (
     <Card className="max-w-4xl">
       <CardHeader>
-        <CardTitle className="text-base">Flash AI content writer</CardTitle>
+        <CardTitle className="text-base">Flas AI content writer</CardTitle>
         <CardDescription>
-          Describe the post goal — Flash AI knows the business profile and writes an on-brand
+          Describe the post goal — Flas AI knows the business profile and writes an on-brand
           caption with hashtags and a call to action.
         </CardDescription>
       </CardHeader>
@@ -741,7 +741,7 @@ function ComposerTab({ onChanged }: { onChanged: () => void }) {
             ) : (
               <Sparkles className="size-4" />
             )}
-            Draft with Flash AI
+            Draft with Flas AI
           </Button>
         </div>
 

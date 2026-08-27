@@ -1,4 +1,4 @@
-// Browser-safe catalogue of every business platform Flash can connect to.
+// Browser-safe catalogue of every business platform Flas can connect to.
 // Capabilities describe what each platform's official API actually allows, so
 // the UI never promises a feature the API cannot deliver.
 
@@ -25,7 +25,7 @@ export const SOCIAL_ACCOUNT_PLATFORMS = [
 
 export type AccountPlatform = (typeof SOCIAL_ACCOUNT_PLATFORMS)[number];
 
-/** Platforms that live in their own Flash module (own tables and screens). */
+/** Platforms that live in their own Flas module (own tables and screens). */
 export const EXTERNAL_CONNECTORS = ["whatsapp", "wordpress", "shopify", "woocommerce"] as const;
 export type ExternalConnector = (typeof EXTERNAL_CONNECTORS)[number];
 
@@ -39,7 +39,7 @@ export type Connector = {
   group: ConnectorGroup;
   /** Short line shown on the card. */
   blurb: string;
-  /** True when Flash can run the platform's official OAuth authorization flow. */
+  /** True when Flas can run the platform's official OAuth authorization flow. */
   oauth: boolean;
   /** OAuth provider family used for the token exchange. */
   provider?: "meta" | "google" | "linkedin" | "tiktok" | "twitter" | "pinterest";
@@ -49,7 +49,7 @@ export type Connector = {
   unsupported?: Capability[];
   /** Where the owner manages the platform itself. */
   manageUrl: string;
-  /** Handled by another Flash module instead of social_accounts. */
+  /** Handled by another Flas module instead of social_accounts. */
   internalHref?: string;
   /** Builds the public profile URL from the stored handle when possible. */
   profilePattern?: (handle: string) => string;

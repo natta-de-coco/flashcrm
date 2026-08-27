@@ -1,7 +1,7 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
 
-/** Heartbeat: records that this user is currently active in Flash. */
+/** Heartbeat: records that this user is currently active in Flas. */
 export const touchPresence = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -22,7 +22,7 @@ export const listCompanyPresence = createServerFn({ method: "GET" })
       .eq("id", context.userId)
       .maybeSingle();
     if (me?.staff_role !== "super_admin") {
-      throw new Error("This area is only available to the Flash platform manager");
+      throw new Error("This area is only available to the Flas platform manager");
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -110,7 +110,7 @@ export const exportCompanyData = createServerFn({ method: "POST" })
       .eq("id", context.userId)
       .maybeSingle();
     if (me?.staff_role !== "super_admin") {
-      throw new Error("This area is only available to the Flash platform manager");
+      throw new Error("This area is only available to the Flas platform manager");
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { logAudit } = await import("@/lib/audit.server");

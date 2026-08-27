@@ -18,13 +18,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({
     meta: [
-      { title: "Leads & Marketing — Flash CRM" },
+      { title: "Leads & Marketing — Flas CRM" },
       {
         name: "description",
         content:
           "Collect email leads from WordPress and Shopify, then build marketing campaigns for your list.",
       },
-      { property: "og:title", content: "Leads & Marketing — Flash CRM" },
+      { property: "og:title", content: "Leads & Marketing — Flas CRM" },
       {
         property: "og:description",
         content: "WordPress and Shopify lead capture plus email marketing campaigns.",
@@ -266,7 +266,7 @@ function MarketingPage() {
       }),
     onSuccess: (res) => {
       setAiDraft(res.draft);
-      toast.success("Flash AI drafted your message");
+      toast.success("Flas AI drafted your message");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -275,7 +275,7 @@ function MarketingPage() {
     if (!aiDraft.trim()) return;
     const subjectMatch = aiDraft.match(/^Subject:\s*(.+)$/m);
     setCampaignForm({
-      name: aiForm.goal.slice(0, 60) || "Flash AI campaign",
+      name: aiForm.goal.slice(0, 60) || "Flas AI campaign",
       subject: aiForm.channel === "email" ? (subjectMatch?.[1] ?? "") : "",
       body: aiForm.channel === "email" ? aiDraft.replace(/^Subject:.*\n?/m, "").trim() : aiDraft,
     });
@@ -494,7 +494,7 @@ function MarketingPage() {
                       snippet just before <code>&lt;/body&gt;</code>.
                     </>
                   )}{" "}
-                  The site registers itself with Flash CRM on first visit — then activate it with the
+                  The site registers itself with Flas CRM on first visit — then activate it with the
                   link above so the popup goes live.
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -513,10 +513,10 @@ function MarketingPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="size-4 text-primary" /> Flash AI campaign writer
+              <Sparkles className="size-4 text-primary" /> Flas AI campaign writer
             </CardTitle>
             <CardDescription>
-              Tell Flash AI your goal — it studies your business profile and lead data, then drafts
+              Tell Flas AI your goal — it studies your business profile and lead data, then drafts
               a compliant, ready-to-send message. Review it, then drop it into a campaign below.
             </CardDescription>
           </CardHeader>
@@ -582,7 +582,7 @@ function MarketingPage() {
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Draft with Flash AI
+                Draft with Flas AI
               </Button>
             </div>
             {aiDraft && (
@@ -608,7 +608,7 @@ function MarketingPage() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Campaigns only send to leads who gave consent — Flash AI already includes the
+                  Campaigns only send to leads who gave consent — Flas AI already includes the
                   required opt-out line.
                 </p>
               </div>

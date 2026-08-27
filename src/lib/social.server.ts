@@ -625,14 +625,14 @@ export async function replyToComment(
   }
 }
 
-/** Flash AI drafts a customer-support reply to a comment or DM. */
+/** Flas AI drafts a customer-support reply to a comment or DM. */
 export async function draftSocialReply(
   supabase: RlsClient,
   input: { kind: string; author: string; body: string },
 ): Promise<string> {
   const business = await getBusinessContext(supabase);
   const system = [
-    "You are Flash AI, an expert social media customer-support agent inside Flash CRM.",
+    "You are Flas AI, an expert social media customer-support agent inside Flas CRM.",
     "Write a short public reply to a social media comment, review or DM on behalf of the business.",
     "Rules: warm and human, under 280 characters, answer the question directly when you can,",
     "never invent prices, policies or discounts, move anything personal (orders, phone numbers)",
@@ -651,14 +651,14 @@ export async function draftSocialReply(
   return callFlashAi(system, user);
 }
 
-/** Flash AI writes a ready-to-post caption for any connected social platform. */
+/** Flas AI writes a ready-to-post caption for any connected social platform. */
 export async function composeSocialCaption(
   supabase: RlsClient,
   input: { topic: string; tone: string; platform: string },
 ): Promise<string> {
   const business = await getBusinessContext(supabase);
   const system = [
-    "You are Flash AI, an expert social media content writer inside Flash CRM.",
+    "You are Flas AI, an expert social media content writer inside Flas CRM.",
     "Write a ready-to-publish post for the requested platform, respecting its culture and length norms",
     "(e.g. very short for X, professional for LinkedIn, hook-first captions for Instagram/TikTok).",
     "Rules: strong hook in the first line, short punchy paragraphs, one clear call to action,",

@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { IncidentsCard } from "@/components/monitoring/IncidentsCard";
 import { supabase } from "@/integrations/supabase/client";
 import { retryWebhookEvent } from "@/lib/crm.functions";
 import { getAnalyticsInsights, getWhatsAppAnalytics } from "@/lib/flash-ai.functions";
@@ -23,13 +24,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/monitoring")({
   head: () => ({
     meta: [
-      { title: "Webhook Monitoring — Flash CRM" },
+      { title: "Webhook Monitoring — Flas CRM" },
       {
         name: "description",
         content:
           "Live WhatsApp webhook delivery status with event logs, one-click retries and failure alerts.",
       },
-      { property: "og:title", content: "Webhook Monitoring — Flash CRM" },
+      { property: "og:title", content: "Webhook Monitoring — Flas CRM" },
       {
         property: "og:description",
         content: "Round-the-clock monitoring of WhatsApp webhook deliveries, retries and alerts.",
@@ -226,7 +227,7 @@ function MonitoringPage() {
               ) : (
                 <Sparkles className="size-4" />
               )}
-              Ask Flash AI what to improve
+              Ask Flas AI what to improve
             </Button>
           </div>
         </CardHeader>
@@ -323,7 +324,7 @@ function MonitoringPage() {
               {insights && (
                 <div className="rounded-lg border bg-muted/40 p-4">
                   <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                    <Sparkles className="size-4 text-primary" /> Flash AI recommendations
+                    <Sparkles className="size-4 text-primary" /> Flas AI recommendations
                   </p>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                     {insights}
@@ -332,7 +333,7 @@ function MonitoringPage() {
               )}
               {!insights && !insightsMutation.isPending && (
                 <p className="text-xs text-muted-foreground">
-                  Tip: run “Ask Flash AI what to improve” to get a plain-English action plan based
+                  Tip: run “Ask Flas AI what to improve” to get a plain-English action plan based
                   on these numbers — deliverability, response time, bot balance and compliance.
                 </p>
               )}
@@ -396,6 +397,8 @@ function MonitoringPage() {
           ))}
         </CardContent>
       </Card>
+
+      <IncidentsCard />
 
       <Card>
         <CardHeader className="gap-3">

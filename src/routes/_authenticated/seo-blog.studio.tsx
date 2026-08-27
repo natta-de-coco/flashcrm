@@ -44,7 +44,7 @@ export const Route = createFileRoute("/_authenticated/seo-blog/studio")({
     article: typeof search["article"] === "string" ? search["article"] : undefined,
   }),
   head: () => ({
-    meta: [{ title: "SEO Studio — Flash CRM" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "SEO Studio — Flas CRM" }, { name: "robots", content: "noindex" }],
   }),
   component: SeoStudioPage,
 });

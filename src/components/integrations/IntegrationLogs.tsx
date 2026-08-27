@@ -9,7 +9,7 @@ const ACTION_LABEL: Record<string, string> = {
   "connection.authorize_started": "Authorization started",
   "connection.connected": "Platform connected",
   "connection.disconnected": "Platform disconnected",
-  "connection.scanned": "Flash profile scan",
+  "connection.scanned": "Flas profile scan",
   "site.activated": "Website plugin activated",
   "website.synced": "Website knowledge synced",
 };

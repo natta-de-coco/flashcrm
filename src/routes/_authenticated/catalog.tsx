@@ -14,13 +14,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/catalog")({
   head: () => ({
     meta: [
-      { title: "Product Catalog — Flash CRM" },
+      { title: "Product Catalog — Flas CRM" },
       {
         name: "description",
         content:
           "Manage your product catalog with SKUs, pricing, specifications and images for every workspace.",
       },
-      { property: "og:title", content: "Product Catalog — Flash CRM" },
+      { property: "og:title", content: "Product Catalog — Flas CRM" },
       {
         property: "og:description",
         content: "SKUs, pricing, specs and images for the products you pitch and sell.",

@@ -21,7 +21,7 @@ export async function requestSiteActivation(input: ActivationInput): Promise<{
   if (error || !site) throw new Error("Site not found");
 
   if (site.status === "revoked") {
-    return { status: "revoked", message: "This site was revoked. Contact your Flash CRM admin." };
+    return { status: "revoked", message: "This site was revoked. Contact your Flas CRM admin." };
   }
 
   const adminEmail = input.adminEmail ?? site.admin_email ?? null;
@@ -60,7 +60,7 @@ export async function activateSiteByToken(token: string): Promise<{ ok: boolean;
 
   if (!site) return { ok: false, message: "This activation link is no longer valid." };
   if (site.status === "revoked") {
-    return { ok: false, message: "This site was revoked by a Flash CRM admin." };
+    return { ok: false, message: "This site was revoked by a Flas CRM admin." };
   }
   if (site.status === "active") {
     return { ok: true, message: `${site.name} is already activated and collecting leads.` };
@@ -74,7 +74,7 @@ export async function activateSiteByToken(token: string): Promise<{ ok: boolean;
 
   return {
     ok: true,
-    message: `${site.name} is live. The chatbot popup now sends leads straight into Flash CRM.`,
+    message: `${site.name} is live. The chatbot popup now sends leads straight into Flas CRM.`,
   };
 }
 

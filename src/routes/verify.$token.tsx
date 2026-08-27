@@ -1,4 +1,4 @@
-// QR verification page. Scanning the code on any Flash PDF lands here and
+// QR verification page. Scanning the code on any Flas PDF lands here and
 // confirms the document is genuine and shows its current payment status.
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,16 +10,16 @@ export const Route = createFileRoute("/verify/$token")({
   loader: ({ params }) => verifyDocument({ data: { token: params.token } }),
   head: () => ({
     meta: [
-      { title: "Document verification — Flash by Mobi Digital Solutions" },
+      { title: "Document verification — Flas by Mobi Digital Solutions" },
       {
         name: "description",
         content:
-          "Check that a Flash quotation or invoice is genuine: issuer, number, amount and live payment status.",
+          "Check that a Flas quotation or invoice is genuine: issuer, number, amount and live payment status.",
       },
-      { property: "og:title", content: "Document verification — Flash" },
+      { property: "og:title", content: "Document verification — Flas" },
       {
         property: "og:description",
-        content: "Confirm a Flash invoice or quotation is authentic and see its payment status.",
+        content: "Confirm a Flas invoice or quotation is authentic and see its payment status.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -55,7 +55,7 @@ function VerifyPage() {
               <ShieldX className="h-5 w-5" /> Not verified
             </CardTitle>
             <CardDescription>
-              This code does not match any document issued through Flash. Treat the document as
+              This code does not match any document issued through Flas. Treat the document as
               unverified and contact the sender.
             </CardDescription>
           </CardHeader>
@@ -72,7 +72,7 @@ function VerifyPage() {
             <ShieldCheck className="h-5 w-5" /> Genuine document
           </CardTitle>
           <CardDescription>
-            Issued through Flash by {doc.issuer ?? "the seller"} and unchanged since it was
+            Issued through Flas by {doc.issuer ?? "the seller"} and unchanged since it was
             finalised.
           </CardDescription>
         </CardHeader>

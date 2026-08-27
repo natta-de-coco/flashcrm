@@ -1,4 +1,4 @@
-// Server-only logic for the Flash Business Advisor — a senior, niche-aware
+// Server-only logic for the Flas Business Advisor — a senior, niche-aware
 // business manager persona that reads the tenant's live data (channels, social,
 // leads, catalog, location) and returns a structured strategic review.
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -216,7 +216,7 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
 }
 
 const ADVISOR_PERSONA = [
-  "You are the Flash Business Advisor: a seasoned business owner and operator with 25+ years of hands-on experience across every major niche —",
+  "You are the Flas Business Advisor: a seasoned business owner and operator with 25+ years of hands-on experience across every major niche —",
   "retail and e-commerce, restaurants and cafés, real estate, clinics and dental, salons and spas, fitness, education and coaching, travel,",
   "construction and trades, automotive, logistics, professional services (legal, accounting, marketing), SaaS, manufacturing, events and weddings,",
   "and local service businesses. You think like a CEO plus a CMO plus a CFO in one person.",
@@ -345,7 +345,7 @@ const KPI_MENU = [
 
 /**
  * Turns the advisor's read of the business into concrete, measurable targets
- * for the six KPIs Flash can actually measure from live data.
+ * for the six KPIs Flas can actually measure from live data.
  */
 export async function proposeKpiTargets(supabase: SupabaseClient): Promise<KpiProposal[]> {
   const { facts } = await gatherAdvisorSnapshot(supabase);

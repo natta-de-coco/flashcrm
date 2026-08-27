@@ -139,7 +139,7 @@ export const resolveKpiAlert = createServerFn({ method: "POST" })
 
 /**
  * Asks the advisor to turn its live view of the business into concrete numeric
- * targets for the metrics Flash can actually measure, then saves them.
+ * targets for the metrics Flas can actually measure, then saves them.
  */
 export const generateKpiTargetsFromAdvisor = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

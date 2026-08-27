@@ -47,12 +47,12 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard — Flash CRM" },
+      { title: "Dashboard — Flas CRM" },
       {
         name: "description",
         content: "Live overview of WhatsApp conversations, leads and chatbot activity.",
       },
-      { property: "og:title", content: "Dashboard — Flash CRM" },
+      { property: "og:title", content: "Dashboard — Flas CRM" },
       {
         property: "og:description",
         content: "Live overview of WhatsApp conversations, leads and chatbot activity.",
@@ -235,7 +235,7 @@ function DashboardPage() {
     placeholderData: keepPreviousData,
   });
 
-  // Flash AI daily brief — generated once per day per workspace on the server and
+  // Flas AI daily brief — generated once per day per workspace on the server and
   // reused on every refresh, so loading it on mount costs at most one model call a day.
   const briefFn = useServerFn(getDailyBrief);
   const brief = useQuery({
@@ -378,13 +378,13 @@ function DashboardPage() {
         </div>
       )}
 
-      {/* Flash AI daily brief + business health score */}
+      {/* Flas AI daily brief + business health score */}
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-start justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="size-4 text-brand" /> Flash AI daily brief
+                <Sparkles className="size-4 text-brand" /> Flas AI daily brief
               </CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 What changed this week and the three things worth doing today.
@@ -433,7 +433,7 @@ function DashboardPage() {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Ask Flash AI to read this week's numbers and tell you where to focus.
+                Ask Flas AI to read this week's numbers and tell you where to focus.
               </p>
             )}
           </CardContent>

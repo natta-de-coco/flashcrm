@@ -147,7 +147,7 @@ export function ConnectionWizard({
           {step === "permissions" && (
             <section className="space-y-3">
               <div>
-                <p className="mb-1 font-medium">Permissions Flash will request</p>
+                <p className="mb-1 font-medium">Permissions Flas will request</p>
                 {guide?.scopes?.length ? (
                   <div className="flex flex-wrap gap-1">
                     {guide.scopes.map((scope) => (
@@ -158,7 +158,7 @@ export function ConnectionWizard({
                   </div>
                 ) : (
                   <p className="text-muted-foreground">
-                    This platform is configured manually inside Flash — no OAuth permissions needed.
+                    This platform is configured manually inside Flas — no OAuth permissions needed.
                   </p>
                 )}
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -185,7 +185,7 @@ export function ConnectionWizard({
           {step === "connect" && (
             <section className="space-y-3">
               <p className="text-muted-foreground">
-                Flash opens the platform's official login in a new browser tab — providers such as
+                Flas opens the platform's official login in a new browser tab — providers such as
                 Meta and Google refuse to load inside embedded frames, so this is expected.
               </p>
               <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">

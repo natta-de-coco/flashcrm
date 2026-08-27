@@ -55,7 +55,7 @@ export const getBrandKnowledge = createServerFn({ method: "GET" })
     };
   });
 
-/** Saves brand knowledge once — Flash reuses it for every future output. */
+/** Saves brand knowledge once — Flas reuses it for every future output. */
 export const saveBrandKnowledge = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => BrandSchema.partial().parse(input))
@@ -75,7 +75,7 @@ export const saveBrandKnowledge = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Indexes the business's own website into Flash's knowledge base. */
+/** Indexes the business's own website into Flas's knowledge base. */
 export const syncWebsiteNow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
@@ -86,7 +86,7 @@ export const syncWebsiteNow = createServerFn({ method: "POST" })
     return syncWebsiteKnowledge(context.supabase, data.siteUrl);
   });
 
-/** Flash proposes brand knowledge fields from the indexed website content. */
+/** Flas proposes brand knowledge fields from the indexed website content. */
 export const draftBrandFromWebsite = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -97,16 +97,16 @@ export const draftBrandFromWebsite = createServerFn({ method: "POST" })
       .order("word_count", { ascending: false })
       .limit(18);
     if (!pages || pages.length === 0) {
-      throw new Error("Sync your website first so Flash has something to learn from.");
+      throw new Error("Sync your website first so Flas has something to learn from.");
     }
     const { callFlashAi } = await import("@/lib/flash-ai.server");
-    const system = `You are Flash, a brand strategist. From this business's own website content, fill a brand knowledge profile.
+    const system = `You are Flas, a brand strategist. From this business's own website content, fill a brand knowledge profile.
 Return ONLY JSON with these string keys: description, industry, niche, locations, target_countries, target_cities, products_summary, services_summary, brands, target_customers, usp, pricing_approach, contact_details, tone, brand_personality, preferred_cta, keywords, marketing_goals.
 Use only what the website supports. Leave a field as "" when the website does not say. Never invent claims, prices, awards or statistics.`;
     const raw = await callFlashAi(system, JSON.stringify(pages).slice(0, 20000));
     const cleaned = raw.replace(/```json|```/g, "").trim();
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
-    if (start === -1 || end === -1) throw new Error("Flash could not read the website content.");
+    if (start === -1 || end === -1) throw new Error("Flas could not read the website content.");
     return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, string>;
   });
