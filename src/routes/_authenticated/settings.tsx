@@ -647,6 +647,8 @@ function SettingsPage() {
           </CardContent>
         </Card>
 
+        <RegionCard />
+
         <BillingCard />
 
         {isAdmin && (
