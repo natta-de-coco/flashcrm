@@ -9,7 +9,7 @@ import { EmailChangeEmail } from '@/lib/email-templates/email-change'
 import { ReauthenticationEmail } from '@/lib/email-templates/reauthentication'
 
 // Configuration
-const SITE_NAME = "Chat Connect Pro"
+const SITE_NAME = "Flas CRM"
 const SENDER_DOMAIN = "notify.flas.mobidigisol.com"
 const ROOT_DOMAIN = "flas.mobidigisol.com"
 const FROM_DOMAIN = "flas.mobidigisol.com"

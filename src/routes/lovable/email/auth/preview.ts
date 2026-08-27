@@ -18,7 +18,7 @@ const EMAIL_TEMPLATES: Record<string, React.ComponentType<any>> = {
 }
 
 // Configuration
-const SITE_NAME = "Chat Connect Pro"
+const SITE_NAME = "Flas CRM"
 const ROOT_DOMAIN = "flas.mobidigisol.com"
 
 // Sample data for preview mode ONLY (not used in actual email sending).
