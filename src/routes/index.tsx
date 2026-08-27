@@ -26,15 +26,15 @@ import { useEffect, useState } from "react";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Flash CRM by Mobi Digital Solutions — WhatsApp CRM & AI Growth" },
+      { title: "Flas CRM by Mobi Digital Solutions — WhatsApp CRM & AI Growth" },
       {
         name: "description",
         content:
-          "Flash CRM by Mobi Digital Solutions: WhatsApp Cloud API inbox, AI chatbot, social DMs & comments, leads, SEO content, invoicing and a business advisor. One month free, then $20/month.",
+          "Flas CRM by Mobi Digital Solutions: WhatsApp Cloud API inbox, AI chatbot, social DMs & comments, leads, SEO content, invoicing and a business advisor. One month free, then $20/month.",
       },
       {
         property: "og:title",
-        content: "Flash CRM by Mobi Digital Solutions — WhatsApp CRM & AI Growth",
+        content: "Flas CRM by Mobi Digital Solutions — WhatsApp CRM & AI Growth",
       },
       {
         property: "og:description",
@@ -50,7 +50,7 @@ export const Route = createFileRoute("/")({
         children: JSON.stringify({
           "@context": "https://schema.org",
           "@type": "SoftwareApplication",
-          name: "Flash CRM",
+          name: "Flas CRM",
           url: "https://flas.mobidigisol.com",
           applicationCategory: "BusinessApplication",
           operatingSystem: "Web",
@@ -84,7 +84,7 @@ const MODULES = [
   {
     icon: Bot,
     title: "AI chatbot with human handoff",
-    body: "Flash AI answers instantly from your own business knowledge, then hands the chat to an agent on keywords or when a customer asks for a human.",
+    body: "Flas AI answers instantly from your own business knowledge, then hands the chat to an agent on keywords or when a customer asks for a human.",
   },
   {
     icon: MessageSquare,
@@ -109,12 +109,12 @@ const MODULES = [
   {
     icon: Search,
     title: "SEO & content studio",
-    body: "Write once and publish to your Flash blog, your WordPress site and social channels with SEO title, description and keywords attached.",
+    body: "Write once and publish to your Flas blog, your WordPress site and social channels with SEO title, description and keywords attached.",
   },
   {
     icon: BarChart3,
     title: "AI business advisor",
-    body: "Flash reviews your social reach, traffic, products, city and niche, then gives a strategic review, KPI targets and alerts when you miss them.",
+    body: "Flas reviews your social reach, traffic, products, city and niche, then gives a strategic review, KPI targets and alerts when you miss them.",
   },
   {
     icon: Receipt,
@@ -134,7 +134,7 @@ const MODULES = [
   {
     icon: Sparkles,
     title: "Bring your own AI keys",
-    body: "Use Flash AI out of the box, or connect your own OpenAI, Gemini or Claude key — your data stays in your workspace.",
+    body: "Use Flas AI out of the box, or connect your own OpenAI, Gemini or Claude key — your data stays in your workspace.",
   },
 ];
 
@@ -171,7 +171,7 @@ const STEPS = [
   },
   {
     title: "3 · Convert",
-    body: "Your team replies from one inbox, Flash AI drafts campaigns and content, and the advisor tells you what to fix next.",
+    body: "Your team replies from one inbox, Flas AI drafts campaigns and content, and the advisor tells you what to fix next.",
   },
 ];
 
@@ -198,7 +198,7 @@ function Landing() {
               <MessageSquare className="size-4" />
             </span>
             <span className="leading-tight">
-              Flash CRM
+              Flas CRM
               <span className="block text-[10px] font-medium text-muted-foreground">
                 by Mobi Digital Solutions
               </span>
@@ -227,14 +227,14 @@ function Landing() {
       <main>
         <section className="mx-auto max-w-3xl px-6 py-16 text-center">
           <span className="inline-flex items-center gap-2 rounded-full bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">
-            WhatsApp Cloud API · Flash AI · Social inbox · Invoicing
+            WhatsApp Cloud API · Flas AI · Social inbox · Invoicing
           </span>
           <h1 className="mt-5 text-4xl font-bold tracking-tight sm:text-5xl">
             The complete WhatsApp &amp; AI growth CRM for your business
           </h1>
           <p className="mt-4 text-base text-muted-foreground">
-            Flash CRM brings every WhatsApp chat, social message, website lead, campaign, invoice and
-            SEO post into one workspace — with Flash AI writing, replying and advising alongside your
+            Flas CRM brings every WhatsApp chat, social message, website lead, campaign, invoice and
+            SEO post into one workspace — with Flas AI writing, replying and advising alongside your
             team. Built and supported by Mobi Digital Solutions.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -252,7 +252,7 @@ function Landing() {
         </section>
 
         <section id="modules" className="mx-auto max-w-6xl px-6 pb-4">
-          <h2 className="text-2xl font-bold">Everything inside Flash CRM</h2>
+          <h2 className="text-2xl font-bold">Everything inside Flas CRM</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Twelve working modules — not a demo. This is the full lead-to-revenue stack.
           </p>
@@ -314,7 +314,7 @@ function Landing() {
               <p className="mt-3 text-sm text-muted-foreground">
                 Mobi Digital Solutions builds and runs digital growth systems for businesses:
                 websites and e-commerce stores, WhatsApp and CRM automation, SEO and content,
-                paid social and search campaigns, and custom software like Flash CRM itself.
+                paid social and search campaigns, and custom software like Flas CRM itself.
               </p>
               <ul className="mt-4 grid gap-2 text-sm">
                 {[
@@ -323,7 +323,7 @@ function Landing() {
                   "SEO, content and social media management",
                   "Meta, Google and TikTok advertising",
                   "Custom CRM, portal and automation development",
-                  "Onboarding, training and ongoing support for Flash CRM",
+                  "Onboarding, training and ongoing support for Flas CRM",
                 ].map((s) => (
                   <li key={s} className="flex gap-2">
                     <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-brand" />
@@ -352,7 +352,7 @@ function Landing() {
 
       <footer className="border-t py-8 text-center text-xs text-muted-foreground">
         <p className="font-medium text-foreground">
-          Flash CRM — a product of Mobi Digital Solutions
+          Flas CRM — a product of Mobi Digital Solutions
         </p>
         <p className="mt-1">
           WhatsApp monitoring, AI chatbot, social inbox, leads, marketing, SEO and invoicing in one
@@ -385,7 +385,7 @@ function QuoteForm() {
     company: "",
     email: "",
     phone: "",
-    interest: "Flash CRM subscription",
+    interest: "Flas CRM subscription",
     message: "",
   });
 
@@ -405,7 +405,7 @@ function QuoteForm() {
         <FileText className="size-5 text-brand" /> Request a quotation
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Tell us what you need — Flash CRM setup, a website, WhatsApp API approval, SEO or a custom
+        Tell us what you need — Flas CRM setup, a website, WhatsApp API approval, SEO or a custom
         build. We reply the same working day.
       </p>
 
@@ -455,8 +455,8 @@ function QuoteForm() {
             onChange={(e) => setF({ ...f, interest: e.target.value })}
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option>Flash CRM subscription</option>
-            <option>Flash CRM + full setup & training</option>
+            <option>Flas CRM subscription</option>
+            <option>Flas CRM + full setup & training</option>
             <option>WhatsApp Cloud API setup & approval</option>
             <option>Website / WordPress / Shopify</option>
             <option>SEO & content marketing</option>

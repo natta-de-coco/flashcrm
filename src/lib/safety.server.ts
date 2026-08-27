@@ -70,7 +70,7 @@ export async function checkSendPermission(args: {
       .eq("id", contact.tenant_id)
       .maybeSingle();
     if (org?.suspended) {
-      reasons.push("This workspace is suspended — contact your Flash account manager.");
+      reasons.push("This workspace is suspended — contact your Flas account manager.");
     } else if (org && !["trial", "active"].includes(org.subscription_status)) {
       reasons.push(
         `Subscription is ${org.subscription_status} — sending is paused until the plan is active.`,

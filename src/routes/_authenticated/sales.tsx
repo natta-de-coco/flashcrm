@@ -1,5 +1,5 @@
 // Sales hub — create quotations and invoices, send them on WhatsApp, take
-// payment and let Flash send the stamped PAID copy automatically.
+// payment and let Flas send the stamped PAID copy automatically.
 import { PageHeader } from "@/components/PageHeader";
 import {
   InvoiceBuilder,
@@ -34,13 +34,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/sales")({
   head: () => ({
     meta: [
-      { title: "Quotations & Invoices — Flash CRM" },
+      { title: "Quotations & Invoices — Flas CRM" },
       {
         name: "description",
         content:
           "Build itemised quotations and invoices, send the PDF on WhatsApp, track payments and auto-send the PAID copy.",
       },
-      { property: "og:title", content: "Quotations & Invoices — Flash CRM" },
+      { property: "og:title", content: "Quotations & Invoices — Flas CRM" },
       {
         property: "og:description",
         content: "Quote, invoice, get paid and deliver stamped PDFs straight over WhatsApp.",
@@ -332,7 +332,7 @@ function SalesPage() {
     <div className="mx-auto max-w-6xl">
       <PageHeader
         title="Quotations & Invoices"
-        description="Quote a customer, turn it into an invoice, send the PDF on WhatsApp and let Flash deliver the stamped PAID copy the moment payment lands."
+        description="Quote a customer, turn it into an invoice, send the PDF on WhatsApp and let Flas deliver the stamped PAID copy the moment payment lands."
         actions={
           <>
             <Button variant="outline" onClick={() => startNew("quotation")}>
@@ -445,7 +445,7 @@ function SalesPage() {
             <DialogTitle>Send on WhatsApp</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Flash finalises the document if needed and sends the customer a secure link where they
+            Flas finalises the document if needed and sends the customer a secure link where they
             can view, download and pay.
           </p>
           <div className="space-y-1.5">
@@ -487,7 +487,7 @@ function SalesPage() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              When the balance reaches zero Flash sends the customer the PAID-stamped PDF on
+              When the balance reaches zero Flas sends the customer the PAID-stamped PDF on
               WhatsApp automatically.
             </p>
             <Button disabled={pay.isPending || !payForm.amount} onClick={() => pay.mutate()}>

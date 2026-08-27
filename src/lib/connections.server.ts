@@ -1,5 +1,5 @@
 // Server-only helpers for the Connect Your Business screen: profile discovery
-// after authorization, connection health, Flash account scans and the AI
+// after authorization, connection health, Flas account scans and the AI
 // profile optimizer. Tokens are only ever touched with the admin client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { AccountPlatform } from "./connections-catalog";
@@ -210,7 +210,7 @@ const SCAN_KEYS = [
   "conversion_readiness",
 ];
 
-/** Flash Account Scan — grades a connected account on what we can observe. */
+/** Flas Account Scan — grades a connected account on what we can observe. */
 export async function scanAccount(args: {
   account: {
     id: string;
@@ -225,7 +225,7 @@ export async function scanAccount(args: {
   business: Record<string, unknown> | null;
 }): Promise<ScanResult> {
   const meta = connector(args.account.platform);
-  const system = `You are Flash, a senior social media strategist. Grade a business social account.
+  const system = `You are Flas, a senior social media strategist. Grade a business social account.
 Return ONLY JSON: {"overall":0-100,"scores":{${SCAN_KEYS.map((k) => `"${k}":0-100`).join(",")}},"findings":["short specific issue", ...max 6],"measured":["metric names you actually used"],"estimated":["things you judged without hard data"]}
 Never invent metrics. If data is missing, judge conservatively and list it under "estimated".`;
   const user = JSON.stringify(
@@ -287,7 +287,7 @@ export async function optimizeProfile(args: {
   findings: string[];
 }): Promise<OptimizerResult> {
   const meta = connector(args.platform);
-  const system = `You are Flash, a brand and local-SEO copywriter. Rewrite this business's ${meta?.name ?? args.platform} profile content.
+  const system = `You are Flas, a brand and local-SEO copywriter. Rewrite this business's ${meta?.name ?? args.platform} profile content.
 Respect the platform's real limits (Instagram bio 150 chars, Google Business description 750 chars, LinkedIn tagline short, YouTube description longer).
 Use the business's own products, services, locations and tone. No invented claims, no fake awards, no statistics.
 Return ONLY JSON: {"bio":"","description":"","business_summary":"","keywords":[],"cta":"","hashtags":[],"notes":["what changed and why"]}`;

@@ -1,6 +1,6 @@
 // Per-platform connection instructions. Every connector card in the
 // Integrations hub shows exactly what the platform requires, which permissions
-// Flash asks for, and what commonly blocks a connection — so nobody is left
+// Flas asks for, and what commonly blocks a connection — so nobody is left
 // guessing why Meta or Google refused a login.
 
 import type { ConnectorId } from "./connections-catalog";
@@ -10,7 +10,7 @@ export type SetupGuide = {
   requires: string[];
   /** Ordered steps the user follows. */
   steps: string[];
-  /** Permissions/scopes Flash requests. */
+  /** Permissions/scopes Flas requests. */
   scopes?: string[];
   /** Frequent failure reasons and the fix. */
   gotchas?: string[];
@@ -28,9 +28,9 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
     steps: [
       "In the Instagram app: Settings → Account type → Switch to professional account.",
       "Link it to your Facebook Page: Instagram Settings → Sharing to other apps → Facebook.",
-      "Back in Flash press Connect — the secure Meta login opens in a new browser tab (Meta blocks embedded frames).",
+      "Back in Flas press Connect — the secure Meta login opens in a new browser tab (Meta blocks embedded frames).",
       "Choose the Business, the Page and the Instagram account, then keep every permission toggle ON.",
-      "Return to this tab; the card flips to Connected and Flash pulls your profile, media and insights.",
+      "Return to this tab; the card flips to Connected and Flas pulls your profile, media and insights.",
     ],
     scopes: [
       "instagram_basic",
@@ -43,14 +43,14 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
     gotchas: [
       "Only DMs and comments received after the connection can be read — Meta does not backfill history.",
       "If you switch the Facebook Page, Instagram access is revoked and you must reconnect.",
-      "Editing bio/name is not allowed by Meta's API — Flash writes the suggestions for you to paste.",
+      "Editing bio/name is not allowed by Meta's API — Flas writes the suggestions for you to paste.",
     ],
   },
   facebook: {
     requires: ["A Facebook Page (not a personal profile) with Admin access"],
     steps: [
       "Press Connect — Meta login opens in a new tab.",
-      "Pick the Business Portfolio, then tick every Page you want inside Flash.",
+      "Pick the Business Portfolio, then tick every Page you want inside Flas.",
       "Leave all permissions enabled, finish, and come back to this tab.",
     ],
     scopes: [
@@ -83,7 +83,7 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Confirm the location is verified at business.google.com (unverified locations return no data).",
       "Press Connect and sign in with the Google account that manages the location.",
       "Grant the Business Profile permission, then return here.",
-      "Flash then syncs posts, reviews, calls and direction requests.",
+      "Flas then syncs posts, reviews, calls and direction requests.",
     ],
     scopes: ["https://www.googleapis.com/auth/business.manage"],
     gotchas: [
@@ -110,7 +110,7 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
     steps: [
       "Press Connect and log in to TikTok in the new tab.",
       "Approve video publishing and analytics access.",
-      "Flash posts as drafts to your TikTok inbox unless you approve direct publishing.",
+      "Flas posts as drafts to your TikTok inbox unless you approve direct publishing.",
     ],
     scopes: ["user.info.basic", "video.list", "video.publish"],
     gotchas: [
@@ -132,7 +132,7 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
   },
   twitter: {
     requires: ["An X account with a developer project on at least the Basic tier for posting"],
-    steps: ["Press Connect, authorise Flash on X, and return to this tab."],
+    steps: ["Press Connect, authorise Flas on X, and return to this tab."],
     scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
     gotchas: ["X free tier is read-limited; posting volume depends on your X plan."],
   },
@@ -145,10 +145,10 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
     requires: ["An ad account inside a Meta Business Portfolio you administer"],
     steps: [
       "Press Connect and choose the Business Portfolio.",
-      "Tick the ad accounts Flash should read.",
+      "Tick the ad accounts Flas should read.",
     ],
     scopes: ["ads_read", "business_management"],
-    gotchas: ["Flash reads spend and results only — it never changes budgets or pauses campaigns."],
+    gotchas: ["Flas reads spend and results only — it never changes budgets or pauses campaigns."],
   },
   google_ads: {
     requires: ["Access to the Google Ads account (Standard or Admin)"],
@@ -179,7 +179,7 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Press Connect and approve read access.",
     ],
     scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
-    gotchas: ["Search data lags 2–3 days — that is Google's delay, not Flash's."],
+    gotchas: ["Search data lags 2–3 days — that is Google's delay, not Flas's."],
   },
   whatsapp: {
     requires: [
@@ -187,8 +187,8 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "A phone number not currently active on the WhatsApp consumer app",
     ],
     steps: [
-      "Open Settings → Numbers in Flash and add your WhatsApp Cloud API number, Phone Number ID and permanent token.",
-      "Copy the Flash webhook URL and verify token into Meta → WhatsApp → Configuration.",
+      "Open Settings → Numbers in Flas and add your WhatsApp Cloud API number, Phone Number ID and permanent token.",
+      "Copy the Flas webhook URL and verify token into Meta → WhatsApp → Configuration.",
       "Send a test message; it appears in the Inbox within seconds.",
     ],
     gotchas: [
@@ -199,9 +199,9 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
   wordpress: {
     requires: ["A self-hosted WordPress site where you can install plugins"],
     steps: [
-      "Download the Flash plugin from Integrations, upload the ZIP in WordPress → Plugins → Add New.",
+      "Download the Flas plugin from Integrations, upload the ZIP in WordPress → Plugins → Add New.",
       "Activate it and paste the activation key emailed to you.",
-      "The chat popup and lead forms then post straight into Flash, and blog posts publish from Content & SEO.",
+      "The chat popup and lead forms then post straight into Flas, and blog posts publish from Content & SEO.",
     ],
     gotchas: ["WordPress.com hosted sites cannot install plugins on the free plan."],
   },
@@ -210,13 +210,13 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
     steps: [
       "Download the Shopify package from Integrations.",
       "Add the snippet to your theme and paste the activation key.",
-      "Store visitors and orders then create leads in Flash.",
+      "Store visitors and orders then create leads in Flas.",
     ],
   },
   woocommerce: {
     requires: ["WooCommerce with REST API keys"],
     steps: [
-      "Install the Flash WordPress plugin (it detects WooCommerce automatically).",
+      "Install the Flas WordPress plugin (it detects WooCommerce automatically).",
       "Create read-only WooCommerce REST keys and paste them into Integrations.",
     ],
   },

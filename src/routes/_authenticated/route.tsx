@@ -273,7 +273,7 @@ function AuthenticatedLayout() {
         >
           <Link to="/dashboard" className="mb-4 flex items-center gap-3 px-2">
             <FlashLogoBadge className="size-10" />
-            <span className="text-base font-bold">Flash&nbsp;CRM</span>
+            <span className="text-base font-bold">Flas&nbsp;CRM</span>
           </Link>
 
           <nav className="flash-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain">
@@ -325,7 +325,7 @@ function AuthenticatedLayout() {
                 <SheetHeader className="mb-4">
                   <SheetTitle className="flex items-center gap-2 text-sidebar-foreground">
                     <FlashLogoBadge className="size-8" />
-                    Flash CRM
+                    Flas CRM
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="flex flex-col gap-4">
@@ -351,12 +351,12 @@ function AuthenticatedLayout() {
             </Sheet>
             <Link to="/dashboard" className="flex min-w-0 flex-1 items-center gap-2">
               <FlashLogoBadge className="size-8" />
-              <span className="truncate text-sm font-bold">Flash&nbsp;CRM</span>
+              <span className="truncate text-sm font-bold">Flas&nbsp;CRM</span>
             </Link>
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Search Flash"
+              aria-label="Search Flas"
               onClick={() => setPaletteOpen(true)}
               className="shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
@@ -373,7 +373,7 @@ function AuthenticatedLayout() {
               className="flex h-9 w-full max-w-md items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
             >
               <Search className="size-4" />
-              Search Flash…
+              Search Flas…
               <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
                 ⌘K
               </kbd>

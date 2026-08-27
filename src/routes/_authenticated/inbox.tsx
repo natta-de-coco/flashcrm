@@ -43,9 +43,9 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/inbox")({
   head: () => ({
     meta: [
-      { title: "Inbox — Flash CRM" },
+      { title: "Inbox — Flas CRM" },
       { name: "description", content: "Monitor and reply to WhatsApp and website chats live." },
-      { property: "og:title", content: "Inbox — Flash CRM" },
+      { property: "og:title", content: "Inbox — Flas CRM" },
       { property: "og:description", content: "Live shared inbox for WhatsApp and website chats." },
     ],
   }),

@@ -9,7 +9,7 @@ import { ExternalLink, FileText, Globe, PenSquare, Sparkles } from "lucide-react
 export const Route = createFileRoute("/_authenticated/seo-blog/")({
   head: () => ({
     meta: [
-      { title: "SEO Studio — Flash CRM" },
+      { title: "SEO Studio — Flas CRM" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -113,7 +113,7 @@ function SeoBlogHub() {
           {articles.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
           {!articles.isLoading && rows.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              No articles yet. Open the studio, drop in product photos and let Flash AI draft your
+              No articles yet. Open the studio, drop in product photos and let Flas AI draft your
               first post.
             </p>
           )}

@@ -1,4 +1,4 @@
-// Server-only helpers for Flash AI: campaign drafting, WhatsApp analytics and
+// Server-only helpers for Flas AI: campaign drafting, WhatsApp analytics and
 // AI recommendations. All tenant data is read through the caller's RLS-scoped
 // client; only Meta credentials are read with the admin client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -12,7 +12,7 @@ type RlsClient = {
 /** Calls the Lovable AI gateway Responses API and returns plain text. */
 export async function callFlashAi(system: string, user: string): Promise<string> {
   const key = process.env["LOVABLE_API_KEY"];
-  if (!key) throw new Error("Flash AI is not configured yet — the workspace AI key is missing.");
+  if (!key) throw new Error("Flas AI is not configured yet — the workspace AI key is missing.");
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
     method: "POST",
@@ -40,14 +40,14 @@ export async function callFlashAi(system: string, user: string): Promise<string>
       /* keep raw snippet */
     }
     if (res.status === 429) {
-      throw new Error("Flash AI is busy right now — wait a few seconds and try again.");
+      throw new Error("Flas AI is busy right now — wait a few seconds and try again.");
     }
     if (res.status === 402) {
       throw new Error(
         "AI credits are exhausted — the workspace owner can top up in Lovable billing settings.",
       );
     }
-    throw new Error(`Flash AI request failed [${res.status}]: ${message}`);
+    throw new Error(`Flas AI request failed [${res.status}]: ${message}`);
   }
 
   const json = JSON.parse(raw) as {
@@ -64,7 +64,7 @@ export async function callFlashAi(system: string, user: string): Promise<string>
     }
   }
   text = text.trim();
-  if (!text) throw new Error("Flash AI returned an empty response — try rephrasing your goal.");
+  if (!text) throw new Error("Flas AI returned an empty response — try rephrasing your goal.");
   return text;
 }
 

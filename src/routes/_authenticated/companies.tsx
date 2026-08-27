@@ -19,7 +19,7 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/companies")({
   head: () => ({
     meta: [
-      { title: "Companies — Flash Manager" },
+      { title: "Companies — Flas Manager" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -111,7 +111,7 @@ function CompaniesPage() {
     return (
       <main className="grid flex-1 place-items-center p-6">
         <p className="text-sm text-muted-foreground">
-          This area is only available to the Flash platform manager.
+          This area is only available to the Flas platform manager.
         </p>
       </main>
     );
@@ -133,7 +133,7 @@ function CompaniesPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            A company counts as online when one of its team members was active in Flash in the last
+            A company counts as online when one of its team members was active in Flas in the last
             5 minutes.
           </p>
           {(presence.data?.tenants ?? []).length === 0 && (

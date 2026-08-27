@@ -12,7 +12,7 @@ type RlsClient = { from: (table: string) => never };
 
 function gatewayKey(): string {
   const key = process.env["LOVABLE_API_KEY"];
-  if (!key) throw new Error("Flash AI is not configured yet — the workspace AI key is missing.");
+  if (!key) throw new Error("Flas AI is not configured yet — the workspace AI key is missing.");
   return key;
 }
 
@@ -24,10 +24,10 @@ function gatewayError(status: number, raw: string): Error {
   } catch {
     /* keep raw snippet */
   }
-  if (status === 429) return new Error("Flash AI is busy right now — wait a few seconds and try again.");
+  if (status === 429) return new Error("Flas AI is busy right now — wait a few seconds and try again.");
   if (status === 402)
     return new Error("AI credits are exhausted — the workspace owner can top up in Lovable billing settings.");
-  return new Error(`Flash AI request failed [${status}]: ${message}`);
+  return new Error(`Flas AI request failed [${status}]: ${message}`);
 }
 
 /** Extracts a JSON object from a model reply that may wrap it in markdown fences. */
@@ -149,7 +149,7 @@ export async function generateArticleDraft(
 ): Promise<SeoDraft> {
   const biz = await getBusinessContext(supabase);
   const system =
-    "You are Flash AI, an expert SEO content writer. You write long-form articles that rank and read like a human expert wrote them. " +
+    "You are Flas AI, an expert SEO content writer. You write long-form articles that rank and read like a human expert wrote them. " +
     "You respond with ONLY valid JSON — no markdown fences, no commentary.";
   const user = `Write a complete SEO blog article.
 
@@ -175,7 +175,7 @@ Respond in EXACTLY this JSON shape:
   const text = await callFlashAi(system, user);
   const parsed = parseJsonBlock<Partial<SeoDraft>>(text);
   if (!parsed || !parsed.title) {
-    throw new Error("Flash AI returned an unreadable draft — try again.");
+    throw new Error("Flas AI returned an unreadable draft — try again.");
   }
   return {
     title: parsed.title,
@@ -197,7 +197,7 @@ export async function generateMicroPosts(
 ): Promise<MicroPost[]> {
   const biz = await getBusinessContext(supabase);
   const system =
-    "You are Flash AI, a social media copywriter. Respond with ONLY valid JSON — no markdown fences.";
+    "You are Flas AI, a social media copywriter. Respond with ONLY valid JSON — no markdown fences.";
   const user = `Create omnichannel micro-posts for: Meta (Facebook/Instagram), LinkedIn, and TikTok.
 
 Business: ${biz?.business_name ?? "the company"} — ${biz?.description ?? params.industry}
@@ -210,14 +210,14 @@ Respond in EXACTLY this JSON shape:
 
   const text = await callFlashAi(system, user);
   const parsed = parseJsonBlock<{ posts?: MicroPost[] }>(text);
-  if (!parsed?.posts?.length) throw new Error("Flash AI returned no posts — try again.");
+  if (!parsed?.posts?.length) throw new Error("Flas AI returned no posts — try again.");
   return parsed.posts;
 }
 
 /** One-click pass that rewrites robotic AI phrasing into natural prose. */
 export async function humanizeHtml(contentHtml: string, tone: string): Promise<string> {
   const system =
-    "You are Flash AI, an editor who makes AI text sound human. Keep the exact same HTML tag structure; only rewrite the prose inside tags. " +
+    "You are Flas AI, an editor who makes AI text sound human. Keep the exact same HTML tag structure; only rewrite the prose inside tags. " +
     "Remove clichés, hype words and repetitive phrasing. Vary sentence length. Return ONLY the rewritten HTML.";
   const user = `Tone target: ${tone}.\n\nHTML to humanize:\n${contentHtml}`;
   const out = await callFlashAi(system, user);

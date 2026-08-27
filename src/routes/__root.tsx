@@ -81,13 +81,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Flash CRM — WhatsApp Inbox & Chatbot" },
+      { title: "Flas CRM — WhatsApp Inbox & Chatbot" },
       {
         name: "description",
         content:
-          "Flash CRM unifies WhatsApp conversations, website chat, contacts and an AI chatbot in one shared team inbox.",
+          "Flas CRM unifies WhatsApp conversations, website chat, contacts and an AI chatbot in one shared team inbox.",
       },
-      { property: "og:title", content: "Flash CRM — WhatsApp Inbox & Chatbot" },
+      { property: "og:title", content: "Flas CRM — WhatsApp Inbox & Chatbot" },
 
       {
         property: "og:description",

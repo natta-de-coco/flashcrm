@@ -1,5 +1,5 @@
 /**
- * Server-side PDF engine for Flash CRM business documents.
+ * Server-side PDF engine for Flas CRM business documents.
  *
  * Real vector PDFs are produced with pdf-lib — never a screenshot and never a
  * browser print. Everything (logo watermark, QR verification, page numbering)
@@ -187,8 +187,8 @@ const TITLES: Record<InvoicePdfInput["kind"], string> = {
 export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
   pdf.setTitle(`${TITLES[input.kind]} ${input.doc_number}`);
-  pdf.setProducer("Flash CRM");
-  pdf.setCreator("Flash CRM");
+  pdf.setProducer("Flas CRM");
+  pdf.setCreator("Flas CRM");
 
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -582,7 +582,7 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       fy -= 9.5;
     }
     if (input.branding !== false) {
-      p.drawText("Generated securely by Flash CRM", { x: M, y: M + 4, size: 7, font, color: muted });
+      p.drawText("Generated securely by Flas CRM", { x: M, y: M + 4, size: 7, font, color: muted });
     }
     const pageLabel = `Page ${index + 1} of ${total}`;
     p.drawText(pageLabel, {

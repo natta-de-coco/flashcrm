@@ -244,7 +244,7 @@ const TranslateSchema = z.object({
   targetLanguage: z.string().min(2).max(50).default("English"),
 });
 
-/** Auto-translate a message using Flash AI and cache the result. */
+/** Auto-translate a message using Flas AI and cache the result. */
 export const translateMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => TranslateSchema.parse(input))
@@ -265,7 +265,7 @@ export const translateMessage = createServerFn({ method: "POST" })
     }
 
     const system = [
-      "You are a translation assistant inside Flash CRM.",
+      "You are a translation assistant inside Flas CRM.",
       "Detect the language of the user's message and translate it into the requested target language.",
       "Return ONLY a JSON object with two fields: 'detectedLanguage' (the original language name in English) and 'translation' (the translated text).",
       "Do not add markdown, explanations, or wrapping. Preserve the original tone and formatting as much as possible.",

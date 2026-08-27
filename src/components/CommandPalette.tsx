@@ -146,7 +146,7 @@ export function CommandPalette({
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <CommandInput
-        placeholder="Search Flash — pages, contacts, products, articles…"
+        placeholder="Search Flas — pages, contacts, products, articles…"
         value={q}
         onValueChange={setQ}
       />

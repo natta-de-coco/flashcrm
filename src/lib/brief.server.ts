@@ -1,5 +1,5 @@
 // Server-only logic for the AI Daily Brief shown on the dashboard.
-// Reads through the caller's RLS-scoped client, then asks Flash AI for a
+// Reads through the caller's RLS-scoped client, then asks Flas AI for a
 // short, action-oriented briefing based on the tenant's live numbers.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { callFlashAi, getBusinessContext } from "./flash-ai.server";
@@ -45,7 +45,7 @@ async function generateDailyBrief(supabase: SupabaseClient): Promise<DailyBrief>
 
   const raw = await callFlashAi(
     [
-      "You are Flash AI, the growth advisor inside a WhatsApp CRM.",
+      "You are Flas AI, the growth advisor inside a WhatsApp CRM.",
       "Write a short daily brief for the business owner from the metrics given.",
       "Reply with STRICT JSON only, no markdown fences:",
       '{"headline": string (max 60 chars), "summary": string (max 320 chars, 2 sentences), "actions": [3 short imperative strings, max 90 chars each]}',

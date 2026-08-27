@@ -7,7 +7,7 @@ import { z } from "zod";
 type Client = SupabaseClient<Database>;
 type OrgUpdate = Database["public"]["Tables"]["organizations"]["Update"];
 
-/** Throws unless the signed-in user is a Flash platform super admin. */
+/** Throws unless the signed-in user is a Flas platform super admin. */
 async function requireSuperAdmin(supabase: Client, userId: string): Promise<void> {
   const { data } = await supabase
     .from("profiles")
@@ -15,7 +15,7 @@ async function requireSuperAdmin(supabase: Client, userId: string): Promise<void
     .eq("id", userId)
     .maybeSingle();
   if (data?.staff_role !== "super_admin") {
-    throw new Error("This area is only available to the Flash platform manager");
+    throw new Error("This area is only available to the Flas platform manager");
   }
 }
 

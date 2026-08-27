@@ -3,17 +3,17 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 export const Route = createFileRoute("/privacy")({
   head: () => ({
     meta: [
-      { title: "Privacy Policy — Flash CRM" },
+      { title: "Privacy Policy — Flas CRM" },
       {
         name: "description",
         content:
-          "How Flash CRM collects, stores and protects WhatsApp conversations, leads and customer data, and how to exercise your data rights.",
+          "How Flas CRM collects, stores and protects WhatsApp conversations, leads and customer data, and how to exercise your data rights.",
       },
-      { property: "og:title", content: "Privacy Policy — Flash CRM" },
+      { property: "og:title", content: "Privacy Policy — Flas CRM" },
       {
         property: "og:description",
         content:
-          "How Flash CRM handles WhatsApp conversations, leads and customer data, plus your export and deletion rights.",
+          "How Flas CRM handles WhatsApp conversations, leads and customer data, plus your export and deletion rights.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -26,7 +26,7 @@ function PrivacyPage() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-12">
       <Link to="/" className="text-sm text-muted-foreground underline">
-        ← Back to Flash CRM
+        ← Back to Flas CRM
       </Link>
       <h1 className="mt-6 text-3xl font-bold">Privacy Policy</h1>
       <p className="mt-2 text-sm text-muted-foreground">Last updated: 26 August 2026</p>
@@ -35,9 +35,9 @@ function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold">1. Who we are</h2>
           <p className="mt-2 text-muted-foreground">
-            Flash CRM is a WhatsApp customer messaging and marketing platform sold to businesses on a
+            Flas CRM is a WhatsApp customer messaging and marketing platform sold to businesses on a
             monthly subscription. Each customer company (a "workspace") is the data controller for
-            the contacts and conversations it stores; Flash CRM acts as the processor on its behalf.
+            the contacts and conversations it stores; Flas CRM acts as the processor on its behalf.
           </p>
         </section>
 
@@ -73,7 +73,7 @@ function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold">4. Consent and marketing rules</h2>
           <p className="mt-2 text-muted-foreground">
-            Marketing messages may only be sent to contacts who have opted in. Flash CRM records the
+            Marketing messages may only be sent to contacts who have opted in. Flas CRM records the
             consent flag and timestamp for every lead and blocks campaigns to contacts without
             consent. Workspaces must comply with WhatsApp Business Policy, GDPR/ePrivacy, CAN-SPAM
             and local marketing regulations. Every recipient can opt out at any time and the opt-out
@@ -128,7 +128,7 @@ function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold">10. Contact</h2>
           <p className="mt-2 text-muted-foreground">
-            Questions about this policy or your data: reach out to your Flash CRM account manager or
+            Questions about this policy or your data: reach out to your Flas CRM account manager or
             the support address shown in your workspace billing details.
           </p>
         </section>

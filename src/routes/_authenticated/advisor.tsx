@@ -41,13 +41,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/advisor")({
   head: () => ({
     meta: [
-      { title: "Business Advisor — Flash CRM" },
+      { title: "Business Advisor — Flas CRM" },
       {
         name: "description",
         content:
           "An expert AI business advisor that reviews your social accounts, chat traffic, products and local market to tell you what to do next.",
       },
-      { property: "og:title", content: "Business Advisor — Flash CRM" },
+      { property: "og:title", content: "Business Advisor — Flas CRM" },
       {
         property: "og:description",
         content:

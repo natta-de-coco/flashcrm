@@ -43,7 +43,7 @@ const GROUPS: {
   {
     id: "social",
     title: "Social profiles",
-    blurb: "Publish posts, pull reach and answer DMs and comments inside Flash.",
+    blurb: "Publish posts, pull reach and answer DMs and comments inside Flas.",
     icon: Megaphone,
   },
   {
@@ -55,7 +55,7 @@ const GROUPS: {
   {
     id: "ads",
     title: "Ads accounts",
-    blurb: "Read spend and results so Flash can advise on what to scale.",
+    blurb: "Read spend and results so Flas can advise on what to scale.",
     icon: BarChart3,
   },
   {
@@ -86,7 +86,7 @@ type Account = {
 };
 
 /**
- * The single place where every Flash integration is connected, grouped by what
+ * The single place where every Flas integration is connected, grouped by what
  * it does. Each card says plainly what the link gives you and where it goes.
  */
 export function ConnectBusiness() {
@@ -123,7 +123,7 @@ export function ConnectBusiness() {
   const runScan = useMutation({
     mutationFn: async (id: string) => scan({ data: { id } }),
     onSuccess: (r: { overall: number }) => {
-      toast.success(`Flash scan complete — profile score ${r.overall}/100`);
+      toast.success(`Flas scan complete — profile score ${r.overall}/100`);
       void qc.invalidateQueries({ queryKey: ["connections"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -210,7 +210,7 @@ export function ConnectBusiness() {
       {optimizerFor && optimizerText && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Flash profile suggestions</CardTitle>
+            <CardTitle className="text-base">Flas profile suggestions</CardTitle>
             <CardDescription>
               Copy these into the platform — bio, CTA and hashtags written from your brand training.
             </CardDescription>
@@ -333,7 +333,7 @@ function ConnectorCard({
                 disabled={busyId === a.id}
                 onClick={() => onScan(a.id)}
               >
-                <Sparkles className="size-3" /> Flash scan
+                <Sparkles className="size-3" /> Flas scan
               </Button>
               <Button
                 size="sm"
@@ -374,7 +374,7 @@ function ConnectorCard({
           {connector.internalHref ? (
             <Button asChild size="sm" className="h-8 gap-1 text-xs">
               <Link to={connector.internalHref}>
-                Set up in Flash <ArrowUpRight className="size-3" />
+                Set up in Flas <ArrowUpRight className="size-3" />
               </Link>
             </Button>
           ) : connector.oauth ? (

@@ -52,7 +52,7 @@ export function OnboardingModal() {
         return;
       }
       await runOnboarding({ data: { companyName: companyName.trim(), fullName: fullName.trim() } });
-      toast.success(`Welcome to Flash, ${fullName.trim()}! Your 1-month free trial has started.`);
+      toast.success(`Welcome to Flas, ${fullName.trim()}! Your 1-month free trial has started.`);
       await refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not finish setup");
@@ -67,7 +67,7 @@ export function OnboardingModal() {
           <FlashLogoBadge className="mb-2 size-12" />
           <DialogTitle>Set up your company</DialogTitle>
           <DialogDescription>
-            One quick step and your Flash workspace is ready — every account starts with a free
+            One quick step and your Flas workspace is ready — every account starts with a free
             month.
           </DialogDescription>
         </DialogHeader>

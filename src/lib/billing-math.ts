@@ -1,5 +1,5 @@
 /**
- * Decimal-safe money maths for the Flash billing engine.
+ * Decimal-safe money maths for the Flas billing engine.
  *
  * Every amount is converted to integer cents before arithmetic, so no invoice
  * total is ever produced by raw floating-point addition. The exact same module

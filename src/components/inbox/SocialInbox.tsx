@@ -94,7 +94,7 @@ export function SocialInbox() {
     mutationFn: (id: string) => suggest({ data: { id } }),
     onSuccess: (res) => {
       setReply(res.suggestion);
-      toast.success("Flash AI drafted a reply");
+      toast.success("Flas AI drafted a reply");
       refresh();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -319,7 +319,7 @@ export function SocialInbox() {
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Flash AI reply
+                Flas AI reply
               </Button>
               <Button size="sm" onClick={() => submit.mutate()} disabled={submit.isPending}>
                 {submit.isPending ? (

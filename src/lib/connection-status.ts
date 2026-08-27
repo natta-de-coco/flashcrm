@@ -43,7 +43,7 @@ const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatu
   not_connected: { label: "Not connected", tone: "muted" },
 };
 
-/** Permissions Flash needs before a capability actually works. */
+/** Permissions Flas needs before a capability actually works. */
 export const REQUIRED_PERMISSIONS: Partial<Record<ConnectorId, Partial<Record<Capability, string[]>>>> = {
   instagram: {
     messaging: ["instagram_manage_messages"],
@@ -72,7 +72,7 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   if (!account) {
     return build(
       "not_connected",
-      "Flash has never received an access token for this platform.",
+      "Flas has never received an access token for this platform.",
       "Press Connect and follow the guided wizard — it takes about two minutes.",
     );
   }
@@ -80,8 +80,8 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   if (!account.active) {
     return build(
       "failing",
-      "The platform revoked or refused the stored access — usually because the account owner removed Flash, changed the linked Page, or a password reset invalidated the session.",
-      "Reconnect the account. Nothing else is lost: your history stays in Flash.",
+      "The platform revoked or refused the stored access — usually because the account owner removed Flas, changed the linked Page, or a password reset invalidated the session.",
+      "Reconnect the account. Nothing else is lost: your history stays in Flas.",
     );
   }
 
@@ -136,13 +136,13 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   return build(
     "connected",
     `Healthy — last synced ${new Date(account.last_synced_at).toLocaleString()}.`,
-    "Nothing to do. Run a Flash Account Scan any time for growth suggestions.",
+    "Nothing to do. Run a Flas Account Scan any time for growth suggestions.",
   );
 }
 
 /** Per-platform verification checklist and the errors people actually hit. */
 export type Troubleshooting = {
-  /** Ticks the user can confirm themselves before blaming Flash. */
+  /** Ticks the user can confirm themselves before blaming Flas. */
   checklist: string[];
   /** Exact provider error text → what it means → the fix. */
   errors: { error: string; means: string; fix: string }[];
@@ -157,13 +157,13 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
       "The Instagram account is linked to a Facebook Page you administer.",
       "You are an Admin (full control) of that Page, not an Editor.",
       "Every permission toggle stayed ON during the Meta login.",
-      "The Instagram account is not also connected inside another tool that revoked Flash.",
+      "The Instagram account is not also connected inside another tool that revoked Flas.",
     ],
     errors: [
       {
         error: "business.facebook.com refused to connect / ERR_BLOCKED_BY_RESPONSE",
-        means: "Meta blocks its login inside embedded frames — this is a Meta security header, not a Flash fault.",
-        fix: "Use the Connect button: Flash opens Meta in a new browser tab where the login works normally.",
+        means: "Meta blocks its login inside embedded frames — this is a Meta security header, not a Flas fault.",
+        fix: "Use the Connect button: Flas opens Meta in a new browser tab where the login works normally.",
       },
       {
         error: "(#200) Requires instagram_manage_messages permission",
@@ -177,8 +177,8 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
       },
       {
         error: "Error validating access token: session invalidated",
-        means: "The account owner changed their password or removed Flash in Meta settings.",
-        fix: "Reconnect once — Flash keeps all previous conversations and stats.",
+        means: "The account owner changed their password or removed Flas in Meta settings.",
+        fix: "Reconnect once — Flas keeps all previous conversations and stats.",
       },
     ],
     reviewTimeline:
@@ -207,7 +207,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
   },
   threads: {
     checklist: [
-      "Instagram is connected in Flash first.",
+      "Instagram is connected in Flas first.",
       "A Threads profile exists on that Instagram account.",
     ],
     errors: [
@@ -229,7 +229,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
       {
         error: "scope_not_authorized",
         means: "video.publish was not approved for your TikTok app yet.",
-        fix: "Request Content Posting API access in the TikTok developer portal; until then Flash saves posts as drafts.",
+        fix: "Request Content Posting API access in the TikTok developer portal; until then Flas saves posts as drafts.",
       },
       {
         error: "user not in tester list",
@@ -271,7 +271,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
     checklist: [
       "You signed in with the Google account that owns the channel (pick the Brand Account if you use one).",
       "YouTube Data API v3 is enabled on the Google Cloud project.",
-      "Uploads permission granted if you plan to publish from Flash.",
+      "Uploads permission granted if you plan to publish from Flas.",
     ],
     errors: [
       {
@@ -311,7 +311,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
       {
         error: "403 You currently have access to a subset of X API V2 endpoints",
         means: "The free tier does not allow this endpoint.",
-        fix: "Upgrade the X plan, or keep Flash read-only for that account.",
+        fix: "Upgrade the X plan, or keep Flas read-only for that account.",
       },
     ],
     reviewTimeline: "No review — access follows your paid X API tier immediately.",
@@ -331,7 +331,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
     checklist: [
       "The number is registered on WhatsApp Cloud API, not the consumer app.",
       "Phone Number ID and a permanent token are saved in Settings → Numbers.",
-      "The Flash webhook URL and verify token are saved in Meta → WhatsApp → Configuration.",
+      "The Flas webhook URL and verify token are saved in Meta → WhatsApp → Configuration.",
       "The messages webhook field is subscribed.",
       "Message templates you use are Approved in Meta.",
     ],
@@ -339,7 +339,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
       {
         error: "(#131047) Re-engagement message",
         means: "You are messaging outside the 24-hour customer service window.",
-        fix: "Send an approved template instead of free text — Flash blocks this automatically and tells you why.",
+        fix: "Send an approved template instead of free text — Flas blocks this automatically and tells you why.",
       },
       {
         error: "(#132000) Template param count mismatch",
@@ -348,7 +348,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
       },
       {
         error: "Webhook verification failed",
-        means: "The verify token in Meta does not match the one in Flash.",
+        means: "The verify token in Meta does not match the one in Flas.",
         fix: "Copy the token from Settings → Numbers again, no spaces, and re-verify.",
       },
     ],
@@ -358,7 +358,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
   wordpress: {
     checklist: [
       "Plugin uploaded and activated in WordPress → Plugins.",
-      "Activation key pasted and shown as Active in Flash.",
+      "Activation key pasted and shown as Active in Flas.",
       "Site reachable over HTTPS (self-signed certificates fail).",
       "A security plugin is not blocking outbound REST requests.",
     ],
@@ -366,12 +366,12 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
       {
         error: "Invalid signature",
         means: "The site key and secret pair do not match, usually after regenerating the key.",
-        fix: "Regenerate the key in Flash and paste both values into the plugin settings again.",
+        fix: "Regenerate the key in Flas and paste both values into the plugin settings again.",
       },
       {
         error: "Leads not arriving",
         means: "Caching or a firewall is blocking the webhook call.",
-        fix: "Exclude the Flash endpoint from caching and allow outbound POST to flas.mobidigisol.com.",
+        fix: "Exclude the Flas endpoint from caching and allow outbound POST to flas.mobidigisol.com.",
       },
     ],
     reviewTimeline: "No review — the plugin works the moment the activation key is accepted.",
@@ -379,7 +379,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
   shopify: {
     checklist: [
       "Snippet added to the theme and saved.",
-      "Activation key pasted in Flash.",
+      "Activation key pasted in Flas.",
       "Theme not overridden by a newer published theme.",
     ],
     errors: [
@@ -393,8 +393,8 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
   },
   woocommerce: {
     checklist: [
-      "Flash WordPress plugin installed (it detects WooCommerce automatically).",
-      "Read-only WooCommerce REST keys pasted into Flash.",
+      "Flas WordPress plugin installed (it detects WooCommerce automatically).",
+      "Read-only WooCommerce REST keys pasted into Flas.",
     ],
     errors: [
       {
@@ -457,7 +457,7 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
         fix: "Add your account as Full user in Search Console settings, then reconnect.",
       },
     ],
-    reviewTimeline: "Search data always lags 2–3 days — that is Google's delay, not Flash's.",
+    reviewTimeline: "Search data always lags 2–3 days — that is Google's delay, not Flas's.",
   },
 };
 

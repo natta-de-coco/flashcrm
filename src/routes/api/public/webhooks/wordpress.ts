@@ -1,5 +1,5 @@
 // WordPress → CRM lead webhook. The plugin POSTs form submissions here with an
-// HMAC-SHA256 signature (hex) in X-Flash-Signature over the raw body.
+// HMAC-SHA256 signature (hex) in X-Flas-Signature over the raw body.
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ingestPlatformLead,

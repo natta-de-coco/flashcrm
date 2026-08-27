@@ -3,17 +3,17 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 export const Route = createFileRoute("/terms")({
   head: () => ({
     meta: [
-      { title: "Terms of Service — Flash CRM" },
+      { title: "Terms of Service — Flas CRM" },
       {
         name: "description",
         content:
-          "Subscription terms for Flash CRM: free trial, $20/month billing, cancellation, acceptable use and WhatsApp messaging compliance.",
+          "Subscription terms for Flas CRM: free trial, $20/month billing, cancellation, acceptable use and WhatsApp messaging compliance.",
       },
-      { property: "og:title", content: "Terms of Service — Flash CRM" },
+      { property: "og:title", content: "Terms of Service — Flas CRM" },
       {
         property: "og:description",
         content:
-          "Flash CRM subscription terms: trial, billing, cancellation, acceptable use and messaging compliance.",
+          "Flas CRM subscription terms: trial, billing, cancellation, acceptable use and messaging compliance.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -26,7 +26,7 @@ function TermsPage() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-12">
       <Link to="/" className="text-sm text-muted-foreground underline">
-        ← Back to Flash CRM
+        ← Back to Flas CRM
       </Link>
       <h1 className="mt-6 text-3xl font-bold">Terms of Service</h1>
       <p className="mt-2 text-sm text-muted-foreground">Last updated: 26 August 2026</p>
@@ -35,7 +35,7 @@ function TermsPage() {
         <section>
           <h2 className="text-lg font-semibold">1. Agreement</h2>
           <p className="mt-2 text-muted-foreground">
-            By creating a Flash CRM workspace you agree to these terms. If you use Flash CRM on
+            By creating a Flas CRM workspace you agree to these terms. If you use Flas CRM on
             behalf of a company, you confirm you are authorised to bind that company.
           </p>
         </section>
@@ -43,7 +43,7 @@ function TermsPage() {
         <section>
           <h2 className="text-lg font-semibold">2. Subscription and trial</h2>
           <p className="mt-2 text-muted-foreground">
-            Flash CRM costs USD 20 per workspace per month and includes a one-month free trial. The
+            Flas CRM costs USD 20 per workspace per month and includes a one-month free trial. The
             subscription renews automatically each month until cancelled. Prices exclude any local
             taxes that may apply.
           </p>
@@ -91,7 +91,7 @@ function TermsPage() {
         <section>
           <h2 className="text-lg font-semibold">6. Third-party services</h2>
           <p className="mt-2 text-muted-foreground">
-            Flash CRM connects to WhatsApp Cloud API, social platforms, WordPress/Shopify sites,
+            Flas CRM connects to WhatsApp Cloud API, social platforms, WordPress/Shopify sites,
             payment providers and AI models. Their availability, policies and rate limits are outside
             our control and may affect features.
           </p>
@@ -100,7 +100,7 @@ function TermsPage() {
         <section>
           <h2 className="text-lg font-semibold">7. AI features</h2>
           <p className="mt-2 text-muted-foreground">
-            Flash AI drafts messages, briefs, replies and content. Output can be wrong or incomplete —
+            Flas AI drafts messages, briefs, replies and content. Output can be wrong or incomplete —
             review anything before it is sent or published. You remain responsible for all messages
             sent from your workspace.
           </p>

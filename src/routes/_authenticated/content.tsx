@@ -17,13 +17,13 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/_authenticated/content")({
   head: () => ({
     meta: [
-      { title: "Content & SEO — Flash CRM" },
+      { title: "Content & SEO — Flas CRM" },
       {
         name: "description",
         content:
           "Draft, schedule and publish content across platforms with SEO title, description and keyword metadata.",
       },
-      { property: "og:title", content: "Content & SEO — Flash CRM" },
+      { property: "og:title", content: "Content & SEO — Flas CRM" },
       {
         property: "og:description",
         content: "Multi-platform content scheduling with built-in SEO metadata.",
@@ -49,14 +49,14 @@ type Post = {
 /**
  * Publish targets are derived from the connections catalogue, so this list can
  * never drift from what the platform APIs actually allow. "Website" is the
- * Flash-hosted blog feed (no plugin needed); "WordPress" pushes the same post
- * into your own WordPress site through the Flash plugin.
+ * Flas-hosted blog feed (no plugin needed); "WordPress" pushes the same post
+ * into your own WordPress site through the Flas plugin.
  */
 const PLATFORMS: { id: string; label: string; hint: string }[] = [
   {
     id: "website",
-    label: "Website (Flash blog)",
-    hint: "Published on your Flash-hosted blog feed and used as SEO content — no plugin required.",
+    label: "Website (Flas blog)",
+    hint: "Published on your Flas-hosted blog feed and used as SEO content — no plugin required.",
   },
   ...CONNECTORS.filter((c) => c.capabilities.includes("publish")).map((c) => ({
     id: c.id === "wordpress" ? "wordpress" : c.id,
@@ -208,8 +208,8 @@ function ContentPage() {
                 })}
               </div>
               <p className="text-xs text-muted-foreground">
-                Website is the Flash-hosted blog feed. WordPress pushes the same article into your
-                own site through the Flash plugin. Social targets require the account to be linked in
+                Website is the Flas-hosted blog feed. WordPress pushes the same article into your
+                own site through the Flas plugin. Social targets require the account to be linked in
                 Integrations first.
               </p>
             </div>

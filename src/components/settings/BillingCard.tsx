@@ -76,7 +76,7 @@ export function BillingCard() {
           <CreditCard className="h-5 w-5" /> Subscription &amp; Billing
         </CardTitle>
         <CardDescription>
-          Flash WhatsApp Tool — $20/month per company. Manage or cancel anytime.
+          Flas WhatsApp Tool — $20/month per company. Manage or cancel anytime.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

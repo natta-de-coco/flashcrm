@@ -17,13 +17,13 @@ export const Route = createFileRoute("/pay/$token")({
   loader: ({ params }) => getPublicDocument({ data: { token: params.token } }),
   head: () => ({
     meta: [
-      { title: "Your document — Flash by Mobi Digital Solutions" },
+      { title: "Your document — Flas by Mobi Digital Solutions" },
       {
         name: "description",
         content:
           "View your quotation or invoice, download the official PDF and complete payment securely.",
       },
-      { property: "og:title", content: "Your document — Flash" },
+      { property: "og:title", content: "Your document — Flas" },
       {
         property: "og:description",
         content: "View, download and pay your quotation or invoice securely.",
@@ -51,7 +51,7 @@ export const Route = createFileRoute("/pay/$token")({
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="mb-6 text-2xl font-bold">Flash · Mobi Digital Solutions</h1>
+      <h1 className="mb-6 text-2xl font-bold">Flas · Mobi Digital Solutions</h1>
       {children}
     </main>
   );

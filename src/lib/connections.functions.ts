@@ -98,7 +98,7 @@ export const startConnect = createServerFn({ method: "POST" })
     });
   });
 
-/** Flash Account Scan for one connected account. */
+/** Flas Account Scan for one connected account. */
 export const scanConnectedAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))

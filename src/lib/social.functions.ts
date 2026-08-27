@@ -152,7 +152,7 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     return result;
   });
 
-/** Flash AI drafts a reply; saved on the interaction for review. */
+/** Flas AI drafts a reply; saved on the interaction for review. */
 export const suggestSocialReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
@@ -249,7 +249,7 @@ export const updateInteractionStatus = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Flash AI writes a caption for Instagram/Facebook. */
+/** Flas AI writes a caption for Instagram/Facebook. */
 export const composeSocialPost = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => ComposeSchema.parse(input))

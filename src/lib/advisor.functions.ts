@@ -56,7 +56,7 @@ export const saveAdvisorContext = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-/** Full strategic review from the Flash Business Advisor. */
+/** Full strategic review from the Flas Business Advisor. */
 export const runAdvisorAnalysis = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

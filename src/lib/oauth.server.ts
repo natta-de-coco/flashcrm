@@ -1,4 +1,4 @@
-// Server-only OAuth plumbing for platform connections. Flash never asks the
+// Server-only OAuth plumbing for platform connections. Flas never asks the
 // user for a platform password: we redirect to the platform's own consent
 // screen and exchange the returned code for a token server-side.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -111,7 +111,7 @@ export function providerCredentials(provider: Provider): {
 
 /**
  * Credentials for one workspace. Each company can paste its own platform app
- * keys once (Integrations → Platform apps); Flash falls back to the shared
+ * keys once (Integrations → Platform apps); Flas falls back to the shared
  * Mobi Digital Solutions app keys when a workspace has none of its own.
  */
 export async function resolveCredentials(

@@ -27,7 +27,7 @@ const DraftSchema = z.object({
   secondaryKeywords: z.array(z.string().max(80)).max(10).optional(),
 });
 
-/** Generates a full long-form SEO article draft with Flash AI. */
+/** Generates a full long-form SEO article draft with Flas AI. */
 export const generateDraftFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => DraftSchema.parse(input))
