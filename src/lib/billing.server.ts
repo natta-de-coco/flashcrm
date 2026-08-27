@@ -132,9 +132,9 @@ export async function saveDraftDocument(supabase: AnyClient, userId: string, pay
     items: payload.items.map((item) => ({
       quantity: item.quantity,
       unit_price: item.unit_price,
-      discount_value: item.discount_value,
-      discount_type: item.discount_type,
-      tax_rate: settings?.tax_enabled === false ? 0 : item.tax_rate,
+      discount_value: item.discount_value ?? 0,
+      discount_type: item.discount_type ?? "percent",
+      tax_rate: settings?.tax_enabled === false ? 0 : (item.tax_rate ?? 0),
     })),
     invoice_discount: payload.invoice_discount,
     shipping: payload.shipping,
