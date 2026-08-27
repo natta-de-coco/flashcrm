@@ -136,11 +136,11 @@ export async function saveDraftDocument(supabase: AnyClient, userId: string, pay
       discount_type: item.discount_type ?? "percent",
       tax_rate: settings?.tax_enabled === false ? 0 : (item.tax_rate ?? 0),
     })),
-    invoice_discount: payload.invoice_discount,
-    shipping: payload.shipping,
-    additional_charges: payload.additional_charges,
-    adjustment: payload.adjustment,
-    tax_inclusive: payload.tax_inclusive,
+    invoice_discount: payload.invoice_discount ?? 0,
+    shipping: payload.shipping ?? 0,
+    additional_charges: payload.additional_charges ?? 0,
+    adjustment: payload.adjustment ?? 0,
+    tax_inclusive: payload.tax_inclusive ?? false,
   });
 
   const customerSnapshot = payload.customer_snapshot ?? (await buildCustomerSnapshot(supabase, payload.contact_id));
@@ -323,8 +323,8 @@ function toPdfInput(
   mode: "draft" | "final" | "cancelled",
   verificationUrl: string | null,
 ): InvoicePdfInput {
-  const company = (doc.company_snapshot ?? {}) as Record<string, any>;
-  const customer = (doc.customer_snapshot ?? {}) as Record<string, any>;
+  const company = (doc.company_snapshot ?? {}) as any;
+  const customer = (doc.customer_snapshot ?? {}) as any;
   const pdfItems: PdfItem[] = items.map((item) => ({
     name: item.name_snapshot,
     description: item.description_snapshot,
@@ -418,7 +418,7 @@ function toPdfInput(
 export async function renderDocumentPdf(
   supabase: AnyClient,
   documentId: string,
-  opts: { forceDraft?: boolean; baseUrl?: string } = {},
+  opts: { forceDraft?: boolean; baseUrl?: string | undefined } = {},
 ) {
   const { doc, items } = await loadDocumentBundle(supabase, documentId);
   const settings = await ensureBillingSettings(supabase, doc.tenant_id);
