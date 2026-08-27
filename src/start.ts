@@ -4,7 +4,7 @@ import { renderErrorPage } from "./lib/error-page";
 import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 import { sessionGuard } from "@/lib/session-guard";
 
-const errorMiddleware = createMiddleware().server(async ({ next }) => {
+const errorMiddleware = createMiddleware().server(async ({ next, request }) => {
   try {
     return await next();
   } catch (error) {
@@ -12,6 +12,25 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
       throw error;
     }
     console.error(error);
+    // Persist the incident with request context so it shows up in monitoring.
+    try {
+      const { recordErrorEvent, identifyBearer } = await import("@/lib/telemetry.server");
+      const who = await identifyBearer(request?.headers.get("authorization"));
+      await recordErrorEvent({
+        kind: "server_action",
+        severity: "error",
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? (error.stack ?? null) : null,
+        url: request?.url ?? null,
+        route: request ? new URL(request.url).pathname : null,
+        userAgent: request?.headers.get("user-agent") ?? null,
+        tenantId: who.tenantId,
+        userId: who.userId,
+        userEmail: who.email,
+      });
+    } catch {
+      /* monitoring must never mask the original failure */
+    }
     return new Response(renderErrorPage(), {
       status: 500,
       headers: { "content-type": "text/html; charset=utf-8" },

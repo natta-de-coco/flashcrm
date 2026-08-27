@@ -580,6 +580,57 @@ export type Database = {
         }
         Relationships: []
       }
+      connection_retry_log: {
+        Row: {
+          account_id: string | null
+          created_at: string
+          details: Json
+          id: string
+          outcome: string
+          platform: string
+          reason: string | null
+          tenant_id: string
+          trigger: string
+        }
+        Insert: {
+          account_id?: string | null
+          created_at?: string
+          details?: Json
+          id?: string
+          outcome: string
+          platform: string
+          reason?: string | null
+          tenant_id: string
+          trigger?: string
+        }
+        Update: {
+          account_id?: string | null
+          created_at?: string
+          details?: Json
+          id?: string
+          outcome?: string
+          platform?: string
+          reason?: string | null
+          tenant_id?: string
+          trigger?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connection_retry_log_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connection_retry_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contacts: {
         Row: {
           company: string | null
@@ -1041,6 +1092,68 @@ export type Database = {
           },
           {
             foreignKeyName: "document_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      error_events: {
+        Row: {
+          context: Json
+          created_at: string
+          id: string
+          kind: string
+          message: string
+          release: string | null
+          route: string | null
+          session_id: string | null
+          severity: string
+          stack: string | null
+          tenant_id: string | null
+          url: string | null
+          user_agent: string | null
+          user_email: string | null
+          user_id: string | null
+        }
+        Insert: {
+          context?: Json
+          created_at?: string
+          id?: string
+          kind?: string
+          message: string
+          release?: string | null
+          route?: string | null
+          session_id?: string | null
+          severity?: string
+          stack?: string | null
+          tenant_id?: string | null
+          url?: string | null
+          user_agent?: string | null
+          user_email?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          context?: Json
+          created_at?: string
+          id?: string
+          kind?: string
+          message?: string
+          release?: string | null
+          route?: string | null
+          session_id?: string | null
+          severity?: string
+          stack?: string | null
+          tenant_id?: string | null
+          url?: string | null
+          user_agent?: string | null
+          user_email?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_events_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "organizations"
@@ -1576,8 +1689,12 @@ export type Database = {
       }
       organizations: {
         Row: {
+          compliance_region: string | null
+          country: string
           created_at: string
+          currency: string
           id: string
+          locale: string
           name: string
           paddle_customer_id: string | null
           paddle_subscription_id: string | null
@@ -1586,11 +1703,16 @@ export type Database = {
           subscription_renews_at: string | null
           subscription_status: string
           suspended: boolean
+          timezone: string
           updated_at: string
         }
         Insert: {
+          compliance_region?: string | null
+          country?: string
           created_at?: string
+          currency?: string
           id?: string
+          locale?: string
           name: string
           paddle_customer_id?: string | null
           paddle_subscription_id?: string | null
@@ -1599,11 +1721,16 @@ export type Database = {
           subscription_renews_at?: string | null
           subscription_status?: string
           suspended?: boolean
+          timezone?: string
           updated_at?: string
         }
         Update: {
+          compliance_region?: string | null
+          country?: string
           created_at?: string
+          currency?: string
           id?: string
+          locale?: string
           name?: string
           paddle_customer_id?: string | null
           paddle_subscription_id?: string | null
@@ -1612,6 +1739,7 @@ export type Database = {
           subscription_renews_at?: string | null
           subscription_status?: string
           suspended?: boolean
+          timezone?: string
           updated_at?: string
         }
         Relationships: []
@@ -1795,6 +1923,21 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      platform_super_admins: {
+        Row: {
+          created_at: string
+          email: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+        }
+        Relationships: []
       }
       products: {
         Row: {
@@ -2357,6 +2500,45 @@ export type Database = {
           },
         ]
       }
+      signup_otps: {
+        Row: {
+          attempts: number
+          code_hash: string
+          company_name: string | null
+          consumed_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          purpose: string
+          requested_ip: string | null
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          company_name?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          purpose?: string
+          requested_ip?: string | null
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          company_name?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          purpose?: string
+          requested_ip?: string | null
+        }
+        Relationships: []
+      }
       social_account_scans: {
         Row: {
           account_id: string
@@ -2405,17 +2587,25 @@ export type Database = {
           connect_method: string
           created_at: string
           external_id: string | null
+          granted_scopes: string[] | null
           health: string
           id: string
           label: string
           last_analytics_sync_at: string | null
+          last_error: string | null
+          last_error_at: string | null
           last_post_at: string | null
+          last_retry_at: string | null
           last_synced_at: string | null
+          next_retry_at: string | null
           permissions: Json
           platform: string
           profile: Json
           profile_url: string | null
+          refresh_token: string | null
+          retry_count: number
           stats: Json
+          status_reason: string | null
           tenant_id: string
           token_expires_at: string | null
         }
@@ -2425,17 +2615,25 @@ export type Database = {
           connect_method?: string
           created_at?: string
           external_id?: string | null
+          granted_scopes?: string[] | null
           health?: string
           id?: string
           label: string
           last_analytics_sync_at?: string | null
+          last_error?: string | null
+          last_error_at?: string | null
           last_post_at?: string | null
+          last_retry_at?: string | null
           last_synced_at?: string | null
+          next_retry_at?: string | null
           permissions?: Json
           platform: string
           profile?: Json
           profile_url?: string | null
+          refresh_token?: string | null
+          retry_count?: number
           stats?: Json
+          status_reason?: string | null
           tenant_id?: string
           token_expires_at?: string | null
         }
@@ -2445,17 +2643,25 @@ export type Database = {
           connect_method?: string
           created_at?: string
           external_id?: string | null
+          granted_scopes?: string[] | null
           health?: string
           id?: string
           label?: string
           last_analytics_sync_at?: string | null
+          last_error?: string | null
+          last_error_at?: string | null
           last_post_at?: string | null
+          last_retry_at?: string | null
           last_synced_at?: string | null
+          next_retry_at?: string | null
           permissions?: Json
           platform?: string
           profile?: Json
           profile_url?: string | null
+          refresh_token?: string | null
+          retry_count?: number
           stats?: Json
+          status_reason?: string | null
           tenant_id?: string
           token_expires_at?: string | null
         }
@@ -3082,6 +3288,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_super_admin: { Args: { _user?: string }; Returns: boolean }
       next_document_number: {
         Args: { _doc_type: string; _tenant_id: string }
         Returns: string

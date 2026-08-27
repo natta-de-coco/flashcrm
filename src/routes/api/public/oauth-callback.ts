@@ -40,7 +40,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
         }
 
         try {
-          const { token, expiresAt } = await exchangeCode({
+          const tokens = await exchangeCode({
             provider: meta.provider,
             code,
             redirectUri: row.redirect_uri,
@@ -50,12 +50,14 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             "@/lib/connections.server"
           );
           const platform = row.platform as Parameters<typeof discoverProfile>[0];
-          const profile = await discoverProfile(platform, token);
+          const profile = await discoverProfile(platform, tokens.token);
           await saveAuthorizedConnection({
             tenantId: row.tenant_id,
             platform,
-            token,
-            expiresAt,
+            token: tokens.token,
+            refreshToken: tokens.refreshToken,
+            expiresAt: tokens.expiresAt,
+            grantedScopes: tokens.scopes,
             profile,
             permissions: meta.capabilities,
           });

@@ -130,7 +130,9 @@ export async function saveAuthorizedConnection(args: {
   tenantId: string;
   platform: AccountPlatform;
   token: string;
+  refreshToken?: string | null;
   expiresAt: string | null;
+  grantedScopes?: string[];
   profile: DiscoveredProfile;
   permissions: string[];
 }) {
@@ -138,7 +140,7 @@ export async function saveAuthorizedConnection(args: {
   const label = args.profile.name ?? meta?.name ?? args.platform;
   const { data: existing } = await supabaseAdmin
     .from("social_accounts")
-    .select("id")
+    .select("id, refresh_token")
     .eq("tenant_id", args.tenantId)
     .eq("platform", args.platform)
     .maybeSingle();
@@ -149,9 +151,17 @@ export async function saveAuthorizedConnection(args: {
     label,
     external_id: args.profile.external_id ?? null,
     access_token: args.token,
+    // Providers omit the refresh token on re-consent — keep the one we hold.
+    refresh_token: args.refreshToken ?? existing?.refresh_token ?? null,
     token_expires_at: args.expiresAt,
+    granted_scopes: args.grantedScopes?.length ? args.grantedScopes : null,
     active: true,
     health: "connected",
+    status_reason: null,
+    last_error: null,
+    last_error_at: null,
+    retry_count: 0,
+    next_retry_at: null,
     connect_method: "oauth",
     profile: args.profile as unknown as never,
     permissions: { granted: args.permissions } as unknown as never,

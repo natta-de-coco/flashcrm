@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
+import { HealthReportDialog } from "@/components/integrations/HealthReportDialog";
 import { setupGuide } from "@/lib/connection-setup";
 import { connectionStatus } from "@/lib/connection-status";
 import {
@@ -157,13 +158,16 @@ export function ConnectBusiness() {
         <div>
           <h2 className="text-lg font-semibold">Platform connections</h2>
           <p className="text-sm text-muted-foreground">
-            Connect once — Flash then reads your data and works inside these accounts. Nothing is
+            Connect once — Flas then reads your data and works inside these accounts. Nothing is
             posted without your approval.
           </p>
         </div>
-        <Badge variant="secondary" className="gap-1.5">
-          <Link2 className="size-3.5" /> {connectedCount} connected
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="gap-1.5">
+            <Link2 className="size-3.5" /> {connectedCount} connected
+          </Badge>
+          <HealthReportDialog />
+        </div>
       </div>
 
       {connections.isLoading && (

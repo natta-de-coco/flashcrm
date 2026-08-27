@@ -195,17 +195,64 @@ type TokenResponse = {
   access_token?: string;
   refresh_token?: string;
   expires_in?: number;
-  data?: { access_token?: string; expires_in?: number };
+  scope?: string | string[];
+  data?: {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string | string[];
+  };
   error?: unknown;
+  error_description?: string;
 };
 
-/** Exchanges an authorization code for an access token. */
+export type TokenSet = {
+  token: string;
+  refreshToken: string | null;
+  expiresAt: string | null;
+  scopes: string[];
+};
+
+function readTokenSet(json: TokenResponse): TokenSet | null {
+  const token = json.access_token ?? json.data?.access_token;
+  if (!token) return null;
+  const expiresIn = json.expires_in ?? json.data?.expires_in;
+  const rawScope = json.scope ?? json.data?.scope;
+  const scopes = Array.isArray(rawScope)
+    ? rawScope
+    : typeof rawScope === "string"
+      ? rawScope.split(/[ ,]+/).filter(Boolean)
+      : [];
+  return {
+    token,
+    refreshToken: json.refresh_token ?? json.data?.refresh_token ?? null,
+    expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
+    scopes,
+  };
+}
+
+function applyClientCredentials(
+  body: URLSearchParams,
+  provider: Provider,
+  id: string,
+  secret: string,
+) {
+  if (provider === "tiktok") {
+    body.set("client_key", id);
+    body.set("client_secret", secret);
+    return;
+  }
+  body.set("client_id", id);
+  body.set("client_secret", secret);
+}
+
+/** Exchanges an authorization code for an access token (and refresh token). */
 export async function exchangeCode(args: {
   provider: Provider;
   code: string;
   redirectUri: string;
   tenantId?: string | null;
-}): Promise<{ token: string; expiresAt: string | null }> {
+}): Promise<TokenSet> {
   const cfg = PROVIDERS[args.provider];
   const creds = await resolveCredentials(args.provider, args.tenantId);
   if (!creds.id || !creds.secret) throw new Error("Platform app credentials are missing.");
@@ -214,15 +261,8 @@ export async function exchangeCode(args: {
     grant_type: "authorization_code",
     code: args.code,
     redirect_uri: args.redirectUri,
-    client_id: creds.id,
-    client_secret: creds.secret,
   });
-  if (args.provider === "tiktok") {
-    body.delete("client_id");
-    body.delete("client_secret");
-    body.set("client_key", creds.id);
-    body.set("client_secret", creds.secret);
-  }
+  applyClientCredentials(body, args.provider, creds.id, creds.secret);
   if (args.provider === "twitter") body.set("code_verifier", "challenge");
 
   const res = await fetch(cfg.tokenUrl, {
@@ -231,15 +271,63 @@ export async function exchangeCode(args: {
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
-  const token = json.access_token ?? json.data?.access_token;
-  if (!res.ok || !token) {
+  const set = readTokenSet(json);
+  if (!res.ok || !set) {
     throw new Error(`Token exchange failed for ${args.provider} (HTTP ${res.status}).`);
   }
-  const expiresIn = json.expires_in ?? json.data?.expires_in;
-  return {
-    token,
-    expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
-  };
+  return set;
+}
+
+/**
+ * Refreshes an access token. Meta long-lived page tokens have no refresh
+ * token, so we exchange the existing token for a fresh long-lived one instead.
+ */
+export async function refreshAccessToken(args: {
+  provider: Provider;
+  refreshToken: string | null;
+  currentToken: string | null;
+  tenantId?: string | null;
+}): Promise<TokenSet> {
+  const cfg = PROVIDERS[args.provider];
+  const creds = await resolveCredentials(args.provider, args.tenantId);
+  if (!creds.id || !creds.secret) throw new Error("Platform app credentials are missing.");
+
+  if (args.provider === "meta") {
+    if (!args.currentToken) throw new Error("No token to extend.");
+    const url = `${cfg.tokenUrl}?${new URLSearchParams({
+      grant_type: "fb_exchange_token",
+      client_id: creds.id,
+      client_secret: creds.secret,
+      fb_exchange_token: args.currentToken,
+    }).toString()}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const json = (await res.json().catch(() => ({}))) as TokenResponse;
+    const set = readTokenSet(json);
+    if (!res.ok || !set) throw new Error(`Meta token extension failed (HTTP ${res.status}).`);
+    return set;
+  }
+
+  if (!args.refreshToken) {
+    throw new Error("This platform did not return a refresh token — reconnect once to renew it.");
+  }
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: args.refreshToken,
+  });
+  applyClientCredentials(body, args.provider, creds.id, creds.secret);
+
+  const res = await fetch(cfg.tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: body.toString(),
+  });
+  const json = (await res.json().catch(() => ({}))) as TokenResponse;
+  const set = readTokenSet(json);
+  if (!res.ok || !set) {
+    const detail = json.error_description ? `: ${json.error_description}` : "";
+    throw new Error(`Token refresh failed for ${args.provider} (HTTP ${res.status})${detail}`);
+  }
+  return { ...set, refreshToken: set.refreshToken ?? args.refreshToken };
 }
 
 /** Consumes a state row exactly once. */
