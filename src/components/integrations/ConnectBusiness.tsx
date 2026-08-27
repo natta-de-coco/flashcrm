@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
+import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
 import { OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
+import { connectionStatus } from "@/lib/connection-status";
 import {
   disconnectConnection,
   getConnections,
@@ -15,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  AlertTriangle,
   ArrowUpRight,
   BarChart3,
   CheckCircle2,
@@ -25,6 +28,7 @@ import {
   ShoppingBag,
   Sparkles,
   Unplug,
+  Wand2,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -67,14 +71,6 @@ const GROUPS: {
   },
 ];
 
-const HEALTH_LABEL: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  healthy: { label: "Connected", variant: "default" },
-  stale: { label: "Needs sync", variant: "secondary" },
-  expiring: { label: "Token expiring", variant: "secondary" },
-  expired: { label: "Reconnect needed", variant: "destructive" },
-  disconnected: { label: "Disconnected", variant: "outline" },
-};
-
 type Account = {
   id: string;
   platform: string;
@@ -84,6 +80,8 @@ type Account = {
   profile_url: string | null;
   last_synced_at: string | null;
   active: boolean;
+  token_expires_at: string | null;
+  permissions: string[] | null;
 };
 
 /**
@@ -150,7 +148,7 @@ export function ConnectBusiness() {
 
   const data = connections.data;
   const accounts = (data?.accounts ?? []) as Account[];
-  const accountsFor = (id: string) => accounts.filter((a) => a.platform === id && a.active);
+  const accountsFor = (id: string) => accounts.filter((a) => a.platform === id);
   const connectedCount = accounts.filter((a) => a.active).length;
 
   return (
@@ -257,27 +255,43 @@ function ConnectorCard({
   onOptimize: (id: string) => void;
   onDisconnect: (id: string) => void;
 }) {
-  const connected = accounts.length > 0;
+  const connected = accounts.some((a) => a.active);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  // One clear state per card: Connected / Needs verification / Pending review /
+  // Expired / Failing, always with the precise reason and the next action.
+  const status = connectionStatus(accounts[0]);
   return (
-    <Card className={connected ? "border-primary/40" : undefined}>
+    <Card className={status.state === "connected" ? "border-primary/40" : undefined}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-sm font-semibold">{connector.name}</CardTitle>
-          {connected ? (
-            <Badge
-              variant={HEALTH_LABEL[accounts[0]?.health ?? "healthy"]?.variant ?? "default"}
-              className="gap-1"
-            >
+          <Badge
+            variant={
+              status.tone === "good"
+                ? "default"
+                : status.tone === "bad"
+                  ? "destructive"
+                  : status.tone === "warn"
+                    ? "secondary"
+                    : "outline"
+            }
+            className="gap-1 whitespace-nowrap"
+          >
+            {status.tone === "good" ? (
               <CheckCircle2 className="size-3" />
-              {HEALTH_LABEL[accounts[0]?.health ?? "healthy"]?.label ?? "Connected"}
-            </Badge>
-          ) : (
-            <Badge variant="outline">Not linked</Badge>
-          )}
+            ) : status.tone === "muted" ? null : (
+              <AlertTriangle className="size-3" />
+            )}
+            {status.label}
+          </Badge>
         </div>
         <CardDescription className="text-xs">{connector.blurb}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2">
+        <div className="rounded-md border bg-muted/40 p-2 text-[11px] leading-snug">
+          <p className="font-medium">{status.reason}</p>
+          <p className="text-muted-foreground">Next: {status.fix}</p>
+        </div>
         <div className="flex flex-wrap gap-1">
           {connector.capabilities.map((cap) => (
             <Badge key={cap} variant="secondary" className="px-1.5 py-0 text-[10px] capitalize">
@@ -364,6 +378,14 @@ function ConnectorCard({
               Manual setup
             </Badge>
           )}
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-8 gap-1 text-xs"
+            onClick={() => setWizardOpen(true)}
+          >
+            <Wand2 className="size-3" /> Setup wizard
+          </Button>
           <Button asChild size="sm" variant="ghost" className="h-8 gap-1 text-xs">
             <a href={connector.manageUrl} target="_blank" rel="noreferrer noopener">
               Platform settings <ExternalLink className="size-3" />
@@ -371,6 +393,14 @@ function ConnectorCard({
           </Button>
         </div>
 
+        <ConnectionWizard
+          platformId={connector.id}
+          status={status}
+          open={wizardOpen}
+          onOpenChange={setWizardOpen}
+          connecting={connecting}
+          onConnect={onConnect}
+        />
       </CardContent>
     </Card>
   );

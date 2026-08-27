@@ -26,13 +26,17 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated/inbox'
 import { Route as AuthenticatedMarketingRouteImport } from './routes/_authenticated/marketing'
 import { Route as AuthenticatedMonitoringRouteImport } from './routes/_authenticated/monitoring'
+import { Route as AuthenticatedSalesRouteImport } from './routes/_authenticated/sales'
 import { Route as AuthenticatedSeoBlogRouteImport } from './routes/_authenticated/seo-blog'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSocialRouteImport } from './routes/_authenticated/social'
+import { Route as PayTokenRouteImport } from './routes/pay.$token'
+import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as AuthenticatedCompaniesOrgIdRouteImport } from './routes/_authenticated/companies.$orgId'
 import { Route as AuthenticatedSeoBlogIndexRouteImport } from './routes/_authenticated/seo-blog.index'
 import { Route as AuthenticatedSeoBlogStudioRouteImport } from './routes/_authenticated/seo-blog.studio'
 import { Route as ApiPublicOauthCallbackRouteImport } from './routes/api/public/oauth-callback'
+import { Route as ApiPublicDocumentsTokenRouteImport } from './routes/api/public/documents/$token'
 import { Route as ApiPublicLeadsCollectRouteImport } from './routes/api/public/leads/collect'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicPluginActivateRouteImport } from './routes/api/public/plugin/activate'
@@ -128,6 +132,11 @@ const AuthenticatedMonitoringRoute = AuthenticatedMonitoringRouteImport.update({
   path: '/monitoring',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSalesRoute = AuthenticatedSalesRouteImport.update({
+  id: '/sales',
+  path: '/sales',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedSeoBlogRoute = AuthenticatedSeoBlogRouteImport.update({
   id: '/seo-blog',
   path: '/seo-blog',
@@ -142,6 +151,16 @@ const AuthenticatedSocialRoute = AuthenticatedSocialRouteImport.update({
   id: '/social',
   path: '/social',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const PayTokenRoute = PayTokenRouteImport.update({
+  id: '/pay/$token',
+  path: '/pay/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerifyTokenRoute = VerifyTokenRouteImport.update({
+  id: '/verify/$token',
+  path: '/verify/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedCompaniesOrgIdRoute =
   AuthenticatedCompaniesOrgIdRouteImport.update({
@@ -164,6 +183,11 @@ const AuthenticatedSeoBlogStudioRoute =
 const ApiPublicOauthCallbackRoute = ApiPublicOauthCallbackRouteImport.update({
   id: '/api/public/oauth-callback',
   path: '/api/public/oauth-callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicDocumentsTokenRoute = ApiPublicDocumentsTokenRouteImport.update({
+  id: '/api/public/documents/$token',
+  path: '/api/public/documents/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicLeadsCollectRoute = ApiPublicLeadsCollectRouteImport.update({
@@ -238,13 +262,17 @@ export interface FileRoutesByFullPath {
   '/inbox': typeof AuthenticatedInboxRoute
   '/marketing': typeof AuthenticatedMarketingRoute
   '/monitoring': typeof AuthenticatedMonitoringRoute
+  '/sales': typeof AuthenticatedSalesRoute
   '/seo-blog': typeof AuthenticatedSeoBlogRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
   '/social': typeof AuthenticatedSocialRoute
+  '/pay/$token': typeof PayTokenRoute
+  '/verify/$token': typeof VerifyTokenRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
   '/api/public/oauth-callback': typeof ApiPublicOauthCallbackRoute
   '/seo-blog/': typeof AuthenticatedSeoBlogIndexRoute
+  '/api/public/documents/$token': typeof ApiPublicDocumentsTokenRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
@@ -273,12 +301,16 @@ export interface FileRoutesByTo {
   '/inbox': typeof AuthenticatedInboxRoute
   '/marketing': typeof AuthenticatedMarketingRoute
   '/monitoring': typeof AuthenticatedMonitoringRoute
+  '/sales': typeof AuthenticatedSalesRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/social': typeof AuthenticatedSocialRoute
+  '/pay/$token': typeof PayTokenRoute
+  '/verify/$token': typeof VerifyTokenRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
   '/api/public/oauth-callback': typeof ApiPublicOauthCallbackRoute
   '/seo-blog': typeof AuthenticatedSeoBlogIndexRoute
+  '/api/public/documents/$token': typeof ApiPublicDocumentsTokenRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
@@ -309,13 +341,17 @@ export interface FileRoutesById {
   '/_authenticated/inbox': typeof AuthenticatedInboxRoute
   '/_authenticated/marketing': typeof AuthenticatedMarketingRoute
   '/_authenticated/monitoring': typeof AuthenticatedMonitoringRoute
+  '/_authenticated/sales': typeof AuthenticatedSalesRoute
   '/_authenticated/seo-blog': typeof AuthenticatedSeoBlogRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/social': typeof AuthenticatedSocialRoute
+  '/pay/$token': typeof PayTokenRoute
+  '/verify/$token': typeof VerifyTokenRoute
   '/_authenticated/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/_authenticated/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
   '/api/public/oauth-callback': typeof ApiPublicOauthCallbackRoute
   '/_authenticated/seo-blog/': typeof AuthenticatedSeoBlogIndexRoute
+  '/api/public/documents/$token': typeof ApiPublicDocumentsTokenRoute
   '/api/public/leads/collect': typeof ApiPublicLeadsCollectRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/plugin/activate': typeof ApiPublicPluginActivateRoute
@@ -346,13 +382,17 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/marketing'
     | '/monitoring'
+    | '/sales'
     | '/seo-blog'
     | '/settings'
     | '/social'
+    | '/pay/$token'
+    | '/verify/$token'
     | '/companies/$orgId'
     | '/seo-blog/studio'
     | '/api/public/oauth-callback'
     | '/seo-blog/'
+    | '/api/public/documents/$token'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
@@ -381,12 +421,16 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/marketing'
     | '/monitoring'
+    | '/sales'
     | '/settings'
     | '/social'
+    | '/pay/$token'
+    | '/verify/$token'
     | '/companies/$orgId'
     | '/seo-blog/studio'
     | '/api/public/oauth-callback'
     | '/seo-blog'
+    | '/api/public/documents/$token'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
@@ -416,13 +460,17 @@ export interface FileRouteTypes {
     | '/_authenticated/inbox'
     | '/_authenticated/marketing'
     | '/_authenticated/monitoring'
+    | '/_authenticated/sales'
     | '/_authenticated/seo-blog'
     | '/_authenticated/settings'
     | '/_authenticated/social'
+    | '/pay/$token'
+    | '/verify/$token'
     | '/_authenticated/companies/$orgId'
     | '/_authenticated/seo-blog/studio'
     | '/api/public/oauth-callback'
     | '/_authenticated/seo-blog/'
+    | '/api/public/documents/$token'
     | '/api/public/leads/collect'
     | '/api/public/payments/webhook'
     | '/api/public/plugin/activate'
@@ -442,7 +490,10 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  PayTokenRoute: typeof PayTokenRoute
+  VerifyTokenRoute: typeof VerifyTokenRoute
   ApiPublicOauthCallbackRoute: typeof ApiPublicOauthCallbackRoute
+  ApiPublicDocumentsTokenRoute: typeof ApiPublicDocumentsTokenRoute
   ApiPublicLeadsCollectRoute: typeof ApiPublicLeadsCollectRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
   ApiPublicPluginActivateRoute: typeof ApiPublicPluginActivateRoute
@@ -576,6 +627,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMonitoringRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/sales': {
+      id: '/_authenticated/sales'
+      path: '/sales'
+      fullPath: '/sales'
+      preLoaderRoute: typeof AuthenticatedSalesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/seo-blog': {
       id: '/_authenticated/seo-blog'
       path: '/seo-blog'
@@ -596,6 +654,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/social'
       preLoaderRoute: typeof AuthenticatedSocialRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/pay/$token': {
+      id: '/pay/$token'
+      path: '/pay/$token'
+      fullPath: '/pay/$token'
+      preLoaderRoute: typeof PayTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verify/$token': {
+      id: '/verify/$token'
+      path: '/verify/$token'
+      fullPath: '/verify/$token'
+      preLoaderRoute: typeof VerifyTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/companies/$orgId': {
       id: '/_authenticated/companies/$orgId'
@@ -623,6 +695,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/oauth-callback'
       fullPath: '/api/public/oauth-callback'
       preLoaderRoute: typeof ApiPublicOauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/documents/$token': {
+      id: '/api/public/documents/$token'
+      path: '/api/public/documents/$token'
+      fullPath: '/api/public/documents/$token'
+      preLoaderRoute: typeof ApiPublicDocumentsTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/leads/collect': {
@@ -737,6 +816,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
   AuthenticatedMarketingRoute: typeof AuthenticatedMarketingRoute
   AuthenticatedMonitoringRoute: typeof AuthenticatedMonitoringRoute
+  AuthenticatedSalesRoute: typeof AuthenticatedSalesRoute
   AuthenticatedSeoBlogRoute: typeof AuthenticatedSeoBlogRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSocialRoute: typeof AuthenticatedSocialRoute
@@ -754,6 +834,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedInboxRoute: AuthenticatedInboxRoute,
   AuthenticatedMarketingRoute: AuthenticatedMarketingRoute,
   AuthenticatedMonitoringRoute: AuthenticatedMonitoringRoute,
+  AuthenticatedSalesRoute: AuthenticatedSalesRoute,
   AuthenticatedSeoBlogRoute: AuthenticatedSeoBlogRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSocialRoute: AuthenticatedSocialRoute,
@@ -769,7 +850,10 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  PayTokenRoute: PayTokenRoute,
+  VerifyTokenRoute: VerifyTokenRoute,
   ApiPublicOauthCallbackRoute: ApiPublicOauthCallbackRoute,
+  ApiPublicDocumentsTokenRoute: ApiPublicDocumentsTokenRoute,
   ApiPublicLeadsCollectRoute: ApiPublicLeadsCollectRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
   ApiPublicPluginActivateRoute: ApiPublicPluginActivateRoute,

@@ -257,6 +257,7 @@ export type Database = {
           legal_name: string | null
           logo_url: string | null
           numbering: Json
+          online_payment_url: string | null
           pdf_security: Json
           phone: string | null
           registration_number: string | null
@@ -296,6 +297,7 @@ export type Database = {
           legal_name?: string | null
           logo_url?: string | null
           numbering?: Json
+          online_payment_url?: string | null
           pdf_security?: Json
           phone?: string | null
           registration_number?: string | null
@@ -335,6 +337,7 @@ export type Database = {
           legal_name?: string | null
           logo_url?: string | null
           numbering?: Json
+          online_payment_url?: string | null
           pdf_security?: Json
           phone?: string | null
           registration_number?: string | null
@@ -1751,6 +1754,47 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      platform_apps: {
+        Row: {
+          client_id: string
+          client_secret: string
+          created_at: string
+          id: string
+          label: string | null
+          provider: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          client_id: string
+          client_secret: string
+          created_at?: string
+          id?: string
+          label?: string | null
+          provider: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          client_id?: string
+          client_secret?: string
+          created_at?: string
+          id?: string
+          label?: string | null
+          provider?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_apps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       products: {
         Row: {

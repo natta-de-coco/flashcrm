@@ -109,6 +109,30 @@ export function providerCredentials(provider: Provider): {
   return { id: process.env[cfg.idEnv], secret: process.env[cfg.secretEnv] };
 }
 
+/**
+ * Credentials for one workspace. Each company can paste its own platform app
+ * keys once (Integrations → Platform apps); Flash falls back to the shared
+ * Mobi Digital Solutions app keys when a workspace has none of its own.
+ */
+export async function resolveCredentials(
+  provider: Provider,
+  tenantId?: string | null,
+): Promise<{ id: string | undefined; secret: string | undefined; source: "workspace" | "shared" }> {
+  if (tenantId) {
+    const { data } = await supabaseAdmin
+      .from("platform_apps")
+      .select("client_id, client_secret")
+      .eq("tenant_id", tenantId)
+      .eq("provider", provider)
+      .maybeSingle();
+    if (data?.client_id && data.client_secret) {
+      return { id: data.client_id, secret: data.client_secret, source: "workspace" };
+    }
+  }
+  const env = providerCredentials(provider);
+  return { ...env, source: "shared" };
+}
+
 export function providerEnvNames(provider: Provider): string[] {
   const cfg = PROVIDERS[provider];
   return [cfg.idEnv, cfg.secretEnv];
@@ -130,11 +154,11 @@ export async function startAuthorization(args: {
     };
   }
   const cfg = PROVIDERS[meta.provider];
-  const creds = providerCredentials(meta.provider);
+  const creds = await resolveCredentials(meta.provider, args.tenantId);
   if (!creds.id || !creds.secret) {
     return {
       ready: false,
-      reason: `${meta.name} authorization needs the platform app credentials to be added once by the workspace owner.`,
+      reason: `${meta.name} needs your own ${meta.provider} app keys. Open Integrations → Platform apps, paste the App ID and Secret once, and every account on this platform then connects with one click.`,
       missing: providerEnvNames(meta.provider),
     };
   }
@@ -180,9 +204,10 @@ export async function exchangeCode(args: {
   provider: Provider;
   code: string;
   redirectUri: string;
+  tenantId?: string | null;
 }): Promise<{ token: string; expiresAt: string | null }> {
   const cfg = PROVIDERS[args.provider];
-  const creds = providerCredentials(args.provider);
+  const creds = await resolveCredentials(args.provider, args.tenantId);
   if (!creds.id || !creds.secret) throw new Error("Platform app credentials are missing.");
 
   const body = new URLSearchParams({

@@ -44,6 +44,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             provider: meta.provider,
             code,
             redirectUri: row.redirect_uri,
+            tenantId: row.tenant_id,
           });
           const { discoverProfile, saveAuthorizedConnection } = await import(
             "@/lib/connections.server"
