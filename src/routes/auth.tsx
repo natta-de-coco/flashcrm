@@ -103,7 +103,10 @@ function AuthPage() {
       toast.error(error.message);
       return;
     }
-    toast.success("Account created. You can sign in now.");
+    toast.success(
+      `Check ${email} for your Flas verification code — confirm it, then sign in.`,
+    );
+
   }
 
   return (
