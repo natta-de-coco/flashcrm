@@ -20,11 +20,22 @@ export const Route = createFileRoute("/auth")({
       { name: "robots", content: "noindex" },
     ],
   }),
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search['redirect'] === "string" ? (search['redirect'] as string) : undefined,
+  }),
   component: AuthPage,
 });
 
+/** Only same-origin relative paths may be used as a post-login destination. */
+function safePath(value: string | undefined): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/inbox";
+  return value;
+}
+
 function AuthPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
+  const dest = safePath(search.redirect);
   const { session } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,8 +46,8 @@ function AuthPage() {
   const [mfaCode, setMfaCode] = useState("");
 
   useEffect(() => {
-    if (session) navigate({ to: "/inbox" });
-  }, [session, navigate]);
+    if (session) navigate({ to: dest });
+  }, [session, navigate, dest]);
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
@@ -58,7 +69,7 @@ function AuthPage() {
         return;
       }
     }
-    navigate({ to: "/inbox" });
+    navigate({ to: dest });
   }
 
   async function verifyMfa(e: React.FormEvent) {
@@ -74,7 +85,7 @@ function AuthPage() {
       toast.error(error.message);
       return;
     }
-    navigate({ to: "/inbox" });
+    navigate({ to: dest });
   }
 
   async function signUp(e: React.FormEvent) {
@@ -85,7 +96,7 @@ function AuthPage() {
       password,
       options: {
         data: { full_name: fullName },
-        emailRedirectTo: `${window.location.origin}/inbox`,
+        emailRedirectTo: `${window.location.origin}${dest}`,
       },
     });
     setBusy(false);
@@ -105,7 +116,7 @@ function AuthPage() {
       return;
     }
     if (result.redirected) return;
-    navigate({ to: "/inbox" });
+    navigate({ to: dest });
   }
 
   return (
