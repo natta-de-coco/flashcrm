@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
@@ -43,10 +43,22 @@ function AuthPage() {
   // Two-factor step: set when the account has TOTP enabled.
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const resendAttempts = useRef(0);
 
   useEffect(() => {
     if (session) navigate({ to: dest });
   }, [session, navigate, dest]);
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setResendSeconds((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
 
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
@@ -71,6 +83,43 @@ function AuthPage() {
     navigate({ to: dest });
   }
 
+  async function requestPasswordReset(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) {
+      toast.error("Enter your email address first.");
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setBusy(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("If an account exists, a password reset link has been sent.");
+    setForgotOpen(false);
+  }
+
+  async function resendVerification() {
+    if (!email.trim() || resendSeconds > 0 || resendAttempts.current >= 5) return;
+    setBusy(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: email.trim(),
+      options: { emailRedirectTo: `${window.location.origin}${dest}` },
+    });
+    setBusy(false);
+    resendAttempts.current += 1;
+    setResendSeconds(60);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success("A new verification email has been sent.");
+  }
+
   async function verifyMfa(e: React.FormEvent) {
     e.preventDefault();
     if (!mfaFactorId) return;
@@ -90,7 +139,7 @@ function AuthPage() {
   async function signUp(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -103,10 +152,13 @@ function AuthPage() {
       toast.error(error.message);
       return;
     }
-    toast.success(
-      `Check ${email} for your Flas verification code — confirm it, then sign in.`,
-    );
-
+    if (data.session) {
+      navigate({ to: dest });
+      return;
+    }
+    setVerificationPending(true);
+    setResendSeconds(60);
+    toast.success(`Check ${email} for your Flas verification email.`);
   }
 
   return (
@@ -176,6 +228,26 @@ function AuthPage() {
                     Back
                   </Button>
                 </form>
+              ) : forgotOpen ? (
+                <form onSubmit={requestPasswordReset} className="space-y-4 pt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email">Work email</Label>
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      required
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={busy}>
+                    {busy ? "Sending reset link…" : "Send password reset link"}
+                  </Button>
+                  <Button type="button" variant="ghost" className="w-full" onClick={() => setForgotOpen(false)}>
+                    Back to sign in
+                  </Button>
+                </form>
               ) : (
               <form onSubmit={signIn} className="space-y-4 pt-4">
                 <div className="space-y-2">
@@ -199,13 +271,42 @@ function AuthPage() {
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={busy}>
-                  Sign in
+                  {busy ? "Signing in…" : "Sign in"}
+                </Button>
+                <Button type="button" variant="link" className="h-auto w-full p-0" onClick={() => setForgotOpen(true)}>
+                  Forgot your password?
                 </Button>
               </form>
               )}
             </TabsContent>
 
             <TabsContent value="signup">
+              {verificationPending ? (
+                <div className="space-y-4 pt-5 text-center">
+                  <div>
+                    <h2 className="font-semibold">Check your email</h2>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      We sent a verification link to <span className="font-medium text-foreground">{email}</span>.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    disabled={busy || resendSeconds > 0 || resendAttempts.current >= 5}
+                    onClick={resendVerification}
+                  >
+                    {resendAttempts.current >= 5
+                      ? "Resend limit reached"
+                      : resendSeconds > 0
+                        ? `Resend available in ${resendSeconds}s`
+                        : "Resend verification email"}
+                  </Button>
+                  <Button type="button" variant="ghost" className="w-full" onClick={() => setVerificationPending(false)}>
+                    Use a different email
+                  </Button>
+                </div>
+              ) : (
               <form onSubmit={signUp} className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Full name</Label>
@@ -227,15 +328,16 @@ function AuthPage() {
                     id="password2"
                     type="password"
                     required
-                    minLength={6}
+                    minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={busy}>
-                  Create account
+                  {busy ? "Creating account…" : "Create account"}
                 </Button>
               </form>
+              )}
             </TabsContent>
           </Tabs>
 
