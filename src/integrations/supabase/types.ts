@@ -184,6 +184,53 @@ export type Database = {
           },
         ]
       }
+      auth_email_attempts: {
+        Row: {
+          accepted_at: string | null
+          action_type: string
+          attempt_number: number
+          created_at: string
+          id: string
+          provider_error: string | null
+          recipient_email: string
+          requested_at: string
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          action_type: string
+          attempt_number: number
+          created_at?: string
+          id?: string
+          provider_error?: string | null
+          recipient_email: string
+          requested_at?: string
+          status: string
+          tenant_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          action_type?: string
+          attempt_number?: number
+          created_at?: string
+          id?: string
+          provider_error?: string | null
+          recipient_email?: string
+          requested_at?: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auth_email_attempts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_accounts: {
         Row: {
           account_name: string | null
@@ -3276,6 +3323,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_auth_email_attempt: {
+        Args: { _action_type: string; _recipient_email: string }
+        Returns: {
+          allowed: boolean
+          attempt_number: number
+          retry_after_seconds: number
+        }[]
+      }
       current_tenant_id: { Args: never; Returns: string }
       has_active_subscription: {
         Args: { check_env?: string; user_uuid: string }
