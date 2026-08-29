@@ -20,7 +20,8 @@ const SITE_URL = `https://${ROOT_DOMAIN}`
 export const Route = createFileRoute("/lovable/email/auth/webhook")({
   server: {
     handlers: {
-      POST: ({ request }) => {
+      POST: async ({ request }) => {
+        const auditRequest = request.clone()
         const handler = createAuthEmailHandler({
           apiKey: process.env['LOVABLE_API_KEY']!,
           from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
@@ -80,7 +81,30 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
             },
           },
         })
-        return handler(request)
+        const response = await handler(request)
+
+        try {
+          const payload = (await auditRequest.json()) as {
+            data?: { action_type?: string; email?: string }
+          }
+          const actionType = payload.data?.action_type
+          const recipientEmail = payload.data?.email
+          if ((actionType === "signup" || actionType === "recovery") && recipientEmail) {
+            const { recordAuthEmailOutcome } = await import("@/lib/auth-email-audit.server")
+            await recordAuthEmailOutcome({
+              recipientEmail,
+              actionType,
+              accepted: response.ok,
+              providerError: response.ok ? undefined : `Email service returned ${response.status}`,
+            })
+          }
+        } catch (error) {
+          console.error("[Auth email audit] Could not inspect verified email event", {
+            message: error instanceof Error ? error.message : "Unknown error",
+          })
+        }
+
+        return response
       },
     },
   },

@@ -17,6 +17,8 @@ export const Route = createFileRoute("/auth")({
       { name: "description", content: "Sign in to the Flas CRM WhatsApp team inbox." },
       { property: "og:title", content: "Sign in — Flas CRM" },
       { property: "og:description", content: "Access your WhatsApp inbox, contacts and chatbot." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -249,7 +251,7 @@ function AuthPage() {
                   </Button>
                 </form>
               ) : (
-              <form onSubmit={signIn} className="space-y-4 pt-4">
+                <form onSubmit={signIn} className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Label htmlFor="email">Work email</Label>
                   <Input
@@ -276,7 +278,7 @@ function AuthPage() {
                 <Button type="button" variant="link" className="h-auto w-full p-0" onClick={() => setForgotOpen(true)}>
                   Forgot your password?
                 </Button>
-              </form>
+                </form>
               )}
             </TabsContent>
 
@@ -307,7 +309,7 @@ function AuthPage() {
                   </Button>
                 </div>
               ) : (
-              <form onSubmit={signUp} className="space-y-4 pt-4">
+                <form onSubmit={signUp} className="space-y-4 pt-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Full name</Label>
                   <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
@@ -336,7 +338,7 @@ function AuthPage() {
                 <Button type="submit" className="w-full" disabled={busy}>
                   {busy ? "Creating account…" : "Create account"}
                 </Button>
-              </form>
+                </form>
               )}
             </TabsContent>
           </Tabs>
