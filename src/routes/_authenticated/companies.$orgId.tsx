@@ -5,7 +5,7 @@ import { getCompanyWorkspace } from "@/lib/companies.functions";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, Eye } from "lucide-react";
+import { ArrowLeft, Eye, MailCheck } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/companies/$orgId")({
   head: () => ({
@@ -94,6 +94,39 @@ function CompanyWorkspacePage() {
                 {d.org.subscription_renews_at
                   ? ` · renews ${new Date(d.org.subscription_renews_at).toLocaleDateString()}`
                   : ""}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <MailCheck className="size-4 text-brand" /> Authentication email activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {d.authEmails.length === 0 && (
+                <p className="text-sm text-muted-foreground">No verification or recovery emails recorded yet.</p>
+              )}
+              {d.authEmails.map((email) => (
+                <div key={email.id} className="flex items-start justify-between gap-3 border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{email.recipient_email}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {email.action_type === "signup" ? "Account verification" : "Password recovery"} · attempt {email.attempt_number}
+                    </p>
+                    {email.provider_error && <p className="mt-1 text-xs text-destructive">{email.provider_error}</p>}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Badge variant={email.status === "accepted" ? "secondary" : "destructive"} className="capitalize">
+                      {email.status}
+                    </Badge>
+                    <p className="mt-1 text-[10px] text-muted-foreground">{new Date(email.requested_at).toLocaleString()}</p>
+                  </div>
+                </div>
+              ))}
+              <p className="pt-1 text-[11px] text-muted-foreground">
+                Accepted means the email service accepted the request. Inbox delivery and opens are not reported.
               </p>
             </CardContent>
           </Card>

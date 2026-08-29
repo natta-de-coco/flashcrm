@@ -151,7 +151,7 @@ export const getCompanyWorkspace = createServerFn({ method: "GET" })
     if (error) throw error;
     if (!org) throw new Error("Company not found");
 
-    const [staff, leads, conversations, audit, numbers] = await Promise.all([
+    const [staff, leads, conversations, audit, numbers, authEmails] = await Promise.all([
       supabaseAdmin
         .from("profiles")
         .select("id, full_name, email, staff_role, created_at")
@@ -182,7 +182,14 @@ export const getCompanyWorkspace = createServerFn({ method: "GET" })
         .select(
           "id, label, display_phone, phone_number_id, is_default, active, alerts_enabled, deliverability_min, read_rate_min",
         )
+        .eq("tenant_id", orgId)
         .order("created_at", { ascending: true }),
+      supabaseAdmin
+        .from("auth_email_attempts")
+        .select("id, recipient_email, action_type, status, attempt_number, provider_error, requested_at, accepted_at")
+        .eq("tenant_id", orgId)
+        .order("requested_at", { ascending: false })
+        .limit(20),
     ]);
 
     type WorkspaceLead = {
@@ -213,6 +220,7 @@ export const getCompanyWorkspace = createServerFn({ method: "GET" })
       conversations: (conversations.data ?? []) as unknown as WorkspaceConversation[],
       audit: audit.data ?? [],
       numbers: numbers.data ?? [],
+      authEmails: authEmails.data ?? [],
     };
   });
 
