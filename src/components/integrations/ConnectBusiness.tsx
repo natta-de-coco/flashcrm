@@ -5,6 +5,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
 import { HealthReportDialog } from "@/components/integrations/HealthReportDialog";
+import {
+  PlatformAppKeysDialog,
+  PlatformAppsCard,
+  type ProviderKey,
+  type ProviderReady,
+} from "@/components/integrations/PlatformAppsCard";
 import { setupGuide } from "@/lib/connection-setup";
 import { connectionStatus } from "@/lib/connection-status";
 import {
@@ -98,6 +104,7 @@ export function ConnectBusiness() {
   const disconnect = useServerFn(disconnectConnection);
   const [optimizerFor, setOptimizerFor] = useState<string | null>(null);
   const [optimizerText, setOptimizerText] = useState<string>("");
+  const [keysFor, setKeysFor] = useState<ProviderKey | null>(null);
 
   const connect = useMutation({
     mutationFn: async (platform: string) =>
@@ -151,6 +158,8 @@ export function ConnectBusiness() {
   const accounts = (data?.accounts ?? []) as Account[];
   const accountsFor = (id: string) => accounts.filter((a) => a.platform === id);
   const connectedCount = accounts.filter((a) => a.active).length;
+  const providerReady = (data?.providerReady ?? {}) as ProviderReady;
+  const isReady = (c: Connector) => (c.provider ? (providerReady[c.provider]?.ready ?? false) : true);
 
   return (
     <section id="platforms" className="grid gap-6">
@@ -169,6 +178,10 @@ export function ConnectBusiness() {
           <HealthReportDialog />
         </div>
       </div>
+
+      <PlatformAppsCard providerReady={providerReady} />
+
+
 
       {connections.isLoading && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -195,6 +208,8 @@ export function ConnectBusiness() {
                   connector={c}
                   accounts={accountsFor(c.id)}
                   connecting={connect.isPending && connect.variables === c.id}
+                  ready={isReady(c)}
+                  onAddKeys={() => c.provider && setKeysFor(c.provider)}
                   onConnect={() => connect.mutate(c.id)}
                   onScan={(id) => runScan.mutate(id)}
                   onOptimize={(id) => runOptimize.mutate(id)}
@@ -242,6 +257,8 @@ function ConnectorCard({
   accounts,
   connecting,
   busyId,
+  ready = true,
+  onAddKeys,
   onConnect,
   onScan,
   onOptimize,
@@ -251,6 +268,8 @@ function ConnectorCard({
   accounts: Account[];
   connecting: boolean;
   busyId: string | null;
+  ready?: boolean;
+  onAddKeys?: () => void;
   onConnect: () => void;
   onScan: (id: string) => void;
   onOptimize: (id: string) => void;

@@ -41,15 +41,9 @@ export const getConnections = createServerFn({ method: "GET" })
     ]);
     if (accounts.error) throw accounts.error;
 
-    const { PROVIDERS, providerCredentials } = await import("@/lib/oauth.server");
-    const providerReady: Record<string, { ready: boolean; envNames: string[] }> = {};
-    for (const key of Object.keys(PROVIDERS) as (keyof typeof PROVIDERS)[]) {
-      const creds = providerCredentials(key);
-      providerReady[key] = {
-        ready: Boolean(creds.id && creds.secret),
-        envNames: [PROVIDERS[key].idEnv, PROVIDERS[key].secretEnv],
-      };
-    }
+    const { providerReadiness } = await import("@/lib/oauth.server");
+    const tenantId = await callerTenantId(supabase, context.userId);
+    const providerReady = await providerReadiness(tenantId);
 
     const { computeHealth } = await import("@/lib/connections.server");
     const enriched = (accounts.data ?? []).map((a) => ({
