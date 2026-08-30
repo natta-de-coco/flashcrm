@@ -15,6 +15,28 @@ const ROOT_DOMAIN = "flas.mobidigisol.com"
 const FROM_DOMAIN = "flas.mobidigisol.com"
 const SITE_URL = `https://${ROOT_DOMAIN}`
 
+/**
+ * Turns any send outcome into a short, human-readable reason string — or
+ * `undefined` when there is nothing to report. Never returns empty strings,
+ * "undefined", or an unbounded provider body, so the audit payload stays valid.
+ */
+async function normalizeProviderError(response: Response): Promise<string | undefined> {
+  if (response.ok) return undefined
+  let detail = ""
+  try {
+    const body = await response.clone().text()
+    detail = body
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 300)
+  } catch {
+    detail = ""
+  }
+  const status = Number.isFinite(response.status) ? response.status : 0
+  const base = status ? `Email service returned ${status}` : "Email service did not respond"
+  return detail ? `${base}: ${detail}` : base
+}
+
 // The SDK handler owns verification, dispatch, and retry semantics; this file
 // owns only the email decisions: subjects, templates, and per-type props.
 export const Route = createFileRoute("/lovable/email/auth/webhook")({
