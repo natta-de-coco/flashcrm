@@ -256,6 +256,8 @@ function ConnectorCard({
   accounts,
   connecting,
   busyId,
+  ready = true,
+  onAddKeys,
   onConnect,
   onScan,
   onOptimize,
@@ -265,6 +267,8 @@ function ConnectorCard({
   accounts: Account[];
   connecting: boolean;
   busyId: string | null;
+  ready?: boolean;
+  onAddKeys?: () => void;
   onConnect: () => void;
   onScan: (id: string) => void;
   onOptimize: (id: string) => void;
