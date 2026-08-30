@@ -138,6 +138,32 @@ export function providerEnvNames(provider: Provider): string[] {
   return [cfg.idEnv, cfg.secretEnv];
 }
 
+/**
+ * Whether each OAuth provider family can actually be authorized for this
+ * workspace, and where the keys come from. Drives the "Add app keys" state in
+ * the Integrations screen so a company always sees the exact blocker.
+ */
+export async function providerReadiness(tenantId?: string | null): Promise<
+  Record<Provider, { ready: boolean; source: "workspace" | "shared" | "none"; envNames: string[] }>
+> {
+  const providers = Object.keys(PROVIDERS) as Provider[];
+  const entries = await Promise.all(
+    providers.map(async (provider) => {
+      const creds = await resolveCredentials(provider, tenantId);
+      const ready = Boolean(creds.id && creds.secret);
+      return [
+        provider,
+        {
+          ready,
+          source: ready ? creds.source : ("none" as const),
+          envNames: providerEnvNames(provider),
+        },
+      ] as const;
+    }),
+  );
+  return Object.fromEntries(entries) as Awaited<ReturnType<typeof providerReadiness>>;
+}
+
 /** Builds the platform consent URL and records a single-use state row. */
 export async function startAuthorization(args: {
   platform: AccountPlatform;
