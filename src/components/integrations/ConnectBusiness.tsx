@@ -157,6 +157,8 @@ export function ConnectBusiness() {
   const accounts = (data?.accounts ?? []) as Account[];
   const accountsFor = (id: string) => accounts.filter((a) => a.platform === id);
   const connectedCount = accounts.filter((a) => a.active).length;
+  const providerReady = (data?.providerReady ?? {}) as ProviderReady;
+  const isReady = (c: Connector) => (c.provider ? (providerReady[c.provider]?.ready ?? false) : true);
 
   return (
     <section id="platforms" className="grid gap-6">
