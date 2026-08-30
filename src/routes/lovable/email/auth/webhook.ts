@@ -91,11 +91,14 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
           const recipientEmail = payload.data?.email
           if ((actionType === "signup" || actionType === "recovery") && recipientEmail) {
             const { recordAuthEmailOutcome } = await import("@/lib/auth-email-audit.server")
+            const providerError = await normalizeProviderError(response)
             await recordAuthEmailOutcome({
               recipientEmail,
               actionType,
               accepted: response.ok,
-              providerError: response.ok ? undefined : `Email service returned ${response.status}`,
+              // Only present when we actually have a reason — an absent key is
+              // never written as the string "undefined".
+              ...(providerError ? { providerError } : {}),
             })
           }
         } catch (error) {
