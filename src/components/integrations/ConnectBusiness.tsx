@@ -207,6 +207,8 @@ export function ConnectBusiness() {
                   connector={c}
                   accounts={accountsFor(c.id)}
                   connecting={connect.isPending && connect.variables === c.id}
+                  ready={isReady(c)}
+                  onAddKeys={() => c.provider && setKeysFor(c.provider)}
                   onConnect={() => connect.mutate(c.id)}
                   onScan={(id) => runScan.mutate(id)}
                   onOptimize={(id) => runOptimize.mutate(id)}
