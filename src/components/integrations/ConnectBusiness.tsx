@@ -104,6 +104,7 @@ export function ConnectBusiness() {
   const disconnect = useServerFn(disconnectConnection);
   const [optimizerFor, setOptimizerFor] = useState<string | null>(null);
   const [optimizerText, setOptimizerText] = useState<string>("");
+  const [keysFor, setKeysFor] = useState<ProviderKey | null>(null);
 
   const connect = useMutation({
     mutationFn: async (platform: string) =>
