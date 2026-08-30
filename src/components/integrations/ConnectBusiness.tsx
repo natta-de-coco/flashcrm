@@ -5,6 +5,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
 import { HealthReportDialog } from "@/components/integrations/HealthReportDialog";
+import {
+  PlatformAppKeysDialog,
+  PlatformAppsCard,
+  type ProviderKey,
+  type ProviderReady,
+} from "@/components/integrations/PlatformAppsCard";
 import { setupGuide } from "@/lib/connection-setup";
 import { connectionStatus } from "@/lib/connection-status";
 import {
