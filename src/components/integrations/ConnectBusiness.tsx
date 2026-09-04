@@ -252,6 +252,12 @@ export function ConnectBusiness() {
           </CardContent>
         </Card>
       )}
+
+      <PlatformAppKeysDialog
+        provider={keysFor}
+        open={keysFor !== null}
+        onOpenChange={(v) => !v && setKeysFor(null)}
+      />
     </section>
   );
 }
