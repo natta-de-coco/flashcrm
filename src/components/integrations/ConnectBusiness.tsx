@@ -36,6 +36,7 @@ import {
   Sparkles,
   Unplug,
   Wand2,
+  KeyRound,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -109,7 +110,7 @@ export function ConnectBusiness() {
   const connect = useMutation({
     mutationFn: async (platform: string) =>
       start({ data: { platform: platform as never, origin: window.location.origin } }),
-    onSuccess: (result) => {
+    onSuccess: (result, platform) => {
       if (result.ready) {
         // Providers like Facebook/Google refuse to render inside an iframe
         // (ERR_BLOCKED_BY_RESPONSE), so always hand off to a real browser tab.
@@ -121,6 +122,9 @@ export function ConnectBusiness() {
         toast.info("Finish signing in on the new tab, then come back here.");
         return;
       }
+      // Not ready almost always means "no app keys yet" — open that form now.
+      const provider = CONNECTORS.find((c) => c.id === platform)?.provider;
+      if (provider) setKeysFor(provider as ProviderKey);
       toast.info(result.reason);
     },
 
@@ -248,6 +252,12 @@ export function ConnectBusiness() {
           </CardContent>
         </Card>
       )}
+
+      <PlatformAppKeysDialog
+        provider={keysFor}
+        open={keysFor !== null}
+        onOpenChange={(v) => !v && setKeysFor(null)}
+      />
     </section>
   );
 }
@@ -397,15 +407,23 @@ function ConnectorCard({
               </Link>
             </Button>
           ) : connector.oauth ? (
-            <Button
-              size="sm"
-              className="h-8 text-xs"
-              variant={connected ? "outline" : "default"}
-              disabled={connecting}
-              onClick={onConnect}
-            >
-              {connected ? "Connect another" : "Connect"}
-            </Button>
+            !ready && onAddKeys ? (
+              // Without app keys the platform refuses the login window, so we
+              // send the user to the one step that unblocks it.
+              <Button size="sm" className="h-8 gap-1 text-xs" onClick={onAddKeys}>
+                <KeyRound className="size-3" /> Add app keys
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                variant={connected ? "outline" : "default"}
+                disabled={connecting}
+                onClick={onConnect}
+              >
+                {connected ? "Connect another" : "Connect"}
+              </Button>
+            )
           ) : (
             <Badge variant="outline" className="text-[10px]">
               Manual setup
