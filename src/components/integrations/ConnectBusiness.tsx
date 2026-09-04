@@ -36,6 +36,7 @@ import {
   Sparkles,
   Unplug,
   Wand2,
+  KeyRound,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
