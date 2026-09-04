@@ -397,15 +397,23 @@ function ConnectorCard({
               </Link>
             </Button>
           ) : connector.oauth ? (
-            <Button
-              size="sm"
-              className="h-8 text-xs"
-              variant={connected ? "outline" : "default"}
-              disabled={connecting}
-              onClick={onConnect}
-            >
-              {connected ? "Connect another" : "Connect"}
-            </Button>
+            !ready && onAddKeys ? (
+              // Without app keys the platform refuses the login window, so we
+              // send the user to the one step that unblocks it.
+              <Button size="sm" className="h-8 gap-1 text-xs" onClick={onAddKeys}>
+                <KeyRound className="size-3" /> Add app keys
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="h-8 text-xs"
+                variant={connected ? "outline" : "default"}
+                disabled={connecting}
+                onClick={onConnect}
+              >
+                {connected ? "Connect another" : "Connect"}
+              </Button>
+            )
           ) : (
             <Badge variant="outline" className="text-[10px]">
               Manual setup
