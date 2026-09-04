@@ -123,10 +123,8 @@ export function ConnectBusiness() {
         return;
       }
       // Not ready almost always means "no app keys yet" — open that form now.
-      const provider = CONNECTORS.find((c) => c.id === connect.variables)?.provider;
-      if (provider && !(providerReady[provider]?.ready ?? false)) {
-        setKeysFor(provider as ProviderKey);
-      }
+      const provider = CONNECTORS.find((c) => c.id === platform)?.provider;
+      if (provider) setKeysFor(provider as ProviderKey);
       toast.info(result.reason);
     },
 
