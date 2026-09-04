@@ -110,7 +110,7 @@ export function ConnectBusiness() {
   const connect = useMutation({
     mutationFn: async (platform: string) =>
       start({ data: { platform: platform as never, origin: window.location.origin } }),
-    onSuccess: (result) => {
+    onSuccess: (result, platform) => {
       if (result.ready) {
         // Providers like Facebook/Google refuse to render inside an iframe
         // (ERR_BLOCKED_BY_RESPONSE), so always hand off to a real browser tab.
