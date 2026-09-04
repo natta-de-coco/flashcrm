@@ -122,6 +122,11 @@ export function ConnectBusiness() {
         toast.info("Finish signing in on the new tab, then come back here.");
         return;
       }
+      // Not ready almost always means "no app keys yet" — open that form now.
+      const provider = CONNECTORS.find((c) => c.id === connect.variables)?.provider;
+      if (provider && !(providerReady[provider]?.ready ?? false)) {
+        setKeysFor(provider as ProviderKey);
+      }
       toast.info(result.reason);
     },
 
