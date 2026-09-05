@@ -1,4 +1,4 @@
-import { FlashLogoBadge } from "@/components/FlashLogoBadge";
+import { FlasWordmark } from "@/components/FlashLogoBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -166,9 +166,8 @@ function AuthPage() {
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-sidebar p-12 text-sidebar-foreground lg:flex">
-        <div className="flex items-center gap-3 text-lg font-bold">
-          <FlashLogoBadge className="size-11" />
-          Flas CRM
+        <div className="w-fit rounded-md bg-white px-4 py-2 shadow-sm">
+          <FlasWordmark className="h-10 w-auto" />
         </div>
         <div className="space-y-4">
           <h1 className="text-4xl font-extrabold leading-tight">

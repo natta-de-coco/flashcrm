@@ -325,7 +325,7 @@ function AuthenticatedLayout() {
                 <SheetHeader className="mb-4">
                   <SheetTitle className="flex items-center gap-2 text-sidebar-foreground">
                     <FlashLogoBadge className="size-8" />
-                    Flas CRM
+                     Flas CRM
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="flex flex-col gap-4">

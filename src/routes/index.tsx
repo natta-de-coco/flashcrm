@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { FlasWordmark } from "@/components/FlashLogoBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -193,15 +194,10 @@ function Landing() {
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="flex items-center gap-2 font-bold">
-            <span className="grid size-8 place-items-center rounded-lg bg-brand text-brand-foreground">
-              <MessageSquare className="size-4" />
-            </span>
-            <span className="leading-tight">
-              Flas CRM
-              <span className="block text-[10px] font-medium text-muted-foreground">
-                by Mobi Digital Solutions
-              </span>
+          <span className="flex min-w-0 items-center gap-3">
+            <FlasWordmark className="h-8 max-w-28 sm:h-9 sm:max-w-36" />
+            <span className="hidden border-l border-border pl-3 text-[10px] font-medium leading-tight text-muted-foreground sm:block">
+              CRM by<br />Mobi Digital Solutions
             </span>
           </span>
           <nav className="flex items-center gap-2">
