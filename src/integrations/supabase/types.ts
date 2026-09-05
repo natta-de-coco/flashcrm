@@ -50,6 +50,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "advisor_reports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       ai_provider_keys: {
@@ -90,6 +97,61 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_provider_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      ai_usage_log: {
+        Row: {
+          created_at: string
+          duration_ms: number | null
+          feature: string
+          id: string
+          ok: boolean
+          provider: string
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          duration_ms?: number | null
+          feature: string
+          id?: string
+          ok?: boolean
+          provider?: string
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number | null
+          feature?: string
+          id?: string
+          ok?: boolean
+          provider?: string
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -138,6 +200,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       audit_log: {
@@ -181,6 +250,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -228,6 +304,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "auth_email_attempts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -284,6 +367,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -415,6 +505,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -583,6 +680,61 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "business_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      campaign_plans: {
+        Row: {
+          budget_note: string | null
+          created_at: string
+          created_by: string | null
+          goal: string
+          id: string
+          plan: Json
+          product: string | null
+          tenant_id: string
+        }
+        Insert: {
+          budget_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          goal: string
+          id?: string
+          plan: Json
+          product?: string | null
+          tenant_id: string
+        }
+        Update: {
+          budget_note?: string | null
+          created_at?: string
+          created_by?: string | null
+          goal?: string
+          id?: string
+          plan?: Json
+          product?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_plans_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_plans_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       campaigns: {
@@ -598,6 +750,7 @@ export type Database = {
           sent_at: string | null
           status: string
           subject: string
+          tenant_id: string | null
         }
         Insert: {
           audience_tag?: string | null
@@ -611,6 +764,7 @@ export type Database = {
           sent_at?: string | null
           status?: string
           subject?: string
+          tenant_id?: string | null
         }
         Update: {
           audience_tag?: string | null
@@ -624,8 +778,24 @@ export type Database = {
           sent_at?: string | null
           status?: string
           subject?: string
+          tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "campaigns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
       }
       connection_retry_log: {
         Row: {
@@ -675,6 +845,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connection_retry_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -741,6 +918,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "contacts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       content_posts: {
@@ -801,6 +985,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "content_posts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       conversations: {
@@ -815,6 +1006,7 @@ export type Database = {
           last_message_preview: string | null
           status: Database["public"]["Enums"]["conv_status"]
           tags: string[]
+          tenant_id: string | null
           unread_count: number
           updated_at: string
           wa_number_id: string | null
@@ -831,6 +1023,7 @@ export type Database = {
           last_message_preview?: string | null
           status?: Database["public"]["Enums"]["conv_status"]
           tags?: string[]
+          tenant_id?: string | null
           unread_count?: number
           updated_at?: string
           wa_number_id?: string | null
@@ -847,6 +1040,7 @@ export type Database = {
           last_message_preview?: string | null
           status?: Database["public"]["Enums"]["conv_status"]
           tags?: string[]
+          tenant_id?: string | null
           unread_count?: number
           updated_at?: string
           wa_number_id?: string | null
@@ -859,6 +1053,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
           {
             foreignKeyName: "conversations_wa_number_id_fkey"
@@ -905,6 +1113,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "daily_briefs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       deletion_requests: {
@@ -948,6 +1163,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deletion_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -1007,6 +1229,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "document_activity_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       document_files: {
@@ -1064,6 +1293,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "document_files_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       document_sequences: {
@@ -1092,6 +1328,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_sequences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -1143,6 +1386,79 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      email_delivery_log: {
+        Row: {
+          created_at: string
+          error: string | null
+          from_address: string | null
+          id: string
+          meta: Json
+          provider: string
+          provider_msg_id: string | null
+          recipient: string
+          status: string
+          subject: string | null
+          template: string | null
+          tenant_id: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          from_address?: string | null
+          id?: string
+          meta?: Json
+          provider?: string
+          provider_msg_id?: string | null
+          recipient: string
+          status?: string
+          subject?: string | null
+          template?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          from_address?: string | null
+          id?: string
+          meta?: Json
+          provider?: string
+          provider_msg_id?: string | null
+          recipient?: string
+          status?: string
+          subject?: string | null
+          template?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_delivery_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_delivery_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -1206,6 +1522,113 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "error_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      integration_errors: {
+        Row: {
+          account_id: string | null
+          api_version: string | null
+          feature: string | null
+          fingerprint: string
+          first_seen: string
+          friendly_message: string
+          friendly_title: string
+          http_status: number | null
+          id: string
+          last_seen: string
+          likely_cause: string | null
+          occurrence_count: number
+          operation: string | null
+          platform: string
+          provider_code: string | null
+          provider_message: string | null
+          provider_subcode: string | null
+          provider_type: string | null
+          recommended_fix: string | null
+          resolved_at: string | null
+          retryable: boolean
+          severity: string
+          tenant_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          api_version?: string | null
+          feature?: string | null
+          fingerprint: string
+          first_seen?: string
+          friendly_message: string
+          friendly_title: string
+          http_status?: number | null
+          id?: string
+          last_seen?: string
+          likely_cause?: string | null
+          occurrence_count?: number
+          operation?: string | null
+          platform: string
+          provider_code?: string | null
+          provider_message?: string | null
+          provider_subcode?: string | null
+          provider_type?: string | null
+          recommended_fix?: string | null
+          resolved_at?: string | null
+          retryable?: boolean
+          severity?: string
+          tenant_id: string
+        }
+        Update: {
+          account_id?: string | null
+          api_version?: string | null
+          feature?: string | null
+          fingerprint?: string
+          first_seen?: string
+          friendly_message?: string
+          friendly_title?: string
+          http_status?: number | null
+          id?: string
+          last_seen?: string
+          likely_cause?: string | null
+          occurrence_count?: number
+          operation?: string | null
+          platform?: string
+          provider_code?: string | null
+          provider_message?: string | null
+          provider_subcode?: string | null
+          provider_type?: string | null
+          recommended_fix?: string | null
+          resolved_at?: string | null
+          retryable?: boolean
+          severity?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_errors_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_errors_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_errors_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       invoice_templates: {
@@ -1267,6 +1690,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -1335,6 +1765,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -1643,6 +2080,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "leads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       messages: {
@@ -1657,6 +2101,7 @@ export type Database = {
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id: string | null
           status: string
+          tenant_id: string | null
           translated_body: string | null
           wa_message_id: string | null
         }
@@ -1671,6 +2116,7 @@ export type Database = {
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
           status?: string
+          tenant_id?: string | null
           translated_body?: string | null
           wa_message_id?: string | null
         }
@@ -1685,6 +2131,7 @@ export type Database = {
           sender?: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
           status?: string
+          tenant_id?: string | null
           translated_body?: string | null
           wa_message_id?: string | null
         }
@@ -1696,10 +2143,25 @@ export type Database = {
             referencedRelation: "conversations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       oauth_states: {
         Row: {
+          code_verifier: string | null
           created_at: string
           expires_at: string
           id: string
@@ -1711,6 +2173,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          code_verifier?: string | null
           created_at?: string
           expires_at?: string
           id?: string
@@ -1722,6 +2185,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          code_verifier?: string | null
           created_at?: string
           expires_at?: string
           id?: string
@@ -1791,6 +2255,36 @@ export type Database = {
         }
         Relationships: []
       }
+      otp_attempts: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          ip_address: unknown
+          kind: string
+          reject_reason: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          ip_address?: unknown
+          kind: string
+          reject_reason?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          ip_address?: unknown
+          kind?: string
+          reject_reason?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       payment_allocations: {
         Row: {
           amount: number
@@ -1837,6 +2331,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_allocations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -1907,6 +2408,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       plan_thresholds: {
@@ -1968,6 +2476,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_apps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -2031,6 +2546,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "products_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       profiles: {
@@ -2075,6 +2597,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       reminders: {
@@ -2088,6 +2617,7 @@ export type Database = {
           due_at: string
           id: string
           note: string
+          tenant_id: string | null
         }
         Insert: {
           assigned_to?: string | null
@@ -2099,6 +2629,7 @@ export type Database = {
           due_at: string
           id?: string
           note?: string
+          tenant_id?: string | null
         }
         Update: {
           assigned_to?: string | null
@@ -2110,6 +2641,7 @@ export type Database = {
           due_at?: string
           id?: string
           note?: string
+          tenant_id?: string | null
         }
         Relationships: [
           {
@@ -2125,6 +2657,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "conversations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reminders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reminders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -2225,6 +2771,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_document_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -2454,6 +3007,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "sales_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       seo_articles: {
@@ -2537,6 +3097,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seo_articles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
           {
             foreignKeyName: "seo_articles_wp_site_id_fkey"
@@ -2714,6 +3281,137 @@ export type Database = {
         }
         Relationships: []
       }
+      social_capabilities: {
+        Row: {
+          account_id: string
+          capability: string
+          detail: string | null
+          id: string
+          missing_scopes: string[]
+          permission_state: string
+          required_scopes: string[]
+          status: string
+          tenant_id: string
+          test_outcome: string | null
+          tested_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          capability: string
+          detail?: string | null
+          id?: string
+          missing_scopes?: string[]
+          permission_state?: string
+          required_scopes?: string[]
+          status?: string
+          tenant_id: string
+          test_outcome?: string | null
+          tested_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          capability?: string
+          detail?: string | null
+          id?: string
+          missing_scopes?: string[]
+          permission_state?: string
+          required_scopes?: string[]
+          status?: string
+          tenant_id?: string
+          test_outcome?: string | null
+          tested_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_capabilities_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_capabilities_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_capabilities_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      social_connection_tests: {
+        Row: {
+          account_id: string
+          duration_ms: number | null
+          finished_at: string | null
+          health_score: number | null
+          id: string
+          started_at: string
+          summary: string | null
+          tenant_id: string
+          trigger: string
+          triggered_by: string | null
+          verdict: string | null
+        }
+        Insert: {
+          account_id: string
+          duration_ms?: number | null
+          finished_at?: string | null
+          health_score?: number | null
+          id?: string
+          started_at?: string
+          summary?: string | null
+          tenant_id: string
+          trigger?: string
+          triggered_by?: string | null
+          verdict?: string | null
+        }
+        Update: {
+          account_id?: string
+          duration_ms?: number | null
+          finished_at?: string | null
+          health_score?: number | null
+          id?: string
+          started_at?: string
+          summary?: string | null
+          tenant_id?: string
+          trigger?: string
+          triggered_by?: string | null
+          verdict?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_connection_tests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_connection_tests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_connection_tests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
       social_interactions: {
         Row: {
           account_id: string
@@ -2822,6 +3520,73 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      social_test_results: {
+        Row: {
+          check_key: string
+          created_at: string
+          detail: string | null
+          duration_ms: number | null
+          http_status: number | null
+          id: string
+          label: string
+          outcome: string
+          position: number
+          provider_code: string | null
+          tenant_id: string
+          test_id: string
+        }
+        Insert: {
+          check_key: string
+          created_at?: string
+          detail?: string | null
+          duration_ms?: number | null
+          http_status?: number | null
+          id?: string
+          label: string
+          outcome: string
+          position?: number
+          provider_code?: string | null
+          tenant_id: string
+          test_id: string
+        }
+        Update: {
+          check_key?: string
+          created_at?: string
+          detail?: string | null
+          duration_ms?: number | null
+          http_status?: number | null
+          id?: string
+          label?: string
+          outcome?: string
+          position?: number
+          provider_code?: string | null
+          tenant_id?: string
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "social_test_results_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_test_results_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+          {
+            foreignKeyName: "social_test_results_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "social_connection_tests"
             referencedColumns: ["id"]
           },
         ]
@@ -2937,6 +3702,13 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "tax_rates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
       team_invites: {
@@ -2977,6 +3749,178 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_invites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      tenant_bot_settings: {
+        Row: {
+          bot_name: string
+          business_hours_only: boolean
+          enabled: boolean
+          greeting: string
+          handoff_keywords: string[]
+          instructions: string
+          model: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          bot_name?: string
+          business_hours_only?: boolean
+          enabled?: boolean
+          greeting?: string
+          handoff_keywords?: string[]
+          instructions?: string
+          model?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          bot_name?: string
+          business_hours_only?: boolean
+          enabled?: boolean
+          greeting?: string
+          handoff_keywords?: string[]
+          instructions?: string
+          model?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_bot_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_bot_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      tenant_smtp_config: {
+        Row: {
+          api_key_enc: string | null
+          created_at: string
+          created_by: string | null
+          domain: string | null
+          from_email: string | null
+          from_name: string | null
+          last_test_at: string | null
+          last_test_error: string | null
+          last_test_ok: boolean | null
+          provider: string
+          region: string | null
+          reply_to: string | null
+          tenant_id: string
+          updated_at: string
+          verified: boolean
+          webhook_secret: string | null
+        }
+        Insert: {
+          api_key_enc?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain?: string | null
+          from_email?: string | null
+          from_name?: string | null
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_ok?: boolean | null
+          provider?: string
+          region?: string | null
+          reply_to?: string | null
+          tenant_id: string
+          updated_at?: string
+          verified?: boolean
+          webhook_secret?: string | null
+        }
+        Update: {
+          api_key_enc?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain?: string | null
+          from_email?: string | null
+          from_name?: string | null
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_ok?: boolean | null
+          provider?: string
+          region?: string | null
+          reply_to?: string | null
+          tenant_id?: string
+          updated_at?: string
+          verified?: boolean
+          webhook_secret?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_smtp_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_smtp_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      tenant_wa_config: {
+        Row: {
+          business_name: string | null
+          display_phone: string | null
+          phone_number_id: string | null
+          tenant_id: string
+          updated_at: string
+          webhook_verified: boolean
+        }
+        Insert: {
+          business_name?: string | null
+          display_phone?: string | null
+          phone_number_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          webhook_verified?: boolean
+        }
+        Update: {
+          business_name?: string | null
+          display_phone?: string | null
+          phone_number_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          webhook_verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_wa_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_wa_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
           },
         ]
       }
@@ -3143,6 +4087,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "wa_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+          {
             foreignKeyName: "wa_templates_wa_number_id_fkey"
             columns: ["wa_number_id"]
             isOneToOne: false
@@ -3150,6 +4101,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      webhook_dedup: {
+        Row: {
+          event_id: string
+          event_source: string
+          seen_at: string
+        }
+        Insert: {
+          event_id: string
+          event_source: string
+          seen_at?: string
+        }
+        Update: {
+          event_id?: string
+          event_source?: string
+          seen_at?: string
+        }
+        Relationships: []
       }
       webhook_events: {
         Row: {
@@ -3164,6 +4133,7 @@ export type Database = {
           processed_at: string | null
           source: string
           status: string
+          tenant_id: string | null
           wa_message_id: string | null
         }
         Insert: {
@@ -3178,6 +4148,7 @@ export type Database = {
           processed_at?: string | null
           source?: string
           status?: string
+          tenant_id?: string | null
           wa_message_id?: string | null
         }
         Update: {
@@ -3192,9 +4163,25 @@ export type Database = {
           processed_at?: string | null
           source?: string
           status?: string
+          tenant_id?: string | null
           wa_message_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "webhook_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "webhook_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
       }
       website_pages: {
         Row: {
@@ -3316,13 +4303,100 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "wordpress_sites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
         ]
       }
     }
     Views: {
-      [_ in never]: never
+      super_admin_subscribers: {
+        Row: {
+          active_social_accounts: number | null
+          active_wa_numbers: number | null
+          company_created_at: string | null
+          company_name: string | null
+          contacts_count: number | null
+          country: string | null
+          currency: string | null
+          last_message_at: string | null
+          messages_count: number | null
+          paddle_customer_id: string | null
+          paddle_subscription_id: string | null
+          plan: string | null
+          slug: string | null
+          staff_count: number | null
+          subscription_renews_at: string | null
+          subscription_status: string | null
+          suspended: boolean | null
+          tenant_id: string | null
+        }
+        Insert: {
+          active_social_accounts?: never
+          active_wa_numbers?: never
+          company_created_at?: string | null
+          company_name?: string | null
+          contacts_count?: never
+          country?: string | null
+          currency?: string | null
+          last_message_at?: never
+          messages_count?: never
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
+          plan?: string | null
+          slug?: string | null
+          staff_count?: never
+          subscription_renews_at?: string | null
+          subscription_status?: string | null
+          suspended?: boolean | null
+          tenant_id?: string | null
+        }
+        Update: {
+          active_social_accounts?: never
+          active_wa_numbers?: never
+          company_created_at?: string | null
+          company_name?: string | null
+          contacts_count?: never
+          country?: string | null
+          currency?: string | null
+          last_message_at?: never
+          messages_count?: never
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
+          plan?: string | null
+          slug?: string | null
+          staff_count?: never
+          subscription_renews_at?: string | null
+          subscription_status?: string | null
+          suspended?: boolean | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      _is_locked_super_admin_email: {
+        Args: { _email: string }
+        Returns: boolean
+      }
+      _smtp_encryption_key: { Args: never; Returns: string }
+      check_ai_rate_limit: {
+        Args: {
+          _max_per_day?: number
+          _max_per_hour?: number
+          _tenant_id: string
+        }
+        Returns: {
+          allowed: boolean
+          reason: string
+          used_day: number
+          used_hour: number
+        }[]
+      }
       check_auth_email_attempt: {
         Args: { _action_type: string; _recipient_email: string }
         Returns: {
@@ -3331,7 +4405,35 @@ export type Database = {
           retry_after_seconds: number
         }[]
       }
+      check_otp_attempt: {
+        Args: { _email: string; _ip?: string; _kind: string }
+        Returns: {
+          allowed: boolean
+          attempts_last_hour: number
+          reject_reason: string
+          seconds_until_next: number
+        }[]
+      }
+      consume_oauth_state: {
+        Args: { _state: string }
+        Returns: {
+          code_verifier: string
+          id: string
+          platform: string
+          redirect_uri: string
+          tenant_id: string
+          user_id: string
+        }[]
+      }
       current_tenant_id: { Args: never; Returns: string }
+      get_tenant_ai_key: {
+        Args: { _tenant_id: string }
+        Returns: {
+          api_key: string
+          provider: string
+        }[]
+      }
+      get_tenant_smtp_api_key: { Args: { _tenant_id: string }; Returns: string }
       has_active_subscription: {
         Args: { check_env?: string; user_uuid: string }
         Returns: boolean
@@ -3343,10 +4445,134 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_unread_count: {
+        Args: { _conversation_id: string }
+        Returns: number
+      }
       is_super_admin: { Args: { _user?: string }; Returns: boolean }
+      is_tenant_admin: { Args: { _user?: string }; Returns: boolean }
+      list_subscribers: {
+        Args: never
+        Returns: {
+          active_social_accounts: number | null
+          active_wa_numbers: number | null
+          company_created_at: string | null
+          company_name: string | null
+          contacts_count: number | null
+          country: string | null
+          currency: string | null
+          last_message_at: string | null
+          messages_count: number | null
+          paddle_customer_id: string | null
+          paddle_subscription_id: string | null
+          plan: string | null
+          slug: string | null
+          staff_count: number | null
+          subscription_renews_at: string | null
+          subscription_status: string | null
+          suspended: boolean | null
+          tenant_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "super_admin_subscribers"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      log_email_delivery: {
+        Args: {
+          _error?: string
+          _from_address: string
+          _meta?: Json
+          _provider: string
+          _provider_msg_id: string
+          _recipient: string
+          _status: string
+          _subject: string
+          _template: string
+          _tenant_id: string
+          _user_id: string
+        }
+        Returns: string
+      }
+      mark_wa_webhook_verified: {
+        Args: { _tenant_id: string }
+        Returns: undefined
+      }
       next_document_number: {
         Args: { _doc_type: string; _tenant_id: string }
         Returns: string
+      }
+      purge_expired_oauth_states: { Args: never; Returns: number }
+      record_ai_usage: {
+        Args: {
+          _duration_ms: number
+          _feature: string
+          _ok: boolean
+          _provider: string
+          _tenant_id: string
+          _user_id: string
+        }
+        Returns: undefined
+      }
+      record_integration_error: {
+        Args: {
+          _account_id: string
+          _api_version: string
+          _feature: string
+          _fingerprint: string
+          _friendly_message: string
+          _friendly_title: string
+          _http_status: number
+          _likely_cause: string
+          _operation: string
+          _platform: string
+          _provider_code: string
+          _provider_message: string
+          _provider_subcode: string
+          _provider_type: string
+          _recommended_fix: string
+          _retryable: boolean
+          _severity: string
+          _tenant_id: string
+        }
+        Returns: string
+      }
+      record_otp_attempt: {
+        Args: {
+          _email: string
+          _ip: string
+          _kind: string
+          _reject_reason?: string
+          _status: string
+        }
+        Returns: string
+      }
+      replace_sales_document_items: {
+        Args: { _document_id: string; _items: Json; _tenant_id: string }
+        Returns: undefined
+      }
+      rotate_site_webhook_secret: {
+        Args: { _site_id: string }
+        Returns: string
+      }
+      rotate_wa_number_app_secret: {
+        Args: { _new_secret: string; _wa_number_id: string }
+        Returns: boolean
+      }
+      set_tenant_smtp_api_key: {
+        Args: { _api_key: string }
+        Returns: undefined
+      }
+      update_email_delivery: {
+        Args: {
+          _error?: string
+          _new_status: string
+          _provider: string
+          _provider_msg_id: string
+        }
+        Returns: boolean
       }
     }
     Enums: {

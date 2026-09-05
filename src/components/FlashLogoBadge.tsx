@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
-import flashLogoAsset from "@/assets/flash-logo.png.asset.json";
+import flasLogoAsset from "@/assets/flas-logo.png.asset.json";
+import flasRoundLogoAsset from "@/assets/flas-round-logo.png.asset.json";
 
-/** Flas wordmark inside a white circular badge — legible on any background. */
+/** Official Flas round mark inside a white badge — legible on any background. */
 export function FlashLogoBadge({
   className,
   imgClassName,
@@ -16,7 +17,26 @@ export function FlashLogoBadge({
         className,
       )}
     >
-      <img src={flashLogoAsset.url} alt="Flas" className={cn("w-[74%]", imgClassName)} />
+      <img
+        src={flasRoundLogoAsset.url}
+        alt="Flas"
+        className={cn("size-full object-contain", imgClassName)}
+      />
     </span>
+  );
+}
+
+/** Official horizontal Flas wordmark for wide headers and brand surfaces. */
+export function FlasWordmark({
+  className,
+}: {
+  className?: string;
+}) {
+  return (
+    <img
+      src={flasLogoAsset.url}
+      alt="Flas"
+      className={cn("h-9 w-auto object-contain", className)}
+    />
   );
 }
