@@ -62,12 +62,21 @@ export const Route = createFileRoute("/")({
             name: "Mobi Digital Solutions",
             url: "https://mobidigisol.com",
           },
-          offers: {
-            "@type": "Offer",
-            price: "20",
-            priceCurrency: "USD",
-            description: "One month free trial, then $20 per month per company.",
-          },
+          offers: [
+            {
+              "@type": "Offer",
+              price: "20",
+              priceCurrency: "USD",
+              description:
+                "Launch offer: $20 per month for the first six months instead of $30, after a one month free trial.",
+            },
+            {
+              "@type": "Offer",
+              price: "240",
+              priceCurrency: "USD",
+              description: "Yearly plan: $240 per year instead of $360.",
+            },
+          ],
         }),
       },
     ],
@@ -176,7 +185,7 @@ const STEPS = [
   },
 ];
 
-const WHATSAPP = "https://wa.me/971503885271";
+const WHATSAPP = "https://wa.me/9710509630506";
 
 function Landing() {
   useEffect(() => {
@@ -241,9 +250,15 @@ function Landing() {
               <a href="#quote">Request a quotation</a>
             </Button>
           </div>
-          <p className="mt-4 text-xs text-muted-foreground">
-            $20 per month per company after the free month · cancel any time · try the chat bubble in
-            the corner, it lands in the live inbox.
+          <p className="mt-4 text-sm">
+            <span className="text-muted-foreground line-through">$30/month</span>{" "}
+            <span className="font-semibold text-brand">$20/month for your first six months</span>{" "}
+            <span className="text-muted-foreground">
+              · or $240 a year instead of $360 · one month free first
+            </span>
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Cancel any time · try the chat bubble in the corner, it lands in the live inbox.
           </p>
         </section>
 

@@ -48,9 +48,9 @@ export function BillingCard() {
     : null;
   const hasSubscription = tenant.subscription_status === "active" || tenant.subscription_status === "past_due";
 
-  const subscribe = () =>
+  const subscribe = (priceId: "flash_monthly" | "flash_yearly") =>
     openCheckout({
-      priceId: "flash_monthly",
+      priceId,
       quantity: 1,
       ...(user?.email ? { customerEmail: user.email } : {}),
       customData: { userId: user?.id ?? "", tenantId: tenant.id },
@@ -76,7 +76,8 @@ export function BillingCard() {
           <CreditCard className="h-5 w-5" /> Subscription &amp; Billing
         </CardTitle>
         <CardDescription>
-          Flas WhatsApp Tool — $20/month per company. Manage or cancel anytime.
+          Flas WhatsApp Tool — normally $30/month. Launch offer: $20/month for your first six
+          months, or $240 a year instead of $360. Manage or cancel anytime.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -103,14 +104,23 @@ export function BillingCard() {
 
         <div className="flex flex-wrap gap-2">
           {!hasSubscription && (
-            <Button onClick={subscribe} disabled={checkoutLoading}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              {checkoutLoading
-                ? "Opening checkout…"
-                : tenant.subscription_status === "canceled"
-                  ? "Resubscribe — $20/mo"
-                  : "Subscribe — $20/mo (1 month free)"}
-            </Button>
+            <>
+              <Button onClick={() => subscribe("flash_monthly")} disabled={checkoutLoading}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                {checkoutLoading
+                  ? "Opening checkout…"
+                  : tenant.subscription_status === "canceled"
+                    ? "Resubscribe — $20/mo"
+                    : "Monthly — $20/mo (was $30, 1 month free)"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => subscribe("flash_yearly")}
+                disabled={checkoutLoading}
+              >
+                Yearly — $240/year (was $360)
+              </Button>
+            </>
           )}
           {hasSubscription && (
             <Button variant="outline" onClick={openPortal} disabled={portalLoading}>
