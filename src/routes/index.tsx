@@ -62,12 +62,21 @@ export const Route = createFileRoute("/")({
             name: "Mobi Digital Solutions",
             url: "https://mobidigisol.com",
           },
-          offers: {
-            "@type": "Offer",
-            price: "20",
-            priceCurrency: "USD",
-            description: "One month free trial, then $20 per month per company.",
-          },
+          offers: [
+            {
+              "@type": "Offer",
+              price: "20",
+              priceCurrency: "USD",
+              description:
+                "Launch offer: $20 per month for the first six months instead of $30, after a one month free trial.",
+            },
+            {
+              "@type": "Offer",
+              price: "240",
+              priceCurrency: "USD",
+              description: "Yearly plan: $240 per year instead of $360.",
+            },
+          ],
         }),
       },
     ],
@@ -176,7 +185,7 @@ const STEPS = [
   },
 ];
 
-const WHATSAPP = "https://wa.me/971503885271";
+const WHATSAPP = "https://wa.me/9710509630506";
 
 function Landing() {
   useEffect(() => {
