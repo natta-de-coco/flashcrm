@@ -104,14 +104,23 @@ export function BillingCard() {
 
         <div className="flex flex-wrap gap-2">
           {!hasSubscription && (
-            <Button onClick={subscribe} disabled={checkoutLoading}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              {checkoutLoading
-                ? "Opening checkout…"
-                : tenant.subscription_status === "canceled"
-                  ? "Resubscribe — $20/mo"
-                  : "Subscribe — $20/mo (1 month free)"}
-            </Button>
+            <>
+              <Button onClick={() => subscribe("flash_monthly")} disabled={checkoutLoading}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                {checkoutLoading
+                  ? "Opening checkout…"
+                  : tenant.subscription_status === "canceled"
+                    ? "Resubscribe — $20/mo"
+                    : "Monthly — $20/mo (was $30, 1 month free)"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => subscribe("flash_yearly")}
+                disabled={checkoutLoading}
+              >
+                Yearly — $240/year (was $360)
+              </Button>
+            </>
           )}
           {hasSubscription && (
             <Button variant="outline" onClick={openPortal} disabled={portalLoading}>
