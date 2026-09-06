@@ -3647,6 +3647,7 @@ export type Database = {
           resolved: boolean
           severity: string
           source: string
+          tenant_id: string | null
           title: string
         }
         Insert: {
@@ -3656,6 +3657,7 @@ export type Database = {
           resolved?: boolean
           severity?: string
           source?: string
+          tenant_id?: string | null
           title: string
         }
         Update: {
@@ -3665,9 +3667,25 @@ export type Database = {
           resolved?: boolean
           severity?: string
           source?: string
+          tenant_id?: string | null
           title?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "system_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
       }
       tax_rates: {
         Row: {
