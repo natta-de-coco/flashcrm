@@ -48,9 +48,9 @@ export function BillingCard() {
     : null;
   const hasSubscription = tenant.subscription_status === "active" || tenant.subscription_status === "past_due";
 
-  const subscribe = () =>
+  const subscribe = (priceId: "flash_monthly" | "flash_yearly") =>
     openCheckout({
-      priceId: "flash_monthly",
+      priceId,
       quantity: 1,
       ...(user?.email ? { customerEmail: user.email } : {}),
       customData: { userId: user?.id ?? "", tenantId: tenant.id },
