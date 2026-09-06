@@ -250,9 +250,15 @@ function Landing() {
               <a href="#quote">Request a quotation</a>
             </Button>
           </div>
-          <p className="mt-4 text-xs text-muted-foreground">
-            $20 per month per company after the free month · cancel any time · try the chat bubble in
-            the corner, it lands in the live inbox.
+          <p className="mt-4 text-sm">
+            <span className="text-muted-foreground line-through">$30/month</span>{" "}
+            <span className="font-semibold text-brand">$20/month for your first six months</span>{" "}
+            <span className="text-muted-foreground">
+              · or $240 a year instead of $360 · one month free first
+            </span>
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Cancel any time · try the chat bubble in the corner, it lands in the live inbox.
           </p>
         </section>
 

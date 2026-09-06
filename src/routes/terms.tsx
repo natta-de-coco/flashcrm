@@ -43,9 +43,11 @@ function TermsPage() {
         <section>
           <h2 className="text-lg font-semibold">2. Subscription and trial</h2>
           <p className="mt-2 text-muted-foreground">
-            Flas CRM costs USD 20 per workspace per month and includes a one-month free trial. The
-            subscription renews automatically each month until cancelled. Prices exclude any local
-            taxes that may apply.
+            Flas CRM has a list price of USD 30 per workspace per month. Under the current launch
+            offer you pay USD 20 per month for your first six months, after which the standard rate
+            applies. A yearly plan is available at USD 240 per year instead of USD 360. Every new
+            workspace starts with a one-month free trial. Subscriptions renew automatically until
+            cancelled. Prices exclude any local taxes that may apply.
           </p>
         </section>
 
