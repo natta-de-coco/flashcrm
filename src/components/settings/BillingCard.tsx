@@ -76,7 +76,8 @@ export function BillingCard() {
           <CreditCard className="h-5 w-5" /> Subscription &amp; Billing
         </CardTitle>
         <CardDescription>
-          Flas WhatsApp Tool — $20/month per company. Manage or cancel anytime.
+          Flas WhatsApp Tool — normally $30/month. Launch offer: $20/month for your first six
+          months, or $240 a year instead of $360. Manage or cancel anytime.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
