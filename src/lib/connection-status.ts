@@ -5,12 +5,7 @@
 import type { Capability, ConnectorId } from "./connections-catalog";
 
 export type ConnectionState =
-  | "connected"
-  | "needs_verification"
-  | "pending_review"
-  | "expired"
-  | "failing"
-  | "not_connected";
+  "connected" | "needs_verification" | "pending_review" | "expired" | "failing" | "not_connected";
 
 export type ConnectionStatus = {
   state: ConnectionState;
@@ -44,7 +39,9 @@ const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatu
 };
 
 /** Permissions Flas needs before a capability actually works. */
-export const REQUIRED_PERMISSIONS: Partial<Record<ConnectorId, Partial<Record<Capability, string[]>>>> = {
+export const REQUIRED_PERMISSIONS: Partial<
+  Record<ConnectorId, Partial<Record<Capability, string[]>>>
+> = {
   instagram: {
     messaging: ["instagram_manage_messages"],
     publish: ["instagram_content_publish"],
@@ -162,7 +159,8 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
     errors: [
       {
         error: "business.facebook.com refused to connect / ERR_BLOCKED_BY_RESPONSE",
-        means: "Meta blocks its login inside embedded frames — this is a Meta security header, not a Flas fault.",
+        means:
+          "Meta blocks its login inside embedded frames — this is a Meta security header, not a Flas fault.",
         fix: "Use the Connect button: Flas opens Meta in a new browser tab where the login works normally.",
       },
       {
@@ -317,7 +315,10 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
     reviewTimeline: "No review — access follows your paid X API tier immediately.",
   },
   pinterest: {
-    checklist: ["The Pinterest account is a business account.", "The app has standard access approved."],
+    checklist: [
+      "The Pinterest account is a business account.",
+      "The app has standard access approved.",
+    ],
     errors: [
       {
         error: "You are not permitted to access this endpoint",
@@ -439,7 +440,10 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
     reviewTimeline: "Google Ads API Basic Access: 1–3 business days.",
   },
   google_analytics: {
-    checklist: ["It is a GA4 property (not Universal Analytics).", "You have at least Viewer access."],
+    checklist: [
+      "It is a GA4 property (not Universal Analytics).",
+      "You have at least Viewer access.",
+    ],
     errors: [
       {
         error: "User does not have sufficient permissions for this property",
@@ -449,7 +453,10 @@ export const TROUBLESHOOTING: Partial<Record<ConnectorId, Troubleshooting>> = {
     ],
   },
   search_console: {
-    checklist: ["The domain property is verified in Search Console.", "You are Owner or Full user."],
+    checklist: [
+      "The domain property is verified in Search Console.",
+      "You are Owner or Full user.",
+    ],
     errors: [
       {
         error: "User does not have sufficient permission for site",

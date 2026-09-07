@@ -84,8 +84,20 @@ async function handleSubscriptionCreated(data: any, env: PaddleEnv) {
     { onConflict: "paddle_subscription_id" },
   );
 
+  // Derive the tenant from the subscriber's own profile server-side, never
+  // from customData.tenantId directly — customData is set client-side when
+  // checkout starts (BillingCard.tsx), so a caller could point a paid
+  // checkout at an arbitrary tenantId and have this handler apply someone
+  // else's subscription status to their organization. userId is used only
+  // to look up the real tenant; the client-supplied tenantId is ignored.
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("tenant_id")
+    .eq("id", userId)
+    .maybeSingle();
+
   await syncOrganization({
-    tenantId: customData?.tenantId,
+    tenantId: profile?.tenant_id ?? undefined,
     status,
     periodEnd: currentBillingPeriod?.endsAt ?? null,
     customerId,
@@ -186,8 +198,13 @@ export const Route = createFileRoute("/api/public/payments/webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const url = new URL(request.url);
-        const env = (url.searchParams.get("env") || "sandbox") as PaddleEnv;
+        // Anchor env to a server-side env var, never the URL. A query string
+        // is attacker-controlled — hitting `?env=sandbox` on the prod URL
+        // used to force verification against the sandbox secret, and if that
+        // secret ever leaked, sandbox test events could mutate prod data.
+        const env = (
+          (process.env["PADDLE_ENV"] ?? "sandbox").toLowerCase() === "live" ? "live" : "sandbox"
+        ) as PaddleEnv;
         try {
           const event = await verifyWebhook(request, env);
           switch (event.eventType) {

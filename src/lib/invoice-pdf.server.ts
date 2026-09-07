@@ -123,13 +123,15 @@ function hex(color: string | undefined, fallback: [number, number, number]) {
 
 /** Latin-1 safe text (StandardFonts cannot encode arbitrary unicode). */
 function safe(text: unknown): string {
-  return String(text ?? "")
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014]/g, "-")
-    .replace(/\u00A0/g, " ")
-    // eslint-disable-next-line no-control-regex
-    .replace(/[^\u0000-\u00FF]/g, "");
+  return (
+    String(text ?? "")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2013\u2014]/g, "-")
+      .replace(/\u00A0/g, " ")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[^\u0000-\u00FF]/g, "")
+  );
 }
 
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
@@ -160,17 +162,65 @@ function dateLabel(value?: string | null) {
   if (!value) return "-";
   const d = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return safe(value);
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * Rejects obvious SSRF targets before we ever fetch a customer-supplied
+ * logo_url: non-http(s) schemes, loopback/link-local/private-range IP
+ * literals (including the 169.254.169.254 cloud metadata address), and
+ * localhost-ish hostnames. This is a literal-value check, not DNS-rebinding
+ * protection — a public hostname that later resolves to a private IP isn't
+ * caught here, since that needs runtime DNS control this edge runtime
+ * doesn't expose via plain fetch().
+ */
+function isSafeImageUrl(raw: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+
+  const host = url.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return false;
+  if (host === "metadata.google.internal") return false;
+
+  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4) {
+    const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+    if (a === 127) return false; // loopback
+    if (a === 10) return false; // RFC1918
+    if (a === 172 && b >= 16 && b <= 31) return false; // RFC1918
+    if (a === 192 && b === 168) return false; // RFC1918
+    if (a === 169 && b === 254) return false; // link-local, incl. cloud metadata
+    if (a === 0) return false;
+  }
+  if (host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd"))
+    return false;
+
+  return true;
 }
 
 async function fetchImage(pdf: PDFDocument, url?: string | null): Promise<PDFImage | null> {
-  if (!url) return null;
+  if (!url || !isSafeImageUrl(url)) return null;
   try {
-    const res = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(url, { signal: controller.signal, redirect: "error" }).finally(() =>
+      clearTimeout(timeout),
+    );
     if (!res.ok) return null;
     const bytes = new Uint8Array(await res.arrayBuffer());
     const type = res.headers.get("content-type") ?? "";
-    if (type.includes("png") || url.toLowerCase().endsWith(".png")) return await pdf.embedPng(bytes);
+    if (type.includes("png") || url.toLowerCase().endsWith(".png"))
+      return await pdf.embedPng(bytes);
     return await pdf.embedJpg(bytes);
   } catch {
     return null;
@@ -254,7 +304,9 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
   page.drawText(companyName, { x: M, y, size: 14, font: bold, color: primary });
   y -= 15;
   const companyLines = [
-    input.company.legal_name && input.company.legal_name !== companyName ? input.company.legal_name : null,
+    input.company.legal_name && input.company.legal_name !== companyName
+      ? input.company.legal_name
+      : null,
     input.company.address,
     input.company.country,
     input.company.phone ? `Tel: ${input.company.phone}` : null,
@@ -299,7 +351,13 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
     const text = safe(value);
     const valueWidth = font.widthOfTextAtSize(text, 9);
     page.drawText(`${label}`, { x: A4.width - M - 190, y: metaY, size: 8.5, font, color: muted });
-    page.drawText(text, { x: A4.width - M - valueWidth, y: metaY, size: 9, font: bold, color: ink });
+    page.drawText(text, {
+      x: A4.width - M - valueWidth,
+      y: metaY,
+      size: 9,
+      font: bold,
+      color: ink,
+    });
     metaY -= 13;
   }
 
@@ -383,7 +441,13 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       color: primary,
       opacity: 0.08,
     });
-    page.drawText("DESCRIPTION", { x: cols.desc + 6, y: atY + 2, size: 8, font: bold, color: primary });
+    page.drawText("DESCRIPTION", {
+      x: cols.desc + 6,
+      y: atY + 2,
+      size: 8,
+      font: bold,
+      color: primary,
+    });
     right("QTY", cols.price - 12, atY + 2, 8, bold, primary);
     right("RATE", cols.disc - 12, atY + 2, 8, bold, primary);
     right("DISC", cols.tax - 8, atY + 2, 8, bold, primary);
@@ -433,8 +497,20 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
 
     const qtyLabel = `${trimNumber(item.quantity)}${item.unit ? ` ${item.unit}` : ""}`;
     right(qtyLabel, cols.price - 12, y - 2, 9, font);
-    right(money(item.unit_price, input.currency).replace(`${input.currency} `, ""), cols.disc - 12, y - 2, 9, font);
-    right(item.discount_amount ? trimNumber(item.discount_amount) : "-", cols.tax - 8, y - 2, 9, font);
+    right(
+      money(item.unit_price, input.currency).replace(`${input.currency} `, ""),
+      cols.disc - 12,
+      y - 2,
+      9,
+      font,
+    );
+    right(
+      item.discount_amount ? trimNumber(item.discount_amount) : "-",
+      cols.tax - 8,
+      y - 2,
+      9,
+      font,
+    );
     right(item.tax_rate ? `${trimNumber(item.tax_rate)}%` : "-", cols.total - 78, y - 2, 9, font);
     right(
       money(item.line_total, input.currency).replace(`${input.currency} `, ""),
@@ -445,19 +521,27 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
     );
 
     y -= rowHeight;
-    page.drawLine({ start: { x: M, y: y + 6 }, end: { x: A4.width - M, y: y + 6 }, thickness: 0.5, color: hairline });
+    page.drawLine({
+      start: { x: M, y: y + 6 },
+      end: { x: A4.width - M, y: y + 6 },
+      thickness: 0.5,
+      color: hairline,
+    });
   }
 
   // ---------- totals ----------
   const totals: [string, string, boolean][] = [
     ["Subtotal", money(input.subtotal, input.currency), false],
   ];
-  if (input.item_discount_total) totals.push(["Item discounts", `- ${money(input.item_discount_total, input.currency)}`, false]);
-  if (input.invoice_discount) totals.push(["Invoice discount", `- ${money(input.invoice_discount, input.currency)}`, false]);
+  if (input.item_discount_total)
+    totals.push(["Item discounts", `- ${money(input.item_discount_total, input.currency)}`, false]);
+  if (input.invoice_discount)
+    totals.push(["Invoice discount", `- ${money(input.invoice_discount, input.currency)}`, false]);
   totals.push([`Taxable amount`, money(input.taxable_amount, input.currency), false]);
   totals.push([safe(input.tax_label), money(input.tax_total, input.currency), false]);
   if (input.shipping) totals.push(["Shipping", money(input.shipping, input.currency), false]);
-  if (input.additional_charges) totals.push(["Additional charges", money(input.additional_charges, input.currency), false]);
+  if (input.additional_charges)
+    totals.push(["Additional charges", money(input.additional_charges, input.currency), false]);
   if (input.adjustment) totals.push(["Adjustment", money(input.adjustment, input.currency), false]);
   totals.push(["Grand total", money(input.grand_total, input.currency), true]);
   if (input.kind !== "quotation") {
@@ -475,7 +559,14 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
   y -= 10;
   for (const [label, value, strong] of totals) {
     if (strong) {
-      page.drawRectangle({ x: boxX - 8, y: y - 4, width: 258, height: 18, color: primary, opacity: 0.09 });
+      page.drawRectangle({
+        x: boxX - 8,
+        y: y - 4,
+        width: 258,
+        height: 18,
+        color: primary,
+        opacity: 0.09,
+      });
     }
     page.drawText(safe(label), {
       x: boxX,
@@ -484,7 +575,14 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       font: strong ? bold : font,
       color: strong ? primary : muted,
     });
-    right(value, cols.total - 6, y, strong ? 11 : 9.5, strong ? bold : font, strong ? primary : ink);
+    right(
+      value,
+      cols.total - 6,
+      y,
+      strong ? 11 : 9.5,
+      strong ? bold : font,
+      strong ? primary : ink,
+    );
     y -= strong ? 19 : 15;
   }
 
@@ -572,7 +670,9 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       color: hairline,
     });
     const footerLines = [
-      [input.company.website, input.company.email, input.company.phone].filter(Boolean).join("  •  "),
+      [input.company.website, input.company.email, input.company.phone]
+        .filter(Boolean)
+        .join("  •  "),
       input.company.vat_number ? `TRN / VAT: ${input.company.vat_number}` : "",
       input.verification_id ? `Verification ID: ${input.verification_id}` : "",
     ].filter(Boolean) as string[];

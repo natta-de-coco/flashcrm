@@ -3,20 +3,14 @@
 // content composing. Tenant data flows through the caller's RLS-scoped
 // client; only social account tokens are read via the admin client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { callFlashAi, getBusinessContext } from "./flash-ai.server";
+import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
 
 type RlsClient = {
   from: (table: string) => never;
 };
 
 export type SocialPlatform =
-  | "instagram"
-  | "facebook"
-  | "youtube"
-  | "twitter"
-  | "linkedin"
-  | "tiktok"
-  | "google_business";
+  "instagram" | "facebook" | "youtube" | "twitter" | "linkedin" | "tiktok" | "google_business";
 
 export type SocialAccountSecret = {
   id: string;
@@ -226,7 +220,10 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
     }
 
     try {
-      const page = await graphGet(`/${account.external_id}?fields=followers_count,fan_count`, token);
+      const page = await graphGet(
+        `/${account.external_id}?fields=followers_count,fan_count`,
+        token,
+      );
       const followers = page?.followers_count ?? page?.fan_count;
       if (typeof followers === "number") stats = { followers };
     } catch {
@@ -457,9 +454,14 @@ async function syncLinkedIn(account: SocialAccountSecret): Promise<SyncResult> {
     `https://api.linkedin.com/rest/posts?author=${encodeURIComponent(urn)}&q=author&count=10&sortBy=LAST_MODIFIED`,
   );
   for (const p of feed.elements ?? []) {
+    // A missing id used to fall back to a fresh random UUID every sync,
+    // which meant the same post (if LinkedIn ever omitted its id) never
+    // matched itself on the next run and got re-inserted as a duplicate.
+    // Skipping it is safer than fabricating an identity for it.
+    if (!p.id) continue;
     if (
       await savePost(account, {
-        external_id: String(p.id ?? crypto.randomUUID()),
+        external_id: String(p.id),
         caption: p.commentary ?? "(LinkedIn post)",
         published_at: p.publishedAt ? new Date(p.publishedAt).toISOString() : null,
       })
@@ -540,8 +542,15 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
       "Add the location path (accounts/123/locations/456) and a Google OAuth token first.",
     );
   }
+  // The legacy "Google My Business API v4" (mybusiness.googleapis.com) is
+  // deprecated and Google actively sunsets it — this will hard-fail with no
+  // warning once it's fully shut down. Reviews now live on the split-out
+  // Business Profile Reviews API; the review object shape (reviewId,
+  // reviewer, starRating, comment, createTime) is documented as unchanged,
+  // only the host/path/version moved. Not verified against a live account —
+  // check the first real sync against this.
   const res = await fetch(
-    `https://mybusiness.googleapis.com/v4/${location.replace(/^\/+|\/+$/g, "")}/reviews?pageSize=20`,
+    `https://mybusinessreviews.googleapis.com/v1/${location.replace(/^\/+|\/+$/g, "")}/reviews?pageSize=20`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   const json: any = await res.json().catch(() => ({}));
@@ -553,8 +562,7 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
 
   let interactions = 0;
   for (const r of json.reviews ?? []) {
-    const stars =
-      { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 }[r.starRating as string] ?? null;
+    const stars = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 }[r.starRating as string] ?? null;
     if (
       await saveInteraction(account, {
         external_id: r.reviewId ?? r.name ?? crypto.randomUUID(),
@@ -648,7 +656,7 @@ export async function draftSocialReply(
   ]
     .filter(Boolean)
     .join("\n");
-  return callFlashAi(system, user);
+  return callFlashAi(system, user, await aiOptionsFor(supabase, "social_reply"));
 }
 
 /** Flas AI writes a ready-to-post caption for any connected social platform. */
@@ -674,5 +682,5 @@ export async function composeSocialCaption(
   ]
     .filter(Boolean)
     .join("\n");
-  return callFlashAi(system, user);
+  return callFlashAi(system, user, await aiOptionsFor(supabase, "social_caption"));
 }

@@ -18,10 +18,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/companies")({
   head: () => ({
-    meta: [
-      { title: "Companies — Flas Manager" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Companies — Flas Manager" }, { name: "robots", content: "noindex" }],
   }),
   component: CompaniesPage,
 });
@@ -35,7 +32,10 @@ const STATUS_STYLES: Record<string, string> = {
   none: "bg-muted text-muted-foreground",
 };
 
-type StatusPatch = { subscriptionStatus?: "trial" | "active" | "past_due" | "canceled"; suspended?: boolean };
+type StatusPatch = {
+  subscriptionStatus?: "trial" | "active" | "past_due" | "canceled";
+  suspended?: boolean;
+};
 
 /** Manager portal — super_admin only: every company on the platform. */
 function CompaniesPage() {
@@ -133,8 +133,8 @@ function CompaniesPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            A company counts as online when one of its team members was active in Flas in the last
-            5 minutes.
+            A company counts as online when one of its team members was active in Flas in the last 5
+            minutes.
           </p>
           {(presence.data?.tenants ?? []).length === 0 && (
             <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
@@ -284,9 +284,7 @@ function CompaniesPage() {
                   size="sm"
                   variant="outline"
                   disabled={exportMutation.isPending}
-                  onClick={() =>
-                    exportMutation.mutate({ organizationId: org.id, name: org.name })
-                  }
+                  onClick={() => exportMutation.mutate({ organizationId: org.id, name: org.name })}
                 >
                   <Download className="size-3.5" /> Export all data
                 </Button>

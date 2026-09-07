@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { recordAuditEvent } from "@/lib/audit.functions";
 import { parseContactImport, validRows } from "@/lib/contact-import";
 import { STAGES, type Contact, type LeadStage } from "@/lib/crm-types";
+import { useTenant } from "@/hooks/useTenant";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -49,15 +50,29 @@ export const Route = createFileRoute("/_authenticated/contacts")({
   component: ContactsPage,
 });
 
-const EMPTY = { name: "", phone: "", email: "", company: "", value: "0", notes: "" };
+const EMPTY = {
+  name: "",
+  phone: "",
+  email: "",
+  company: "",
+  value: "0",
+  notes: "",
+  // Without this, a manually-added contact can never be messaged: a normal
+  // send needs an inbound message in the last 24h (there is none), and a
+  // template send needs recorded consent. Contacts added here had no way to
+  // get either, so they were permanently unreachable.
+  consent: false,
+};
 
 function ContactsPage() {
   const qc = useQueryClient();
+  const { tenant } = useTenant();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const [importConsent, setImportConsent] = useState(false);
   const auditEvent = useServerFn(recordAuditEvent);
 
   // Live validation: every parsed row carries its own error list.
@@ -88,6 +103,8 @@ function ContactsPage() {
         company: form.company.trim() || null,
         value: Number(form.value) || 0,
         notes: form.notes.trim() || null,
+        consent_given: form.consent,
+        consent_at: form.consent ? new Date().toISOString() : null,
       });
       if (error) throw error;
     },
@@ -106,6 +123,28 @@ function ContactsPage() {
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["contacts"] }),
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  /** Records opt-in for a contact that has none, which is what unblocks
+   *  messaging them. Confirmed first: this is a compliance record, not a
+   *  cosmetic flag, and ticking it for someone who never agreed is exactly
+   *  what consent rules exist to prevent. */
+  const grantConsent = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("contacts")
+        .update({ consent_given: true, consent_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+      await auditEvent({
+        data: { action: "contact.consent_recorded", entityType: "contact", entityId: id },
+      }).catch(() => undefined);
+    },
+    onSuccess: () => {
+      toast.success("Consent recorded — you can message this contact now.");
+      void qc.invalidateQueries({ queryKey: ["contacts"] });
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -160,9 +199,18 @@ function ContactsPage() {
       const fresh = rows.filter((r) => !r.phone || !known.has(r.phone));
       if (fresh.length === 0) return { added: 0, skipped: rows.length };
 
-      const { error } = await supabase
-        .from("contacts")
-        .insert(fresh.map((r) => ({ ...r, tags: ["imported"] })));
+      const consentAt = importConsent ? new Date().toISOString() : null;
+      const { error } = await supabase.from("contacts").insert(
+        fresh.map((r) => ({
+          ...r,
+          tags: ["imported"],
+          // Imported contacts are unmessageable without this, so the
+          // importer asks once for the whole batch rather than leaving the
+          // user to discover it one failed send at a time.
+          consent_given: importConsent,
+          consent_at: consentAt,
+        })),
+      );
       if (error) throw error;
       return { added: fresh.length, skipped: rows.length - fresh.length };
     },
@@ -297,6 +345,26 @@ function ContactsPage() {
                 </div>
               )}
 
+              <label
+                htmlFor="import-consent"
+                className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
+              >
+                <input
+                  id="import-consent"
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0 accent-[hsl(var(--brand))]"
+                  checked={importConsent}
+                  onChange={(e) => setImportConsent(e.target.checked)}
+                />
+                <span className="text-sm">
+                  <span className="font-medium">Everyone in this list agreed to be contacted.</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Leave unticked if you're not sure — you can record consent per contact later.
+                    Without it, these contacts can be stored but not messaged.
+                  </span>
+                </span>
+              </label>
+
               <DialogFooter>
                 <Button
                   onClick={() => bulkImport.mutate()}
@@ -345,6 +413,25 @@ function ContactsPage() {
                     onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   />
                 </div>
+                <label
+                  htmlFor="consent"
+                  className="flex cursor-pointer items-start gap-2.5 rounded-lg border p-3"
+                >
+                  <input
+                    id="consent"
+                    type="checkbox"
+                    className="mt-0.5 size-4 shrink-0 accent-[hsl(var(--brand))]"
+                    checked={form.consent}
+                    onChange={(e) => setForm({ ...form, consent: e.target.checked })}
+                  />
+                  <span className="text-sm">
+                    <span className="font-medium">This person agreed to be contacted.</span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      Required before you can message them. Tick only if they actually opted in —
+                      the date is recorded as your proof of consent.
+                    </span>
+                  </span>
+                </label>
               </div>
               <DialogFooter>
                 <Button onClick={() => create.mutate()} disabled={create.isPending}>
@@ -380,20 +467,33 @@ function ContactsPage() {
                           {c.phone ?? c.email ?? "No contact details"}
                           {c.company ? ` · ${c.company}` : ""}
                         </p>
-                        {c.consent_given && (
+                        {c.consent_given ? (
                           <Badge variant="outline" className="mt-1 text-[10px]">
                             Consented
                             {c.consent_at
                               ? ` · ${new Date(c.consent_at).toLocaleDateString()}`
                               : ""}
                           </Badge>
+                        ) : (
+                          // Without consent this contact cannot be messaged at
+                          // all — say so here rather than letting the send fail
+                          // later with an error that looks like a bug.
+                          <button
+                            type="button"
+                            onClick={() => grantConsent.mutate(c.id)}
+                            disabled={grantConsent.isPending}
+                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
+                            title="You can't message this contact until they've agreed to be contacted."
+                          >
+                            Can't message — record consent
+                          </button>
                         )}
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold text-brand">
                           {Number(c.value ?? 0).toLocaleString(undefined, {
                             style: "currency",
-                            currency: "USD",
+                            currency: tenant?.currency || "USD",
                             maximumFractionDigits: 0,
                           })}
                         </span>

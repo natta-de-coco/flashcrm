@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import DOMPurify from "isomorphic-dompurify";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
@@ -124,9 +125,7 @@ function SeoStudioPage() {
   const sites = useQuery({
     queryKey: ["wordpress_sites"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("wordpress_sites")
-        .select("id, label, site_url");
+      const { data, error } = await supabase.from("wordpress_sites").select("id, label, site_url");
       if (error) throw error;
       return data ?? [];
     },
@@ -286,11 +285,7 @@ function SeoStudioPage() {
         if (error) throw error;
         return articleId;
       }
-      const { data, error } = await supabase
-        .from("seo_articles")
-        .insert(row)
-        .select("id")
-        .single();
+      const { data, error } = await supabase.from("seo_articles").insert(row).select("id").single();
       if (error) throw error;
       return data.id as string;
     },
@@ -319,9 +314,7 @@ function SeoStudioPage() {
       qc.invalidateQueries({ queryKey: ["seo_articles"] });
       toast.success("Published to WordPress", {
         description: r.url || undefined,
-        action: r.url
-          ? { label: "Open", onClick: () => window.open(r.url, "_blank") }
-          : undefined,
+        action: r.url ? { label: "Open", onClick: () => window.open(r.url, "_blank") } : undefined,
       });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Publish failed"),
@@ -364,10 +357,7 @@ function SeoStudioPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select
-            value={pubStatus}
-            onValueChange={(v) => setPubStatus(v as typeof pubStatus)}
-          >
+          <Select value={pubStatus} onValueChange={(v) => setPubStatus(v as typeof pubStatus)}>
             <SelectTrigger className="h-8 w-36 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -457,7 +447,8 @@ function SeoStudioPage() {
                       setImages(images.map((i) => ({ ...i, featured: i.id === img.id })))
                     }
                   >
-                    <Star className="size-3" /> {img.featured ? "Featured image" : "Set as featured"}
+                    <Star className="size-3" />{" "}
+                    {img.featured ? "Featured image" : "Set as featured"}
                   </button>
                 </div>
               ))}
@@ -703,7 +694,12 @@ function SeoStudioPage() {
                 ) : (
                   <div
                     className="prose prose-sm max-w-none rounded-lg border p-4"
-                    dangerouslySetInnerHTML={{ __html: contentHtml }}
+                    // AI-generated HTML — sanitize before rendering. This is
+                    // the only place stored blog content reaches the DOM
+                    // un-escaped, and it's tenant-shared, so an unsanitized
+                    // AI response (or a compromised one) was a stored XSS
+                    // hitting every admin who opened the post.
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contentHtml) }}
                   />
                 )}
 
@@ -791,7 +787,14 @@ function SeoStudioPage() {
             <CardContent className="space-y-3">
               <div className="flex items-center gap-4">
                 <svg viewBox="0 0 80 80" className="size-20">
-                  <circle cx="40" cy="40" r="34" fill="none" className="stroke-secondary" strokeWidth="8" />
+                  <circle
+                    cx="40"
+                    cy="40"
+                    r="34"
+                    fill="none"
+                    className="stroke-secondary"
+                    strokeWidth="8"
+                  />
                   <circle
                     cx="40"
                     cy="40"

@@ -14,9 +14,8 @@ export const draftCampaignMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => DraftSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { callFlashAi, getBusinessContext, gatherLeadSummary } = await import(
-      "@/lib/flash-ai.server"
-    );
+    const { callFlashAi, getBusinessContext, gatherLeadSummary } =
+      await import("@/lib/flash-ai.server");
     const { logAudit } = await import("@/lib/audit.server");
 
     const supabase = context.supabase as never;
@@ -42,11 +41,11 @@ export const draftCampaignMessage = createServerFn({ method: "POST" })
       `Business: ${business?.business_name ?? "unknown"} (${business?.industry ?? "general"})`,
       business?.description ? `About the business: ${business.description}` : "",
       business?.learned_facts ? `Learned facts: ${business.learned_facts}` : "",
-      `Audience data: ${leads.totalLeads} leads (${leads.consentedLeads} consented), sources: ${Object.entries(
-        leads.bySource,
-      )
-        .map(([k, v]) => `${k}=${v}`)
-        .join(", ") || "none"}, top tags: ${leads.topTags.join(", ") || "none"}.`,
+      `Audience data: ${leads.totalLeads} leads (${leads.consentedLeads} consented), sources: ${
+        Object.entries(leads.bySource)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(", ") || "none"
+      }, top tags: ${leads.topTags.join(", ") || "none"}.`,
       `Pipeline: ${Object.entries(leads.contactsByStage)
         .map(([k, v]) => `${k}=${v}`)
         .join(", ")}`,
@@ -57,7 +56,12 @@ export const draftCampaignMessage = createServerFn({ method: "POST" })
       .filter(Boolean)
       .join("\n");
 
-    const draft = await callFlashAi(system, user);
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    const draft = await callFlashAi(system, user, {
+      tenantId: tenantId as string | null,
+      feature: "campaign_draft",
+      userId: context.userId,
+    });
 
     await logAudit({
       action: "ai.campaign_draft",
@@ -81,9 +85,8 @@ export const getWhatsAppAnalytics = createServerFn({ method: "GET" })
 export const getAnalyticsInsights = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { callFlashAi, gatherMessagingAnalytics, getBusinessContext } = await import(
-      "@/lib/flash-ai.server"
-    );
+    const { callFlashAi, gatherMessagingAnalytics, getBusinessContext } =
+      await import("@/lib/flash-ai.server");
     const { logAudit } = await import("@/lib/audit.server");
 
     const supabase = context.supabase as never;
@@ -116,7 +119,12 @@ export const getAnalyticsInsights = createServerFn({ method: "POST" })
       }`,
     ].join("\n");
 
-    const insights = await callFlashAi(system, user);
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    const insights = await callFlashAi(system, user, {
+      tenantId: tenantId as string | null,
+      feature: "analytics_insights",
+      userId: context.userId,
+    });
 
     await logAudit({
       action: "ai.analytics_insights",

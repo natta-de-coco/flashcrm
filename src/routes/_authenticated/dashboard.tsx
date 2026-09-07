@@ -353,10 +353,7 @@ function DashboardPage() {
       ) : overview.isError ? (
         <Card>
           <CardContent className="pt-6">
-            <WidgetError
-              message={overview.error.message}
-              onRetry={() => overview.refetch()}
-            />
+            <WidgetError message={overview.error.message} onRetry={() => overview.refetch()} />
           </CardContent>
         </Card>
       ) : (
@@ -472,10 +469,7 @@ function DashboardPage() {
             {overview.isLoading ? (
               <ChartSkeleton />
             ) : overview.isError ? (
-              <WidgetError
-                message={overview.error.message}
-                onRetry={() => overview.refetch()}
-              />
+              <WidgetError message={overview.error.message} onRetry={() => overview.refetch()} />
             ) : (
               <ChartContainer config={activityConfig} className="h-56 w-full aspect-auto">
                 <BarChart
@@ -519,10 +513,7 @@ function DashboardPage() {
             {overview.isLoading ? (
               <ListSkeleton rows={3} />
             ) : overview.isError ? (
-              <WidgetError
-                message={overview.error.message}
-                onRetry={() => overview.refetch()}
-              />
+              <WidgetError message={overview.error.message} onRetry={() => overview.refetch()} />
             ) : (
               <>
                 {data?.social.accounts.length === 0 && (
@@ -571,13 +562,12 @@ function DashboardPage() {
                     </div>
                   );
                 })}
-                {(data?.social.accounts.length ?? 0) > 0 &&
-                  data?.social.pendingTotal === 0 && (
-                    <p className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
-                      <CheckCircle2 className="size-3.5 text-brand" /> All caught up —
-                      nothing waiting for a reply.
-                    </p>
-                  )}
+                {(data?.social.accounts.length ?? 0) > 0 && data?.social.pendingTotal === 0 && (
+                  <p className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
+                    <CheckCircle2 className="size-3.5 text-brand" /> All caught up — nothing waiting
+                    for a reply.
+                  </p>
+                )}
               </>
             )}
           </CardContent>
@@ -590,9 +580,7 @@ function DashboardPage() {
           <div>
             <CardTitle className="text-base">WhatsApp & Meta sync</CardTitle>
             {metaUpdatedAt && (
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Updated {metaUpdatedAt}
-              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Updated {metaUpdatedAt}</p>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -604,9 +592,7 @@ function DashboardPage() {
               onClick={() => void metaHealth.refetch()}
               disabled={metaHealth.isRefetching}
             >
-              <RefreshCw
-                className={`size-3.5 ${metaHealth.isRefetching ? "animate-spin" : ""}`}
-              />
+              <RefreshCw className={`size-3.5 ${metaHealth.isRefetching ? "animate-spin" : ""}`} />
             </Button>
             <Link to="/monitoring" className="text-xs font-medium text-brand hover:underline">
               Full monitoring
@@ -617,10 +603,7 @@ function DashboardPage() {
           {metaHealth.isLoading ? (
             <ListSkeleton rows={2} />
           ) : metaHealth.isError ? (
-            <WidgetError
-              message={metaHealth.error.message}
-              onRetry={() => metaHealth.refetch()}
-            />
+            <WidgetError message={metaHealth.error.message} onRetry={() => metaHealth.refetch()} />
           ) : (
             <>
               {metaHealth.data?.numbers.length === 0 && (
@@ -700,16 +683,12 @@ function DashboardPage() {
             {overview.isLoading ? (
               <ListSkeleton rows={5} />
             ) : overview.isError ? (
-              <WidgetError
-                message={overview.error.message}
-                onRetry={() => overview.refetch()}
-              />
+              <WidgetError message={overview.error.message} onRetry={() => overview.refetch()} />
             ) : (
               <>
                 {data?.recentConversations.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No conversations yet. Connect WhatsApp in Settings or embed the website
-                    widget.
+                    No conversations yet. Connect WhatsApp in Settings or embed the website widget.
                   </p>
                 )}
                 {data?.recentConversations.map((c) => (

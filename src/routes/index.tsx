@@ -324,8 +324,8 @@ function Landing() {
               </h2>
               <p className="mt-3 text-sm text-muted-foreground">
                 Mobi Digital Solutions builds and runs digital growth systems for businesses:
-                websites and e-commerce stores, WhatsApp and CRM automation, SEO and content,
-                paid social and search campaigns, and custom software like Flas CRM itself.
+                websites and e-commerce stores, WhatsApp and CRM automation, SEO and content, paid
+                social and search campaigns, and custom software like Flas CRM itself.
               </p>
               <ul className="mt-4 grid gap-2 text-sm">
                 {[

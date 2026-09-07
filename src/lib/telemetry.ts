@@ -6,11 +6,7 @@
 import { reportErrorEvent } from "@/lib/telemetry.functions";
 
 export type ErrorKind =
-  | "frontend"
-  | "server_action"
-  | "blank_screen"
-  | "network"
-  | "error_boundary";
+  "frontend" | "server_action" | "blank_screen" | "network" | "error_boundary";
 
 const SESSION_KEY = "flas.telemetry.session";
 const MAX_PER_SESSION = 40;

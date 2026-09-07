@@ -85,7 +85,10 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     idEnv: "X_CLIENT_ID",
     secretEnv: "X_CLIENT_SECRET",
     scopes: { twitter: ["tweet.read", "tweet.write", "users.read", "offline.access"] },
-    extraAuthParams: { code_challenge: "challenge", code_challenge_method: "plain" },
+    // Real PKCE is generated per-authorization below.  The hardcoded challenge
+    // used previously was equivalent to no PKCE at all and would be rejected by
+    // X's confidential-client / stricter modes.
+    extraAuthParams: {},
   },
   pinterest: {
     authorizeUrl: "https://www.pinterest.com/oauth/",
@@ -97,8 +100,27 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
 };
 
 export type StartResult =
-  | { ready: true; url: string }
-  | { ready: false; reason: string; missing: string[] };
+  { ready: true; url: string } | { ready: false; reason: string; missing: string[] };
+
+/** Providers that require PKCE (send code_challenge on auth, code_verifier on exchange). */
+const PKCE_PROVIDERS: Provider[] = ["twitter"];
+
+function base64UrlEncode(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Generate a real PKCE pair (S256).  Verifier is 43+ chars; challenge is
+ *  sha256(verifier) base64url-encoded — exactly per RFC 7636. */
+async function generatePkce(): Promise<{ verifier: string; challenge: string }> {
+  const rand = new Uint8Array(32);
+  crypto.getRandomValues(rand);
+  const verifier = base64UrlEncode(rand.buffer);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return { verifier, challenge: base64UrlEncode(digest) };
+}
 
 /** Credentials the workspace owner must add before a platform can be authorized. */
 export function providerCredentials(provider: Provider): {
@@ -184,7 +206,7 @@ export async function startAuthorization(args: {
   if (!creds.id || !creds.secret) {
     return {
       ready: false,
-      reason: `${meta.name} needs your own ${meta.provider} app keys. Open Integrations → Platform apps, paste the App ID and Secret once, and every account on this platform then connects with one click.`,
+      reason: `${meta.name} needs your own ${meta.provider} app keys. Open Connect & setup → Platform app keys, paste the ${meta.provider} App ID and Secret once, and every account on this platform then connects with one click.`,
       missing: providerEnvNames(meta.provider),
     };
   }
@@ -192,12 +214,17 @@ export async function startAuthorization(args: {
   const state = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
   const redirectUri = `${args.origin}/api/public/oauth-callback`;
 
+  // Real PKCE for providers that need it — verifier stored per-state row.
+  const usePkce = PKCE_PROVIDERS.includes(meta.provider);
+  const pkce = usePkce ? await generatePkce() : null;
+
   const { error } = await supabaseAdmin.from("oauth_states").insert({
     tenant_id: args.tenantId,
     user_id: args.userId,
     platform: args.platform,
     state,
     redirect_uri: redirectUri,
+    code_verifier: pkce?.verifier ?? null,
   });
   if (error) return { ready: false, reason: error.message, missing: [] };
 
@@ -210,6 +237,10 @@ export async function startAuthorization(args: {
     ...(scopes.length ? { scope: scopes.join(meta.provider === "meta" ? "," : " ") } : {}),
     ...(cfg.extraAuthParams ?? {}),
   });
+  if (pkce) {
+    params.set("code_challenge", pkce.challenge);
+    params.set("code_challenge_method", "S256");
+  }
   if (meta.provider === "tiktok") {
     params.delete("client_id");
     params.set("client_key", creds.id);
@@ -278,6 +309,8 @@ export async function exchangeCode(args: {
   code: string;
   redirectUri: string;
   tenantId?: string | null;
+  /** Required for PKCE providers (twitter/X). Retrieved from oauth_states. */
+  codeVerifier?: string | null;
 }): Promise<TokenSet> {
   const cfg = PROVIDERS[args.provider];
   const creds = await resolveCredentials(args.provider, args.tenantId);
@@ -289,7 +322,12 @@ export async function exchangeCode(args: {
     redirect_uri: args.redirectUri,
   });
   applyClientCredentials(body, args.provider, creds.id, creds.secret);
-  if (args.provider === "twitter") body.set("code_verifier", "challenge");
+  if (PKCE_PROVIDERS.includes(args.provider)) {
+    if (!args.codeVerifier) {
+      throw new Error(`${args.provider} requires a PKCE code_verifier from the state row.`);
+    }
+    body.set("code_verifier", args.codeVerifier);
+  }
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
@@ -356,19 +394,27 @@ export async function refreshAccessToken(args: {
   return { ...set, refreshToken: set.refreshToken ?? args.refreshToken };
 }
 
-/** Consumes a state row exactly once. */
-export async function consumeState(state: string) {
-  const { data, error } = await supabaseAdmin
-    .from("oauth_states")
-    .select("id, tenant_id, user_id, platform, redirect_uri, expires_at, used_at")
-    .eq("state", state)
-    .maybeSingle();
-  if (error || !data) return null;
-  if (data.used_at) return null;
-  if (new Date(data.expires_at).getTime() < Date.now()) return null;
-  await supabaseAdmin
-    .from("oauth_states")
-    .update({ used_at: new Date().toISOString() })
-    .eq("id", data.id);
-  return data;
+/** Atomic single-use state consumption via the DB RPC.  A previous version
+ *  did read-then-update in two queries, letting two concurrent callbacks with
+ *  the same state both succeed.  The RPC uses a single UPDATE ... RETURNING
+ *  with the `used_at IS NULL AND expires_at > now()` guard, so only one
+ *  caller ever gets a row back. */
+export async function consumeState(state: string): Promise<{
+  tenant_id: string;
+  user_id: string;
+  platform: string;
+  redirect_uri: string;
+  code_verifier: string | null;
+} | null> {
+  const { data, error } = await supabaseAdmin.rpc("consume_oauth_state", { _state: state });
+  if (error) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return {
+    tenant_id: row.tenant_id,
+    user_id: row.user_id,
+    platform: row.platform,
+    redirect_uri: row.redirect_uri,
+    code_verifier: row.code_verifier ?? null,
+  };
 }

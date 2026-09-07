@@ -120,7 +120,11 @@ export const finalizeSalesDocument = createServerFn({ method: "POST" })
       .select("share_token, doc_number, kind")
       .eq("id", data.id)
       .maybeSingle();
-    return { ...result, share_token: doc?.share_token ?? null, doc_number: doc?.doc_number ?? null };
+    return {
+      ...result,
+      share_token: doc?.share_token ?? null,
+      doc_number: doc?.doc_number ?? null,
+    };
   });
 
 /** Returns the current PDF as base64 so the browser can preview or download it. */
@@ -198,21 +202,32 @@ export const sendDocumentOnWhatsApp = createServerFn({ method: "POST" })
     if (!phone) throw new Error("No WhatsApp number for this customer — add a phone number first.");
 
     const link = `${data.origin.replace(/\/$/, "")}/pay/${doc.share_token}`;
-    const label = doc.kind === "quotation" ? "Quotation" : doc.kind === "credit_note" ? "Credit note" : "Invoice";
+    const label =
+      doc.kind === "quotation"
+        ? "Quotation"
+        : doc.kind === "credit_note"
+          ? "Credit note"
+          : "Invoice";
     const amount = `${doc.currency} ${Number(doc.balance || doc.grand_total).toFixed(2)}`;
     const body =
       (data.note ? `${data.note}\n\n` : "") +
       `${label} ${doc.doc_number}\nAmount: ${amount}\n\nView & download the PDF here:\n${link}`;
 
     const { sendWhatsAppText, resolveWaCredentials } = await import("@/lib/wa.server");
-    const creds = await resolveWaCredentials(data.waNumberId ?? null);
+    const creds = await resolveWaCredentials(tenantId, data.waNumberId ?? null);
     await sendWhatsAppText(phone, body, creds);
 
     await supabase
       .from("sales_documents")
-      .update({ last_sent_at: new Date().toISOString(), status: doc.status === "draft" ? "sent" : doc.status })
+      .update({
+        last_sent_at: new Date().toISOString(),
+        status: doc.status === "draft" ? "sent" : doc.status,
+      })
       .eq("id", data.id);
-    await logActivity(supabase, tenantId, data.id, "sent_whatsapp", context.userId, { phone, link });
+    await logActivity(supabase, tenantId, data.id, "sent_whatsapp", context.userId, {
+      phone,
+      link,
+    });
 
     return { ok: true, link, phone };
   });
@@ -225,7 +240,9 @@ export const recordDocumentPayment = createServerFn({ method: "POST" })
       .object({
         documentId: z.string().uuid(),
         amount: z.number().positive().max(100_000_000),
-        method: z.enum(["cash", "bank_transfer", "credit_card", "online", "cheque", "other"]).optional(),
+        method: z
+          .enum(["cash", "bank_transfer", "credit_card", "online", "cheque", "other"])
+          .optional(),
         reference: z.string().trim().max(200).optional(),
         paid_at: z.string().max(40).optional(),
         notes: z.string().trim().max(1000).optional(),
@@ -236,23 +253,31 @@ export const recordDocumentPayment = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const supabase = context.supabase;
-    const { logActivity, refreshPaymentState, requireTenantId } = await import("@/lib/billing.server");
+    const { logActivity, refreshPaymentState, requireTenantId } =
+      await import("@/lib/billing.server");
     const tenantId = await requireTenantId(supabase);
 
     const { data: doc } = await supabase
       .from("sales_documents")
-      .select("id, tenant_id, currency, contact_id, kind, doc_number, share_token, customer_snapshot")
+      .select(
+        "id, tenant_id, currency, contact_id, kind, doc_number, share_token, customer_snapshot, balance, grand_total",
+      )
       .eq("id", data.documentId)
       .maybeSingle();
     if (!doc || doc.tenant_id !== tenantId) throw new Error("Document not found.");
 
+    // Never let a payment exceed what's actually owed — the schema had no
+    // check beyond a flat $100M cap, so a typo or malicious client could push
+    // a document's balance negative.
+    const owed = Number(doc.balance ?? doc.grand_total ?? 0);
+    if (data.amount > owed + 0.01) {
+      throw new Error(
+        `Payment of ${data.amount} exceeds the remaining balance of ${owed.toFixed(2)}.`,
+      );
+    }
+
     const method = (data.method ?? "bank_transfer") as
-      | "cash"
-      | "bank_transfer"
-      | "credit_card"
-      | "online"
-      | "cheque"
-      | "other";
+      "cash" | "bank_transfer" | "credit_card" | "online" | "cheque" | "other";
 
     const { data: payment, error: payError } = await supabase
       .from("payments")
@@ -280,11 +305,19 @@ export const recordDocumentPayment = createServerFn({ method: "POST" })
     if (allocError) throw allocError;
 
     const state = await refreshPaymentState(supabase, data.documentId);
-    await logActivity(supabase, tenantId, data.documentId, "payment_recorded", context.userId, {
-      amount: data.amount,
-      method,
-      status: state?.status,
-    }, payment.id);
+    await logActivity(
+      supabase,
+      tenantId,
+      data.documentId,
+      "payment_recorded",
+      context.userId,
+      {
+        amount: data.amount,
+        method,
+        status: state?.status,
+      },
+      payment.id,
+    );
 
     // Fully settled → send the stamped PAID copy straight back to the customer.
     let receiptSent = false;
@@ -303,14 +336,16 @@ export const recordDocumentPayment = createServerFn({ method: "POST" })
         if (phone) {
           const link = `${data.origin.replace(/\/$/, "")}/pay/${doc.share_token}`;
           const { sendWhatsAppText, resolveWaCredentials } = await import("@/lib/wa.server");
-          const creds = await resolveWaCredentials(null);
+          const creds = await resolveWaCredentials(tenantId, null);
           await sendWhatsAppText(
             phone,
             `Payment received — thank you!\n\nInvoice ${doc.doc_number} is now marked PAID.\nDownload your paid copy here:\n${link}`,
             creds,
           );
           receiptSent = true;
-          await logActivity(supabase, tenantId, data.documentId, "receipt_sent", context.userId, { phone });
+          await logActivity(supabase, tenantId, data.documentId, "receipt_sent", context.userId, {
+            phone,
+          });
         }
       } catch (e) {
         console.error("[billing] paid receipt send failed", e);
@@ -349,16 +384,16 @@ export const convertQuotationToInvoice = createServerFn({ method: "POST" })
       additional_charges: Number(doc.additional_charges),
       adjustment: Number(doc.adjustment),
       items: items.map((item: Record<string, unknown>) => ({
-        product_id: (item['product_id'] as string) ?? null,
-        name: item['name_snapshot'] as string,
-        sku: (item['sku_snapshot'] as string) ?? null,
-        description: (item['description_snapshot'] as string) ?? null,
-        quantity: Number(item['quantity']),
-        unit: (item['unit'] as string) ?? null,
-        unit_price: Number(item['unit_price']),
-        discount_value: Number(item['discount_value'] ?? 0),
-        discount_type: (item['discount_type'] as "percent" | "fixed") ?? "percent",
-        tax_rate: Number(item['tax_rate'] ?? 0),
+        product_id: (item["product_id"] as string) ?? null,
+        name: item["name_snapshot"] as string,
+        sku: (item["sku_snapshot"] as string) ?? null,
+        description: (item["description_snapshot"] as string) ?? null,
+        quantity: Number(item["quantity"]),
+        unit: (item["unit"] as string) ?? null,
+        unit_price: Number(item["unit_price"]),
+        discount_value: Number(item["discount_value"] ?? 0),
+        discount_type: (item["discount_type"] as "percent" | "fixed") ?? "percent",
+        tax_rate: Number(item["tax_rate"] ?? 0),
       })),
     });
 

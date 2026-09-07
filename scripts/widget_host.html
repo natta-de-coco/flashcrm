@@ -1,7 +1,42 @@
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Host site</title>
-<style>body{margin:0;font-family:system-ui}main{padding:24px;max-width:900px}
-#hit{position:fixed;left:0;top:0;right:0;bottom:0;background:#fafafa;z-index:1}
-p{position:relative;z-index:2}</style></head>
-<body><div id="hit"></div><main><h1>Fake WordPress / Shopify page</h1><p id="p">Content</p></main>
-<script>window.__clicks=0;document.getElementById('hit').addEventListener('click',()=>window.__clicks++)</script>
-<script src="http://localhost:8080/widget.js"></script></body></html>
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Host site</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: system-ui;
+      }
+      main {
+        padding: 24px;
+        max-width: 900px;
+      }
+      #hit {
+        position: fixed;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        background: #fafafa;
+        z-index: 1;
+      }
+      p {
+        position: relative;
+        z-index: 2;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hit"></div>
+    <main>
+      <h1>Fake WordPress / Shopify page</h1>
+      <p id="p">Content</p>
+    </main>
+    <script>
+      window.__clicks = 0;
+      document.getElementById("hit").addEventListener("click", () => window.__clicks++);
+    </script>
+    <script src="http://localhost:8080/widget.js"></script>
+  </body>
+</html>

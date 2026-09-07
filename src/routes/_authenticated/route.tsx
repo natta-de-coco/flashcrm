@@ -1,12 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { FlashLogoBadge } from "@/components/FlashLogoBadge";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -18,13 +12,7 @@ import { TenantProvider } from "@/hooks/useTenant";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  Link,
-  Outlet,
-  createFileRoute,
-  useNavigate,
-  useRouterState,
-} from "@tanstack/react-router";
+import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   Bot,
@@ -43,6 +31,7 @@ import {
   Settings,
   Briefcase,
   Sparkles,
+  Target,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -60,10 +49,20 @@ const NAV_SECTIONS = [
   {
     title: "Main",
     items: [
-      { to: "/dashboard", label: "Home", desc: "Live pulse of every channel", icon: LayoutDashboard },
+      {
+        to: "/dashboard",
+        label: "Home",
+        desc: "Live pulse of every channel",
+        icon: LayoutDashboard,
+      },
       { to: "/inbox", label: "Inbox", desc: "WhatsApp & website chats", icon: Inbox },
       { to: "/contacts", label: "Contacts", desc: "People & pipeline", icon: Users },
-      { to: "/marketing", label: "Leads & Marketing", desc: "Capture, consent, campaigns", icon: Mail },
+      {
+        to: "/marketing",
+        label: "Leads & Marketing",
+        desc: "Capture, consent, campaigns",
+        icon: Mail,
+      },
       { to: "/social", label: "Social Hub", desc: "IG, FB, YouTube, X & more", icon: Megaphone },
       { to: "/content", label: "Content & SEO", desc: "Posts & articles", icon: FileText },
       { to: "/seo-blog", label: "SEO Studio", desc: "Image-to-post AI studio", icon: Sparkles },
@@ -72,8 +71,24 @@ const NAV_SECTIONS = [
   {
     title: "Business",
     items: [
-      { to: "/advisor", label: "Business Advisor", desc: "Expert AI growth guidance", icon: Briefcase },
-      { to: "/sales", label: "Quotes & Invoices", desc: "Send PDFs, get paid on WhatsApp", icon: Receipt },
+      {
+        to: "/advisor",
+        label: "Business Advisor",
+        desc: "Expert AI growth guidance",
+        icon: Briefcase,
+      },
+      {
+        to: "/campaign-planner",
+        label: "Campaign Planner",
+        desc: "AI audience & channel targeting",
+        icon: Target,
+      },
+      {
+        to: "/sales",
+        label: "Quotes & Invoices",
+        desc: "Send PDFs, get paid on WhatsApp",
+        icon: Receipt,
+      },
 
       { to: "/catalog", label: "Products", desc: "What you sell", icon: Package },
       { to: "/chatbot", label: "Chatbot", desc: "AI auto-replies", icon: Bot },
@@ -82,19 +97,21 @@ const NAV_SECTIONS = [
   {
     title: "System",
     items: [
-      { to: "/monitoring", label: "Monitoring", desc: "Alerts, webhooks & Meta health", icon: Activity },
+      {
+        to: "/monitoring",
+        label: "Monitoring",
+        desc: "Alerts, webhooks & Meta health",
+        icon: Activity,
+      },
       { to: "/connect", label: "Integrations", desc: "All connections & logs", icon: Plug },
       { to: "/settings", label: "Settings", desc: "Numbers, keys, billing & team", icon: Settings },
     ],
   },
 ] as const;
 
-
 const MANAGER_SECTION = {
   title: "Manager",
-  items: [
-    { to: "/companies", label: "Companies", desc: "All client workspaces", icon: Building2 },
-  ],
+  items: [{ to: "/companies", label: "Companies", desc: "All client workspaces", icon: Building2 }],
 } as const;
 
 const SIDEBAR_MIN = 224;
@@ -198,7 +215,6 @@ function AuthenticatedLayout() {
     };
   }, [session]);
 
-
   // Restore the user's preferred sidebar width (client-only, after hydration).
   useEffect(() => {
     const saved = Number(window.localStorage.getItem(SIDEBAR_KEY));
@@ -247,14 +263,14 @@ function AuthenticatedLayout() {
             <Skeleton className="h-4 w-24 bg-sidebar-accent/60" />
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-4 w-64" />
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-24 w-full" />
-            ))}
-          </div>
-          <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 w-full" />
+              ))}
+            </div>
+            <Skeleton className="h-64 w-full" />
             <span className="sr-only">Loading your workspace…</span>
           </div>
         </div>
@@ -388,7 +404,6 @@ function AuthenticatedLayout() {
         </div>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-
     </TenantProvider>
   );
 }

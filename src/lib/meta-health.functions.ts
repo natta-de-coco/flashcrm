@@ -8,14 +8,22 @@ import { createServerFn } from "@tanstack/react-start";
  */
 export const getMetaSyncHealth = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async () => {
+  .handler(async ({ context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // supabaseAdmin bypasses RLS. Without this filter any signed-in user of
+    // any tenant got the health of every WhatsApp number on the platform --
+    // labels, phone numbers, quality ratings and 24h message volumes for
+    // every other company. Fail closed rather than falling back to "all".
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    if (!tenantId) return { numbers: [], checkedAt: new Date().toISOString() };
 
     const { data: numbers } = await supabaseAdmin
       .from("wa_numbers")
       .select(
         "id, label, display_phone, phone_number_id, access_token, active, is_default, alerts_enabled",
       )
+      .eq("tenant_id", tenantId as string)
       .order("created_at", { ascending: true });
 
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -27,6 +35,7 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
       const { data: convs } = await supabaseAdmin
         .from("conversations")
         .select("id")
+        .eq("tenant_id", tenantId as string)
         .eq("wa_number_id", n.id);
       const convIds = (convs ?? []).map((c) => c.id);
 

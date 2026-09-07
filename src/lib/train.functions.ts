@@ -99,11 +99,15 @@ export const draftBrandFromWebsite = createServerFn({ method: "POST" })
     if (!pages || pages.length === 0) {
       throw new Error("Sync your website first so Flas has something to learn from.");
     }
-    const { callFlashAi } = await import("@/lib/flash-ai.server");
+    const { callFlashAi, aiOptionsFor } = await import("@/lib/flash-ai.server");
     const system = `You are Flas, a brand strategist. From this business's own website content, fill a brand knowledge profile.
 Return ONLY JSON with these string keys: description, industry, niche, locations, target_countries, target_cities, products_summary, services_summary, brands, target_customers, usp, pricing_approach, contact_details, tone, brand_personality, preferred_cta, keywords, marketing_goals.
 Use only what the website supports. Leave a field as "" when the website does not say. Never invent claims, prices, awards or statistics.`;
-    const raw = await callFlashAi(system, JSON.stringify(pages).slice(0, 20000));
+    const raw = await callFlashAi(
+      system,
+      JSON.stringify(pages).slice(0, 20000),
+      await aiOptionsFor(supabase, "brand_from_website", context.userId),
+    );
     const cleaned = raw.replace(/```json|```/g, "").trim();
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");

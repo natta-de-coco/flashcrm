@@ -87,7 +87,8 @@ export async function measureKpis(supabase: SupabaseClient): Promise<KpiMeasurem
   ]);
 
   const outbound = messaging?.totals.outbound ?? 0;
-  const readRate = outbound > 0 ? Math.round(((messaging?.totals.read ?? 0) / outbound) * 100) : null;
+  const readRate =
+    outbound > 0 ? Math.round(((messaging?.totals.read ?? 0) / outbound) * 100) : null;
 
   const contactRows = contacts as Array<{ stage: string }>;
   const won = contactRows.filter((c) => c.stage === "won").length;
@@ -174,7 +175,8 @@ export async function evaluateKpiTargets(supabase: SupabaseClient): Promise<{
     const value = measurement?.value ?? null;
     const numericTarget = Number(target.target_value);
     const missed = value != null && missedTarget(target.direction, value, numericTarget);
-    const gap = missed && value != null ? Math.abs(Math.round((value - numericTarget) * 10) / 10) : 0;
+    const gap =
+      missed && value != null ? Math.abs(Math.round((value - numericTarget) * 10) / 10) : 0;
 
     statuses.push({
       target,

@@ -93,11 +93,18 @@ export function CommandPalette({
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       const like = `%${term}%`;
+      // PostgREST's .or() string splits on commas/parens, so raw user input
+      // could inject extra filter clauses (e.g. a search term containing a
+      // comma). Wrapping the value in double quotes (escaping any inside it)
+      // is PostgREST's documented way to pass a literal value through.
+      const likeSafe = `"${like.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
       const [contacts, products, articles] = await Promise.all([
         supabase
           .from("contacts")
           .select("id, name, phone, email, company")
-          .or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like},company.ilike.${like}`)
+          .or(
+            `name.ilike.${likeSafe},phone.ilike.${likeSafe},email.ilike.${likeSafe},company.ilike.${likeSafe}`,
+          )
           .limit(6),
         supabase.from("products").select("id, title, sku").ilike("title", like).limit(5),
         supabase.from("seo_articles").select("id, title, status").ilike("title", like).limit(5),
@@ -152,7 +159,9 @@ export function CommandPalette({
       />
       <CommandList>
         <CommandEmpty>
-          {q.trim().length < 2 ? "Type at least 2 characters to search records." : "No matches found."}
+          {q.trim().length < 2
+            ? "Type at least 2 characters to search records."
+            : "No matches found."}
         </CommandEmpty>
         {groups.map((group) =>
           group.hits.length ? (

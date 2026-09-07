@@ -14,18 +14,31 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { connector } from "@/lib/connections-catalog";
 import { troubleshooting, type ConnectionStatus } from "@/lib/connection-status";
-import { OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
-import { AlertTriangle, ArrowRight, CheckCircle2, Clock, ExternalLink, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CredentialsStep } from "@/components/integrations/CredentialsStep";
+import { credentialSpec, OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
+import { CONNECTORS } from "@/lib/connections-catalog";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  ShieldCheck,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-type Step = "prepare" | "verify" | "permissions" | "connect" | "errors";
+type Step = "prepare" | "verify" | "credentials" | "permissions" | "connect" | "errors";
 
-const STEP_ORDER: Step[] = ["prepare", "verify", "permissions", "connect", "errors"];
+// Credentials sits between knowing what you need and running the login,
+// because that is the order the work actually happens in. Channels with no
+// keys to paste (an OAuth family already configured) skip it entirely.
+const ALL_STEPS: Step[] = ["prepare", "verify", "credentials", "permissions", "connect", "errors"];
 const STEP_TITLE: Record<Step, string> = {
-  prepare: "1. Prepare the account",
-  verify: "2. Verify you're ready",
-  permissions: "3. Permissions & review",
-  connect: "4. Connect securely",
+  prepare: "Prepare the account",
+  verify: "Verify you're ready",
+  credentials: "Enter your keys",
+  permissions: "Permissions & review",
+  connect: "Connect securely",
   errors: "Common errors & quick fixes",
 };
 
@@ -49,12 +62,34 @@ export function ConnectionWizard({
   const trouble = troubleshooting(platformId);
   const [step, setStep] = useState<Step>("prepare");
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  // One Meta app serves Facebook, Instagram and Threads, so name the siblings
+  // rather than letting the same keys look like three separate chores.
+  const siblings = useMemo(
+    () =>
+      meta?.provider
+        ? CONNECTORS.filter((c) => c.provider === meta.provider && c.id !== platformId).map(
+            (c) => c.name,
+          )
+        : [],
+    [meta?.provider, platformId],
+  );
+  const spec = useMemo(
+    () => credentialSpec(platformId, { provider: meta?.provider ?? null, siblings }),
+    [platformId, meta?.provider, siblings],
+  );
+  const STEP_ORDER = useMemo(
+    () => ALL_STEPS.filter((s) => s !== "credentials" || Boolean(spec)),
+    [spec],
+  );
 
   const checklist = trouble?.checklist ?? [];
   const doneCount = checklist.filter((item) => ticked[item]).length;
   const progress = useMemo(
     () => Math.round(((STEP_ORDER.indexOf(step) + 1) / STEP_ORDER.length) * 100),
-    [step],
+    [step, STEP_ORDER],
   );
 
   const next = () => {
@@ -69,7 +104,13 @@ export function ConnectionWizard({
           <DialogTitle className="flex items-center gap-2">
             {meta?.name ?? platformId} setup wizard
             <Badge
-              variant={status.tone === "good" ? "default" : status.tone === "bad" ? "destructive" : "secondary"}
+              variant={
+                status.tone === "good"
+                  ? "default"
+                  : status.tone === "bad"
+                    ? "destructive"
+                    : "secondary"
+              }
             >
               {status.label}
             </Badge>
@@ -80,7 +121,7 @@ export function ConnectionWizard({
         <Progress value={progress} className="h-1.5" />
 
         <div className="flex flex-wrap gap-1.5">
-          {STEP_ORDER.map((s) => (
+          {STEP_ORDER.map((s, i) => (
             <Button
               key={s}
               size="sm"
@@ -88,7 +129,7 @@ export function ConnectionWizard({
               className="h-7 px-2 text-xs"
               onClick={() => setStep(s)}
             >
-              {STEP_TITLE[s]}
+              {s === "errors" ? STEP_TITLE[s] : `${i + 1}. ${STEP_TITLE[s]}`}
             </Button>
           ))}
         </div>
@@ -123,7 +164,8 @@ export function ConnectionWizard({
           {step === "verify" && (
             <section className="space-y-3">
               <p className="text-muted-foreground">
-                Tick each line once it is true. {checklist.length > 0 ? `${doneCount}/${checklist.length} confirmed.` : ""}
+                Tick each line once it is true.{" "}
+                {checklist.length > 0 ? `${doneCount}/${checklist.length} confirmed.` : ""}
               </p>
               {checklist.length === 0 ? (
                 <p>Nothing to verify for this platform — continue to permissions.</p>
@@ -136,12 +178,23 @@ export function ConnectionWizard({
                         onCheckedChange={(value) => setTicked({ ...ticked, [item]: !!value })}
                         className="mt-0.5"
                       />
-                      <span className={ticked[item] ? "text-muted-foreground line-through" : ""}>{item}</span>
+                      <span className={ticked[item] ? "text-muted-foreground line-through" : ""}>
+                        {item}
+                      </span>
                     </li>
                   ))}
                 </ul>
               )}
             </section>
+          )}
+
+          {step === "credentials" && spec && (
+            <CredentialsStep
+              spec={spec}
+              platformName={meta?.name ?? platformId}
+              redirectUri={origin ? `${origin}${OAUTH_REDIRECT_PATH}` : ""}
+              onSaved={next}
+            />
           )}
 
           {step === "permissions" && (
@@ -177,7 +230,9 @@ export function ConnectionWizard({
               ) : null}
               <p className="text-xs text-muted-foreground">
                 Redirect URI to whitelist in your provider app:{" "}
-                <span className="break-all font-mono">https://flas.mobidigisol.com{OAUTH_REDIRECT_PATH}</span>
+                <span className="break-all font-mono">
+                  https://flas.mobidigisol.com{OAUTH_REDIRECT_PATH}
+                </span>
               </p>
             </section>
           )}
@@ -196,7 +251,8 @@ export function ConnectionWizard({
               <div className="flex flex-wrap gap-2">
                 {meta?.oauth ? (
                   <Button disabled={connecting} onClick={onConnect}>
-                    {connecting ? "Opening…" : "Connect securely"} <ArrowRight className="ml-1 size-4" />
+                    {connecting ? "Opening…" : "Connect securely"}{" "}
+                    <ArrowRight className="ml-1 size-4" />
                   </Button>
                 ) : null}
                 {meta?.manageUrl ? (
@@ -251,9 +307,7 @@ export function ConnectionWizard({
         <div className="flex justify-between">
           <Button
             variant="ghost"
-            onClick={() =>
-              setStep(STEP_ORDER[Math.max(STEP_ORDER.indexOf(step) - 1, 0)] as Step)
-            }
+            onClick={() => setStep(STEP_ORDER[Math.max(STEP_ORDER.indexOf(step) - 1, 0)] as Step)}
             disabled={step === "prepare"}
           >
             Back

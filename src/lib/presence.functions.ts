@@ -55,16 +55,14 @@ export const listCompanyPresence = createServerFn({ method: "GET" })
 
     for (const p of people ?? []) {
       const tenantId = p.tenant_id as string;
-      const entry =
-        byTenant.get(tenantId) ??
-        {
-          tenantId,
-          online: 0,
-          users: 0,
-          lastSeenAt: null,
-          activeUsers: [],
-          lastActions: [],
-        };
+      const entry = byTenant.get(tenantId) ?? {
+        tenantId,
+        online: 0,
+        users: 0,
+        lastSeenAt: null,
+        activeUsers: [],
+        lastActions: [],
+      };
       entry.users += 1;
       const seen = p.last_seen_at ? new Date(p.last_seen_at).getTime() : 0;
       if (seen > onlineCutoff) entry.online += 1;
@@ -128,7 +126,10 @@ export const exportCompanyData = createServerFn({ method: "POST" })
       await Promise.all([
         supabaseAdmin.from("organizations").select("*").eq("id", data.organizationId).maybeSingle(),
         grab("contacts", "id, name, phone, email, company, stage, value, tags, created_at"),
-        grab("leads", "id, name, email, phone, source, status, lead_score, consent_given, created_at"),
+        grab(
+          "leads",
+          "id, name, email, phone, source, status, lead_score, consent_given, created_at",
+        ),
         grab("products", "id, title, sku, price, created_at"),
         grab(
           "social_accounts",

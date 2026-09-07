@@ -125,8 +125,9 @@ export function WordPressSitesCard() {
         <CardTitle className="text-base">WordPress sites</CardTitle>
         <CardDescription>
           Connect WordPress for one-click publishing from the SEO Studio. Create an application
-          password in WordPress → Users → Profile → Application Passwords. The password is stored
-          encrypted and is never readable back through the app.
+          password in WordPress → Users → Profile → Application Passwords. Once saved, the password
+          can't be read back through the app or its API — only used server-side to publish on your
+          behalf.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">

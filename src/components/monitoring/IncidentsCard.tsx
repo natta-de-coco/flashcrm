@@ -48,9 +48,7 @@ export function IncidentsCard() {
         {events.slice(0, 25).map((event) => (
           <div key={event.id} className="rounded-lg border p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-semibold">
-                {KIND_LABEL[event.kind] ?? event.kind}
-              </span>
+              <span className="text-sm font-semibold">{KIND_LABEL[event.kind] ?? event.kind}</span>
               <Badge variant={event.severity === "error" ? "destructive" : "secondary"}>
                 {event.severity}
               </Badge>

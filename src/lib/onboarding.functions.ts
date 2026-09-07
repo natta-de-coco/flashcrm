@@ -28,7 +28,7 @@ export const completeOnboarding = createServerFn({ method: "POST" })
 
     const { data: existing } = await supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, staff_role")
       .eq("id", userId)
       .maybeSingle();
     if (existing?.tenant_id) {
@@ -51,15 +51,46 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       .single();
     if (orgError) throw orgError;
 
-    const { error: profileError } = await supabaseAdmin
+    // Conditional on tenant_id still being NULL — closes the race where two
+    // concurrent submits both pass the check above, both create an
+    // organization, and the second UPDATE silently overwrites the first
+    // (leaving one org orphaned and, worse, whichever write landed second
+    // "winning" nondeterministically). Only the request that actually claims
+    // the profile keeps its organization; the loser cleans its org back up.
+    // Anything that goes wrong from here on must not leave the organization
+    // we just created behind. It used to: `throw profileError` fired before the
+    // cleanup below, so every failed attempt minted another empty company and
+    // the user -- seeing the dialog again -- simply retried, minting more. That
+    // is where the empty duplicates in the companies list came from.
+    const { data: claimed, error: profileError } = await supabaseAdmin
       .from("profiles")
       .update({
         tenant_id: org.id,
         full_name: data.fullName,
-        staff_role: "company_admin",
+        // Don't touch staff_role for a platform super admin. 20260830010000
+        // installs a BEFORE UPDATE trigger that raises if an allowlisted
+        // super admin's staff_role becomes anything else -- so writing
+        // "company_admin" here aborted the whole UPDATE, tenant_id was never
+        // set, and the onboarding dialog reappeared on every single load with
+        // no error the user could see. It only started biting once that
+        // migration finally applied.
+        ...(existing?.staff_role === "super_admin" ? {} : { staff_role: "company_admin" as const }),
       })
-      .eq("id", userId);
-    if (profileError) throw profileError;
+      .eq("id", userId)
+      .is("tenant_id", null)
+      .select("id")
+      .maybeSingle();
+    if (profileError) {
+      await supabaseAdmin.from("organizations").delete().eq("id", org.id);
+      throw profileError;
+    }
+
+    if (!claimed) {
+      // Lost the race — another concurrent request already claimed this
+      // profile. Don't leave our organization behind as an orphan.
+      await supabaseAdmin.from("organizations").delete().eq("id", org.id);
+      return { ok: true, alreadyDone: true };
+    }
 
     await supabaseAdmin
       .from("user_roles")
@@ -239,6 +270,24 @@ export const claimInvites = createServerFn({ method: "POST" })
       .from("profiles")
       .update({ tenant_id: invite.tenant_id, staff_role: invite.staff_role })
       .eq("id", context.userId);
+
+    // This app carries TWO parallel role systems: the newer per-tenant
+    // profiles.staff_role, and the original user_roles.app_role that most
+    // RLS policies and SECURITY DEFINER RPCs still check via has_role().
+    // completeOnboarding() grants the legacy 'admin' role to whoever creates
+    // the workspace, but claiming an invite only ever set staff_role — so an
+    // invited company_admin looked like an admin in the UI while every
+    // has_role()-gated policy silently refused them (WhatsApp templates, bot
+    // settings, SMTP keys, connected-app credentials...). Granting the legacy
+    // role here puts invited admins on the same footing as the founder.
+    const isAdminRole = invite.staff_role === "company_admin" || invite.staff_role === "super_admin";
+    await supabaseAdmin
+      .from("user_roles")
+      .upsert(
+        { user_id: context.userId, role: isAdminRole ? "admin" : "agent" },
+        { onConflict: "user_id,role" },
+      );
+
     await supabaseAdmin
       .from("team_invites")
       .update({ status: "accepted", accepted_at: new Date().toISOString() })

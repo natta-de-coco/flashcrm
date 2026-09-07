@@ -17,7 +17,12 @@ export const siteLeadSchema = z.object({
 
 export type SiteLeadPayload = z.infer<typeof siteLeadSchema>;
 
-export function verifyHmac(rawBody: string, secret: string, signature: string, digest: "hex" | "base64"): boolean {
+export function verifyHmac(
+  rawBody: string,
+  secret: string,
+  signature: string,
+  digest: "hex" | "base64",
+): boolean {
   const expected = createHmac("sha256", secret).update(rawBody, "utf8").digest(digest);
   const a = Buffer.from(signature.trim());
   const b = Buffer.from(expected);
@@ -53,7 +58,11 @@ export async function resolveSite(siteKey: string, req: Request) {
     const host = extractHost(req);
     // Shopify calls come from the shop domain server-side (no Origin header) —
     // when there's no origin to check, the HMAC signature is the auth.
-    if (host && host !== site.domain.toLowerCase() && !host.endsWith(`.${site.domain.toLowerCase()}`)) {
+    if (
+      host &&
+      host !== site.domain.toLowerCase() &&
+      !host.endsWith(`.${site.domain.toLowerCase()}`)
+    ) {
       return { site: null as null, error: "Domain not allowed for this site key" };
     }
   }
@@ -95,7 +104,6 @@ export async function ingestPlatformLead(
     consent: payload.consent ?? false,
     tags: payload.tags ?? [],
   });
-
 
   const { logAudit } = await import("@/lib/audit.server");
   await logAudit({

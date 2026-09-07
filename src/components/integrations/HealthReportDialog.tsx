@@ -44,8 +44,7 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
   });
 
   const runRetry = useMutation({
-    mutationFn: async (accountId?: string) =>
-      retry({ data: accountId ? { accountId } : {} }),
+    mutationFn: async (accountId?: string) => retry({ data: accountId ? { accountId } : {} }),
     onSuccess: (result) => {
       const results = result.results ?? [];
       if (results.length === 0) {
@@ -63,7 +62,9 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
   });
 
   const data = report.data;
-  const attention = (data?.rows ?? []).filter((r) => r.state !== "connected" && r.state !== "not_connected");
+  const attention = (data?.rows ?? []).filter(
+    (r) => r.state !== "connected" && r.state !== "not_connected",
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -94,9 +95,9 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
         {data && (
           <>
             <div className="flex flex-wrap gap-2 text-xs">
-              <Badge className={TONE['connected']}>{data.connected} connected</Badge>
-              <Badge className={TONE['failing']}>{data.needs_attention} need attention</Badge>
-              <Badge className={TONE['not_connected']}>{data.not_connected} not connected</Badge>
+              <Badge className={TONE["connected"]}>{data.connected} connected</Badge>
+              <Badge className={TONE["failing"]}>{data.needs_attention} need attention</Badge>
+              <Badge className={TONE["not_connected"]}>{data.not_connected} not connected</Badge>
             </div>
 
             <ScrollArea className="max-h-[52vh] pr-3">
@@ -181,7 +182,7 @@ function HealthRowCard({
             <span className="truncate text-xs text-muted-foreground">{row.account_label}</span>
           )}
         </div>
-        <Badge className={`${TONE[row.state] ?? TONE['not_connected']} text-[11px]`}>
+        <Badge className={`${TONE[row.state] ?? TONE["not_connected"]} text-[11px]`}>
           {row.state_label}
         </Badge>
       </div>

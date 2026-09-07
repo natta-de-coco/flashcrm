@@ -81,8 +81,9 @@ function PayPage() {
   }
 
   const money = (value: number) => `${doc.currency} ${value.toFixed(2)}`;
-  const label = doc.kind === "quotation" ? "Quotation" : doc.kind === "credit_note" ? "Credit note" : "Invoice";
-  const issuer = (doc.company['legal_name'] ?? doc.company['trade_name'] ?? "") as string;
+  const label =
+    doc.kind === "quotation" ? "Quotation" : doc.kind === "credit_note" ? "Credit note" : "Invoice";
+  const issuer = (doc.company["legal_name"] ?? doc.company["trade_name"] ?? "") as string;
 
   return (
     <Shell>

@@ -23,9 +23,7 @@ function peekSubject(token: string): string {
   try {
     const part = token.split(".")[1];
     if (!part) return "unknown";
-    const json = JSON.parse(
-      atob(part.replace(/-/g, "+").replace(/_/g, "/")),
-    ) as { sub?: string };
+    const json = JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/"))) as { sub?: string };
     return json.sub ?? "unknown";
   } catch {
     return "unparseable";

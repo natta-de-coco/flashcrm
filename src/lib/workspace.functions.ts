@@ -40,8 +40,11 @@ export const saveWorkspaceRegion = createServerFn({ method: "POST" })
       .eq("id", context.userId)
       .maybeSingle();
     if (!profile?.tenant_id) throw new Error("Your workspace is still being set up.");
-    if (!["owner", "admin", "super_admin"].includes(profile.staff_role ?? "")) {
-      throw new Error("Only the workspace owner or an admin can change regional settings.");
+    // The real staff_role enum is company_admin/marketing_manager/staff/seo_editor/
+    // super_admin — "owner"/"admin" never exist as values, so this check locked
+    // out every real company admin from ever changing region/currency.
+    if (!["company_admin", "super_admin"].includes(profile.staff_role ?? "")) {
+      throw new Error("Only a company admin can change regional settings.");
     }
 
     const { error } = await context.supabase

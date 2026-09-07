@@ -142,43 +142,43 @@ function SalesPage() {
     mutationFn: (id: string) => loadDocument({ data: { id } }),
     onSuccess: (bundle) => {
       const doc = bundle.doc as unknown as Record<string, unknown>;
-      const snapshot = (doc['customer_snapshot'] ?? {}) as Record<string, string | undefined>;
+      const snapshot = (doc["customer_snapshot"] ?? {}) as Record<string, string | undefined>;
       setBuilder({
-        id: doc['id'] as string,
-        kind: (doc['kind'] as "invoice") ?? "invoice",
-        contact_id: (doc['contact_id'] as string) ?? null,
+        id: doc["id"] as string,
+        kind: (doc["kind"] as "invoice") ?? "invoice",
+        contact_id: (doc["contact_id"] as string) ?? null,
         customer: {
-          name: snapshot['name'] ?? "",
-          company: snapshot['company'] ?? "",
-          email: snapshot['email'] ?? "",
-          phone: snapshot['phone'] ?? "",
-          address: snapshot['address'] ?? "",
-          vat_number: snapshot['vat_number'] ?? "",
+          name: snapshot["name"] ?? "",
+          company: snapshot["company"] ?? "",
+          email: snapshot["email"] ?? "",
+          phone: snapshot["phone"] ?? "",
+          address: snapshot["address"] ?? "",
+          vat_number: snapshot["vat_number"] ?? "",
         },
-        issue_date: (doc['issue_date'] as string) ?? new Date().toISOString().slice(0, 10),
-        due_date: (doc['due_date'] as string) ?? "",
-        valid_until: (doc['valid_until'] as string) ?? "",
-        currency: (doc['currency'] as string) ?? "AED",
-        payment_terms: (doc['payment_terms'] as string) ?? "",
-        reference: (doc['reference'] as string) ?? "",
-        po_number: (doc['po_number'] as string) ?? "",
-        invoice_discount: Number(doc['invoice_discount'] ?? 0),
-        shipping: Number(doc['shipping'] ?? 0),
-        additional_charges: Number(doc['additional_charges'] ?? 0),
-        adjustment: Number(doc['adjustment'] ?? 0),
-        notes: (doc['notes'] as string) ?? "",
-        terms: (doc['terms'] as string) ?? "",
+        issue_date: (doc["issue_date"] as string) ?? new Date().toISOString().slice(0, 10),
+        due_date: (doc["due_date"] as string) ?? "",
+        valid_until: (doc["valid_until"] as string) ?? "",
+        currency: (doc["currency"] as string) ?? "AED",
+        payment_terms: (doc["payment_terms"] as string) ?? "",
+        reference: (doc["reference"] as string) ?? "",
+        po_number: (doc["po_number"] as string) ?? "",
+        invoice_discount: Number(doc["invoice_discount"] ?? 0),
+        shipping: Number(doc["shipping"] ?? 0),
+        additional_charges: Number(doc["additional_charges"] ?? 0),
+        adjustment: Number(doc["adjustment"] ?? 0),
+        notes: (doc["notes"] as string) ?? "",
+        terms: (doc["terms"] as string) ?? "",
         items: (bundle.items as unknown as Record<string, unknown>[]).map((item) => ({
-          product_id: (item['product_id'] as string) ?? null,
-          name: item['name_snapshot'] as string,
-          sku: (item['sku_snapshot'] as string) ?? null,
-          description: (item['description_snapshot'] as string) ?? null,
-          quantity: Number(item['quantity']),
-          unit: (item['unit'] as string) ?? null,
-          unit_price: Number(item['unit_price']),
-          discount_value: Number(item['discount_value'] ?? 0),
-          discount_type: (item['discount_type'] as "percent") ?? "percent",
-          tax_rate: Number(item['tax_rate'] ?? 0),
+          product_id: (item["product_id"] as string) ?? null,
+          name: item["name_snapshot"] as string,
+          sku: (item["sku_snapshot"] as string) ?? null,
+          description: (item["description_snapshot"] as string) ?? null,
+          quantity: Number(item["quantity"]),
+          unit: (item["unit"] as string) ?? null,
+          unit_price: Number(item["unit_price"]),
+          discount_value: Number(item["discount_value"] ?? 0),
+          discount_type: (item["discount_type"] as "percent") ?? "percent",
+          tax_rate: Number(item["tax_rate"] ?? 0),
         })),
       });
     },
@@ -278,9 +278,7 @@ function SalesPage() {
       }),
     onSuccess: (result) => {
       toast.success(
-        result.receiptSent
-          ? "Payment recorded — PAID copy sent on WhatsApp."
-          : "Payment recorded.",
+        result.receiptSent ? "Payment recorded — PAID copy sent on WhatsApp." : "Payment recorded.",
       );
       setPayFor(null);
       setPayForm({ amount: "", reference: "", method: "bank_transfer" });
@@ -309,7 +307,11 @@ function SalesPage() {
               <Button variant="ghost" onClick={() => setBuilder(null)}>
                 Back
               </Button>
-              <Button variant="outline" disabled={save.isPending} onClick={() => save.mutate(false)}>
+              <Button
+                variant="outline"
+                disabled={save.isPending}
+                onClick={() => save.mutate(false)}
+              >
                 Save draft
               </Button>
               <Button disabled={save.isPending} onClick={() => save.mutate(true)}>
@@ -384,8 +386,9 @@ function SalesPage() {
                   </div>
                   <p className="mt-1 truncate text-sm text-muted-foreground">
                     {doc.customer_snapshot?.name ?? "No customer"}
-                    {doc.customer_snapshot?.company ? ` · ${doc.customer_snapshot.company}` : ""} ·{" "}
-                    {doc.issue_date}
+                    {doc.customer_snapshot?.company
+                      ? ` · ${doc.customer_snapshot.company}`
+                      : ""} · {doc.issue_date}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -487,8 +490,8 @@ function SalesPage() {
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              When the balance reaches zero Flas sends the customer the PAID-stamped PDF on
-              WhatsApp automatically.
+              When the balance reaches zero Flas sends the customer the PAID-stamped PDF on WhatsApp
+              automatically.
             </p>
             <Button disabled={pay.isPending || !payForm.amount} onClick={() => pay.mutate()}>
               {pay.isPending ? "Saving…" : "Save payment"}

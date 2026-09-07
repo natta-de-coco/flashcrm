@@ -46,7 +46,8 @@ export async function discoverProfile(
             category: page.category,
             picture: page.picture?.data?.url ?? page.picture?.url,
             followers: page.fan_count,
-            profile_url: page.link ?? (page.username ? `https://facebook.com/${page.username}` : undefined),
+            profile_url:
+              page.link ?? (page.username ? `https://facebook.com/${page.username}` : undefined),
           };
         }
         const ig = page.instagram_business_account;
@@ -221,7 +222,13 @@ export async function scanAccount(args: {
     stats: Record<string, unknown> | null;
     last_synced_at: string | null;
   };
-  posts: { caption: string; likes: number; comments_count: number; reach: number; published_at: string | null }[];
+  posts: {
+    caption: string;
+    likes: number;
+    comments_count: number;
+    reach: number;
+    published_at: string | null;
+  }[];
   business: Record<string, unknown> | null;
 }): Promise<ScanResult> {
   const meta = connector(args.account.platform);
@@ -242,7 +249,10 @@ Never invent metrics. If data is missing, judge conservatively and list it under
     1,
   ).slice(0, 12000);
 
-  const text = await callFlashAi(system, user);
+  const text = await callFlashAi(system, user, {
+    tenantId: args.account.tenant_id,
+    feature: "connection_scan",
+  });
   const parsed = parseJson<ScanResult>(text, {
     overall: 0,
     scores: {},
@@ -285,6 +295,7 @@ export async function optimizeProfile(args: {
   profile: Record<string, unknown> | null;
   business: Record<string, unknown> | null;
   findings: string[];
+  tenantId?: string | null;
 }): Promise<OptimizerResult> {
   const meta = connector(args.platform);
   const system = `You are Flas, a brand and local-SEO copywriter. Rewrite this business's ${meta?.name ?? args.platform} profile content.
@@ -292,11 +303,20 @@ Respect the platform's real limits (Instagram bio 150 chars, Google Business des
 Use the business's own products, services, locations and tone. No invented claims, no fake awards, no statistics.
 Return ONLY JSON: {"bio":"","description":"","business_summary":"","keywords":[],"cta":"","hashtags":[],"notes":["what changed and why"]}`;
   const user = JSON.stringify(
-    { platform: meta?.name, account: args.label, current_profile: args.profile ?? {}, business_knowledge: args.business ?? {}, scan_findings: args.findings },
+    {
+      platform: meta?.name,
+      account: args.label,
+      current_profile: args.profile ?? {},
+      business_knowledge: args.business ?? {},
+      scan_findings: args.findings,
+    },
     null,
     1,
   ).slice(0, 12000);
-  const text = await callFlashAi(system, user);
+  const text = await callFlashAi(system, user, {
+    tenantId: args.tenantId ?? null,
+    feature: "profile_optimize",
+  });
   const parsed = parseJson<OptimizerResult>(text, {
     bio: "",
     description: "",

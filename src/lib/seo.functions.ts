@@ -67,9 +67,12 @@ export const humanizeFn = createServerFn({ method: "POST" })
       .object({ contentHtml: z.string().min(20).max(100_000), tone: z.string().max(40) })
       .parse(input),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { humanizeHtml } = await import("@/lib/seo.server");
-    return { contentHtml: await humanizeHtml(data.contentHtml, data.tone) };
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    return {
+      contentHtml: await humanizeHtml(data.contentHtml, data.tone, tenantId as string | null),
+    };
   });
 
 /** Tests a WordPress connection and fetches live categories/tags. */
@@ -144,7 +147,12 @@ export const publishArticleFn = createServerFn({ method: "POST" })
       scheduledAt: data.scheduledAt ?? null,
     });
 
-    const statusMap = { draft: "draft", pending: "review", publish: "published", future: "scheduled" } as const;
+    const statusMap = {
+      draft: "draft",
+      pending: "review",
+      publish: "published",
+      future: "scheduled",
+    } as const;
     await context.supabase
       .from("seo_articles")
       .update({

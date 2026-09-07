@@ -166,9 +166,7 @@ export function buildArticleJsonLd(input: {
     headline: input.title,
     description: input.metaDescription,
     mainEntityOfPage: base && input.slug ? `${base}/${input.slug}` : undefined,
-    author: input.businessName
-      ? { "@type": "Organization", name: input.businessName }
-      : undefined,
+    author: input.businessName ? { "@type": "Organization", name: input.businessName } : undefined,
     image: input.featuredImageUrl ?? undefined,
   };
   const graph: Array<Record<string, unknown>> = [article];
@@ -182,5 +180,8 @@ export function buildArticleJsonLd(input: {
       })),
     });
   }
-  return { "@context": "https://schema.org", "@graph": graph.map((g) => ({ ...g, "@context": undefined })) };
+  return {
+    "@context": "https://schema.org",
+    "@graph": graph.map((g) => ({ ...g, "@context": undefined })),
+  };
 }

@@ -85,7 +85,11 @@ function keywordsOf(text: string): string {
 
 async function urlsFromSitemap(origin: string): Promise<string[]> {
   const found: string[] = [];
-  const roots = [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`, `${origin}/wp-sitemap.xml`];
+  const roots = [
+    `${origin}/sitemap.xml`,
+    `${origin}/sitemap_index.xml`,
+    `${origin}/wp-sitemap.xml`,
+  ];
   for (const root of roots) {
     const xml = await get(root);
     if (!xml) continue;

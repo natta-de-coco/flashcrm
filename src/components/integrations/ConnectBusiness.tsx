@@ -1,23 +1,21 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
 import { HealthReportDialog } from "@/components/integrations/HealthReportDialog";
-import {
-  PlatformAppKeysDialog,
-  PlatformAppsCard,
-  type ProviderKey,
-  type ProviderReady,
-} from "@/components/integrations/PlatformAppsCard";
-import { setupGuide } from "@/lib/connection-setup";
+import { connectorIcon } from "@/components/integrations/connector-icons";
+import { credentialSpec, setupGuide } from "@/lib/connection-setup";
 import { connectionStatus } from "@/lib/connection-status";
 import {
   disconnectConnection,
   getConnections,
   optimizeConnectedProfile,
   scanConnectedAccount,
+  getConnectReadiness,
   startConnect,
 } from "@/lib/connections.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,9 +32,10 @@ import {
   MessageSquare,
   ShoppingBag,
   Sparkles,
+  KeyRound,
+  Search,
   Unplug,
   Wand2,
-  KeyRound,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -99,18 +98,43 @@ type Account = {
 export function ConnectBusiness() {
   const qc = useQueryClient();
   const connections = useQuery({ queryKey: ["connections"], queryFn: () => getConnections() });
+  // Which platforms can actually be authorized right now. Without this the
+  // only way to find out was to click Connect and read a toast that vanished.
+  const readiness = useQuery({
+    queryKey: ["connect-readiness"],
+    queryFn: () => getConnectReadiness(),
+  });
+  const readyById = new Map((readiness.data ?? []).map((r) => [r.id as string, r]));
   const start = useServerFn(startConnect);
   const scan = useServerFn(scanConnectedAccount);
   const optimize = useServerFn(optimizeConnectedProfile);
   const disconnect = useServerFn(disconnectConnection);
+  const [blocked, setBlocked] = useState<{ reason: string; missing: string[] } | null>(null);
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState<string>("all");
+  const [onlyConnected, setOnlyConnected] = useState(false);
   const [optimizerFor, setOptimizerFor] = useState<string | null>(null);
   const [optimizerText, setOptimizerText] = useState<string>("");
-  const [keysFor, setKeysFor] = useState<ProviderKey | null>(null);
+
+  // Name, blurb and category all match, so "inbox" or "ads" finds the right
+  // card without knowing the vendor's name.
+  const visible = CONNECTORS.filter((c) => {
+    if (onlyConnected && !accountsFor(c.id).some((a) => a.active)) return false;
+    if (!onlyConnected && category !== "all" && c.group !== category) return false;
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.blurb.toLowerCase().includes(q) ||
+      c.group.toLowerCase().includes(q) ||
+      c.id.toLowerCase().includes(q)
+    );
+  });
 
   const connect = useMutation({
     mutationFn: async (platform: string) =>
       start({ data: { platform: platform as never, origin: window.location.origin } }),
-    onSuccess: (result, platform) => {
+    onSuccess: (result) => {
       if (result.ready) {
         // Providers like Facebook/Google refuse to render inside an iframe
         // (ERR_BLOCKED_BY_RESPONSE), so always hand off to a real browser tab.
@@ -122,9 +146,9 @@ export function ConnectBusiness() {
         toast.info("Finish signing in on the new tab, then come back here.");
         return;
       }
-      // Not ready almost always means "no app keys yet" — open that form now.
-      const provider = CONNECTORS.find((c) => c.id === platform)?.provider;
-      if (provider) setKeysFor(provider as ProviderKey);
+      // A toast disappears; this is setup information the user needs while
+      // they go and fix it, so it stays until dismissed.
+      setBlocked({ reason: result.reason, missing: result.missing ?? [] });
       toast.info(result.reason);
     },
 
@@ -162,8 +186,6 @@ export function ConnectBusiness() {
   const accounts = (data?.accounts ?? []) as Account[];
   const accountsFor = (id: string) => accounts.filter((a) => a.platform === id);
   const connectedCount = accounts.filter((a) => a.active).length;
-  const providerReady = (data?.providerReady ?? {}) as ProviderReady;
-  const isReady = (c: Connector) => (c.provider ? (providerReady[c.provider]?.ready ?? false) : true);
 
   return (
     <section id="platforms" className="grid gap-6">
@@ -183,9 +205,30 @@ export function ConnectBusiness() {
         </div>
       </div>
 
-      <PlatformAppsCard providerReady={providerReady} />
-
-
+      {blocked && (
+        <Alert>
+          <KeyRound className="size-4" />
+          <AlertTitle>One-time setup needed before this can connect</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>{blocked.reason}</p>
+            {blocked.missing.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium">Missing:</p>
+                <ul className="flex flex-wrap gap-1.5">
+                  {blocked.missing.map((k) => (
+                    <li key={k}>
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">{k}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setBlocked(null)}>
+              Dismiss
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {connections.isLoading && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -195,36 +238,100 @@ export function ConnectBusiness() {
         </div>
       )}
 
-      {GROUPS.map((group) => {
-        const items = CONNECTORS.filter((c) => c.group === group.id);
-        if (items.length === 0) return null;
-        return (
-          <div key={group.id} className="grid gap-3">
-            <div className="flex items-center gap-2">
-              <group.icon className="size-4 text-primary" />
-              <h3 className="text-sm font-semibold">{group.title}</h3>
-              <span className="hidden text-xs text-muted-foreground sm:inline">{group.blurb}</span>
+      {/* One browser instead of five stacked lists. With nineteen connectors
+          across five groups, scrolling was the only way to find anything and
+          the eye had to re-anchor at every section heading. */}
+      {!connections.isLoading && (
+        <div className="grid gap-4 lg:grid-cols-[13rem_1fr]">
+          <aside className="grid h-max gap-1 lg:sticky lg:top-4">
+            <div className="relative mb-2">
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search connectors"
+                className="h-9 pl-8 text-sm"
+                aria-label="Search connectors"
+              />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {items.map((c) => (
-                <ConnectorCard
-                  key={c.id}
-                  connector={c}
-                  accounts={accountsFor(c.id)}
-                  connecting={connect.isPending && connect.variables === c.id}
-                  ready={isReady(c)}
-                  onAddKeys={() => c.provider && setKeysFor(c.provider)}
-                  onConnect={() => connect.mutate(c.id)}
-                  onScan={(id) => runScan.mutate(id)}
-                  onOptimize={(id) => runOptimize.mutate(id)}
-                  onDisconnect={(id) => remove.mutate(id)}
-                  busyId={runScan.isPending ? (runScan.variables as string) : null}
-                />
-              ))}
-            </div>
+
+            <RailButton
+              label="Connected"
+              count={connectedCount}
+              active={onlyConnected}
+              onClick={() => {
+                setOnlyConnected(true);
+                setCategory("all");
+              }}
+            />
+            <RailButton
+              label="All"
+              count={CONNECTORS.length}
+              active={!onlyConnected && category === "all"}
+              onClick={() => {
+                setOnlyConnected(false);
+                setCategory("all");
+              }}
+            />
+
+            <p className="mt-3 px-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Categories
+            </p>
+            {GROUPS.map((g) => (
+              <RailButton
+                key={g.id}
+                label={g.title}
+                count={CONNECTORS.filter((c) => c.group === g.id).length}
+                active={!onlyConnected && category === g.id}
+                onClick={() => {
+                  setOnlyConnected(false);
+                  setCategory(g.id);
+                }}
+              />
+            ))}
+          </aside>
+
+          <div className="min-w-0">
+            {visible.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-8 text-center">
+                <p className="text-sm font-medium">No connector matches that</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Try a different word, or clear the filters to see all {CONNECTORS.length}.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => {
+                    setQuery("");
+                    setCategory("all");
+                    setOnlyConnected(false);
+                  }}
+                >
+                  Clear filters
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {visible.map((c) => (
+                  <ConnectorCard
+                    key={c.id}
+                    connector={c}
+                    accounts={accountsFor(c.id)}
+                    readiness={readyById.get(c.id) ?? null}
+                    connecting={connect.isPending && connect.variables === c.id}
+                    onConnect={() => connect.mutate(c.id)}
+                    onScan={(id) => runScan.mutate(id)}
+                    onOptimize={(id) => runOptimize.mutate(id)}
+                    onDisconnect={(id) => remove.mutate(id)}
+                    busyId={runScan.isPending ? (runScan.variables as string) : null}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        );
-      })}
+        </div>
+      )}
 
       {optimizerFor && optimizerText && (
         <Card>
@@ -252,12 +359,6 @@ export function ConnectBusiness() {
           </CardContent>
         </Card>
       )}
-
-      <PlatformAppKeysDialog
-        provider={keysFor}
-        open={keysFor !== null}
-        onOpenChange={(v) => !v && setKeysFor(null)}
-      />
     </section>
   );
 }
@@ -265,21 +366,20 @@ export function ConnectBusiness() {
 function ConnectorCard({
   connector,
   accounts,
+  readiness,
   connecting,
   busyId,
-  ready = true,
-  onAddKeys,
   onConnect,
   onScan,
   onOptimize,
   onDisconnect,
 }: {
   connector: Connector;
+  /** null while loading, or for connectors with no OAuth flow. */
+  readiness: { ready: boolean; missing: string[]; source: string } | null;
   accounts: Account[];
   connecting: boolean;
   busyId: string | null;
-  ready?: boolean;
-  onAddKeys?: () => void;
   onConnect: () => void;
   onScan: (id: string) => void;
   onOptimize: (id: string) => void;
@@ -287,10 +387,15 @@ function ConnectorCard({
 }) {
   const connected = accounts.some((a) => a.active);
   const [wizardOpen, setWizardOpen] = useState(false);
+  // Whether the wizard has fields to collect for this channel.
+  const hasGuidedSetup = Boolean(
+    credentialSpec(connector.id, { provider: connector.provider ?? null }),
+  );
   // One clear state per card: Connected / Needs verification / Pending review /
   // Expired / Failing, always with the precise reason and the next action.
   const status = connectionStatus(accounts[0]);
   const guide = setupGuide(connector.id);
+  const { icon: Icon, tint } = connectorIcon(connector.id);
   return (
     <Card
       className={`flex h-full min-w-0 flex-col ${
@@ -299,9 +404,17 @@ function ConnectorCard({
     >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
-          <CardTitle className="min-w-0 break-words text-sm font-semibold">
-            {connector.name}
-          </CardTitle>
+          {/* Icon first, so the eye finds a platform by shape rather than by
+              reading nineteen names. Fixed 8x8 box keeps every title on the
+              same baseline whatever the icon. */}
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/40">
+              <Icon className={`size-4 ${tint}`} />
+            </span>
+            <CardTitle className="min-w-0 break-words text-sm font-semibold">
+              {connector.name}
+            </CardTitle>
+          </div>
           <Badge
             variant={
               status.tone === "good"
@@ -407,13 +520,7 @@ function ConnectorCard({
               </Link>
             </Button>
           ) : connector.oauth ? (
-            !ready && onAddKeys ? (
-              // Without app keys the platform refuses the login window, so we
-              // send the user to the one step that unblocks it.
-              <Button size="sm" className="h-8 gap-1 text-xs" onClick={onAddKeys}>
-                <KeyRound className="size-3" /> Add app keys
-              </Button>
-            ) : (
+            <>
               <Button
                 size="sm"
                 className="h-8 text-xs"
@@ -423,7 +530,22 @@ function ConnectorCard({
               >
                 {connected ? "Connect another" : "Connect"}
               </Button>
-            )
+              {/* Readiness is known before the click, so say so here rather
+                  than bouncing the user to a provider tab that cannot work. */}
+              {readiness && !readiness.ready && (
+                <Badge variant="outline" className="gap-1 text-[10px]">
+                  <KeyRound className="size-3" /> Needs app keys
+                </Badge>
+              )}
+            </>
+          ) : hasGuidedSetup ? (
+            // Channels without an OAuth flow are still set up the same way:
+            // one guided wizard that collects what it needs in place. Showing
+            // a bare "Manual setup" badge told the user nothing and offered
+            // them nothing to press.
+            <Button size="sm" className="h-8 text-xs" onClick={() => setWizardOpen(true)}>
+              {connected ? "Add another" : "Set up"}
+            </Button>
           ) : (
             <Badge variant="outline" className="text-[10px]">
               Manual setup
@@ -454,5 +576,32 @@ function ConnectorCard({
         />
       </CardContent>
     </Card>
+  );
+}
+
+/** A row in the category rail: label left, count right, selected state clear. */
+function RailButton({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition ${
+        active ? "bg-muted font-medium" : "hover:bg-muted/60"
+      }`}
+    >
+      <span className="truncate">{label}</span>
+      <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
+    </button>
   );
 }

@@ -138,7 +138,6 @@ export async function ingestLead(input: IngestLeadInput): Promise<void> {
   );
   if (error) throw error;
 
-
   const { logAudit } = await import("@/lib/audit.server");
   if (consented) {
     await logAudit({

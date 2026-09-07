@@ -129,7 +129,8 @@ function AdvisorPage() {
       country: p.country ?? "",
       currency: p.currency ?? "",
       business_stage: p.business_stage ?? "",
-      monthly_revenue_target: p.monthly_revenue_target != null ? String(p.monthly_revenue_target) : "",
+      monthly_revenue_target:
+        p.monthly_revenue_target != null ? String(p.monthly_revenue_target) : "",
       main_goal: p.main_goal ?? "",
       competitors: p.competitors ?? "",
       description: p.description ?? "",
@@ -187,7 +188,8 @@ function AdvisorPage() {
       const res = await ask({ data: { question: q, history: chat } });
       return res.answer;
     },
-    onSuccess: (answer, q) => setChat((c) => [...c, { role: "user", content: q }, { role: "assistant", content: answer }]),
+    onSuccess: (answer, q) =>
+      setChat((c) => [...c, { role: "user", content: q }, { role: "assistant", content: answer }]),
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -248,7 +250,11 @@ function AdvisorPage() {
                 ) : null}
                 <Button onClick={() => review.mutate()} disabled={review.isPending}>
                   <TrendingUp className="size-4" />
-                  {review.isPending ? "Analyzing…" : analysis ? "Re-analyze" : "Analyze my business"}
+                  {review.isPending
+                    ? "Analyzing…"
+                    : analysis
+                      ? "Re-analyze"
+                      : "Analyze my business"}
                 </Button>
               </div>
             </CardHeader>
@@ -298,7 +304,10 @@ function AdvisorPage() {
                 <div key={o.title} className="rounded-lg border p-3">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="font-medium">{o.title}</span>
-                    <Badge variant="outline" className={IMPACT_STYLES[o.impact] ?? IMPACT_STYLES["low"]}>
+                    <Badge
+                      variant="outline"
+                      className={IMPACT_STYLES[o.impact] ?? IMPACT_STYLES["low"]}
+                    >
                       {o.impact} impact
                     </Badge>
                   </div>
@@ -390,7 +399,10 @@ function AdvisorPage() {
             {analysis && analysis.kpis.length > 0 ? (
               <Section icon={TrendingUp} title="KPIs to track">
                 {analysis.kpis.map((k) => (
-                  <div key={k.name} className="flex items-center justify-between gap-3 border-b pb-1.5 last:border-0">
+                  <div
+                    key={k.name}
+                    className="flex items-center justify-between gap-3 border-b pb-1.5 last:border-0"
+                  >
                     <span>{k.name}</span>
                     <span className="font-medium">{k.target}</span>
                   </div>
@@ -461,7 +473,11 @@ function AdvisorPage() {
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder="e.g. My inbound dropped 20% — what should I change first?"
                 />
-                <Button onClick={submitQuestion} disabled={sendQuestion.isPending} className="sm:self-end">
+                <Button
+                  onClick={submitQuestion}
+                  disabled={sendQuestion.isPending}
+                  className="sm:self-end"
+                >
                   <Send className="size-4" /> Ask
                 </Button>
               </div>

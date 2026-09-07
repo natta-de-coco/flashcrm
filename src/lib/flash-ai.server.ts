@@ -9,28 +9,188 @@ type RlsClient = {
   from: (table: string) => never;
 };
 
-/** Calls the Lovable AI gateway Responses API and returns plain text. */
-export async function callFlashAi(system: string, user: string): Promise<string> {
+/**
+ * Options that turn a bare model call into a metered, tenant-aware one.
+ * Optional so the existing call sites keep working unchanged; pass them
+ * wherever a tenant is known, which is everywhere behind an authenticated
+ * server function.
+ */
+export type FlashAiOptions = {
+  /** Enables per-tenant rate limiting, usage accounting and bring-your-own-key. */
+  tenantId?: string | null;
+  /** For the usage ledger, so a tenant can see what spent their quota. */
+  feature?: string;
+  userId?: string | null;
+};
+
+/**
+ * Convenience for the many AI helpers that already hold an RLS-scoped client.
+ * Resolves the caller's tenant so rate limiting and bring-your-own-key apply
+ * without threading a tenantId through every signature. A failure here must
+ * never block the feature — it degrades to the platform key, unmetered.
+ */
+export async function resolveTenantId(supabase: unknown): Promise<string | null> {
+  // Callers hold several different hand-rolled structural types for the same
+  // runtime object, so this duck-types rather than naming a client type.
+  const rpc = (supabase as { rpc?: unknown } | null)?.rpc;
+  if (typeof rpc !== "function") return null;
+  try {
+    const { data } = (await (rpc as (fn: string) => Promise<{ data: unknown }>).call(
+      supabase,
+      "current_tenant_id",
+    )) ?? { data: null };
+    return typeof data === "string" ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function aiOptionsFor(
+  supabase: unknown,
+  feature: string,
+  userId?: string | null,
+): Promise<FlashAiOptions> {
+  return { tenantId: await resolveTenantId(supabase), feature, userId: userId ?? null };
+}
+
+type ResolvedProvider = { provider: string; apiKey: string; url: string; headers: Record<string, string> };
+
+/**
+ * Picks whose key pays for this call. A tenant that has pasted their own
+ * provider key in Settings should be billed to that key — until now nothing
+ * ever read ai_provider_keys, so every tenant silently burned the shared
+ * platform key regardless of what they configured.
+ */
+async function resolveProvider(tenantId: string | null | undefined): Promise<ResolvedProvider> {
+  if (tenantId) {
+    try {
+      const { data } = await supabaseAdmin.rpc("get_tenant_ai_key", { _tenant_id: tenantId });
+      const row = Array.isArray(data) ? data[0] : data;
+      const provider = (row as { provider?: string } | null)?.provider;
+      const apiKey = (row as { api_key?: string } | null)?.api_key;
+      if (provider && apiKey) {
+        if (provider === "openai") {
+          return {
+            provider,
+            apiKey,
+            url: "https://api.openai.com/v1/chat/completions",
+            headers: { Authorization: `Bearer ${apiKey}` },
+          };
+        }
+        if (provider === "anthropic") {
+          return {
+            provider,
+            apiKey,
+            url: "https://api.anthropic.com/v1/messages",
+            headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+          };
+        }
+        // Unknown provider string — fall through to the platform key rather
+        // than guessing an endpoint and failing in a confusing way.
+      }
+    } catch {
+      /* fall back to the platform key */
+    }
+  }
   const key = process.env["LOVABLE_API_KEY"];
   if (!key) throw new Error("Flas AI is not configured yet — the workspace AI key is missing.");
+  return {
+    provider: "platform",
+    apiKey: key,
+    url: "https://ai.gateway.lovable.dev/v1/responses",
+    headers: { Authorization: `Bearer ${key}`, "Lovable-API-Key": key },
+  };
+}
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/responses", {
+/** Calls the AI provider and returns plain text. */
+export async function callFlashAi(
+  system: string,
+  user: string,
+  options: FlashAiOptions = {},
+): Promise<string> {
+  const { tenantId = null, feature = "ai", userId = null } = options;
+  const startedAt = Date.now();
+
+  // Ceiling per tenant. Without this, one authenticated user in a loop is an
+  // unbounded bill across advisor / seo / translate / catalog / social.
+  if (tenantId) {
+    try {
+      const { data } = await supabaseAdmin.rpc("check_ai_rate_limit", { _tenant_id: tenantId });
+      const row = Array.isArray(data) ? data[0] : data;
+      const verdict = row as { allowed?: boolean; reason?: string } | null;
+      if (verdict && verdict.allowed === false) {
+        throw new Error(
+          verdict.reason === "daily"
+            ? "This workspace has reached its daily AI limit. It resets in 24 hours."
+            : "This workspace has reached its hourly AI limit. Try again shortly.",
+        );
+      }
+    } catch (limitError) {
+      // A limit breach must surface; a failure to CHECK the limit must not
+      // take the feature down.
+      if (limitError instanceof Error && limitError.message.includes("AI limit")) throw limitError;
+    }
+  }
+
+  const chosen = await resolveProvider(tenantId);
+
+  const body =
+    chosen.provider === "openai"
+      ? {
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+        }
+      : chosen.provider === "anthropic"
+        ? {
+            model: "claude-sonnet-4-5",
+            max_tokens: 4096,
+            system,
+            messages: [{ role: "user", content: user }],
+          }
+        : {
+            model: FLASH_MODEL,
+            input: [
+              { role: "system", content: system },
+              { role: "user", content: user },
+            ],
+          };
+
+  const res = await fetch(chosen.url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-      "Lovable-API-Key": key,
-    },
-    body: JSON.stringify({
-      model: FLASH_MODEL,
-      input: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+    headers: { "Content-Type": "application/json", ...chosen.headers },
+    body: JSON.stringify(body),
   });
 
+  const recordUsage = async (ok: boolean) => {
+    if (!tenantId) return;
+    try {
+      await supabaseAdmin.rpc("record_ai_usage", {
+        _tenant_id: tenantId,
+        _user_id: userId,
+        _feature: feature,
+        _provider: chosen.provider,
+        _ok: ok,
+        _duration_ms: Date.now() - startedAt,
+      });
+    } catch {
+      /* accounting must never break the feature */
+    }
+  };
+
   const raw = await res.text();
+  if (!res.ok) await recordUsage(false);
+  else await recordUsage(true);
+
+  // A tenant's own key failing is their configuration to fix, and saying
+  // "Flas AI failed" would send them hunting in the wrong place.
+  if (!res.ok && chosen.provider !== "platform") {
+    throw new Error(
+      `Your ${chosen.provider} API key was rejected (HTTP ${res.status}). Check the key in Settings → AI, or remove it to fall back to the built-in assistant.`,
+    );
+  }
   if (!res.ok) {
     let message = raw.slice(0, 300);
     try {
@@ -50,20 +210,40 @@ export async function callFlashAi(system: string, user: string): Promise<string>
     throw new Error(`Flas AI request failed [${res.status}]: ${message}`);
   }
 
+  // Each provider returns a different shape; normalize to plain text here so
+  // every caller keeps receiving a string regardless of whose key paid.
   const json = JSON.parse(raw) as {
+    // Lovable Responses API
     output_text?: string;
     output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
+    // OpenAI chat completions
+    choices?: Array<{ message?: { content?: string } }>;
+    // Anthropic messages
+    content?: Array<{ type?: string; text?: string }>;
   };
-  let text = (json.output_text ?? "").trim();
-  if (!text) {
-    for (const item of json.output ?? []) {
-      if (item.type !== "message") continue;
-      for (const part of item.content ?? []) {
-        if (part.type === "output_text" && part.text) text += part.text;
+
+  let text = "";
+  if (chosen.provider === "openai") {
+    text = (json.choices?.[0]?.message?.content ?? "").trim();
+  } else if (chosen.provider === "anthropic") {
+    text = (json.content ?? [])
+      .filter((part) => part.type === "text" && part.text)
+      .map((part) => part.text)
+      .join("")
+      .trim();
+  } else {
+    text = (json.output_text ?? "").trim();
+    if (!text) {
+      for (const item of json.output ?? []) {
+        if (item.type !== "message") continue;
+        for (const part of item.content ?? []) {
+          if (part.type === "output_text" && part.text) text += part.text;
+        }
       }
     }
+    text = text.trim();
   }
-  text = text.trim();
+
   if (!text) throw new Error("Flas AI returned an empty response — try rephrasing your goal.");
   return text;
 }
@@ -78,9 +258,11 @@ export type BusinessContext = {
 };
 
 export async function getBusinessContext(supabase: RlsClient): Promise<BusinessContext | null> {
-  const { data } = await (supabase.from("business_profiles") as never as {
-    select: (cols: string) => { maybeSingle: () => Promise<{ data: BusinessContext | null }> };
-  })
+  const { data } = await (
+    supabase.from("business_profiles") as never as {
+      select: (cols: string) => { maybeSingle: () => Promise<{ data: BusinessContext | null }> };
+    }
+  )
     .select("business_name, industry, description, learned_facts, website_url, qa")
     .maybeSingle();
   return data ?? null;
@@ -95,34 +277,36 @@ export type LeadSummary = {
 };
 
 export async function gatherLeadSummary(supabase: RlsClient): Promise<LeadSummary> {
-  const { data: leads } = await (supabase.from("leads") as never as {
-    select: (cols: string) => {
-      order: (
-        col: string,
-        opts: { ascending: boolean },
-      ) => {
-        limit: (
-          n: number,
-        ) => Promise<{
-          data: Array<{
-            source: string;
-            tags: string[] | null;
-            subscribed: boolean;
-            consent_given: boolean;
-          }> | null;
-        }>;
+  const { data: leads } = await (
+    supabase.from("leads") as never as {
+      select: (cols: string) => {
+        order: (
+          col: string,
+          opts: { ascending: boolean },
+        ) => {
+          limit: (n: number) => Promise<{
+            data: Array<{
+              source: string;
+              tags: string[] | null;
+              subscribed: boolean;
+              consent_given: boolean;
+            }> | null;
+          }>;
+        };
       };
-    };
-  })
+    }
+  )
     .select("source, tags, subscribed, consent_given")
     .order("created_at", { ascending: false })
     .limit(500);
 
-  const { data: contacts } = await (supabase.from("contacts") as never as {
-    select: (cols: string) => {
-      limit: (n: number) => Promise<{ data: Array<{ stage: string }> | null }>;
-    };
-  })
+  const { data: contacts } = await (
+    supabase.from("contacts") as never as {
+      select: (cols: string) => {
+        limit: (n: number) => Promise<{ data: Array<{ stage: string }> | null }>;
+      };
+    }
+  )
     .select("stage")
     .limit(500);
 
@@ -188,44 +372,48 @@ export async function gatherMessagingAnalytics(
 ): Promise<MessagingAnalytics> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data: messages } = await (supabase.from("messages") as never as {
-    select: (cols: string) => {
-      gte: (
-        col: string,
-        val: string,
-      ) => {
-        order: (
+  const { data: messages } = await (
+    supabase.from("messages") as never as {
+      select: (cols: string) => {
+        gte: (
           col: string,
-          opts: { ascending: boolean },
+          val: string,
         ) => {
-          limit: (n: number) => Promise<{
-            data: Array<{
-              conversation_id: string;
-              direction: string;
-              sender: string;
-              status: string;
-              created_at: string;
-            }> | null;
-          }>;
+          order: (
+            col: string,
+            opts: { ascending: boolean },
+          ) => {
+            limit: (n: number) => Promise<{
+              data: Array<{
+                conversation_id: string;
+                direction: string;
+                sender: string;
+                status: string;
+                created_at: string;
+              }> | null;
+            }>;
+          };
         };
       };
-    };
-  })
+    }
+  )
     .select("conversation_id, direction, sender, status, created_at")
     .gte("created_at", since)
     .order("created_at", { ascending: true })
     .limit(5000);
 
-  const { data: conversations } = await (supabase.from("conversations") as never as {
-    select: (cols: string) => Promise<{
-      data: Array<{
-        id: string;
-        status: string;
-        unread_count: number;
-        wa_number_id: string | null;
-      }> | null;
-    }>;
-  }).select("id, status, unread_count, wa_number_id");
+  const { data: conversations } = await (
+    supabase.from("conversations") as never as {
+      select: (cols: string) => Promise<{
+        data: Array<{
+          id: string;
+          status: string;
+          unread_count: number;
+          wa_number_id: string | null;
+        }> | null;
+      }>;
+    }
+  ).select("id, status, unread_count, wa_number_id");
 
   const rows = messages ?? [];
   const totals = {
@@ -284,10 +472,25 @@ export async function gatherMessagingAnalytics(
   }
 
   const perNumber: NumberAnalytics[] = [];
-  const { data: numbers } = await supabaseAdmin
-    .from("wa_numbers")
-    .select("id, label, display_phone, phone_number_id, access_token")
-    .eq("active", true);
+  // supabaseAdmin bypasses RLS, so the tenant filter has to be explicit here.
+  // Without it this returned every tenant's numbers -- their labels, phone
+  // numbers and Meta stats -- into whichever tenant happened to open the
+  // dashboard, and called the Meta API once per number on the whole platform.
+  // Fail closed: no resolvable tenant means no per-number data.
+  const tenantId = await resolveTenantId(supabase);
+  const { data: numbers } = tenantId
+    ? await supabaseAdmin
+        .from("wa_numbers")
+        .select("id, label, display_phone, phone_number_id, access_token")
+        .eq("tenant_id", tenantId)
+        .eq("active", true)
+    : { data: [] as Array<{
+        id: string;
+        label: string;
+        display_phone: string;
+        phone_number_id: string;
+        access_token: string;
+      }> };
 
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;

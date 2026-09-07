@@ -40,7 +40,9 @@ export const Route = createFileRoute("/api/public/plugin/download")({
             greeting: site.popup_greeting ?? "Hi! How can we help?",
           };
           const isShopify = parsed.data.platform === "shopify";
-          const zip = isShopify ? buildShopifyPlugin(pluginInput) : buildWordPressPlugin(pluginInput);
+          const zip = isShopify
+            ? buildShopifyPlugin(pluginInput)
+            : buildWordPressPlugin(pluginInput);
 
           return new Response(zip as unknown as BodyInit, {
             status: 200,

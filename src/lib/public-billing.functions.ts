@@ -138,7 +138,9 @@ export const claimDocumentPayment = createServerFn({ method: "POST" })
 
 /** QR verification lookup — proves a PDF matches the issued document. */
 export const verifyDocument = createServerFn({ method: "GET" })
-  .inputValidator((input: unknown) => z.object({ token: z.string().trim().min(10).max(80) }).parse(input))
+  .inputValidator((input: unknown) =>
+    z.object({ token: z.string().trim().min(10).max(80) }).parse(input),
+  )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: doc } = await supabaseAdmin

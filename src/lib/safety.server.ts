@@ -37,7 +37,7 @@ export async function checkSendPermission(args: {
       .maybeSingle();
     if (conv) {
       contactId = contactId ?? conv.contact_id;
-      waNumberId = waNumberId ?? (conv.wa_number_id ?? null);
+      waNumberId = waNumberId ?? conv.wa_number_id ?? null;
       channel = conv.channel;
     }
   }
@@ -50,7 +50,8 @@ export async function checkSendPermission(args: {
       .eq("id", waNumberId)
       .maybeSingle();
     if (!num) reasons.push("The selected WhatsApp number is not connected anymore.");
-    else if (!num.active) reasons.push(`The WhatsApp number "${num.label}" is disabled in Settings.`);
+    else if (!num.active)
+      reasons.push(`The WhatsApp number "${num.label}" is disabled in Settings.`);
   }
 
   // 2. Contact + workspace subscription state
@@ -109,7 +110,9 @@ export async function checkSendPermission(args: {
       .not("assigned_wa_number_id", "is", null)
       .maybeSingle();
     if (lead?.assigned_wa_number_id && waNumberId && lead.assigned_wa_number_id !== waNumberId) {
-      reasons.push("Routing rules assign this lead to a different WhatsApp number — reply from that line.");
+      reasons.push(
+        "Routing rules assign this lead to a different WhatsApp number — reply from that line.",
+      );
     }
   }
 

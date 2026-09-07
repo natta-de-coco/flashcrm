@@ -67,7 +67,13 @@ export type CountryOption = {
 export type ComplianceRegion = "eu" | "uk" | "us" | "canada" | "gcc" | "india" | "apac" | "global";
 
 export const COUNTRIES: CountryOption[] = [
-  { code: "AE", name: "United Arab Emirates", currency: "AED", timezone: "Asia/Dubai", region: "gcc" },
+  {
+    code: "AE",
+    name: "United Arab Emirates",
+    currency: "AED",
+    timezone: "Asia/Dubai",
+    region: "gcc",
+  },
   { code: "SA", name: "Saudi Arabia", currency: "SAR", timezone: "Asia/Riyadh", region: "gcc" },
   { code: "QA", name: "Qatar", currency: "QAR", timezone: "Asia/Qatar", region: "gcc" },
   { code: "KW", name: "Kuwait", currency: "KWD", timezone: "Asia/Kuwait", region: "gcc" },
@@ -80,9 +86,21 @@ export const COUNTRIES: CountryOption[] = [
   { code: "ES", name: "Spain", currency: "EUR", timezone: "Europe/Madrid", region: "eu" },
   { code: "IT", name: "Italy", currency: "EUR", timezone: "Europe/Rome", region: "eu" },
   { code: "NL", name: "Netherlands", currency: "EUR", timezone: "Europe/Amsterdam", region: "eu" },
-  { code: "US", name: "United States", currency: "USD", timezone: "America/New_York", region: "us" },
+  {
+    code: "US",
+    name: "United States",
+    currency: "USD",
+    timezone: "America/New_York",
+    region: "us",
+  },
   { code: "CA", name: "Canada", currency: "CAD", timezone: "America/Toronto", region: "canada" },
-  { code: "MX", name: "Mexico", currency: "MXN", timezone: "America/Mexico_City", region: "global" },
+  {
+    code: "MX",
+    name: "Mexico",
+    currency: "MXN",
+    timezone: "America/Mexico_City",
+    region: "global",
+  },
   { code: "BR", name: "Brazil", currency: "BRL", timezone: "America/Sao_Paulo", region: "global" },
   { code: "IN", name: "India", currency: "INR", timezone: "Asia/Kolkata", region: "india" },
   { code: "PK", name: "Pakistan", currency: "PKR", timezone: "Asia/Karachi", region: "apac" },
@@ -96,7 +114,13 @@ export const COUNTRIES: CountryOption[] = [
   { code: "EG", name: "Egypt", currency: "EGP", timezone: "Africa/Cairo", region: "global" },
   { code: "NG", name: "Nigeria", currency: "NGN", timezone: "Africa/Lagos", region: "global" },
   { code: "KE", name: "Kenya", currency: "KES", timezone: "Africa/Nairobi", region: "global" },
-  { code: "ZA", name: "South Africa", currency: "ZAR", timezone: "Africa/Johannesburg", region: "global" },
+  {
+    code: "ZA",
+    name: "South Africa",
+    currency: "ZAR",
+    timezone: "Africa/Johannesburg",
+    region: "global",
+  },
 ];
 
 export type ComplianceProfile = {
@@ -213,6 +237,59 @@ export function countryOption(code: string | null | undefined): CountryOption | 
   return COUNTRIES.find((c) => c.code === (code ?? "").toUpperCase());
 }
 
+/** E.164 calling code -> country. Longest-prefix-first so e.g. +1 (US/CA)
+ *  doesn't swallow a country that happens to share a leading digit. */
+const CALLING_CODES_RAW: [string, string][] = [
+  ["971", "AE"],
+  ["966", "SA"],
+  ["974", "QA"],
+  ["965", "KW"],
+  ["968", "OM"],
+  ["973", "BH"],
+  ["880", "BD"],
+  ["234", "NG"],
+  ["254", "KE"],
+  ["44", "GB"],
+  ["353", "IE"],
+  ["49", "DE"],
+  ["33", "FR"],
+  ["34", "ES"],
+  ["39", "IT"],
+  ["31", "NL"],
+  ["52", "MX"],
+  ["55", "BR"],
+  ["91", "IN"],
+  ["92", "PK"],
+  ["65", "SG"],
+  ["60", "MY"],
+  ["62", "ID"],
+  ["63", "PH"],
+  ["61", "AU"],
+  ["90", "TR"],
+  ["20", "EG"],
+  ["27", "ZA"],
+  ["1", "US"], // shared by US/Canada — bucketed as US, the more common CRM base
+];
+const CALLING_CODES: [string, string][] = [...CALLING_CODES_RAW].sort(
+  (a, b) => b[0].length - a[0].length,
+);
+
+/** Best-effort country from a phone number's calling code. No new tracking
+ *  needed — contacts don't have a city/country field today, so this is the
+ *  only geographic signal that already exists for every WhatsApp contact.
+ *  Approximate: shared codes (e.g. +1) collapse multiple countries into one,
+ *  and this says nothing about where someone actually lives, only which
+ *  country issued their number. */
+export function inferCountryFromPhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/[^\d]/g, "");
+  if (!digits) return null;
+  for (const [code, country] of CALLING_CODES) {
+    if (digits.startsWith(code)) return country;
+  }
+  return null;
+}
+
 export function regionForCountry(code: string | null | undefined): ComplianceRegion {
   return countryOption(code)?.region ?? "global";
 }
@@ -225,17 +302,23 @@ export function complianceFor(
   return COMPLIANCE[key] ?? COMPLIANCE.global;
 }
 
-export function resolveTenantLocale(org: {
-  country?: string | null;
-  currency?: string | null;
-  locale?: string | null;
-  timezone?: string | null;
-  compliance_region?: string | null;
-} | null): TenantLocale {
+export function resolveTenantLocale(
+  org: {
+    country?: string | null;
+    currency?: string | null;
+    locale?: string | null;
+    timezone?: string | null;
+    compliance_region?: string | null;
+  } | null,
+): TenantLocale {
   const country = (org?.country ?? DEFAULT_LOCALE.country).toUpperCase();
   return {
     country,
-    currency: (org?.currency ?? countryOption(country)?.currency ?? DEFAULT_LOCALE.currency).toUpperCase(),
+    currency: (
+      org?.currency ??
+      countryOption(country)?.currency ??
+      DEFAULT_LOCALE.currency
+    ).toUpperCase(),
     locale: org?.locale ?? DEFAULT_LOCALE.locale,
     timezone: org?.timezone ?? countryOption(country)?.timezone ?? DEFAULT_LOCALE.timezone,
     region: (org?.compliance_region as ComplianceRegion | null) ?? regionForCountry(country),

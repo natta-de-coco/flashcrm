@@ -60,12 +60,9 @@ export const listCompanies = createServerFn({ method: "GET" })
           count("contacts"),
           count("leads"),
           count("conversations"),
-          (async () => {
-            const { count: c } = await supabaseAdmin
-              .from("wa_numbers")
-              .select("id", { count: "exact", head: true });
-            return c ?? 0;
-          })(),
+          // Was missing the tenant filter, so every company row reported the
+          // same platform-wide total instead of its own numbers.
+          count("wa_numbers"),
         ]);
         return { ...org, users, contacts, leads, conversations, numbers };
       }),
@@ -123,9 +120,7 @@ export const updateCompanyStatus = createServerFn({ method: "POST" })
  */
 export const getCompanyWorkspace = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z.object({ organizationId: z.string().uuid() }).parse(input),
-  )
+  .inputValidator((input: unknown) => z.object({ organizationId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await requireSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

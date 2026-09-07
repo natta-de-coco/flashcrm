@@ -168,7 +168,10 @@ export const CONNECTORS: Connector[] = [
     oauth: false,
     capabilities: ["messaging", "analytics"],
     manageUrl: "https://business.facebook.com/wa/manage/",
-    internalHref: "/connect",
+    // No internalHref: this used to point at /connect, the page the card is
+    // already on, so "Set up in Flas" went nowhere. WhatsApp has no OAuth
+    // flow, so its guided wizard collects the Phone Number ID and permanent
+    // token directly instead.
   },
   {
     id: "meta_ads",

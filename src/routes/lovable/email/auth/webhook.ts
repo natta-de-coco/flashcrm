@@ -1,19 +1,19 @@
-import * as React from 'react'
-import { createAuthEmailHandler } from '@lovable.dev/email-js'
-import { createFileRoute } from '@tanstack/react-router'
-import { SignupEmail } from '@/lib/email-templates/signup'
-import { InviteEmail } from '@/lib/email-templates/invite'
-import { MagicLinkEmail } from '@/lib/email-templates/magic-link'
-import { RecoveryEmail } from '@/lib/email-templates/recovery'
-import { EmailChangeEmail } from '@/lib/email-templates/email-change'
-import { ReauthenticationEmail } from '@/lib/email-templates/reauthentication'
+import * as React from "react";
+import { createAuthEmailHandler } from "@lovable.dev/email-js";
+import { createFileRoute } from "@tanstack/react-router";
+import { SignupEmail } from "@/lib/email-templates/signup";
+import { InviteEmail } from "@/lib/email-templates/invite";
+import { MagicLinkEmail } from "@/lib/email-templates/magic-link";
+import { RecoveryEmail } from "@/lib/email-templates/recovery";
+import { EmailChangeEmail } from "@/lib/email-templates/email-change";
+import { ReauthenticationEmail } from "@/lib/email-templates/reauthentication";
 
 // Configuration
-const SITE_NAME = "Flas CRM"
-const SENDER_DOMAIN = "notify.flas.mobidigisol.com"
-const ROOT_DOMAIN = "flas.mobidigisol.com"
-const FROM_DOMAIN = "flas.mobidigisol.com"
-const SITE_URL = `https://${ROOT_DOMAIN}`
+const SITE_NAME = "Flas CRM";
+const SENDER_DOMAIN = "notify.flas.mobidigisol.com";
+const ROOT_DOMAIN = "flas.mobidigisol.com";
+const FROM_DOMAIN = "flas.mobidigisol.com";
+const SITE_URL = `https://${ROOT_DOMAIN}`;
 
 /**
  * Turns any send outcome into a short, human-readable reason string — or
@@ -45,13 +45,13 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
       POST: async ({ request }) => {
         const auditRequest = request.clone()
         const handler = createAuthEmailHandler({
-          apiKey: process.env['LOVABLE_API_KEY']!,
+          apiKey: process.env["LOVABLE_API_KEY"]!,
           from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
           senderDomain: SENDER_DOMAIN,
-          sendUrl: process.env['LOVABLE_SEND_URL'],
+          sendUrl: process.env["LOVABLE_SEND_URL"],
           emails: {
             signup: {
-              subject: 'Confirm your email',
+              subject: "Confirm your email",
               render: (data) =>
                 React.createElement(SignupEmail, {
                   siteName: SITE_NAME,
@@ -70,7 +70,7 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
                 }),
             },
             magiclink: {
-              subject: 'Your login link',
+              subject: "Your login link",
               render: (data) =>
                 React.createElement(MagicLinkEmail, {
                   siteName: SITE_NAME,
@@ -78,7 +78,7 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
                 }),
             },
             recovery: {
-              subject: 'Reset your password',
+              subject: "Reset your password",
               render: (data) =>
                 React.createElement(RecoveryEmail, {
                   siteName: SITE_NAME,
@@ -86,20 +86,20 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
                 }),
             },
             email_change: {
-              subject: 'Confirm your new email',
+              subject: "Confirm your new email",
               render: (data) =>
                 React.createElement(EmailChangeEmail, {
                   siteName: SITE_NAME,
-                  oldEmail: data.old_email ?? '',
+                  oldEmail: data.old_email ?? "",
                   email: data.email,
-                  newEmail: data.new_email ?? '',
+                  newEmail: data.new_email ?? "",
                   confirmationUrl: data.url,
                 }),
             },
             reauthentication: {
-              subject: 'Your verification code',
+              subject: "Your verification code",
               render: (data) =>
-                React.createElement(ReauthenticationEmail, { token: data.token ?? '' }),
+                React.createElement(ReauthenticationEmail, { token: data.token ?? "" }),
             },
           },
         })
@@ -133,4 +133,4 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
       },
     },
   },
-})
+});

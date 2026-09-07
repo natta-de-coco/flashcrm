@@ -3,7 +3,7 @@
 // only ever read here (via the admin client) after the caller's tenant has
 // been verified through their RLS-scoped client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { callFlashAi, getBusinessContext } from "@/lib/flash-ai.server";
+import { aiOptionsFor, callFlashAi, getBusinessContext } from "@/lib/flash-ai.server";
 
 const VISION_MODEL = "google/gemini-3.7-flash";
 const AI_GATEWAY = "https://ai.gateway.lovable.dev";
@@ -24,9 +24,12 @@ function gatewayError(status: number, raw: string): Error {
   } catch {
     /* keep raw snippet */
   }
-  if (status === 429) return new Error("Flas AI is busy right now — wait a few seconds and try again.");
+  if (status === 429)
+    return new Error("Flas AI is busy right now — wait a few seconds and try again.");
   if (status === 402)
-    return new Error("AI credits are exhausted — the workspace owner can top up in Lovable billing settings.");
+    return new Error(
+      "AI credits are exhausted — the workspace owner can top up in Lovable billing settings.",
+    );
   return new Error(`Flas AI request failed [${status}]: ${message}`);
 }
 
@@ -172,7 +175,7 @@ Requirements:
 Respond in EXACTLY this JSON shape:
 {"title": string, "metaTitle": string (50-60 chars, includes primary keyword), "metaDescription": string (140-155 chars), "slug": string (lowercase-hyphenated), "excerpt": string (1-2 sentences), "contentHtml": string, "secondaryKeywords": string[] (4-6), "faq": [{"q": string, "a": string}]}`;
 
-  const text = await callFlashAi(system, user);
+  const text = await callFlashAi(system, user, await aiOptionsFor(supabase, "seo_article"));
   const parsed = parseJsonBlock<Partial<SeoDraft>>(text);
   if (!parsed || !parsed.title) {
     throw new Error("Flas AI returned an unreadable draft — try again.");
@@ -208,19 +211,23 @@ ${params.visionSummary ? `Visual context: ${params.visionSummary}` : ""}
 Respond in EXACTLY this JSON shape:
 {"posts": [{"platform": "Meta" | "LinkedIn" | "TikTok", "text": string (platform-appropriate length and style), "hashtags": string[] (3-6, no # prefix)}]}`;
 
-  const text = await callFlashAi(system, user);
+  const text = await callFlashAi(system, user, await aiOptionsFor(supabase, "seo_micro_posts"));
   const parsed = parseJsonBlock<{ posts?: MicroPost[] }>(text);
   if (!parsed?.posts?.length) throw new Error("Flas AI returned no posts — try again.");
   return parsed.posts;
 }
 
 /** One-click pass that rewrites robotic AI phrasing into natural prose. */
-export async function humanizeHtml(contentHtml: string, tone: string): Promise<string> {
+export async function humanizeHtml(
+  contentHtml: string,
+  tone: string,
+  tenantId?: string | null,
+): Promise<string> {
   const system =
     "You are Flas AI, an editor who makes AI text sound human. Keep the exact same HTML tag structure; only rewrite the prose inside tags. " +
     "Remove clichés, hype words and repetitive phrasing. Vary sentence length. Return ONLY the rewritten HTML.";
   const user = `Tone target: ${tone}.\n\nHTML to humanize:\n${contentHtml}`;
-  const out = await callFlashAi(system, user);
+  const out = await callFlashAi(system, user, { tenantId: tenantId ?? null, feature: "seo_humanize" });
   return out.trim() || contentHtml;
 }
 
@@ -355,7 +362,11 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
     featured = await uploadFeaturedMedia(creds, input.featuredImageDataUrl);
   }
 
-  const meta = seoMetaKeys(siteSafe.seo_plugin, input.article.metaTitle, input.article.metaDescription);
+  const meta = seoMetaKeys(
+    siteSafe.seo_plugin,
+    input.article.metaTitle,
+    input.article.metaDescription,
+  );
   const payload: Record<string, unknown> = {
     title: input.article.title,
     content: input.article.contentHtml,
@@ -367,9 +378,7 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
   if (input.status === "future" && input.scheduledAt) payload["date"] = input.scheduledAt;
   if (Object.keys(meta).length > 0) payload["meta"] = meta;
 
-  const isUpdate = Boolean(
-    (input.article as { wpPostId?: number | null }).wpPostId,
-  );
+  const isUpdate = Boolean((input.article as { wpPostId?: number | null }).wpPostId);
   const existingId = (input.article as { wpPostId?: number | null }).wpPostId;
 
   let res = await wpFetch(creds, isUpdate ? `/posts/${existingId}` : "/posts", {
@@ -406,14 +415,16 @@ export async function getSiteForTenant(
   supabase: RlsClient,
   siteId: string,
 ): Promise<{ id: string; tenant_id: string } | null> {
-  const { data } = await (supabase.from("wordpress_sites") as never as {
-    select: (cols: string) => {
-      eq: (
-        col: string,
-        val: string,
-      ) => { maybeSingle: () => Promise<{ data: { id: string; tenant_id: string } | null }> };
-    };
-  })
+  const { data } = await (
+    supabase.from("wordpress_sites") as never as {
+      select: (cols: string) => {
+        eq: (
+          col: string,
+          val: string,
+        ) => { maybeSingle: () => Promise<{ data: { id: string; tenant_id: string } | null }> };
+      };
+    }
+  )
     .select("id, tenant_id")
     .eq("id", siteId)
     .maybeSingle();

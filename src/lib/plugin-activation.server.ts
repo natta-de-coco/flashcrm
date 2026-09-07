@@ -8,14 +8,28 @@ type ActivationInput = {
   platform: string;
 };
 
+const MAX_ACTIVATION_ATTEMPTS_PER_HOUR = 3;
+
+/** Counts recent activation requests for this site via the audit log (no new table needed). */
+async function recentActivationAttempts(siteId: string): Promise<number> {
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count } = await supabaseAdmin
+    .from("audit_log")
+    .select("id", { count: "exact", head: true })
+    .eq("action", "plugin.activation_requested")
+    .eq("entity_id", siteId)
+    .gte("created_at", since);
+  return count ?? 0;
+}
+
 /** Records a plugin activation attempt and returns the current state for the plugin to display. */
 export async function requestSiteActivation(input: ActivationInput): Promise<{
-  status: "active" | "pending" | "revoked";
+  status: "active" | "pending" | "revoked" | "rate_limited";
   message: string;
 }> {
   const { data: site, error } = await supabaseAdmin
     .from("lead_sites")
-    .select("id, status, activation_token, admin_email, domain")
+    .select("id, tenant_id, status, activation_token, admin_email, domain")
     .eq("id", input.siteId)
     .single();
   if (error || !site) throw new Error("Site not found");
@@ -24,7 +38,20 @@ export async function requestSiteActivation(input: ActivationInput): Promise<{
     return { status: "revoked", message: "This site was revoked. Contact your Flas CRM admin." };
   }
 
-  const adminEmail = input.adminEmail ?? site.admin_email ?? null;
+  if ((await recentActivationAttempts(site.id)) >= MAX_ACTIVATION_ATTEMPTS_PER_HOUR) {
+    return {
+      status: "rate_limited",
+      message: "Too many activation attempts for this site. Try again in an hour.",
+    };
+  }
+
+  // The admin email is a one-time claim, not something any caller with the
+  // (public) site key can keep overriding. Once a site has a registered
+  // admin_email, every later activation attempt sends there — never to
+  // whatever address this particular request happens to supply. Without
+  // this, anyone who knew the site key could redirect activation emails (and
+  // real emails from your domain) to an address of their choosing.
+  const adminEmail = site.admin_email ?? input.adminEmail ?? null;
 
   await supabaseAdmin
     .from("lead_sites")
@@ -35,23 +62,44 @@ export async function requestSiteActivation(input: ActivationInput): Promise<{
     })
     .eq("id", site.id);
 
+  const { logAudit } = await import("@/lib/audit.server");
+  await logAudit({
+    action: "plugin.activation_requested",
+    tenantId: site.tenant_id,
+    entityType: "lead_site",
+    entityId: site.id,
+    details: { platform: input.platform },
+  });
+
   if (site.status === "active") {
     return { status: "active", message: "This site is already activated." };
   }
 
   const link = `${input.origin}/api/public/plugin/activate?token=${site.activation_token}`;
-  await sendActivationEmail(adminEmail, link, input.domain ?? site.domain ?? "your website");
+  const sendResult =
+    adminEmail && site.tenant_id
+      ? await sendActivationEmail(
+          site.tenant_id,
+          adminEmail,
+          link,
+          input.domain ?? site.domain ?? "your website",
+        )
+      : { ok: false, error: "no admin email on file" };
 
   return {
     status: "pending",
-    message: adminEmail
-      ? `Activation email sent to ${adminEmail}. Click the link in it to go live.`
-      : "Add an activation email address, then save again.",
+    message: !adminEmail
+      ? "Add an activation email address, then save again."
+      : sendResult.ok
+        ? `Activation email sent to ${adminEmail}. Click the link in it to go live.`
+        : `Could not send the activation email (${sendResult.error}). Use the link from your CRM's Downloads page instead, or fix email settings and try again.`,
   };
 }
 
 /** Consumes an activation token from the emailed link. */
-export async function activateSiteByToken(token: string): Promise<{ ok: boolean; message: string }> {
+export async function activateSiteByToken(
+  token: string,
+): Promise<{ ok: boolean; message: string }> {
   const { data: site } = await supabaseAdmin
     .from("lead_sites")
     .select("id, name, status")
@@ -79,15 +127,24 @@ export async function activateSiteByToken(token: string): Promise<{ ok: boolean;
 }
 
 /**
- * Sends the activation email through Lovable managed email when a sender domain is
- * configured. Until then the link is logged and shown inside the CRM so an admin can
- * activate the site manually.
+ * Sends the activation email through the tenant's configured email provider
+ * (falling back to the platform-wide one). A previous version of this
+ * function only ever logged the link with console.info and always reported
+ * success — the entire activation-by-email flow was inert in production.
  */
 async function sendActivationEmail(
-  to: string | null,
+  tenantId: string,
+  to: string,
   link: string,
   domain: string,
-): Promise<void> {
-  if (!to) return;
-  console.info(`[plugin] activation link for ${domain} -> ${to}: ${link}`);
+): Promise<{ ok: boolean; error?: string }> {
+  const { sendTenantEmail } = await import("@/lib/email-dispatch.server");
+  const result = await sendTenantEmail(tenantId, {
+    to,
+    subject: `Activate ${domain} on Flas CRM`,
+    text: `Click the link below to finish connecting ${domain} to Flas CRM:\n\n${link}\n\nIf you didn't request this, you can ignore this email.`,
+  });
+  if (!result.ok)
+    console.error(`[plugin] activation email to ${to} for ${domain} failed:`, result.error);
+  return result;
 }
