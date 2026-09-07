@@ -26,5 +26,6 @@ Disallow: /content
 Disallow: /chatbot
 Disallow: /connect
 Disallow: /seo-blog
+Allow: /blog
 
-Sitemap: /sitemap.xml
+Sitemap: https://flas.mobidigisol.com/sitemap.xml

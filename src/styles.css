@@ -237,3 +237,249 @@
     background: color-mix(in oklab, var(--sidebar-foreground) 35%, transparent);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Marketing-site motion.
+   
+   Used by the public landing page and blog only -- the app itself stays still,
+   because motion in a working inbox is noise rather than delight.
+
+   Two rules govern everything here:
+
+   1. Nothing animates layout. Only transform and opacity, so a scroll reveal
+      can never push the page around mid-paint. The landing page is the entry
+      point for search traffic, and Cumulative Layout Shift is scored.
+   2. Every element renders in its final position by default, and the reveal
+      is applied only once JavaScript marks the page ready. If a script fails
+      or a crawler renders without it, the content is visible -- never a blank
+      page held behind an animation that never ran.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+@keyframes flas-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes flas-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0) scale(1.03);
+  }
+}
+
+@keyframes flas-marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    /* The track holds the list twice; travelling half its width loops seamlessly. */
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes flas-sheen {
+  from {
+    transform: translate3d(-120%, 0, 0);
+  }
+  to {
+    transform: translate3d(220%, 0, 0);
+  }
+}
+
+/* Scroll reveal. Hidden only when the page has opted in, so no-JS keeps text. */
+[data-reveal] {
+  opacity: 1;
+}
+
+.js-reveal [data-reveal] {
+  opacity: 0;
+}
+
+.js-reveal [data-reveal][data-shown="true"] {
+  animation: flas-rise 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+
+.flas-drift {
+  animation: flas-drift 9s ease-in-out infinite;
+}
+
+.flas-marquee-track {
+  animation: flas-marquee 42s linear infinite;
+}
+
+.flas-marquee:hover .flas-marquee-track {
+  animation-play-state: paused;
+}
+
+/* The moving highlight across the primary call to action. */
+.flas-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    color-mix(in oklab, white 42%, transparent),
+    transparent
+  );
+  animation: flas-sheen 3.6s ease-in-out infinite;
+  animation-delay: 1.2s;
+  pointer-events: none;
+}
+
+/* A reader who has asked for less motion gets none of it -- including the
+   loops, which are the ones that actually cause discomfort. */
+@media (prefers-reduced-motion: reduce) {
+  .js-reveal [data-reveal],
+  .js-reveal [data-reveal][data-shown="true"] {
+    opacity: 1;
+    animation: none;
+  }
+
+  .flas-drift,
+  .flas-marquee-track,
+  .flas-sheen::after {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Article typography for the public guides.
+
+   Written out rather than pulled from @tailwindcss/typography: the project does
+   not carry that plugin, and a blog post needs about twenty rules, not a
+   dependency. Measure is capped near 68 characters, which is where long-form
+   reading comfort sits.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.flas-prose {
+  color: var(--foreground);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+
+.flas-prose > * + * {
+  margin-top: 1.25em;
+}
+
+.flas-prose h2 {
+  margin-top: 2.25em;
+  margin-bottom: 0.6em;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  scroll-margin-top: 5rem;
+}
+
+.flas-prose h3 {
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  font-size: 1.175rem;
+  font-weight: 650;
+}
+
+.flas-prose p,
+.flas-prose li {
+  color: color-mix(in oklab, var(--foreground) 82%, var(--muted-foreground));
+}
+
+.flas-prose strong {
+  color: var(--foreground);
+  font-weight: 650;
+}
+
+.flas-prose a {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.flas-prose a:hover {
+  text-decoration-thickness: 2px;
+}
+
+.flas-prose ul,
+.flas-prose ol {
+  padding-left: 1.35em;
+}
+
+.flas-prose ul {
+  list-style: disc;
+}
+
+.flas-prose ol {
+  list-style: decimal;
+}
+
+.flas-prose li + li {
+  margin-top: 0.45em;
+}
+
+.flas-prose li::marker {
+  color: var(--brand);
+}
+
+.flas-prose code {
+  border-radius: 0.35em;
+  background: var(--muted);
+  padding: 0.15em 0.4em;
+  font-size: 0.875em;
+}
+
+.flas-prose pre {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  padding: 1rem 1.15rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.flas-prose pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Tables carry real comparisons in these posts, so they scroll rather than
+   squash on a phone. */
+.flas-prose table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.925rem;
+}
+
+.flas-prose th,
+.flas-prose td {
+  border: 1px solid var(--border);
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.flas-prose th {
+  background: var(--muted);
+  font-weight: 650;
+}
+
+.flas-prose blockquote {
+  border-left: 3px solid var(--brand);
+  padding-left: 1rem;
+  color: var(--muted-foreground);
+  font-style: italic;
+}

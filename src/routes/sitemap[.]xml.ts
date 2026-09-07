@@ -1,3 +1,4 @@
+import { POSTS_BY_DATE } from "@/content/blog";
 import { createFileRoute } from "@tanstack/react-router";
 import type {} from "@tanstack/react-start";
 
@@ -21,6 +22,15 @@ export const Route = createFileRoute("/sitemap.xml")({
           { path: "/auth", changefreq: "monthly", priority: "0.5" },
           { path: "/privacy", changefreq: "yearly", priority: "0.3" },
           { path: "/terms", changefreq: "yearly", priority: "0.3" },
+          { path: "/blog", changefreq: "weekly", priority: "0.8" },
+          // Every guide, with lastmod taken from the post itself so a revision
+          // is actually signalled to crawlers rather than silently shipped.
+          ...POSTS_BY_DATE.map((post) => ({
+            path: `/blog/${post.slug}`,
+            lastmod: post.updated ?? post.published,
+            changefreq: "monthly" as const,
+            priority: "0.7",
+          })),
         ];
 
         const urls = entries.map((e) =>

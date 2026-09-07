@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as BlogRouteImport } from './routes/blog'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
@@ -32,6 +33,8 @@ import { Route as AuthenticatedSalesRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedSeoBlogRouteImport } from './routes/_authenticated/seo-blog'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSocialRouteImport } from './routes/_authenticated/social'
+import { Route as BlogIndexRouteImport } from './routes/blog.index'
+import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as PayTokenRouteImport } from './routes/pay.$token'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as AuthenticatedCompaniesOrgIdRouteImport } from './routes/_authenticated/companies.$orgId'
@@ -67,6 +70,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogRoute = BlogRouteImport.update({
+  id: '/blog',
+  path: '/blog',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -169,6 +177,16 @@ const AuthenticatedSocialRoute = AuthenticatedSocialRouteImport.update({
   id: '/social',
   path: '/social',
   getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const BlogIndexRoute = BlogIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => BlogRoute,
+} as any)
+const BlogSlugRoute = BlogSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => BlogRoute,
 } as any)
 const PayTokenRoute = PayTokenRouteImport.update({
   id: '/pay/$token',
@@ -294,6 +312,7 @@ const LovableEmailAuthWebhookRoute = LovableEmailAuthWebhookRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/blog': typeof BlogRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -314,8 +333,10 @@ export interface FileRoutesByFullPath {
   '/seo-blog': typeof AuthenticatedSeoBlogRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/social': typeof AuthenticatedSocialRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/pay/$token': typeof PayTokenRoute
   '/verify/$token': typeof VerifyTokenRoute
+  '/blog/': typeof BlogIndexRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
@@ -359,8 +380,10 @@ export interface FileRoutesByTo {
   '/sales': typeof AuthenticatedSalesRoute
   '/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/social': typeof AuthenticatedSocialRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/pay/$token': typeof PayTokenRoute
   '/verify/$token': typeof VerifyTokenRoute
+  '/blog': typeof BlogIndexRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
@@ -387,6 +410,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/blog': typeof BlogRouteWithChildren
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
@@ -407,8 +431,10 @@ export interface FileRoutesById {
   '/_authenticated/seo-blog': typeof AuthenticatedSeoBlogRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRouteWithChildren
   '/_authenticated/social': typeof AuthenticatedSocialRoute
+  '/blog/$slug': typeof BlogSlugRoute
   '/pay/$token': typeof PayTokenRoute
   '/verify/$token': typeof VerifyTokenRoute
+  '/blog/': typeof BlogIndexRoute
   '/_authenticated/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/_authenticated/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/_authenticated/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
@@ -435,6 +461,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/blog'
     | '/privacy'
     | '/reset-password'
     | '/sitemap.xml'
@@ -455,8 +482,10 @@ export interface FileRouteTypes {
     | '/seo-blog'
     | '/settings'
     | '/social'
+    | '/blog/$slug'
     | '/pay/$token'
     | '/verify/$token'
+    | '/blog/'
     | '/companies/$orgId'
     | '/companies/emails'
     | '/companies/subscribers'
@@ -500,8 +529,10 @@ export interface FileRouteTypes {
     | '/sales'
     | '/settings'
     | '/social'
+    | '/blog/$slug'
     | '/pay/$token'
     | '/verify/$token'
+    | '/blog'
     | '/companies/$orgId'
     | '/companies/emails'
     | '/companies/subscribers'
@@ -527,6 +558,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/blog'
     | '/privacy'
     | '/reset-password'
     | '/sitemap.xml'
@@ -547,8 +579,10 @@ export interface FileRouteTypes {
     | '/_authenticated/seo-blog'
     | '/_authenticated/settings'
     | '/_authenticated/social'
+    | '/blog/$slug'
     | '/pay/$token'
     | '/verify/$token'
+    | '/blog/'
     | '/_authenticated/companies/$orgId'
     | '/_authenticated/companies/emails'
     | '/_authenticated/companies/subscribers'
@@ -575,6 +609,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  BlogRoute: typeof BlogRouteWithChildren
   PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
@@ -618,6 +653,13 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog': {
+      id: '/blog'
+      path: '/blog'
+      fullPath: '/blog'
+      preLoaderRoute: typeof BlogRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -759,6 +801,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/social'
       preLoaderRoute: typeof AuthenticatedSocialRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/blog/': {
+      id: '/blog/'
+      path: '/'
+      fullPath: '/blog/'
+      preLoaderRoute: typeof BlogIndexRouteImport
+      parentRoute: typeof BlogRoute
+    }
+    '/blog/$slug': {
+      id: '/blog/$slug'
+      path: '/$slug'
+      fullPath: '/blog/$slug'
+      preLoaderRoute: typeof BlogSlugRouteImport
+      parentRoute: typeof BlogRoute
     }
     '/pay/$token': {
       id: '/pay/$token'
@@ -1003,10 +1059,23 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface BlogRouteChildren {
+  BlogSlugRoute: typeof BlogSlugRoute
+  BlogIndexRoute: typeof BlogIndexRoute
+}
+
+const BlogRouteChildren: BlogRouteChildren = {
+  BlogSlugRoute: BlogSlugRoute,
+  BlogIndexRoute: BlogIndexRoute,
+}
+
+const BlogRouteWithChildren = BlogRoute._addFileChildren(BlogRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  BlogRoute: BlogRouteWithChildren,
   PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
