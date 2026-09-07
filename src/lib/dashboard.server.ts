@@ -182,7 +182,7 @@ export async function getDashboardOverviewData(
   const botReplies = num(botReplyCount);
   const accountRows = accounts.data ?? [];
   const interactionRows = interactions.data ?? [];
-  const weekStartMs = weekStart.getTime();
+  const leadsPrevWindowTotal = leadsWindowTotal;
   const weekMessageRows = weekMsgs.data ?? [];
   const priorTotal = num(priorMsgTotal);
   const priorInbound = num(priorMsgInbound);
@@ -247,14 +247,12 @@ export async function getDashboardOverviewData(
 
   // ---- Week-over-week trends ----
   const inboundNow = weekMessageRows.filter((m) => m.sender === "contact").length;
-  const inboundPrev = priorMessageRows.filter((m) => m.sender === "contact").length;
+  const inboundPrev = priorInbound;
   const repliesNow = weekMessageRows.length - inboundNow;
-  const repliesPrev = priorMessageRows.length - inboundPrev;
-  const leadsNow = leads.filter((l) => new Date(l.created_at).getTime() >= weekStartMs).length;
-  const leadsPrev = leads.length - leadsNow;
+  const repliesPrev = Math.max(0, priorTotal - priorInbound);
 
   const trends = {
-    messages: trend(weekMessageRows.length, priorMessageRows.length),
+    messages: trend(weekMessageRows.length, priorTotal),
     inbound: trend(inboundNow, inboundPrev),
     leads: trend(leadsNow, leadsPrev),
     replies: trend(repliesNow, repliesPrev),
@@ -275,9 +273,9 @@ export async function getDashboardOverviewData(
             Math.min(40, interactions7d * 4),
         );
   const consentRate =
-    leads.length === 0
+    leadsPrevWindowTotal === 0 || leadsNow === 0
       ? 60
-      : Math.round((leads.filter((l) => l.consent_given).length / leads.length) * 100);
+      : Math.round((leadsConsented / leadsNow) * 100);
 
   const factors: HealthFactor[] = [
     {
@@ -312,7 +310,7 @@ export async function getDashboardOverviewData(
       label: "Marketing compliance",
       score: consentRate,
       detail:
-        leads.length === 0
+        leadsNow === 0
           ? "No leads captured yet"
           : `${consentRate}% of recent leads gave marketing consent`,
     },
@@ -326,8 +324,8 @@ export async function getDashboardOverviewData(
     stats: {
       open: conversations.filter((c) => c.status === "open").length,
       unread: unreadTotal,
-      contacts: contactRows.length,
-      botReplies: messageRows.filter((m) => m.sender === "bot").length,
+      contacts: contactsTotal,
+      botReplies: botReplies,
     },
     activity: { buckets, weekTotal, todayTotal },
     trends,
