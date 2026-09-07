@@ -182,7 +182,7 @@ export async function getDashboardOverviewData(
   const botReplies = num(botReplyCount);
   const accountRows = accounts.data ?? [];
   const interactionRows = interactions.data ?? [];
-  const weekMessagesTruncated = false;
+  
   const weekMessageRows = weekMsgs.data ?? [];
   const priorTotal = num(priorMsgTotal);
   const priorInbound = num(priorMsgInbound);
@@ -273,9 +273,7 @@ export async function getDashboardOverviewData(
             Math.min(40, interactions7d * 4),
         );
   const consentRate =
-    leadsPrevWindowTotal === 0 || leadsNow === 0
-      ? 60
-      : Math.round((leadsConsented / leadsNow) * 100);
+    leadsWindowTotal === 0 || leadsNow === 0 ? 60 : Math.round((leadsConsented / leadsNow) * 100);
 
   const factors: HealthFactor[] = [
     {
