@@ -141,30 +141,6 @@ function ConnectPage() {
         description="Every connection in one place: platforms, WhatsApp, your website and stores, plus a full activity log."
       />
 
-      {/* Section jump links */}
-      <nav className="mb-6 flex flex-wrap gap-2">
-        {[
-          { href: "#platforms", label: "Platform connections" },
-          { href: "#setup", label: "Guided setup" },
-          { href: "#logs", label: "Integration logs" },
-        ].map((s) => (
-          <Button key={s.href} asChild variant="outline" size="sm">
-            <a href={s.href}>{s.label}</a>
-          </Button>
-        ))}
-      </nav>
-
-      <div className="mb-8">
-        <ConnectBusiness />
-      </div>
-
-      {/* Moved here from Settings: the WhatsApp connection, its numbers, the
-          website widget snippet, message templates, WordPress and API keys are
-          all integrations, and belong beside the connector cards. */}
-      <div className="mb-8">
-        <IntegrationSettings />
-      </div>
-
       {/* How it works */}
       <Card className="mb-6 max-w-4xl">
         <CardContent className="flex flex-wrap items-center gap-3 pt-6 text-sm">
@@ -185,6 +161,21 @@ function ConnectPage() {
           </Badge>
         </CardContent>
       </Card>
+
+      {/* Section jump links -- one entry per section that actually exists on
+          the page, in the order the page presents them. */}
+      <nav className="mb-6 flex flex-wrap gap-2">
+        {[
+          { href: "#setup", label: "Guided setup" },
+          { href: "#platforms", label: "Platform connections" },
+          { href: "#whatsapp", label: "WhatsApp & website" },
+          { href: "#logs", label: "Integration logs" },
+        ].map((s) => (
+          <Button key={s.href} asChild variant="outline" size="sm">
+            <a href={s.href}>{s.label}</a>
+          </Button>
+        ))}
+      </nav>
 
       <h2 id="setup" className="mb-3 text-lg font-semibold">
         Guided setup
@@ -223,7 +214,9 @@ function ConnectPage() {
           )}
           <div>
             <Button asChild variant="outline" size="sm">
-              <Link to="/settings">Open Settings → WhatsApp numbers</Link>
+              <a href="#whatsapp">
+                {numbers.length > 0 ? "Manage numbers" : "Add your first number"} below
+              </a>
             </Button>
           </div>
         </StepCard>
@@ -402,6 +395,17 @@ function ConnectPage() {
             </Button>
           </div>
         </StepCard>
+      </div>
+
+      <div className="mb-8">
+        <ConnectBusiness />
+      </div>
+
+      {/* Moved here from Settings: the WhatsApp connection, its numbers, the
+          website widget snippet, message templates, WordPress and API keys are
+          all integrations, and belong beside the connector cards. */}
+      <div className="mb-8">
+        <IntegrationSettings />
       </div>
 
       <div className="mt-8">

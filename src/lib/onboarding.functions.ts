@@ -195,6 +195,30 @@ export const setStaffRole = createServerFn({ method: "POST" })
     }
     if (data.userId === context.userId) throw new Error("You cannot change your own role");
 
+    // Demoting the last company admin leaves a workspace nobody can administer:
+    // no invites, no billing, no connections, and no way back without platform
+    // support. Refuse it here rather than discovering it afterwards.
+    if (data.staffRole !== "company_admin") {
+      const { data: target } = await context.supabase
+        .from("profiles")
+        .select("staff_role")
+        .eq("id", data.userId)
+        .eq("tenant_id", me.tenant_id)
+        .maybeSingle();
+      if (target?.staff_role === "company_admin") {
+        const { count } = await context.supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", me.tenant_id)
+          .eq("staff_role", "company_admin");
+        if ((count ?? 0) <= 1) {
+          throw new Error(
+            "This is the only company admin. Promote someone else first, then change this role.",
+          );
+        }
+      }
+    }
+
     const { error } = await context.supabase
       .from("profiles")
       .update({ staff_role: data.staffRole })
@@ -227,6 +251,23 @@ export const removeStaff = createServerFn({ method: "POST" })
       throw new Error("Only company admins can remove staff");
     }
     if (data.userId === context.userId) throw new Error("You cannot remove yourself");
+
+    const { data: target } = await context.supabase
+      .from("profiles")
+      .select("staff_role")
+      .eq("id", data.userId)
+      .eq("tenant_id", me.tenant_id)
+      .maybeSingle();
+    if (target?.staff_role === "company_admin") {
+      const { count } = await context.supabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", me.tenant_id)
+        .eq("staff_role", "company_admin");
+      if ((count ?? 0) <= 1) {
+        throw new Error("This is the only company admin — promote someone else before removing them.");
+      }
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin

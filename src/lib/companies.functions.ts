@@ -250,3 +250,83 @@ export const updatePlanThresholds = createServerFn({ method: "POST" })
     });
     return { ok: true };
   });
+
+/**
+ * Manager portal: one row per company with the billing facts the platform
+ * owner actually asks for — has this company paid, until when, how many days
+ * are left, and how many of its people are cut off.
+ *
+ * Reads company_billing_overview (20260907230000), which computes the state
+ * rather than leaving the caller to derive "expired" from a timestamp.
+ */
+export const listCompanyBilling = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await requireSuperAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin
+      .from("company_billing_overview")
+      .select("*")
+      .order("subscription_renews_at", { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    return data ?? [];
+  });
+
+/** Everyone inside one company, with their access state. */
+export const listCompanyMembers = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ orgId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await requireSuperAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rows, error } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email, staff_role, suspended, suspended_at, suspended_reason, last_seen_at")
+      .eq("tenant_id", data.orgId)
+      .order("email");
+    if (error) throw error;
+    return rows ?? [];
+  });
+
+/**
+ * Suspend or restore one person. A platform super admin cannot be suspended --
+ * a database trigger refuses it, so this cannot lock the owner out of their
+ * own platform even by mistake.
+ */
+export const setUserSuspended = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        userId: z.string().uuid(),
+        suspended: z.boolean(),
+        reason: z.string().trim().max(280).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await requireSuperAdmin(context.supabase, context.userId);
+    if (data.userId === context.userId) {
+      throw new Error("You cannot suspend your own account.");
+    }
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        suspended: data.suspended,
+        suspended_at: data.suspended ? new Date().toISOString() : null,
+        suspended_reason: data.suspended ? (data.reason ?? null) : null,
+      })
+      .eq("id", data.userId);
+    if (error) throw error;
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: data.suspended ? "user.suspended" : "user.restored",
+      actorId: context.userId,
+      entityType: "profile",
+      entityId: data.userId,
+      ...(data.reason ? { details: { reason: data.reason } } : {}),
+    });
+    return { ok: true };
+  });

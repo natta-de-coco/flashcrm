@@ -2288,6 +2288,9 @@ export type Database = {
           id: string;
           last_seen_at: string | null;
           staff_role: Database["public"]["Enums"]["staff_role"];
+          suspended: boolean;
+          suspended_at: string | null;
+          suspended_reason: string | null;
           tenant_id: string | null;
           updated_at: string;
         };
@@ -2299,6 +2302,9 @@ export type Database = {
           id: string;
           last_seen_at?: string | null;
           staff_role?: Database["public"]["Enums"]["staff_role"];
+          suspended?: boolean;
+          suspended_at?: string | null;
+          suspended_reason?: string | null;
           tenant_id?: string | null;
           updated_at?: string;
         };
@@ -2310,6 +2316,9 @@ export type Database = {
           id?: string;
           last_seen_at?: string | null;
           staff_role?: Database["public"]["Enums"]["staff_role"];
+          suspended?: boolean;
+          suspended_at?: string | null;
+          suspended_reason?: string | null;
           tenant_id?: string | null;
           updated_at?: string;
         };
@@ -3785,7 +3794,27 @@ export type Database = {
       };
     };
     Views: {
-      [_ in never]: never;
+      /** 20260907230000 — one row per company for the manager portal. */
+      company_billing_overview: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string | null;
+          plan: string | null;
+          subscription_status: string | null;
+          paid_until: string | null;
+          suspended: boolean | null;
+          created_at: string | null;
+          billing_state: string | null;
+          days_remaining: number | null;
+          members: number | null;
+          members_suspended: number | null;
+          contacts: number | null;
+          messages: number | null;
+          last_active: string | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       current_tenant_id: { Args: never; Returns: string };
@@ -3901,6 +3930,10 @@ export type Database = {
       get_tenant_ai_key: {
         Args: { _tenant_id: string };
         Returns: { provider: string; api_key: string }[];
+      };
+      access_state: {
+        Args: { _user?: string };
+        Returns: string;
       };
       check_ai_rate_limit: {
         Args: { _tenant_id: string; _max_per_hour?: number; _max_per_day?: number };

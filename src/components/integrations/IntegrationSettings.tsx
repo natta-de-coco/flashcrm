@@ -231,7 +231,7 @@ export function IntegrationSettings() {
 
   return (
     <div className="grid max-w-3xl gap-4">
-      <Card>
+      <Card id="whatsapp" className="scroll-mt-6">
         <CardHeader>
           <CardTitle className="text-base">WhatsApp Cloud API</CardTitle>
           <CardDescription>
@@ -499,7 +499,7 @@ export function IntegrationSettings() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="widget" className="scroll-mt-6">
         <CardHeader>
           <CardTitle className="text-base">Website chat widget</CardTitle>
           <CardDescription>

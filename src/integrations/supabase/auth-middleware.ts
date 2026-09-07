@@ -94,6 +94,35 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
       throw new Error("Unauthorized: No user ID found in token");
     }
 
+    // Suspension is enforced here, once, rather than remembered per feature.
+    // organizations.suspended existed for weeks with a button in the manager
+    // portal, and the only code reading it gated sending a WhatsApp message --
+    // so a "suspended" company kept full access to everything else. Checking
+    // in the middleware covers every server function at the same time.
+    //
+    // access_state() is SECURITY DEFINER and returns which of the reasons it
+    // is, so the message can say what happened instead of a blank refusal. A
+    // failure to evaluate it must not lock everyone out, so it fails open and
+    // is logged.
+    try {
+      const { data: state } = await supabase.rpc("access_state", {
+        _user: data.claims.sub as string,
+      });
+      const reason =
+        state === "user_suspended"
+          ? "Your account has been suspended. Contact your company admin."
+          : state === "company_suspended"
+            ? "This workspace is suspended — contact your Flas account manager."
+            : state === "unpaid"
+              ? "This workspace's subscription has lapsed. Renew to continue."
+              : null;
+      if (reason) throw new Error(reason);
+    } catch (e) {
+      // Rethrow a genuine suspension; swallow anything else.
+      if (e instanceof Error && /suspended|lapsed/i.test(e.message)) throw e;
+      console.error("[auth] could not evaluate access_state — allowing", e);
+    }
+
     return next({
       context: {
         supabase,

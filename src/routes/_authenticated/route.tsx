@@ -8,7 +8,8 @@ import { QuickCreate } from "@/components/QuickCreate";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 
 import { useAuth } from "@/hooks/useAuth";
-import { TenantProvider } from "@/hooks/useTenant";
+import { TenantProvider, useTenant } from "@/hooks/useTenant";
+import { canReach } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -103,8 +104,8 @@ const NAV_SECTIONS = [
         desc: "Alerts, webhooks & Meta health",
         icon: Activity,
       },
-      { to: "/connect", label: "Integrations", desc: "All connections & logs", icon: Plug },
-      { to: "/settings", label: "Settings", desc: "Numbers, keys, billing & team", icon: Settings },
+      { to: "/connect", label: "Integrations", desc: "WhatsApp, social, website & keys", icon: Plug },
+      { to: "/settings", label: "Settings", desc: "Billing, team, security & data", icon: Settings },
     ],
   },
 ] as const;
@@ -123,7 +124,15 @@ type NavSection = {
   items: readonly { to: string; label: string; desc: string; icon: LucideIcon }[];
 };
 
-/** Shared grouped nav — used by the desktop sidebar and the mobile drawer. */
+/**
+ * Shared grouped nav — used by the desktop sidebar and the mobile drawer.
+ *
+ * Filters by the signed-in user's staff role. The Manager section is passed in
+ * already gated by isSuperAdmin and carries no route the permission table
+ * knows about, so it is left alone; everything else is deny-by-default. A
+ * section whose every item is filtered out drops its heading too, rather than
+ * leaving an empty "Business" label behind.
+ */
 function NavMenu({
   sections,
   onNavigate,
@@ -131,9 +140,23 @@ function NavMenu({
   sections: readonly NavSection[];
   onNavigate?: () => void;
 }) {
+  const { staffRole, loading } = useTenant();
+  const visible = sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) => section.title === "Manager" || canReach(staffRole, item.to),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  // While the profile is still loading, show nothing rather than the full menu
+  // followed by a visible collapse.
+  if (loading) return null;
+
   return (
     <>
-      {sections.map((section) => (
+      {visible.map((section) => (
         <div key={section.title}>
           <p className="mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
             {section.title}
