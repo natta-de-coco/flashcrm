@@ -4,8 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { CompanyMembers } from "@/components/manager/CompanyMembers";
 import {
   listCompanies,
+  listCompanyBilling,
   updateCompanyStatus,
   updatePlanThresholds,
 } from "@/lib/companies.functions";
@@ -13,7 +15,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { exportCompanyData, listCompanyPresence } from "@/lib/presence.functions";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, Circle, Download, Stethoscope } from "lucide-react";
+import { Building2, CalendarClock, Circle, Download, Stethoscope, Users } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/companies")({
@@ -35,6 +38,16 @@ const STATUS_STYLES: Record<string, string> = {
 type StatusPatch = {
   subscriptionStatus?: "trial" | "active" | "past_due" | "canceled";
   suspended?: boolean;
+  paidUntil?: string;
+};
+
+/** How the paid-until date reads at a glance, before any numbers are parsed. */
+const BILLING_STYLES: Record<string, string> = {
+  paid: "bg-brand text-brand-foreground",
+  "expiring soon": "bg-amber-500 text-white",
+  expired: "bg-destructive text-destructive-foreground",
+  suspended: "bg-destructive text-destructive-foreground",
+  "no billing set": "bg-muted text-muted-foreground",
 };
 
 /** Manager portal — super_admin only: every company on the platform. */
@@ -78,6 +91,19 @@ function CompaniesPage() {
     enabled: isSuperAdmin,
   });
 
+  // Billing comes from company_billing_overview, which computes the state in
+  // the database rather than leaving every caller to derive "expired" from a
+  // timestamp and get it subtly different.
+  const fetchBilling = useServerFn(listCompanyBilling);
+  const billing = useQuery({
+    queryKey: ["manager-billing"],
+    queryFn: () => fetchBilling(),
+    enabled: isSuperAdmin,
+  });
+  const billingFor = (id: string) => billing.data?.find((b) => b.id === id);
+
+  const [openTeam, setOpenTeam] = useState<string | null>(null);
+
   const thresholds = useQuery({
     queryKey: ["plan_thresholds"],
     queryFn: async () => {
@@ -95,7 +121,8 @@ function CompaniesPage() {
     mutationFn: (input: { organizationId: string } & StatusPatch) => saveStatus({ data: input }),
     onSuccess: () => {
       toast.success("Company updated");
-      qc.invalidateQueries({ queryKey: ["manager-companies"] });
+      void qc.invalidateQueries({ queryKey: ["manager-companies"] });
+      void qc.invalidateQueries({ queryKey: ["manager-billing"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Update failed"),
   });
@@ -254,6 +281,16 @@ function CompaniesPage() {
                   {org.subscription_status}
                 </Badge>
                 {org.suspended && <Badge variant="destructive">suspended</Badge>}
+                {billingFor(org.id)?.billing_state && !org.suspended && (
+                  <Badge
+                    className={
+                      BILLING_STYLES[billingFor(org.id)!.billing_state!] ??
+                      BILLING_STYLES["no billing set"]
+                    }
+                  >
+                    {billingFor(org.id)!.billing_state}
+                  </Badge>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -267,14 +304,64 @@ function CompaniesPage() {
                 </span>
                 <span>{org.leads} leads</span>
                 <span>{org.conversations} chats</span>
-                <span>
-                  joined {new Date(org.created_at).toLocaleDateString()}
-                  {org.subscription_renews_at
-                    ? ` · renews ${new Date(org.subscription_renews_at).toLocaleDateString()}`
-                    : ""}
-                </span>
+                <span>joined {new Date(org.created_at).toLocaleDateString()}</span>
+                {(billingFor(org.id)?.members_suspended ?? 0) > 0 && (
+                  <span className="font-medium text-destructive">
+                    {billingFor(org.id)!.members_suspended} suspended
+                  </span>
+                )}
               </div>
+              {/* "Have they paid, and until when?" -- stated plainly, and
+                  editable in place, because a cash customer who paid for a
+                  year was previously recorded as lapsing in thirty days. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2.5 text-xs">
+                <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="font-medium">Paid until</span>
+                <Input
+                  type="date"
+                  aria-label={`Date ${org.name} has paid until`}
+                  className="h-7 w-36 px-2 text-xs"
+                  defaultValue={
+                    org.subscription_renews_at
+                      ? new Date(org.subscription_renews_at).toISOString().slice(0, 10)
+                      : ""
+                  }
+                  onBlur={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    const current = org.subscription_renews_at
+                      ? new Date(org.subscription_renews_at).toISOString().slice(0, 10)
+                      : "";
+                    if (v !== current) {
+                      statusMutation.mutate({ organizationId: org.id, paidUntil: v });
+                    }
+                  }}
+                />
+                {(() => {
+                  const b = billingFor(org.id);
+                  if (!b?.paid_until) {
+                    return <span className="text-muted-foreground">not recorded</span>;
+                  }
+                  const days = b.days_remaining ?? 0;
+                  return (
+                    <span
+                      className={days === 0 ? "font-medium text-destructive" : "text-muted-foreground"}
+                    >
+                      {days === 0 ? "lapsed" : `${days} day${days === 1 ? "" : "s"} left`}
+                    </span>
+                  );
+                })()}
+              </div>
+
               <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setOpenTeam(openTeam === org.id ? null : org.id)}
+                >
+                  <Users className="size-3.5" />
+                  {openTeam === org.id ? "Hide users" : `Manage users (${org.users})`}
+                </Button>
                 <Button size="sm" variant="outline" asChild>
                   <Link to="/companies/$orgId" params={{ orgId: org.id }}>
                     <Stethoscope className="size-3.5" /> Troubleshoot
@@ -323,6 +410,8 @@ function CompaniesPage() {
                   </Button>
                 )}
               </div>
+
+              {openTeam === org.id && <CompanyMembers orgId={org.id} />}
             </CardContent>
           </Card>
         ))}

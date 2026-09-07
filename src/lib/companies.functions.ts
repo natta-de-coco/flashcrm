@@ -74,6 +74,18 @@ const StatusSchema = z.object({
   organizationId: z.string().uuid(),
   subscriptionStatus: z.enum(["trial", "active", "past_due", "canceled"]).optional(),
   suspended: z.boolean().optional(),
+  /**
+   * The date this company has paid up to, as YYYY-MM-DD.
+   *
+   * Activating used to hardcode 30 days from now, so a customer who paid for
+   * a year was recorded as lapsing in a month, and one who paid in cash on the
+   * 3rd could not be recorded accurately at all. The manager sets the real
+   * date; access_state reads it to decide whether the workspace still works.
+   */
+  paidUntil: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date")
+    .optional(),
 });
 
 /** Manager portal: activate, suspend or cancel a company's subscription. */
@@ -88,11 +100,17 @@ export const updateCompanyStatus = createServerFn({ method: "POST" })
     const patch: OrgUpdate = {};
     if (data.subscriptionStatus) {
       patch["subscription_status"] = data.subscriptionStatus;
-      if (data.subscriptionStatus === "active") {
+      // Only fall back to a month when the manager did not say otherwise.
+      if (data.subscriptionStatus === "active" && !data.paidUntil) {
         patch["subscription_renews_at"] = new Date(
           Date.now() + 30 * 24 * 60 * 60 * 1000,
         ).toISOString();
       }
+    }
+    if (data.paidUntil) {
+      // End of the paid day, not its first second -- a customer paid up to the
+      // 31st keeps the 31st.
+      patch["subscription_renews_at"] = new Date(`${data.paidUntil}T23:59:59Z`).toISOString();
     }
     if (typeof data.suspended === "boolean") patch["suspended"] = data.suspended;
     if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
