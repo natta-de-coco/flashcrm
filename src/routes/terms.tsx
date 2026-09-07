@@ -35,8 +35,8 @@ function TermsPage() {
         <section>
           <h2 className="text-lg font-semibold">1. Agreement</h2>
           <p className="mt-2 text-muted-foreground">
-            By creating a Flas CRM workspace you agree to these terms. If you use Flas CRM on
-            behalf of a company, you confirm you are authorised to bind that company.
+            By creating a Flas CRM workspace you agree to these terms. If you use Flas CRM on behalf
+            of a company, you confirm you are authorised to bind that company.
           </p>
         </section>
 
@@ -55,8 +55,8 @@ function TermsPage() {
           <h2 className="text-lg font-semibold">3. Cancellation and refunds</h2>
           <p className="mt-2 text-muted-foreground">
             You can cancel at any time from Settings → Billing. Access continues to the end of the
-            paid period and no further charges are made. Partial months are not refunded except where
-            required by law.
+            paid period and no further charges are made. Partial months are not refunded except
+            where required by law.
           </p>
         </section>
 
@@ -68,7 +68,10 @@ function TermsPage() {
               Do not send spam, scams, adult, gambling or other content prohibited by the WhatsApp
               Business and Commerce Policies.
             </li>
-            <li>Do not scrape, resell or share other workspaces' data, or attempt to bypass tenant isolation.</li>
+            <li>
+              Do not scrape, resell or share other workspaces' data, or attempt to bypass tenant
+              isolation.
+            </li>
             <li>Do not use the API keys or plugin credentials outside your own websites.</li>
           </ul>
           <p className="mt-2 text-muted-foreground">
@@ -80,9 +83,9 @@ function TermsPage() {
         <section>
           <h2 className="text-lg font-semibold">5. Your data</h2>
           <p className="mt-2 text-muted-foreground">
-            You own the contacts, conversations and content in your workspace. You can export them at
-            any time and request deletion from Settings → Data &amp; privacy. Our handling of personal
-            data is described in the{" "}
+            You own the contacts, conversations and content in your workspace. You can export them
+            at any time and request deletion from Settings → Data &amp; privacy. Our handling of
+            personal data is described in the{" "}
             <Link to="/privacy" className="underline">
               privacy policy
             </Link>
@@ -94,17 +97,17 @@ function TermsPage() {
           <h2 className="text-lg font-semibold">6. Third-party services</h2>
           <p className="mt-2 text-muted-foreground">
             Flas CRM connects to WhatsApp Cloud API, social platforms, WordPress/Shopify sites,
-            payment providers and AI models. Their availability, policies and rate limits are outside
-            our control and may affect features.
+            payment providers and AI models. Their availability, policies and rate limits are
+            outside our control and may affect features.
           </p>
         </section>
 
         <section>
           <h2 className="text-lg font-semibold">7. AI features</h2>
           <p className="mt-2 text-muted-foreground">
-            Flas AI drafts messages, briefs, replies and content. Output can be wrong or incomplete —
-            review anything before it is sent or published. You remain responsible for all messages
-            sent from your workspace.
+            Flas AI drafts messages, briefs, replies and content. Output can be wrong or incomplete
+            — review anything before it is sent or published. You remain responsible for all
+            messages sent from your workspace.
           </p>
         </section>
 

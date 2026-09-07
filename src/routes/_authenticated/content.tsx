@@ -214,7 +214,6 @@ function ContentPage() {
               </p>
             </div>
 
-
             <div className="space-y-1.5">
               <Label htmlFor="c-when">Schedule for</Label>
               <Input
@@ -302,10 +301,7 @@ function ContentPage() {
                   <Badge
                     variant={
                       (STATUS_STYLE[post.status] ?? "secondary") as
-                        | "default"
-                        | "secondary"
-                        | "outline"
-                        | "destructive"
+                        "default" | "secondary" | "outline" | "destructive"
                     }
                     className="capitalize"
                   >

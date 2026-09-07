@@ -126,8 +126,20 @@ export function previewTotals(state: BuilderState) {
   return { subtotal, discountTotal: discountTotal + invoiceDiscount, taxTotal, grand };
 }
 
-type Contact = { id: string; name: string; phone: string | null; email: string | null; company: string | null };
-type Product = { id: string; title: string; sku: string | null; price: number | null; description: string | null };
+type Contact = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  company: string | null;
+};
+type Product = {
+  id: string;
+  title: string;
+  sku: string | null;
+  price: number | null;
+  description: string | null;
+};
 
 export function InvoiceBuilder({
   state,
@@ -202,12 +214,20 @@ export function InvoiceBuilder({
           </div>
           <div className="space-y-1.5">
             <Label>Issue date</Label>
-            <Input type="date" value={state.issue_date} onChange={(e) => patch({ issue_date: e.target.value })} />
+            <Input
+              type="date"
+              value={state.issue_date}
+              onChange={(e) => patch({ issue_date: e.target.value })}
+            />
           </div>
           {state.kind === "invoice" ? (
             <div className="space-y-1.5">
               <Label>Due date</Label>
-              <Input type="date" value={state.due_date} onChange={(e) => patch({ due_date: e.target.value })} />
+              <Input
+                type="date"
+                value={state.due_date}
+                onChange={(e) => patch({ due_date: e.target.value })}
+              />
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -299,7 +319,9 @@ export function InvoiceBuilder({
             <Label>VAT / TRN</Label>
             <Input
               value={state.customer.vat_number}
-              onChange={(e) => patch({ customer: { ...state.customer, vat_number: e.target.value } })}
+              onChange={(e) =>
+                patch({ customer: { ...state.customer, vat_number: e.target.value } })
+              }
             />
           </div>
         </CardContent>
@@ -308,7 +330,11 @@ export function InvoiceBuilder({
       <Card>
         <CardHeader className="flex-row items-center justify-between pb-3">
           <CardTitle className="text-base">Items</CardTitle>
-          <Button size="sm" variant="outline" onClick={() => patch({ items: [...state.items, emptyItem()] })}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => patch({ items: [...state.items, emptyItem()] })}
+          >
             <Plus className="mr-1 h-4 w-4" /> Add line
           </Button>
         </CardHeader>
@@ -320,7 +346,10 @@ export function InvoiceBuilder({
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-1.5 lg:col-span-2">
                     <Label>From catalog</Label>
-                    <Select value={item.product_id ?? ""} onValueChange={(v) => pickProduct(index, v)}>
+                    <Select
+                      value={item.product_id ?? ""}
+                      onValueChange={(v) => pickProduct(index, v)}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Optional — pick a product" />
                       </SelectTrigger>
@@ -368,7 +397,9 @@ export function InvoiceBuilder({
                         type="number"
                         min={0}
                         value={item.discount_value}
-                        onChange={(e) => patchItem(index, { discount_value: Number(e.target.value) })}
+                        onChange={(e) =>
+                          patchItem(index, { discount_value: Number(e.target.value) })
+                        }
                       />
                       <Select
                         value={item.discount_type}
@@ -467,7 +498,11 @@ export function InvoiceBuilder({
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Terms & conditions</Label>
-              <Textarea rows={3} value={state.terms} onChange={(e) => patch({ terms: e.target.value })} />
+              <Textarea
+                rows={3}
+                value={state.terms}
+                onChange={(e) => patch({ terms: e.target.value })}
+              />
             </div>
           </div>
           <div className="rounded-lg bg-muted/50 p-4 text-sm">

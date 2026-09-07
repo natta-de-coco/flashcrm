@@ -12,23 +12,44 @@ export type BotSettings = {
   handoff_keywords: string[];
 };
 
-export async function getBotSettings(): Promise<BotSettings | null> {
-  const { data } = await supabaseAdmin.from("bot_settings").select("*").eq("id", true).maybeSingle();
-  return (data as BotSettings) ?? null;
+/**
+ * Per-tenant bot settings. Falls back to the platform-wide `bot_settings`
+ * singleton's values (never its identity) only when a tenant has no row of
+ * its own yet, so existing single-tenant behavior doesn't regress on day one.
+ */
+export async function getBotSettings(tenantId: string): Promise<BotSettings | null> {
+  const { data } = await supabaseAdmin
+    .from("tenant_bot_settings")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (data) return data as BotSettings;
+
+  const { data: fallback } = await supabaseAdmin
+    .from("bot_settings")
+    .select("*")
+    .eq("id", true)
+    .maybeSingle();
+  return (fallback as BotSettings) ?? null;
 }
 
 export type WaCredentials = { token: string; phoneNumberId: string };
 
 /**
- * Resolves the credentials for a connected WhatsApp number. With no id it uses
- * the default connected number, falling back to the env-var configuration.
+ * Resolves the credentials for a connected WhatsApp number, scoped to the
+ * calling tenant. Every branch filters by tenant_id — a number belonging to
+ * another tenant is never returned, even by id.
  */
-export async function resolveWaCredentials(waNumberId?: string | null): Promise<WaCredentials> {
+export async function resolveWaCredentials(
+  tenantId: string,
+  waNumberId?: string | null,
+): Promise<WaCredentials> {
   if (waNumberId) {
     const { data } = await supabaseAdmin
       .from("wa_numbers")
       .select("access_token, phone_number_id, active")
       .eq("id", waNumberId)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
     if (data && data.active) {
       return { token: data.access_token, phoneNumberId: data.phone_number_id };
@@ -37,6 +58,7 @@ export async function resolveWaCredentials(waNumberId?: string | null): Promise<
     const { data } = await supabaseAdmin
       .from("wa_numbers")
       .select("access_token, phone_number_id")
+      .eq("tenant_id", tenantId)
       .eq("is_default", true)
       .eq("active", true)
       .maybeSingle();
@@ -53,20 +75,23 @@ export async function resolveWaCredentials(waNumberId?: string | null): Promise<
   return { token, phoneNumberId };
 }
 
-/** Finds the connected wa_numbers row matching a webhook's phone_number_id. */
-export async function findWaNumberByPhoneId(phoneNumberId?: string | null) {
+/** Finds the connected wa_numbers row matching a webhook's phone_number_id, and which tenant owns it. */
+export async function findWaNumberByPhoneId(
+  phoneNumberId?: string | null,
+): Promise<{ id: string; tenantId: string } | null> {
   if (!phoneNumberId) return null;
   const { data } = await supabaseAdmin
     .from("wa_numbers")
-    .select("id")
+    .select("id, tenant_id")
     .eq("phone_number_id", phoneNumberId)
     .eq("active", true)
     .maybeSingle();
-  return data?.id ?? null;
+  if (!data?.tenant_id) return null;
+  return { id: data.id, tenantId: data.tenant_id };
 }
 
-export async function sendWhatsAppText(to: string, body: string, creds?: WaCredentials) {
-  const { token, phoneNumberId } = creds ?? (await resolveWaCredentials());
+export async function sendWhatsAppText(to: string, body: string, creds: WaCredentials) {
+  const { token, phoneNumberId } = creds;
 
   const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`, {
     method: "POST",
@@ -154,6 +179,13 @@ export function needsHumanHandoff(text: string, keywords: string[]) {
 }
 
 type IngestArgs = {
+  /**
+   * Required. Derived by the caller from something the sender can't forge:
+   * the widget's siteKey -> lead_sites.tenant_id, or the webhook's
+   * phone_number_id -> wa_numbers.tenant_id. Never accept this from the
+   * request body itself.
+   */
+  tenantId: string;
   channel: "whatsapp" | "web";
   phone?: string | null;
   sessionId?: string | null;
@@ -166,17 +198,22 @@ type IngestArgs = {
 /**
  * Stores an inbound customer message (creating the contact + conversation when
  * needed) and returns the bot reply that was generated and stored, if any.
+ * Every read/write below is scoped to `tenantId` — this is the fix for the
+ * cross-tenant message-routing ship-blocker (two tenants sharing a contact's
+ * phone number used to collide into the same contact/conversation/history).
  */
 export async function ingestInboundMessage(args: IngestArgs) {
-  const { channel, phone, sessionId, name, text, waMessageId, waNumberId } = args;
+  const { tenantId, channel, phone, sessionId, name, text, waMessageId, waNumberId } = args;
+  if (!tenantId) throw new Error("ingestInboundMessage: tenantId is required");
 
-  // 1. Contact
+  // 1. Contact — matched by phone WITHIN this tenant only.
   let contactId: string | null = null;
   if (phone) {
     const { data: existing } = await supabaseAdmin
       .from("contacts")
       .select("id")
       .eq("phone", phone)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
     if (existing) {
       contactId = existing.id;
@@ -184,7 +221,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
     } else {
       const { data: created, error } = await supabaseAdmin
         .from("contacts")
-        .insert({ phone, name: name || phone })
+        .insert({ phone, name: name || phone, tenant_id: tenantId })
         .select("id")
         .single();
       if (error) throw error;
@@ -200,13 +237,14 @@ export async function ingestInboundMessage(args: IngestArgs) {
       .from("conversations")
       .select("id, bot_enabled, contact_id")
       .eq("web_session_id", sessionId)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
     if (data) conversation = data;
     if (!conversation) {
       if (!contactId) {
         const { data: created, error } = await supabaseAdmin
           .from("contacts")
-          .insert({ name: name || "Website visitor" })
+          .insert({ name: name || "Website visitor", tenant_id: tenantId })
           .select("id")
           .single();
         if (error) throw error;
@@ -214,7 +252,12 @@ export async function ingestInboundMessage(args: IngestArgs) {
       }
       const { data: created, error } = await supabaseAdmin
         .from("conversations")
-        .insert({ contact_id: contactId, channel: "web", web_session_id: sessionId })
+        .insert({
+          contact_id: contactId,
+          channel: "web",
+          web_session_id: sessionId,
+          tenant_id: tenantId,
+        })
         .select("id, bot_enabled")
         .single();
       if (error) throw error;
@@ -226,6 +269,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
       .select("id, bot_enabled, wa_number_id")
       .eq("contact_id", contactId!)
       .eq("channel", "whatsapp")
+      .eq("tenant_id", tenantId)
       .maybeSingle();
     if (data) conversation = data;
     if (conversation && waNumberId && !conversation.wa_number_id) {
@@ -237,7 +281,12 @@ export async function ingestInboundMessage(args: IngestArgs) {
     if (!conversation) {
       const { data: created, error } = await supabaseAdmin
         .from("conversations")
-        .insert({ contact_id: contactId!, channel: "whatsapp", wa_number_id: waNumberId ?? null })
+        .insert({
+          contact_id: contactId!,
+          channel: "whatsapp",
+          wa_number_id: waNumberId ?? null,
+          tenant_id: tenantId,
+        })
         .select("id, bot_enabled")
         .single();
       if (error) throw error;
@@ -252,21 +301,18 @@ export async function ingestInboundMessage(args: IngestArgs) {
     sender: "contact",
     body: text,
     wa_message_id: waMessageId ?? null,
+    tenant_id: tenantId,
   });
 
-  const { data: convRow } = await supabaseAdmin
-    .from("conversations")
-    .select("unread_count")
-    .eq("id", conversation.id)
-    .single();
-
+  // Atomic increment — a read-then-write here would drop a count under
+  // concurrent inbound messages on a busy conversation.
+  await supabaseAdmin.rpc("increment_unread_count", { _conversation_id: conversation.id });
   await supabaseAdmin
     .from("conversations")
     .update({
       last_message_at: new Date().toISOString(),
       last_message_preview: text.slice(0, 140),
       status: "open",
-      unread_count: (convRow?.unread_count ?? 0) + 1,
     })
     .eq("id", conversation.id);
 
@@ -278,9 +324,13 @@ export async function ingestInboundMessage(args: IngestArgs) {
   }
 
   // 4. Bot reply / handoff
-  const settings = await getBotSettings();
+  const settings = await getBotSettings(tenantId);
   if (!settings || !settings.enabled || !conversation.bot_enabled) {
-    return { conversationId: conversation.id, reply: null as string | null };
+    return {
+      conversationId: conversation.id,
+      reply: null as string | null,
+      replyMessageId: null as string | null,
+    };
   }
 
   if (needsHumanHandoff(text, settings.handoff_keywords ?? [])) {
@@ -289,32 +339,42 @@ export async function ingestInboundMessage(args: IngestArgs) {
       .update({ bot_enabled: false, status: "pending" })
       .eq("id", conversation.id);
     const handoff = "Thanks — I'm connecting you with a member of our team right now.";
-    await storeOutbound(conversation.id, handoff, "bot");
-    return { conversationId: conversation.id, reply: handoff };
+    const replyMessageId = await storeOutbound(tenantId, conversation.id, handoff, "bot");
+    return { conversationId: conversation.id, reply: handoff, replyMessageId };
   }
 
   const reply = await generateBotReply(conversation.id, settings);
-  if (!reply) return { conversationId: conversation.id, reply: null };
+  if (!reply) return { conversationId: conversation.id, reply: null, replyMessageId: null };
 
-  await storeOutbound(conversation.id, reply, "bot");
-  return { conversationId: conversation.id, reply };
+  const replyMessageId = await storeOutbound(tenantId, conversation.id, reply, "bot");
+  return { conversationId: conversation.id, reply, replyMessageId };
 }
 
+/** Returns the id of the inserted message row, so callers can later attach a
+ *  wa_message_id by primary key instead of matching on message body text
+ *  (matching by text let two concurrent identical canned replies tag the
+ *  wrong row's delivery status). */
 export async function storeOutbound(
+  tenantId: string,
   conversationId: string,
   body: string,
   sender: "bot" | "agent",
   senderId?: string | null,
   waMessageId?: string | null,
-) {
-  await supabaseAdmin.from("messages").insert({
-    conversation_id: conversationId,
-    direction: "outbound",
-    sender,
-    sender_id: senderId ?? null,
-    body,
-    wa_message_id: waMessageId ?? null,
-  });
+): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      direction: "outbound",
+      sender,
+      sender_id: senderId ?? null,
+      body,
+      wa_message_id: waMessageId ?? null,
+      tenant_id: tenantId,
+    })
+    .select("id")
+    .single();
   await supabaseAdmin
     .from("conversations")
     .update({
@@ -322,6 +382,7 @@ export async function storeOutbound(
       last_message_preview: body.slice(0, 140),
     })
     .eq("id", conversationId);
+  return data?.id ?? null;
 }
 
 /** Sends an approved WhatsApp message template. */
@@ -330,9 +391,9 @@ export async function sendWhatsAppTemplate(
   name: string,
   language: string,
   variables: string[] = [],
-  creds?: WaCredentials,
+  creds: WaCredentials,
 ) {
-  const { token, phoneNumberId } = creds ?? (await resolveWaCredentials());
+  const { token, phoneNumberId } = creds;
 
   const components = variables.length
     ? [{ type: "body", parameters: variables.map((text) => ({ type: "text", text })) }]

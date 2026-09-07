@@ -110,10 +110,14 @@ export function computeDocumentTotals(input: DocumentTotalsInput): DocumentTotal
       discount_amount: money(l.discount),
       net: money(l.net),
       tax_amount: money(tax),
-      line_total: money(l.net),
+      // Was money(l.net) — excluded both tax and the invoice-level discount
+      // share, so the printed per-line total on the PDF didn't match what
+      // the customer was actually charged for that line. adjustedNet
+      // already carries both discounts; add tax back on for exclusive-tax
+      // documents (inclusive-tax adjustedNet already has it embedded).
+      line_total: money(inclusive ? adjustedNet : adjustedNet + tax),
     });
   });
-
 
   const shipping = cents(input.shipping ?? 0);
   const charges = cents(input.additional_charges ?? 0);
@@ -134,7 +138,20 @@ export function computeDocumentTotals(input: DocumentTotalsInput): DocumentTotal
   };
 }
 
-const CURRENCIES = ["AED", "USD", "EUR", "GBP", "SAR", "QAR", "OMR", "KWD", "BHD", "INR", "RWF", "PKR"] as const;
+const CURRENCIES = [
+  "AED",
+  "USD",
+  "EUR",
+  "GBP",
+  "SAR",
+  "QAR",
+  "OMR",
+  "KWD",
+  "BHD",
+  "INR",
+  "RWF",
+  "PKR",
+] as const;
 export const SUPPORTED_CURRENCIES: readonly string[] = CURRENCIES;
 
 /** Business formatting: "AED 10,500.00". Currency is stored per document. */

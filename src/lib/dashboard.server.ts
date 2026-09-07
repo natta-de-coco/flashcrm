@@ -109,8 +109,7 @@ export async function getDashboardOverviewData(
   const priorStart = new Date(weekStart);
   priorStart.setDate(priorStart.getDate() - 7);
 
-  const [convs, contacts, msgs, weekMsgs, accounts, interactions, leadRows] =
-    await Promise.all([
+  const [convs, contacts, msgs, weekMsgs, accounts, interactions, leadRows] = await Promise.all([
     supabase
       .from("conversations")
       .select(
@@ -125,9 +124,7 @@ export async function getDashboardOverviewData(
       .select("id, sender, created_at")
       .gte("created_at", priorStart.toISOString())
       .limit(10000),
-    supabase
-      .from("social_accounts")
-      .select("id, platform, label, active, last_synced_at, stats"),
+    supabase.from("social_accounts").select("id, platform, label, active, last_synced_at, stats"),
     supabase
       .from("social_interactions")
       .select("id, account_id, kind, status, created_at")
@@ -223,9 +220,7 @@ export async function getDashboardOverviewData(
   const inboundPrev = priorMessageRows.filter((m) => m.sender === "contact").length;
   const repliesNow = weekMessageRows.length - inboundNow;
   const repliesPrev = priorMessageRows.length - inboundPrev;
-  const leadsNow = leads.filter(
-    (l) => new Date(l.created_at).getTime() >= weekStartMs,
-  ).length;
+  const leadsNow = leads.filter((l) => new Date(l.created_at).getTime() >= weekStartMs).length;
   const leadsPrev = leads.length - leadsNow;
 
   const trends = {
@@ -241,12 +236,18 @@ export async function getDashboardOverviewData(
     inboundNow === 0 ? 70 : Math.max(0, Math.min(100, Math.round((repliesNow / inboundNow) * 100)));
   const inboxHygiene = Math.max(0, 100 - unreadTotal * 5);
   const pipeline = Math.min(100, leadsNow * 10);
-  const socialPresence = accountRows.length === 0
-    ? 0
-    : Math.min(100, Math.round((accountRows.filter((a) => a.active).length / accountRows.length) * 60) + Math.min(40, interactions7d * 4));
-  const consentRate = leads.length === 0
-    ? 60
-    : Math.round((leads.filter((l) => l.consent_given).length / leads.length) * 100);
+  const socialPresence =
+    accountRows.length === 0
+      ? 0
+      : Math.min(
+          100,
+          Math.round((accountRows.filter((a) => a.active).length / accountRows.length) * 60) +
+            Math.min(40, interactions7d * 4),
+        );
+  const consentRate =
+    leads.length === 0
+      ? 60
+      : Math.round((leads.filter((l) => l.consent_given).length / leads.length) * 100);
 
   const factors: HealthFactor[] = [
     {
@@ -287,9 +288,7 @@ export async function getDashboardOverviewData(
     },
   ];
 
-  const score = Math.round(
-    factors.reduce((sum, f) => sum + f.score, 0) / factors.length,
-  );
+  const score = Math.round(factors.reduce((sum, f) => sum + f.score, 0) / factors.length);
   const grade: BusinessHealth["grade"] =
     score >= 85 ? "Excellent" : score >= 70 ? "Good" : score >= 50 ? "Needs work" : "At risk";
 
@@ -311,8 +310,7 @@ export async function getDashboardOverviewData(
     },
     recentConversations: conversations.slice(0, 8).map((c) => ({
       id: c.id,
-      contactName:
-        (c.contacts as unknown as { name?: string } | null)?.name ?? "Unknown",
+      contactName: (c.contacts as unknown as { name?: string } | null)?.name ?? "Unknown",
       preview: c.last_message_preview ?? "No messages",
       channel: c.channel,
       status: c.status,

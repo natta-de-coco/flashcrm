@@ -13,12 +13,17 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SendSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { sendWhatsAppText, storeOutbound, resolveWaCredentials } = await import("@/lib/wa.server");
+    const { sendWhatsAppText, storeOutbound, resolveWaCredentials } =
+      await import("@/lib/wa.server");
+
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { data: conversation, error } = await supabaseAdmin
       .from("conversations")
       .select("id, channel, contact_id, wa_number_id")
       .eq("id", data.conversationId)
+      .eq("tenant_id", tenantId)
       .single();
     if (error || !conversation) throw new Error("Conversation not found");
 
@@ -54,7 +59,7 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
           waId = await sendWhatsAppText(
             contact.phone,
             data.body,
-            await resolveWaCredentials(conversation.wa_number_id),
+            await resolveWaCredentials(tenantId as string, conversation.wa_number_id),
           );
         } catch (sendError) {
           deliveryError = sendError instanceof Error ? sendError.message : "Delivery failed";
@@ -64,7 +69,14 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
       }
     }
 
-    await storeOutbound(conversation.id, data.body, "agent", context.userId, waId);
+    await storeOutbound(
+      tenantId as string,
+      conversation.id,
+      data.body,
+      "agent",
+      context.userId,
+      waId,
+    );
     await logAudit({
       action: "message.send",
       actorId: context.userId,
@@ -81,9 +93,22 @@ const BotSchema = z.object({ conversationId: z.string().uuid() });
 export const draftBotReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => BotSchema.parse(input))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { getBotSettings, generateBotReply } = await import("@/lib/wa.server");
-    const settings = await getBotSettings();
+
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    if (!tenantId) throw new Error("Your workspace is still being set up.");
+
+    const { data: conversation } = await supabaseAdmin
+      .from("conversations")
+      .select("id")
+      .eq("id", data.conversationId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!conversation) throw new Error("Conversation not found");
+
+    const settings = await getBotSettings(tenantId as string);
     if (!settings) throw new Error("Chatbot is not configured");
     const draft = await generateBotReply(data.conversationId, settings);
     if (!draft) throw new Error("The assistant could not generate a reply right now");
@@ -96,15 +121,19 @@ const RetrySchema = z.object({ eventId: z.string().uuid() });
 export const retryWebhookEvent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => RetrySchema.parse(input))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { processWaPayload, finishWebhookEvent } = await import("@/lib/monitoring.server");
 
-    const { data: event, error } = await supabaseAdmin
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    const { data: isSuperAdmin } = await context.supabase.rpc("is_super_admin");
+
+    let query = supabaseAdmin
       .from("webhook_events")
-      .select("id, payload, attempts")
-      .eq("id", data.eventId)
-      .single();
+      .select("id, payload, attempts, tenant_id")
+      .eq("id", data.eventId);
+    if (!isSuperAdmin) query = query.eq("tenant_id", tenantId as string);
+    const { data: event, error } = await query.single();
     if (error || !event) throw new Error("Webhook event not found");
 
     await supabaseAdmin
@@ -146,20 +175,23 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => TemplateSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { sendWhatsAppTemplate, storeOutbound, resolveWaCredentials } = await import(
-      "@/lib/wa.server"
-    );
+    const { sendWhatsAppTemplate, storeOutbound, resolveWaCredentials } =
+      await import("@/lib/wa.server");
+
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { data: template, error } = await supabaseAdmin
       .from("wa_templates")
       .select("*")
       .eq("id", data.templateId)
+      .eq("tenant_id", tenantId)
       .single();
     if (error || !template) throw new Error("Template not found");
     if (template.status !== "approved") throw new Error("Only approved templates can be sent");
 
     let phone = data.phone ?? null;
-    let conversationId = data.conversationId ?? null;
+    const conversationId = data.conversationId ?? null;
     let waNumberId: string | null = null;
 
     if (conversationId) {
@@ -167,6 +199,7 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
         .from("conversations")
         .select("contact_id, wa_number_id")
         .eq("id", conversationId)
+        .eq("tenant_id", tenantId)
         .single();
       if (conv) {
         waNumberId = conv.wa_number_id ?? null;
@@ -192,6 +225,7 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
         .from("contacts")
         .select("id")
         .eq("phone", phone)
+        .eq("tenant_id", tenantId)
         .maybeSingle();
       contactId = byPhone?.id ?? null;
     }
@@ -217,7 +251,7 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       template.name,
       template.language,
       data.variables,
-      await resolveWaCredentials(waNumberId),
+      await resolveWaCredentials(tenantId as string, waNumberId),
     );
 
     let rendered = template.body;
@@ -226,7 +260,14 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
     });
 
     if (conversationId) {
-      await storeOutbound(conversationId, rendered, "agent", context.userId, waId);
+      await storeOutbound(
+        tenantId as string,
+        conversationId,
+        rendered,
+        "agent",
+        context.userId,
+        waId,
+      );
     }
     await logAudit({
       action: "message.template_send",
@@ -236,8 +277,8 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       details: { template: template.name, waId },
     });
 
-  return { ok: true, waId, rendered, blockedReasons: [] as string[] };
-});
+    return { ok: true, waId, rendered, blockedReasons: [] as string[] };
+  });
 
 const TranslateSchema = z.object({
   messageId: z.string().uuid(),
@@ -253,15 +294,22 @@ export const translateMessage = createServerFn({ method: "POST" })
     const { callFlashAi } = await import("@/lib/flash-ai.server");
     const { logAudit } = await import("@/lib/audit.server");
 
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    if (!tenantId) throw new Error("Your workspace is still being set up.");
+
     const { data: message, error } = await supabaseAdmin
       .from("messages")
       .select("id, body, translated_body, detected_language")
       .eq("id", data.messageId)
+      .eq("tenant_id", tenantId)
       .single();
     if (error || !message) throw new Error("Message not found");
 
     if (message.translated_body) {
-      return { translatedBody: message.translated_body, detectedLanguage: message.detected_language };
+      return {
+        translatedBody: message.translated_body,
+        detectedLanguage: message.detected_language,
+      };
     }
 
     const system = [
@@ -275,7 +323,11 @@ export const translateMessage = createServerFn({ method: "POST" })
 
     let parsed: { detectedLanguage?: string; translation?: string } = {};
     try {
-      const raw = await callFlashAi(system, user);
+      const raw = await callFlashAi(system, user, {
+        tenantId: tenantId as string,
+        feature: "translate",
+        userId: context.userId,
+      });
       parsed = JSON.parse(raw) as typeof parsed;
     } catch {
       throw new Error("Translation failed — the AI did not return valid JSON. Try again.");
@@ -301,7 +353,10 @@ export const translateMessage = createServerFn({ method: "POST" })
       details: { targetLanguage: data.targetLanguage, detectedLanguage: parsed.detectedLanguage },
     });
 
-    return { translatedBody: parsed.translation, detectedLanguage: parsed.detectedLanguage ?? null };
+    return {
+      translatedBody: parsed.translation,
+      detectedLanguage: parsed.detectedLanguage ?? null,
+    };
   });
 
 const CatalogSchema = z.object({
@@ -314,9 +369,14 @@ export const buildCatalogMessage = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => CatalogSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    if (!tenantId) throw new Error("Your workspace is still being set up.");
+
     const { data: products, error } = await supabaseAdmin
       .from("products")
       .select("id, title, sku, price, description, images")
+      .eq("tenant_id", tenantId)
       .in("id", data.productIds);
     if (error) throw new Error("Could not load products");
     if (!products?.length) throw new Error("No products selected");

@@ -9,10 +9,7 @@ import { ArrowLeft, Eye, MailCheck } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/companies/$orgId")({
   head: () => ({
-    meta: [
-      { title: "Company workspace — Flas Manager" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Company workspace — Flas Manager" }, { name: "robots", content: "noindex" }],
   }),
   component: CompanyWorkspacePage,
 });
@@ -59,8 +56,8 @@ function CompanyWorkspacePage() {
             Troubleshooting view — you are viewing {d?.org.name ?? "this company"}&apos;s workspace
           </p>
           <p className="text-xs text-muted-foreground">
-            Read-only: nothing here changes their data, and every visit is recorded in the audit
-            log for compliance.
+            Read-only: nothing here changes their data, and every visit is recorded in the audit log
+            for compliance.
           </p>
         </div>
       </div>
@@ -175,10 +172,7 @@ function CompanyWorkspacePage() {
                         default
                       </Badge>
                     )}
-                    <Badge
-                      variant={n.active ? "outline" : "destructive"}
-                      className="text-[10px]"
-                    >
+                    <Badge variant={n.active ? "outline" : "destructive"} className="text-[10px]">
                       {n.active ? "active" : "inactive"}
                     </Badge>
                   </span>

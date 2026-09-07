@@ -2,8 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 
 const PayloadSchema = z.object({
-  sessionId: z.string().min(6).max(80),
-  siteKey: z.string().min(10).max(120).optional(),
+  // 32+ chars so a session id can't be brute-forced/guessed to hijack a live
+  // conversation. siteKey is required — see below for why.
+  sessionId: z.string().min(32).max(80),
+  siteKey: z.string().min(10).max(120),
   name: z.string().max(80).optional(),
   message: z.string().min(1).max(2000),
 });
@@ -31,35 +33,52 @@ export const Route = createFileRoute("/api/public/widget/chat")({
           });
         }
 
-        if (parsed.siteKey) {
+        // Same generic rejection for every reason — an unknown key and a
+        // valid-but-wrong-domain key used to get different messages, which
+        // let a caller enumerate which site keys are real.
+        const reject = () =>
+          new Response(JSON.stringify({ error: "This request could not be accepted" }), {
+            status: 403,
+            headers: corsHeaders,
+          });
+
+        // siteKey is required (no more anonymous, tenant-less sessions — that
+        // was a live cross-tenant hijack path combined with the old
+        // ingestInboundMessage, and an unauthenticated AI-cost DoS on its own).
+        let site: {
+          tenant_id: string | null;
+          status: string;
+          active: boolean;
+          domain: string | null;
+        } | null;
+        try {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-          const { data: site } = await supabaseAdmin
+          const { data } = await supabaseAdmin
             .from("lead_sites")
-            .select("status, active, domain")
+            .select("tenant_id, status, active, domain")
             .eq("site_key", parsed.siteKey)
             .maybeSingle();
-          if (!site || !site.active || site.status !== "active") {
-            return new Response(
-              JSON.stringify({ error: "This site is not activated yet" }),
-              { status: 403, headers: corsHeaders },
-            );
-          }
-          // Pin the key to its registered domain so it can't be reused on
-          // someone else's website.
-          if (site.domain) {
-            const origin = request.headers.get("origin") ?? request.headers.get("referer") ?? "";
-            if (origin && !origin.toLowerCase().includes(site.domain.toLowerCase())) {
-              return new Response(JSON.stringify({ error: "This key is not allowed here" }), {
-                status: 403,
-                headers: corsHeaders,
-              });
-            }
-          }
+          site = data;
+        } catch (error) {
+          console.error("[widget] site lookup failed", error);
+          return new Response(JSON.stringify({ error: "Chat unavailable right now" }), {
+            status: 500,
+            headers: corsHeaders,
+          });
+        }
+        if (!site?.tenant_id || !site.active || site.status !== "active") {
+          return reject();
+        }
+
+        const { checkDomainPin } = await import("@/lib/domain-pin");
+        if (!checkDomainPin(request, site.domain)) {
+          return reject();
         }
 
         try {
           const { ingestInboundMessage } = await import("@/lib/wa.server");
           const { reply } = await ingestInboundMessage({
+            tenantId: site.tenant_id,
             channel: "web",
             sessionId: parsed.sessionId,
             name: parsed.name ?? null,

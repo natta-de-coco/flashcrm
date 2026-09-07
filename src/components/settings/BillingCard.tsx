@@ -13,7 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 
-const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+const STATUS_LABELS: Record<
+  string,
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+> = {
   trial: { label: "Free trial", variant: "secondary" },
   active: { label: "Active", variant: "default" },
   past_due: { label: "Payment issue", variant: "destructive" },
@@ -46,7 +49,8 @@ export function BillingCard() {
   const renewsAt = tenant.subscription_renews_at
     ? new Date(tenant.subscription_renews_at).toLocaleDateString()
     : null;
-  const hasSubscription = tenant.subscription_status === "active" || tenant.subscription_status === "past_due";
+  const hasSubscription =
+    tenant.subscription_status === "active" || tenant.subscription_status === "past_due";
 
   const subscribe = (priceId: "flash_monthly" | "flash_yearly") =>
     openCheckout({

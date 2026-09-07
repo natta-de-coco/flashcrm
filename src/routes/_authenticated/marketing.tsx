@@ -192,7 +192,13 @@ function MarketingPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      setRuleForm({ name: "", match_field: "tag", match_value: "", wa_number_id: "", priority: "100" });
+      setRuleForm({
+        name: "",
+        match_field: "tag",
+        match_value: "",
+        wa_number_id: "",
+        priority: "100",
+      });
       toast.success("Routing rule added");
       void qc.invalidateQueries({ queryKey: ["routing_rules"] });
     },
@@ -299,7 +305,8 @@ function MarketingPage() {
     toast.success("Copied to clipboard");
   }
 
-  const activeSite = (sites.data ?? []).find((s) => s.id === selectedSite) ?? sites.data?.[0] ?? null;
+  const activeSite =
+    (sites.data ?? []).find((s) => s.id === selectedSite) ?? sites.data?.[0] ?? null;
   const activateSite = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -317,7 +324,10 @@ function MarketingPage() {
 
   const revokeSite = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("lead_sites").update({ status: "revoked" }).eq("id", id);
+      const { error } = await supabase
+        .from("lead_sites")
+        .update({ status: "revoked" })
+        .eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -349,9 +359,9 @@ function MarketingPage() {
           <CardHeader>
             <CardTitle className="text-base">Website plugin</CardTitle>
             <CardDescription>
-              Add a site to get its own capture key, then paste the snippet into WordPress (Appearance
-              → Theme File Editor, or a Custom HTML block) or Shopify (Online Store → Themes → Edit
-              code → theme.liquid).
+              Add a site to get its own capture key, then paste the snippet into WordPress
+              (Appearance → Theme File Editor, or a Custom HTML block) or Shopify (Online Store →
+              Themes → Edit code → theme.liquid).
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
@@ -516,8 +526,8 @@ function MarketingPage() {
               <Sparkles className="size-4 text-primary" /> Flas AI campaign writer
             </CardTitle>
             <CardDescription>
-              Tell Flas AI your goal — it studies your business profile and lead data, then drafts
-              a compliant, ready-to-send message. Review it, then drop it into a campaign below.
+              Tell Flas AI your goal — it studies your business profile and lead data, then drafts a
+              compliant, ready-to-send message. Review it, then drop it into a campaign below.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -809,8 +819,8 @@ function MarketingPage() {
             <CardTitle className="text-base">Marketing campaigns</CardTitle>
             <CardDescription>
               Write a campaign for your subscribed leads. Campaigns only ever go to leads who ticked
-              the consent box — that keeps you out of spam folders and on the right side of
-              WhatsApp and email regulations. Sending activates once your email domain is verified.
+              the consent box — that keeps you out of spam folders and on the right side of WhatsApp
+              and email regulations. Sending activates once your email domain is verified.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
@@ -867,7 +877,11 @@ function MarketingPage() {
                       {campaign.status}
                     </Badge>
                     {campaign.status === "draft" && (
-                      <Button size="sm" variant="outline" onClick={() => void queueCampaign(campaign.id)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void queueCampaign(campaign.id)}
+                      >
                         <Send className="size-4" /> Queue
                       </Button>
                     )}

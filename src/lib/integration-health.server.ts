@@ -181,23 +181,33 @@ async function probeToken(
       );
       const json: any = await res.json();
       if (!res.ok || json?.error) {
-        return { ok: false, reason: json?.error?.message ?? `Meta rejected the token (HTTP ${res.status}).` };
+        return {
+          ok: false,
+          reason: json?.error?.message ?? `Meta rejected the token (HTTP ${res.status}).`,
+        };
       }
       const scopes = (json?.data ?? [])
         .filter((p: any) => p.status === "granted")
         .map((p: any) => String(p.permission));
-      return { ok: true, reason: "Meta confirmed the token and returned live permissions.", scopes };
+      return {
+        ok: true,
+        reason: "Meta confirmed the token and returned live permissions.",
+        scopes,
+      };
     }
     if (provider === "google") {
       const res = await fetch(
         `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`,
       );
       const json: any = await res.json();
-      if (!res.ok) return { ok: false, reason: json?.error_description ?? "Google rejected the token." };
+      if (!res.ok)
+        return { ok: false, reason: json?.error_description ?? "Google rejected the token." };
       return {
         ok: true,
         reason: "Google confirmed the token is valid.",
-        scopes: String(json?.scope ?? "").split(" ").filter(Boolean),
+        scopes: String(json?.scope ?? "")
+          .split(" ")
+          .filter(Boolean),
       };
     }
     if (provider === "linkedin") {
@@ -273,7 +283,10 @@ export async function retryConnection(args: {
     ? new Date(row.token_expires_at).getTime() < Date.now() + 60_000
     : false;
 
-  const probe = !token || expired ? { ok: false, reason: "Stored token is missing or expired." } : await probeToken(row.platform, token);
+  const probe =
+    !token || expired
+      ? { ok: false, reason: "Stored token is missing or expired." }
+      : await probeToken(row.platform, token);
 
   if (probe.ok) {
     outcome = row.active ? "healthy" : "recovered";

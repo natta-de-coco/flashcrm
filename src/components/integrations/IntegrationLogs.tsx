@@ -45,7 +45,10 @@ export function IntegrationLogs() {
               </p>
             )}
             {logs.data?.audit.map((row) => (
-              <div key={row.id} className="flex items-start justify-between gap-3 border-b pb-2 text-xs last:border-0">
+              <div
+                key={row.id}
+                className="flex items-start justify-between gap-3 border-b pb-2 text-xs last:border-0"
+              >
                 <div className="min-w-0">
                   <p className="font-medium">{ACTION_LABEL[row.action] ?? row.action}</p>
                   <p className="truncate text-muted-foreground">
@@ -74,7 +77,10 @@ export function IntegrationLogs() {
               <p className="text-sm text-muted-foreground">No webhook traffic recorded yet.</p>
             )}
             {logs.data?.webhooks.map((row) => (
-              <div key={row.id} className="flex items-start justify-between gap-3 border-b pb-2 text-xs last:border-0">
+              <div
+                key={row.id}
+                className="flex items-start justify-between gap-3 border-b pb-2 text-xs last:border-0"
+              >
                 <div className="min-w-0">
                   <p className="font-medium">
                     {row.source} · {row.event_type}

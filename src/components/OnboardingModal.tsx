@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Building2, User } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
 import { completeOnboarding } from "@/lib/onboarding.functions";
 import { FlashLogoBadge } from "@/components/FlashLogoBadge";
@@ -18,19 +19,42 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-/** Blocking 2-step onboarding for brand-new accounts: company + your name. */
+/**
+ * The one blocking step for a brand-new account: name the company.
+ *
+ * It used to ask for your full name here as well -- which sign-up had already
+ * collected two minutes earlier and stored on the account. Being asked the same
+ * thing twice in the first two screens is the fastest way to make a product
+ * feel unfinished, so the name is carried over and the field only appears when
+ * sign-up genuinely did not capture one (an invited teammate, or an OAuth
+ * provider that returned no name).
+ */
 export function OnboardingModal() {
   const { needsOnboarding, loading, refresh } = useTenant();
+  const { user } = useAuth();
   const runOnboarding = useServerFn(completeOnboarding);
   const [companyName, setCompanyName] = useState("");
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // Whatever sign-up already knows about this person.
+  const knownName =
+    (user?.user_metadata?.["full_name"] as string | undefined)?.trim() ||
+    (user?.user_metadata?.["name"] as string | undefined)?.trim() ||
+    "";
+  useEffect(() => {
+    if (knownName) setFullName((current) => current || knownName);
+  }, [knownName]);
+
   if (loading || !needsOnboarding) return null;
 
   const submit = async () => {
-    if (companyName.trim().length < 2 || fullName.trim().length < 2) {
-      toast.error("Please fill in both fields");
+    if (companyName.trim().length < 2) {
+      toast.error("Please enter your company name");
+      return;
+    }
+    if (fullName.trim().length < 2) {
+      toast.error("Please enter your full name");
       return;
     }
     setBusy(true);
@@ -65,10 +89,11 @@ export function OnboardingModal() {
       <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader className="items-center text-center">
           <FlashLogoBadge className="mb-2 size-12" />
-          <DialogTitle>Set up your company</DialogTitle>
+          <DialogTitle>Name your company</DialogTitle>
           <DialogDescription>
-            One quick step and your Flas workspace is ready — every account starts with a free
-            month.
+            {knownName
+              ? `One quick step, ${knownName.split(" ")[0]} — then your Flas workspace is ready. Every account starts with a free month.`
+              : "One quick step and your Flas workspace is ready — every account starts with a free month."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 pt-2">
@@ -81,21 +106,24 @@ export function OnboardingModal() {
               placeholder="Acme Trading Co."
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && knownName && submit()}
               autoFocus
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="ob-name" className="flex items-center gap-1.5">
-              <User className="h-3.5 w-3.5" /> Your full name
-            </Label>
-            <Input
-              id="ob-name"
-              placeholder="Jane Cooper"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-            />
-          </div>
+          {!knownName && (
+            <div className="space-y-2">
+              <Label htmlFor="ob-name" className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" /> Your full name
+              </Label>
+              <Input
+                id="ob-name"
+                placeholder="Jane Cooper"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+              />
+            </div>
+          )}
           <Button className="w-full" onClick={submit} disabled={busy}>
             {busy ? "Creating your workspace…" : "Start my free month"}
           </Button>

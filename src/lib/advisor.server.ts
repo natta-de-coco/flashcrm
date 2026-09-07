@@ -2,7 +2,7 @@
 // business manager persona that reads the tenant's live data (channels, social,
 // leads, catalog, location) and returns a structured strategic review.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { callFlashAi, gatherLeadSummary, gatherMessagingAnalytics } from "./flash-ai.server";
+import { aiOptionsFor, callFlashAi, gatherLeadSummary, gatherMessagingAnalytics } from "./flash-ai.server";
 import { getDashboardOverviewData } from "./dashboard.server";
 
 export type AdvisorProfile = {
@@ -56,9 +56,7 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
       .order("published_at", { ascending: false })
       .limit(40)
       .then((r) => r.data ?? []),
-
   ]);
-
 
   const lines: string[] = [];
 
@@ -85,7 +83,8 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
   if (overview) {
     lines.push("\n## Channel performance");
     lines.push(`Health score: ${overview.health.score}/100 (${overview.health.grade})`);
-    for (const f of overview.health.factors) lines.push(`- ${f.label}: ${f.score}/100 — ${f.detail}`);
+    for (const f of overview.health.factors)
+      lines.push(`- ${f.label}: ${f.score}/100 — ${f.detail}`);
     lines.push(
       `Messages this week ${overview.trends.messages.current} vs ${overview.trends.messages.previous} last week; inbound ${overview.trends.inbound.current} vs ${overview.trends.inbound.previous}; new leads ${overview.trends.leads.current} vs ${overview.trends.leads.previous}`,
     );
@@ -188,7 +187,10 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
     const ranked = [...published]
       .sort(
         (a, b) =>
-          (b.likes ?? 0) + (b.comments_count ?? 0) + (b.shares ?? 0) - ((a.likes ?? 0) + (a.comments_count ?? 0) + (a.shares ?? 0)),
+          (b.likes ?? 0) +
+          (b.comments_count ?? 0) +
+          (b.shares ?? 0) -
+          ((a.likes ?? 0) + (a.comments_count ?? 0) + (a.shares ?? 0)),
       )
       .slice(0, 5);
     for (const p of ranked) {
@@ -205,10 +207,13 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
     );
   }
 
-
   lines.push("\n## Products");
   if (products.length === 0) lines.push("No products in the catalog.");
-  for (const p of products as Array<{ title: string; price: number | null; description: string | null }>) {
+  for (const p of products as Array<{
+    title: string;
+    price: number | null;
+    description: string | null;
+  }>) {
     lines.push(`- ${p.title}${p.price != null ? ` — ${p.price}` : ""}`);
   }
 
@@ -230,7 +235,12 @@ export type AdvisorAnalysis = {
   verdict: string;
   positioning: string;
   scores: { label: string; score: number; note: string }[];
-  opportunities: { title: string; why: string; action: string; impact: "high" | "medium" | "low" }[];
+  opportunities: {
+    title: string;
+    why: string;
+    action: string;
+    impact: "high" | "medium" | "low";
+  }[];
   risks: string[];
   local: string[];
   socialPlan: { platform: string; recommendation: string }[];
@@ -265,7 +275,7 @@ export async function buildAdvisorAnalysis(supabase: SupabaseClient): Promise<Ad
     '"kpis": [4-6 {"name": string, "target": string}]}',
   ].join("\n");
 
-  const raw = await callFlashAi(system, facts);
+  const raw = await callFlashAi(system, facts, await aiOptionsFor(supabase, "advisor_analysis"));
 
   let parsed: Partial<AdvisorAnalysis> = {};
   try {
@@ -317,7 +327,7 @@ export async function askAdvisorQuestion(
     `\nQUESTION: ${question}`,
   ].join("\n");
 
-  return callFlashAi(system, user);
+  return callFlashAi(system, user, await aiOptionsFor(supabase, "advisor_question"));
 }
 
 /* ---------------- KPI targets ---------------- */
@@ -335,12 +345,12 @@ export type KpiProposal = {
 };
 
 const KPI_MENU = [
-  'response_minutes — average first response in minutes (lower is better)',
-  'read_rate — % of outbound WhatsApp messages read (higher is better)',
-  'conversion_rate — % of contacts reaching Won (higher is better)',
-  'lead_velocity — new leads per week (higher is better)',
-  'social_pending — social comments/DMs still waiting (lower is better)',
-  'unread_backlog — unread chats right now (lower is better)',
+  "response_minutes — average first response in minutes (lower is better)",
+  "read_rate — % of outbound WhatsApp messages read (higher is better)",
+  "conversion_rate — % of contacts reaching Won (higher is better)",
+  "lead_velocity — new leads per week (higher is better)",
+  "social_pending — social comments/DMs still waiting (lower is better)",
+  "unread_backlog — unread chats right now (lower is better)",
 ].join("\n");
 
 /**
@@ -359,7 +369,7 @@ export async function proposeKpiTargets(supabase: SupabaseClient): Promise<KpiPr
     "Include 4 to 6 targets. target_value must be a plain number in the metric's unit.",
   ].join("\n");
 
-  const raw = await callFlashAi(system, facts);
+  const raw = await callFlashAi(system, facts, await aiOptionsFor(supabase, "kpi_targets"));
   let parsed: { targets?: KpiProposal[] } = {};
   try {
     parsed = JSON.parse(stripFences(raw)) as { targets?: KpiProposal[] };
@@ -411,7 +421,7 @@ export async function buildFollowUpQuestions(
     "Exactly 3 to 5 questions, ordered by how much the answer changes your recommendation.",
   ].join("\n");
 
-  const raw = await callFlashAi(system, facts);
+  const raw = await callFlashAi(system, facts, await aiOptionsFor(supabase, "follow_up_questions"));
   let parsed: { questions?: Array<{ question?: string; why?: string }> } = {};
   try {
     parsed = JSON.parse(stripFences(raw)) as typeof parsed;
@@ -431,7 +441,13 @@ export async function buildFollowUpQuestions(
 
 export type FollowUpPlan = {
   summary: string;
-  actions: { action: string; why: string; owner: string; when: string; impact: "high" | "medium" | "low" }[];
+  actions: {
+    action: string;
+    why: string;
+    owner: string;
+    when: string;
+    impact: "high" | "medium" | "low";
+  }[];
   watchouts: string[];
   generatedAt: string;
 };
@@ -459,7 +475,7 @@ export async function buildFollowUpPlan(
     ...answers.map((a) => `Q: ${a.question}\nA: ${a.answer}`),
   ].join("\n");
 
-  const raw = await callFlashAi(system, user);
+  const raw = await callFlashAi(system, user, await aiOptionsFor(supabase, "follow_up_plan"));
   let parsed: Partial<FollowUpPlan> = {};
   try {
     parsed = JSON.parse(stripFences(raw)) as Partial<FollowUpPlan>;

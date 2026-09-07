@@ -42,17 +42,41 @@ export function DataPrivacyCard() {
     },
   });
 
+  const PAGE_SIZE = 1000;
+  const MAX_PAGES = 50; // hard ceiling (50k rows/table) so a pathological tenant can't hang the browser
+
+  /** Pages through every row instead of a flat .limit() — a flat cap silently
+   *  dropped rows past it with no indication the export was incomplete. */
+  async function fetchAllRows(
+    table: (typeof EXPORT_TABLES)[number],
+  ): Promise<{ rows: unknown[]; truncated: boolean }> {
+    const rows: unknown[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE_SIZE;
+      const { data, error } = await supabase
+        .from(table)
+        .select("*")
+        .range(from, from + PAGE_SIZE - 1);
+      if (error) throw new Error(`${table}: ${error.message}`);
+      rows.push(...(data ?? []));
+      if (!data || data.length < PAGE_SIZE) return { rows, truncated: false };
+    }
+    return { rows, truncated: true };
+  }
+
   const exportAll = useMutation({
     mutationFn: async () => {
       const bundle: Record<string, unknown> = {
         exported_at: new Date().toISOString(),
         exported_by: user?.email ?? null,
       };
+      const truncatedTables: string[] = [];
       for (const table of EXPORT_TABLES) {
-        const { data, error } = await supabase.from(table).select("*").limit(5000);
-        if (error) throw new Error(`${table}: ${error.message}`);
-        bundle[table] = data ?? [];
+        const { rows, truncated } = await fetchAllRows(table);
+        bundle[table] = rows;
+        if (truncated) truncatedTables.push(table);
       }
+      bundle["truncated_tables"] = truncatedTables;
       const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -60,8 +84,17 @@ export function DataPrivacyCard() {
       a.download = `flash-crm-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      return truncatedTables;
     },
-    onSuccess: () => toast.success("Export downloaded"),
+    onSuccess: (truncatedTables) => {
+      if (truncatedTables.length > 0) {
+        toast.warning(
+          `Export downloaded, but ${truncatedTables.join(", ")} hit the ${MAX_PAGES * PAGE_SIZE}-row safety limit and may be incomplete. Contact support for a full export.`,
+        );
+      } else {
+        toast.success("Export downloaded");
+      }
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 

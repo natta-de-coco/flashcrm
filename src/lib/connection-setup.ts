@@ -5,6 +5,26 @@
 
 import type { ConnectorId } from "./connections-catalog";
 
+/**
+ * One credential the user has to paste, with the instructions for finding it
+ * sitting directly under its input.
+ *
+ * Telling someone "open Settings -> Numbers and add your permanent token" and
+ * leaving them to it is where setup dies. Every value we ask for names the
+ * exact console page it lives on, and the wizard collects it in place.
+ */
+export type SetupField = {
+  key: string;
+  label: string;
+  placeholder?: string;
+  /** Bullet steps rendered under the input, in order. */
+  help: string[];
+  /** The exact page this value is copied from. */
+  link?: { label: string; url: string };
+  /** Masked on screen and never rendered back after saving. */
+  secret?: boolean;
+};
+
 export type SetupGuide = {
   /** What you must own before connecting. */
   requires: string[];
@@ -103,7 +123,9 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "https://www.googleapis.com/auth/youtube.force-ssl",
       "https://www.googleapis.com/auth/yt-analytics.readonly",
     ],
-    gotchas: ["Uploads consume a large daily API quota — schedule videos rather than bulk-posting."],
+    gotchas: [
+      "Uploads consume a large daily API quota — schedule videos rather than bulk-posting.",
+    ],
   },
   tiktok: {
     requires: ["A TikTok account (Business recommended) with content posting enabled"],
@@ -124,7 +146,12 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Press Connect and sign in to LinkedIn.",
       "Select the Company Page and approve posting + analytics.",
     ],
-    scopes: ["w_member_social", "r_organization_social", "w_organization_social", "rw_organization_admin"],
+    scopes: [
+      "w_member_social",
+      "r_organization_social",
+      "w_organization_social",
+      "rw_organization_admin",
+    ],
     gotchas: [
       "Personal-profile posting is limited by LinkedIn; company pages are fully supported.",
       "LinkedIn has no messaging API — DMs stay in LinkedIn.",
@@ -224,4 +251,223 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
 
 export function setupGuide(id: string): SetupGuide | undefined {
   return SETUP_GUIDES[id as ConnectorId];
+}
+
+/**
+ * App-level keys belong to an OAuth provider family rather than one channel:
+ * a single Meta app serves Facebook, Instagram, Threads and Meta Ads. Entering
+ * them from any of those sets up all of them, which the wizard says out loud
+ * so it does not look like repeated work.
+ */
+const PROVIDER_FIELDS: Record<string, SetupField[]> = {
+  meta: [
+    {
+      key: "clientId",
+      label: "App ID",
+      placeholder: "e.g. 1234567890123456",
+      help: [
+        "Sign in to the Meta Developer console and open your app, or create one of type Business.",
+        "Go to App settings then Basic.",
+        "Copy the App ID at the top and paste it below.",
+      ],
+      link: { label: "Meta Developer console", url: "https://developers.facebook.com/apps" },
+    },
+    {
+      key: "clientSecret",
+      label: "App Secret",
+      help: [
+        "On the same App settings then Basic page, find App Secret.",
+        "Press Show, confirm your password, then copy the value.",
+      ],
+      link: { label: "Meta Developer console", url: "https://developers.facebook.com/apps" },
+      secret: true,
+    },
+  ],
+  google: [
+    {
+      key: "clientId",
+      label: "Client ID",
+      placeholder: "...apps.googleusercontent.com",
+      help: [
+        "Open Google Cloud Console, then APIs and Services, then Credentials.",
+        "Create an OAuth client ID of type Web application, or open your existing one.",
+        "Copy the Client ID.",
+      ],
+      link: {
+        label: "Google Cloud credentials",
+        url: "https://console.cloud.google.com/apis/credentials",
+      },
+    },
+    {
+      key: "clientSecret",
+      label: "Client secret",
+      help: [
+        "On the same OAuth client, copy the Client secret.",
+        "If it is hidden, use the download or reset icon to reveal it.",
+      ],
+      link: {
+        label: "Google Cloud credentials",
+        url: "https://console.cloud.google.com/apis/credentials",
+      },
+      secret: true,
+    },
+  ],
+  linkedin: [
+    {
+      key: "clientId",
+      label: "Client ID",
+      help: [
+        "Open the LinkedIn developer portal and select your app.",
+        "Go to the Auth tab.",
+        "Copy the Client ID.",
+      ],
+      link: { label: "LinkedIn developer apps", url: "https://www.linkedin.com/developers/apps" },
+    },
+    {
+      key: "clientSecret",
+      label: "Client Secret",
+      help: ["On the same Auth tab, copy the Primary Client Secret."],
+      link: { label: "LinkedIn developer apps", url: "https://www.linkedin.com/developers/apps" },
+      secret: true,
+    },
+  ],
+  tiktok: [
+    {
+      key: "clientId",
+      label: "Client key",
+      help: [
+        "Open the TikTok for Developers console and select your app.",
+        "Under Basic information, copy the Client key.",
+      ],
+      link: { label: "TikTok developer apps", url: "https://developers.tiktok.com/apps" },
+    },
+    {
+      key: "clientSecret",
+      label: "Client secret",
+      help: ["On the same page, copy the Client secret."],
+      link: { label: "TikTok developer apps", url: "https://developers.tiktok.com/apps" },
+      secret: true,
+    },
+  ],
+  twitter: [
+    {
+      key: "clientId",
+      label: "Client ID",
+      help: [
+        "Open the X developer portal, then your project, then your app.",
+        "Open Keys and tokens, then OAuth 2.0 Client ID and Client Secret.",
+        "Copy the Client ID.",
+      ],
+      link: { label: "X developer portal", url: "https://developer.x.com/en/portal/dashboard" },
+    },
+    {
+      key: "clientSecret",
+      label: "Client Secret",
+      help: [
+        "On the same screen copy the Client Secret.",
+        "X shows it once. Regenerate it if you did not save it.",
+      ],
+      link: { label: "X developer portal", url: "https://developer.x.com/en/portal/dashboard" },
+      secret: true,
+    },
+  ],
+  pinterest: [
+    {
+      key: "clientId",
+      label: "App ID",
+      help: ["Open the Pinterest developer console and select your app.", "Copy the App ID."],
+      link: { label: "Pinterest developer apps", url: "https://developers.pinterest.com/apps" },
+    },
+    {
+      key: "clientSecret",
+      label: "App secret",
+      help: ["On the same app page, copy the App secret."],
+      link: { label: "Pinterest developer apps", url: "https://developers.pinterest.com/apps" },
+      secret: true,
+    },
+  ],
+};
+
+/**
+ * WhatsApp is the one channel with no OAuth flow at all. Meta issues a
+ * permanent token per phone number instead, so these values belong to the
+ * account rather than to an app.
+ */
+const WHATSAPP_FIELDS: SetupField[] = [
+  {
+    key: "label",
+    label: "Name for this number",
+    placeholder: "e.g. Sales line",
+    help: ["Only used inside Flas, so your team can tell numbers apart."],
+  },
+  {
+    key: "display_phone",
+    label: "Phone number",
+    placeholder: "+971 50 963 0506",
+    help: ["The number as customers see it. Shown on conversations in the inbox."],
+  },
+  {
+    key: "phone_number_id",
+    label: "Phone Number ID",
+    placeholder: "e.g. 109876543210987",
+    help: [
+      "Sign in to Meta Business and open WhatsApp, then API setup.",
+      "Find the number you want in the From dropdown.",
+      "Copy the Phone number ID shown beneath it, not the phone number itself.",
+    ],
+    link: { label: "WhatsApp API setup", url: "https://business.facebook.com/wa/manage/home" },
+  },
+  {
+    key: "access_token",
+    label: "Permanent Access Token",
+    help: [
+      "In Meta Business Settings open Users, then System users.",
+      "Add a system user with Admin access, then press Generate new token.",
+      "Select your app and tick whatsapp_business_messaging and whatsapp_business_management.",
+      "Set the expiry to Never, generate, and copy the token. Meta shows it only once.",
+    ],
+    link: {
+      label: "Meta Business system users",
+      url: "https://business.facebook.com/settings/system-users",
+    },
+    secret: true,
+  },
+  {
+    key: "app_secret",
+    label: "App Secret",
+    help: [
+      "Open the Meta Developer console, then your app, then App settings, then Basic.",
+      "Press Show next to App Secret and copy it.",
+      "Flas verifies every inbound webhook against this. Without it, incoming messages are rejected.",
+    ],
+    link: { label: "Meta Developer console", url: "https://developers.facebook.com/apps" },
+    secret: true,
+  },
+];
+
+export type CredentialSpec = {
+  /** "provider" keys are shared across a family; "account" keys belong to one connection. */
+  scope: "provider" | "account";
+  provider?: string;
+  /** Other channels the same keys unlock, so entering them reads as progress. */
+  alsoUnlocks?: string[];
+  fields: SetupField[];
+};
+
+/** What this channel needs typed in before it can connect, if anything. */
+export function credentialSpec(
+  id: string,
+  opts: { provider?: string | null; siblings?: string[] } = {},
+): CredentialSpec | undefined {
+  if (id === "whatsapp") return { scope: "account", fields: WHATSAPP_FIELDS };
+  const provider = opts.provider ?? undefined;
+  if (!provider) return undefined;
+  const fields = PROVIDER_FIELDS[provider];
+  if (!fields) return undefined;
+  return {
+    scope: "provider",
+    provider,
+    ...(opts.siblings?.length ? { alsoUnlocks: opts.siblings } : {}),
+    fields,
+  };
 }

@@ -7,6 +7,25 @@ import { z } from "zod";
 
 const ProviderSchema = z.enum(["meta", "google", "linkedin", "tiktok", "twitter", "pinterest"]);
 
+/** Platform OAuth app credentials are workspace-wide secrets — only admins
+ *  should be able to write or delete them, not every staff member. */
+async function requireCompanyAdmin(context: {
+  supabase: import("@supabase/supabase-js").SupabaseClient;
+  userId: string;
+}) {
+  const { data } = await context.supabase
+    .from("profiles")
+    .select("tenant_id, staff_role")
+    .eq("id", context.userId)
+    .maybeSingle();
+  if (!data?.tenant_id)
+    throw new Error("Your workspace is still being set up — try again in a moment.");
+  if (!["company_admin", "super_admin"].includes(data.staff_role)) {
+    throw new Error("Only company admins can manage connected app credentials");
+  }
+  return data.tenant_id as string;
+}
+
 export const listPlatformApps = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -37,13 +56,7 @@ export const savePlatformApp = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", context.userId)
-      .maybeSingle();
-    const tenantId = profile?.tenant_id;
-    if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
+    const tenantId = await requireCompanyAdmin(context);
 
     const { error } = await context.supabase.from("platform_apps").upsert(
       {
@@ -73,6 +86,7 @@ export const deletePlatformApp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ provider: ProviderSchema }).parse(input))
   .handler(async ({ data, context }) => {
+    await requireCompanyAdmin(context);
     const { error } = await context.supabase
       .from("platform_apps")
       .delete()

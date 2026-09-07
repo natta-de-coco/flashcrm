@@ -84,7 +84,8 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
             { status: ok ? 200 : 400, headers: { "Content-Type": "text/html; charset=utf-8" } },
           );
 
-        if (token.length < 20) return html("Invalid link", "This activation link is not valid.", false);
+        if (token.length < 20)
+          return html("Invalid link", "This activation link is not valid.", false);
 
         try {
           const { activateSiteByToken } = await import("@/lib/plugin-activation.server");

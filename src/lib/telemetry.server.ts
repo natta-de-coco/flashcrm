@@ -19,8 +19,29 @@ export type RecordErrorInput = {
 
 const RELEASE = "flas-crm";
 
+/** How many identical reports from one session we keep before we stop storing. */
+const DUPLICATE_CEILING = 20;
+const DUPLICATE_WINDOW_MS = 5 * 60 * 1000;
+
 export async function recordErrorEvent(input: RecordErrorInput): Promise<void> {
   try {
+    // reportErrorEvent is unauthenticated on purpose -- a browser must be able
+    // to report a crash after its session is gone -- and nothing capped it.
+    // The realistic failure is not an attacker but a render loop: one broken
+    // component reporting the same error thousands of times a minute, each row
+    // up to ~10KB. Past the ceiling we drop the duplicate rather than the
+    // report, so the first occurrences are always kept.
+    if (input.sessionId) {
+      const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString();
+      const { count } = await supabaseAdmin
+        .from("error_events")
+        .select("id", { count: "exact", head: true })
+        .eq("session_id", input.sessionId)
+        .eq("message", input.message.slice(0, 2000))
+        .gte("created_at", since);
+      if ((count ?? 0) >= DUPLICATE_CEILING) return;
+    }
+
     await supabaseAdmin.from("error_events").insert({
       kind: input.kind.slice(0, 40),
       severity: (input.severity ?? "error").slice(0, 20),

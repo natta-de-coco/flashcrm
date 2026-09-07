@@ -10,6 +10,7 @@ export type TenantInfo = {
   subscription_status: string;
   subscription_renews_at: string | null;
   suspended: boolean;
+  currency: string;
 };
 
 type TenantState = {
@@ -58,7 +59,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     }
     const { data: org } = await supabase
       .from("organizations")
-      .select("id, name, slug, plan, subscription_status, subscription_renews_at, suspended")
+      .select(
+        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency",
+      )
       .eq("id", profile.tenant_id)
       .maybeSingle();
     setTenant((org as TenantInfo | null) ?? null);
@@ -72,9 +75,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   return (
-    <TenantContext.Provider
-      value={{ tenant, staffRole, needsOnboarding, loading, refresh: load }}
-    >
+    <TenantContext.Provider value={{ tenant, staffRole, needsOnboarding, loading, refresh: load }}>
       {children}
     </TenantContext.Provider>
   );

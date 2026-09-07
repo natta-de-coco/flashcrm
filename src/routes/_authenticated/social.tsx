@@ -1,4 +1,8 @@
 import { PageHeader } from "@/components/PageHeader";
+import {
+  ConnectionOutcome,
+  type ConnectionOutcomeSearch,
+} from "@/components/integrations/ConnectionOutcome";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,7 +30,7 @@ import {
   updateInteractionStatus,
 } from "@/lib/social.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Archive,
@@ -66,17 +70,31 @@ export const Route = createFileRoute("/_authenticated/social")({
       },
     ],
   }),
+  // The OAuth callback redirects back here with the outcome in the query
+  // string. These were previously unread, so a blocked connection showed
+  // nothing at all.
+  validateSearch: (search: Record<string, unknown>): ConnectionOutcomeSearch => ({
+    ...(typeof search["connected"] === "string" ? { connected: search["connected"] } : {}),
+    ...(typeof search["connect_blocked"] === "string"
+      ? { connect_blocked: search["connect_blocked"] }
+      : {}),
+    ...(typeof search["connect_reason"] === "string"
+      ? { connect_reason: search["connect_reason"] }
+      : {}),
+    ...(typeof search["connect_error"] === "string" ? { connect_error: search["connect_error"] } : {}),
+    ...(typeof search["connect_detail"] === "string"
+      ? { connect_detail: search["connect_detail"] }
+      : {}),
+    ...(typeof search["connect_help"] === "string" ? { connect_help: search["connect_help"] } : {}),
+    ...(typeof search["select_target"] === "string"
+      ? { select_target: search["select_target"] }
+      : {}),
+  }),
   component: SocialHubPage,
 });
 
 type PlatformId =
-  | "instagram"
-  | "facebook"
-  | "youtube"
-  | "twitter"
-  | "linkedin"
-  | "tiktok"
-  | "google_business";
+  "instagram" | "facebook" | "youtube" | "twitter" | "linkedin" | "tiktok" | "google_business";
 
 type Account = {
   id: string;
@@ -234,6 +252,8 @@ function PlatformIcon({ platform }: { platform: string }) {
 
 function SocialHubPage() {
   const qc = useQueryClient();
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const hubFn = useServerFn(getSocialHub);
   const hub = useQuery({ queryKey: ["social-hub"], queryFn: () => hubFn() });
   const refresh = () => qc.invalidateQueries({ queryKey: ["social-hub"] });
@@ -249,6 +269,13 @@ function SocialHubPage() {
       <PageHeader
         title="Social Hub"
         description="Run your client's whole social presence from here: reply to comments & DMs with Flas AI, write posts, and watch reach and audience grow."
+      />
+
+      <ConnectionOutcome
+        search={search}
+        accounts={accounts}
+        onChanged={refresh}
+        onDismiss={() => void navigate({ to: "/social", search: {}, replace: true })}
       />
 
       <AccountsCard accounts={accounts} onChanged={refresh} />
@@ -278,7 +305,12 @@ function SocialHubPage() {
           <ComposerTab onChanged={refresh} />
         </TabsContent>
         <TabsContent value="reach" className="mt-4">
-          <ReachTab posts={posts} interactions={interactions} accounts={accounts} onChanged={refresh} />
+          <ReachTab
+            posts={posts}
+            interactions={interactions}
+            accounts={accounts}
+            onChanged={refresh}
+          />
         </TabsContent>
       </Tabs>
     </main>
@@ -287,13 +319,7 @@ function SocialHubPage() {
 
 /* ---------------- Accounts ---------------- */
 
-function AccountsCard({
-  accounts,
-  onChanged,
-}: {
-  accounts: Account[];
-  onChanged: () => void;
-}) {
+function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged: () => void }) {
   const connect = useServerFn(connectSocialAccount);
   const remove = useServerFn(deleteSocialAccount);
   const sync = useServerFn(syncSocialAccountFn);
@@ -344,13 +370,32 @@ function AccountsCard({
             to pull in comments, DMs, reviews, posts and audience stats.
           </CardDescription>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? "Close" : "Connect account"}
-        </Button>
+        {/* Connecting has one front door -- the guided flow on Connect & setup,
+            which runs the platform's real login. This card used to offer a
+            competing "Connect account" button that only took a hand-pasted
+            token, so the same job had two different answers depending on which
+            page you happened to be on. The manual path still exists for
+            long-lived tokens, but it is now clearly the fallback. */}
+        <div className="flex items-center gap-2">
+          <Button asChild size="sm">
+            <Link to="/connect">Connect an account</Link>
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? "Close" : "Paste a token"}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="grid gap-3">
         {showForm && (
           <div className="grid gap-3 rounded-lg border border-dashed p-4 sm:grid-cols-2">
+            <p className="text-xs text-muted-foreground sm:col-span-2">
+              Advanced. Most accounts should be connected from{" "}
+              <Link to="/connect" className="underline underline-offset-2">
+                Connect &amp; setup
+              </Link>
+              , which runs the platform&apos;s own login and requests the right permissions. Use
+              this only when you already hold a long-lived token.
+            </p>
             <div className="grid gap-1.5">
               <Label>Platform</Label>
               <Select
@@ -423,7 +468,10 @@ function AccountsCard({
 
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {accounts.map((a) => (
-            <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border p-3">
+            <div
+              key={a.id}
+              className="flex items-center justify-between gap-2 rounded-lg border p-3"
+            >
               <div className="min-w-0">
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
                   <PlatformIcon platform={a.platform} />
@@ -519,7 +567,9 @@ function InboxTab({
     try {
       const { metaDelivered } = await send({ data: { id: i.id, reply } });
       toast.success(
-        metaDelivered ? "Reply sent to the platform" : "Reply recorded (platform delivery not confirmed)",
+        metaDelivered
+          ? "Reply sent to the platform"
+          : "Reply recorded (platform delivery not confirmed)",
       );
       onChanged();
     } catch (e) {
@@ -652,7 +702,8 @@ function ComposerTab({ onChanged }: { onChanged: () => void }) {
   const [scheduleAt, setScheduleAt] = useState("");
 
   const composeMutation = useMutation({
-    mutationFn: () => compose({ data: { topic: form.topic.trim(), tone: form.tone, platform: form.platform } }),
+    mutationFn: () =>
+      compose({ data: { topic: form.topic.trim(), tone: form.tone, platform: form.platform } }),
     onSuccess: (res) => {
       setCaption(res.caption);
       toast.success("Flas AI wrote your caption");
@@ -683,8 +734,8 @@ function ComposerTab({ onChanged }: { onChanged: () => void }) {
       <CardHeader>
         <CardTitle className="text-base">Flas AI content writer</CardTitle>
         <CardDescription>
-          Describe the post goal — Flas AI knows the business profile and writes an on-brand
-          caption with hashtags and a call to action.
+          Describe the post goal — Flas AI knows the business profile and writes an on-brand caption
+          with hashtags and a call to action.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -844,7 +895,10 @@ function ReachTab({
               </p>
             )}
             {posts.map((p) => (
-              <div key={p.id} className="flex items-start justify-between gap-3 rounded-lg border p-3">
+              <div
+                key={p.id}
+                className="flex items-start justify-between gap-3 rounded-lg border p-3"
+              >
                 <div className="min-w-0">
                   <p className="line-clamp-2 text-sm">{p.caption}</p>
                   <p className="mt-1 text-xs text-muted-foreground">

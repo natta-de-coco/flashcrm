@@ -11,6 +11,11 @@ import { buildDocumentPdf, type InvoicePdfInput, type PdfItem } from "./invoice-
 
 export type DocKind = "invoice" | "quotation" | "credit_note" | "proforma";
 
+// Deliberately loose: this helper is called with both the RLS-scoped client
+// and the admin client, whose generic parameters differ. Narrowing this to
+// Record<string, unknown> does not describe either of them and cascades ~200
+// type errors through every caller.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = SupabaseClient<any, any, any>;
 
 export type ItemInput = {
@@ -39,10 +44,18 @@ export async function requireTenantId(supabase: AnyClient): Promise<string> {
 
 /** Reads workspace billing settings, creating sensible defaults on first use. */
 export async function ensureBillingSettings(supabase: AnyClient, tenantId: string) {
-  const { data } = await supabase.from("billing_settings").select("*").eq("tenant_id", tenantId).maybeSingle();
+  const { data } = await supabase
+    .from("billing_settings")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
   if (data) return data;
 
-  const { data: org } = await supabase.from("organizations").select("name").eq("id", tenantId).maybeSingle();
+  const { data: org } = await supabase
+    .from("organizations")
+    .select("name")
+    .eq("id", tenantId)
+    .maybeSingle();
   const { data: profile } = await supabase
     .from("business_profiles")
     .select("business_name, city, country, contact_details, website_url")
@@ -65,7 +78,10 @@ export async function ensureBillingSettings(supabase: AnyClient, tenantId: strin
 }
 
 /** Company snapshot frozen onto every document at finalization time. */
-export function companySnapshot(settings: any, logoUrl?: string | null) {
+export function companySnapshot(
+  settings: any,
+  logoUrl?: string | null,
+) {
   return {
     legal_name: settings?.legal_name ?? null,
     trade_name: settings?.trade_name ?? null,
@@ -112,7 +128,11 @@ export type DocumentPayload = {
 };
 
 /** Authoritative save for a draft document: recomputes every figure. */
-export async function saveDraftDocument(supabase: AnyClient, userId: string, payload: DocumentPayload) {
+export async function saveDraftDocument(
+  supabase: AnyClient,
+  userId: string,
+  payload: DocumentPayload,
+) {
   const tenantId = await requireTenantId(supabase);
   const settings = await ensureBillingSettings(supabase, tenantId);
 
@@ -124,7 +144,9 @@ export async function saveDraftDocument(supabase: AnyClient, userId: string, pay
       .maybeSingle();
     if (!existing) throw new Error("Document not found.");
     if (existing.finalized_at) {
-      throw new Error("This document is finalized. Create a revision, credit note or cancellation instead.");
+      throw new Error(
+        "This document is finalized. Create a revision, credit note or cancellation instead.",
+      );
     }
   }
 
@@ -143,7 +165,8 @@ export async function saveDraftDocument(supabase: AnyClient, userId: string, pay
     tax_inclusive: payload.tax_inclusive ?? false,
   });
 
-  const customerSnapshot = payload.customer_snapshot ?? (await buildCustomerSnapshot(supabase, payload.contact_id));
+  const customerSnapshot =
+    payload.customer_snapshot ?? (await buildCustomerSnapshot(supabase, payload.contact_id));
 
   const row = {
     tenant_id: tenantId,
@@ -197,35 +220,36 @@ export async function saveDraftDocument(supabase: AnyClient, userId: string, pay
     await logActivity(supabase, tenantId, documentId, "created", userId, { doc_number: docNumber });
   }
 
-  // Items are rewritten wholesale; snapshots keep history immune to catalog edits.
-  await supabase.from("sales_document_items").delete().eq("document_id", documentId);
-  if (payload.items.length) {
-    const rows = payload.items.map((item, index) => ({
-      tenant_id: tenantId,
-      document_id: documentId,
-      product_id: item.product_id ?? null,
-      position: index,
-      name_snapshot: item.name,
-      sku_snapshot: item.sku ?? null,
-      description_snapshot: item.description ?? null,
-      image_snapshot: item.image ?? null,
-      quantity: round2(item.quantity),
-      unit: item.unit ?? "pcs",
-      unit_price: round2(item.unit_price),
-      discount_value: round2(item.discount_value ?? 0),
-      discount_type: item.discount_type ?? "percent",
-      discount_amount: totals.lines[index]?.discount_amount ?? 0,
-      tax_rate: settings?.tax_enabled === false ? 0 : round2(item.tax_rate ?? 0),
-      tax_amount: totals.lines[index]?.tax_amount ?? 0,
-      line_total: totals.lines[index]?.line_total ?? 0,
-      serial_number: item.serial_number ?? null,
-      warranty: item.warranty ?? null,
-      service_period: item.service_period ?? null,
-      notes: item.notes ?? null,
-    }));
-    const { error } = await supabase.from("sales_document_items").insert(rows);
-    if (error) throw new Error(error.message);
-  }
+  // Items are rewritten wholesale; snapshots keep history immune to catalog
+  // edits. Done atomically via one RPC — a separate delete() then insert()
+  // could leave an invoice with zero items if anything failed in between.
+  const rows = payload.items.map((item, index) => ({
+    product_id: item.product_id ?? null,
+    position: index,
+    name_snapshot: item.name,
+    sku_snapshot: item.sku ?? null,
+    description_snapshot: item.description ?? null,
+    image_snapshot: item.image ?? null,
+    quantity: round2(item.quantity),
+    unit: item.unit ?? "pcs",
+    unit_price: round2(item.unit_price),
+    discount_value: round2(item.discount_value ?? 0),
+    discount_type: item.discount_type ?? "percent",
+    discount_amount: totals.lines[index]?.discount_amount ?? 0,
+    tax_rate: settings?.tax_enabled === false ? 0 : round2(item.tax_rate ?? 0),
+    tax_amount: totals.lines[index]?.tax_amount ?? 0,
+    line_total: totals.lines[index]?.line_total ?? 0,
+    serial_number: item.serial_number ?? null,
+    warranty: item.warranty ?? null,
+    service_period: item.service_period ?? null,
+    notes: item.notes ?? null,
+  }));
+  const { error: itemsError } = await supabase.rpc("replace_sales_document_items", {
+    _document_id: documentId as string,
+    _tenant_id: tenantId,
+    _items: rows as never,
+  });
+  if (itemsError) throw new Error(itemsError.message);
 
   return { id: documentId as string, totals };
 }
@@ -290,28 +314,45 @@ async function sha256(data: Uint8Array) {
 }
 
 export async function loadDocumentBundle(supabase: AnyClient, documentId: string) {
-  const [{ data: doc }, { data: items }, { data: allocations }, { data: activity }, { data: files }] =
-    await Promise.all([
-      supabase.from("sales_documents").select("*").eq("id", documentId).maybeSingle(),
-      supabase.from("sales_document_items").select("*").eq("document_id", documentId).order("position"),
-      supabase
-        .from("payment_allocations")
-        .select("id, amount, created_at, payments(id, receipt_number, amount, paid_at, method, reference, bank, notes, recorded_by)")
-        .eq("document_id", documentId),
-      supabase
-        .from("document_activity")
-        .select("id, event, actor_label, details, created_at")
-        .eq("document_id", documentId)
-        .order("created_at", { ascending: false })
-        .limit(80),
-      supabase
-        .from("document_files")
-        .select("id, kind, storage_path, file_hash, version, created_at")
-        .eq("document_id", documentId)
-        .order("created_at", { ascending: false }),
-    ]);
+  const [
+    { data: doc },
+    { data: items },
+    { data: allocations },
+    { data: activity },
+    { data: files },
+  ] = await Promise.all([
+    supabase.from("sales_documents").select("*").eq("id", documentId).maybeSingle(),
+    supabase
+      .from("sales_document_items")
+      .select("*")
+      .eq("document_id", documentId)
+      .order("position"),
+    supabase
+      .from("payment_allocations")
+      .select(
+        "id, amount, created_at, payments(id, receipt_number, amount, paid_at, method, reference, bank, notes, recorded_by)",
+      )
+      .eq("document_id", documentId),
+    supabase
+      .from("document_activity")
+      .select("id, event, actor_label, details, created_at")
+      .eq("document_id", documentId)
+      .order("created_at", { ascending: false })
+      .limit(80),
+    supabase
+      .from("document_files")
+      .select("id, kind, storage_path, file_hash, version, created_at")
+      .eq("document_id", documentId)
+      .order("created_at", { ascending: false }),
+  ]);
   if (!doc) throw new Error("Document not found.");
-  return { doc, items: items ?? [], allocations: allocations ?? [], activity: activity ?? [], files: files ?? [] };
+  return {
+    doc,
+    items: items ?? [],
+    allocations: allocations ?? [],
+    activity: activity ?? [],
+    files: files ?? [],
+  };
 }
 
 function toPdfInput(
@@ -323,8 +364,8 @@ function toPdfInput(
   mode: "draft" | "final" | "cancelled",
   verificationUrl: string | null,
 ): InvoicePdfInput {
-  const company = (doc.company_snapshot ?? {}) as any;
-  const customer = (doc.customer_snapshot ?? {}) as any;
+  const company = doc.company_snapshot ?? {};
+  const customer = doc.customer_snapshot ?? {};
   const pdfItems: PdfItem[] = items.map((item) => ({
     name: item.name_snapshot,
     description: item.description_snapshot,
@@ -425,7 +466,12 @@ export async function renderDocumentPdf(
   const [{ data: bank }, { data: template }] = await Promise.all([
     doc.bank_account_id
       ? supabase.from("bank_accounts").select("*").eq("id", doc.bank_account_id).maybeSingle()
-      : supabase.from("bank_accounts").select("*").eq("tenant_id", doc.tenant_id).eq("is_default", true).maybeSingle(),
+      : supabase
+          .from("bank_accounts")
+          .select("*")
+          .eq("tenant_id", doc.tenant_id)
+          .eq("is_default", true)
+          .maybeSingle(),
     doc.template_id
       ? supabase.from("invoice_templates").select("*").eq("id", doc.template_id).maybeSingle()
       : supabase
@@ -437,14 +483,20 @@ export async function renderDocumentPdf(
   ]);
 
   const mode: "draft" | "final" | "cancelled" =
-    doc.status === "cancelled" ? "cancelled" : !doc.finalized_at || opts.forceDraft ? "draft" : "final";
+    doc.status === "cancelled"
+      ? "cancelled"
+      : !doc.finalized_at || opts.forceDraft
+        ? "draft"
+        : "final";
 
   const verificationUrl =
     doc.verification_token && settings?.show_qr_verification !== false
       ? `${opts.baseUrl ?? "https://flas.mobidigisol.com"}/verify/${doc.verification_token}`
       : null;
 
-  const bytes = await buildDocumentPdf(toPdfInput(doc, items, settings, bank, template, mode, verificationUrl));
+  const bytes = await buildDocumentPdf(
+    toPdfInput(doc, items, settings, bank, template, mode, verificationUrl),
+  );
   return { bytes, doc, hash: await sha256(bytes) };
 }
 
@@ -460,7 +512,8 @@ export async function finalizeDocument(
   if (doc.tenant_id !== tenantId) throw new Error("Document not found.");
   if (doc.finalized_at) throw new Error("This document is already finalized.");
   if (!items.length) throw new Error("Add at least one line item before finalizing.");
-  if (!doc.contact_id && !(doc.customer_snapshot as any)?.name) {
+  const customerName = doc.customer_snapshot?.name;
+  if (!doc.contact_id && typeof customerName !== "string") {
     throw new Error("Select a customer before finalizing.");
   }
 
@@ -476,7 +529,10 @@ export async function finalizeDocument(
       verification_id: verificationId,
       verification_token: doc.verification_token ?? token(20),
       share_token: doc.share_token ?? token(24),
-      company_snapshot: companySnapshot(settings, (doc.company_snapshot as any)?.logo_url),
+      company_snapshot: companySnapshot(
+        settings,
+        doc.company_snapshot?.logo_url,
+      ),
     })
     .eq("id", documentId);
   if (lockError) throw new Error(lockError.message);
@@ -517,17 +573,56 @@ export async function finalizeDocument(
 }
 
 export function storagePath(tenantId: string, doc: any) {
-  const date = new Date(doc.issue_date ?? Date.now());
+  const date = new Date((doc.issue_date as string | number | Date | undefined) ?? Date.now());
   const year = String(date.getUTCFullYear());
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   return `${tenantId}/${doc.kind}s/${year}/${month}/${doc.doc_number}-v${doc.version}.pdf`;
+}
+
+/**
+ * True when `dateStr` (a plain YYYY-MM-DD date, e.g. a due_date) is strictly
+ * before "today" as measured in the tenant's own timezone — not the
+ * server's. A prior version compared against `new Date().toDateString()`,
+ * which is the server's local date; on a UTC-hosted server that flips an
+ * invoice to "overdue" several hours early or late for every tenant not
+ * also in UTC.
+ */
+async function isPastInTenantTimezone(
+  supabase: AnyClient,
+  tenantId: string,
+  dateStr: string,
+): Promise<boolean> {
+  let timeZone = "UTC";
+  try {
+    const { data: org } = await supabase
+      .from("organizations")
+      .select("timezone")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (org?.timezone) timeZone = org.timezone;
+  } catch {
+    // fall back to UTC
+  }
+  let todayInTz: string;
+  try {
+    todayInTz = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    todayInTz = new Date().toISOString().slice(0, 10);
+  }
+  // Both are YYYY-MM-DD — lexicographic comparison is correct for ISO dates.
+  return dateStr.slice(0, 10) < todayInTz;
 }
 
 /** Recomputes paid/balance/status from the payment ledger — never overwritten blindly. */
 export async function refreshPaymentState(supabase: AnyClient, documentId: string) {
   const { data: doc } = await supabase
     .from("sales_documents")
-    .select("id, grand_total, due_date, status, kind, finalized_at")
+    .select("id, tenant_id, grand_total, due_date, status, kind, finalized_at")
     .eq("id", documentId)
     .maybeSingle();
   if (!doc) return null;
@@ -535,14 +630,21 @@ export async function refreshPaymentState(supabase: AnyClient, documentId: strin
     .from("payment_allocations")
     .select("amount")
     .eq("document_id", documentId);
-  const paid = round2((allocations ?? []).reduce((sum, a: any) => sum + Number(a.amount), 0));
+  const paid = round2(
+    (allocations ?? []).reduce(
+      (sum, a: { amount: number | string | null | undefined }) => sum + Number(a.amount),
+      0,
+    ),
+  );
   const total = Number(doc.grand_total);
   const balance = round2(total - paid);
 
   let status = doc.status as string;
   if (status !== "cancelled" && status !== "refunded") {
     if (paid <= 0) {
-      const overdue = doc.due_date ? new Date(doc.due_date) < new Date(new Date().toDateString()) : false;
+      const overdue = doc.due_date
+        ? await isPastInTenantTimezone(supabase, doc.tenant_id, doc.due_date)
+        : false;
       status = overdue && doc.finalized_at ? "overdue" : status === "draft" ? "draft" : status;
     } else if (balance > 0) {
       status = "partially_paid";
@@ -551,6 +653,9 @@ export async function refreshPaymentState(supabase: AnyClient, documentId: strin
     }
   }
 
-  await supabase.from("sales_documents").update({ paid_amount: paid, balance, status }).eq("id", documentId);
+  await supabase
+    .from("sales_documents")
+    .update({ paid_amount: paid, balance, status })
+    .eq("id", documentId);
   return { paid, balance, status };
 }

@@ -43,25 +43,30 @@ export const Route = createFileRoute("/api/public/leads/collect")({
             .eq("site_key", parsed.siteKey)
             .maybeSingle();
 
+          // A single generic response for every rejection reason (unknown
+          // key, inactive, wrong domain) — returning a different status/
+          // message per reason let an attacker use the response itself to
+          // enumerate which site keys are real.
+          const reject = () =>
+            new Response(JSON.stringify({ error: "This request could not be accepted" }), {
+              status: 403,
+              headers: corsHeaders,
+            });
+
           // `active` is the kill switch; `status` is the activation state machine
           // (pending -> active -> revoked). A site only collects once activated.
           if (!site || !site.active || site.status !== "active" || !site.tenant_id) {
-            return new Response(JSON.stringify({ error: "Unknown or inactive site key" }), {
-              status: 401,
-              headers: corsHeaders,
-            });
+            return reject();
           }
 
           // The site key is embedded in public pages, so also pin it to the
           // registered domain: requests from other origins are rejected.
-          if (site.domain) {
-            const origin = request.headers.get("origin") ?? request.headers.get("referer") ?? "";
-            if (origin && !origin.toLowerCase().includes(site.domain.toLowerCase())) {
-              return new Response(JSON.stringify({ error: "This key is not allowed here" }), {
-                status: 403,
-                headers: corsHeaders,
-              });
-            }
+          // (Exact-suffix match, not substring — evil-acme.com used to pass
+          // as acme.com, and a missing Origin/Referer header used to skip
+          // this check entirely instead of failing it.)
+          const { checkDomainPin } = await import("@/lib/domain-pin");
+          if (!checkDomainPin(request, site.domain)) {
+            return reject();
           }
 
           const { ingestLead } = await import("@/lib/leads.server");
@@ -76,7 +81,6 @@ export const Route = createFileRoute("/api/public/leads/collect")({
             consent: parsed.consent === true,
             tags: parsed.tags ?? [],
           });
-
 
           return new Response(JSON.stringify({ ok: true }), { status: 200, headers: corsHeaders });
         } catch (error) {

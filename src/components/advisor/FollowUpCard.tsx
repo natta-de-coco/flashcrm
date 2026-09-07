@@ -101,7 +101,9 @@ export function FollowUpCard() {
             <Label htmlFor={q.id} className="leading-snug">
               {i + 1}. {q.question}
             </Label>
-            {q.why ? <p className="text-xs text-muted-foreground">Why it matters: {q.why}</p> : null}
+            {q.why ? (
+              <p className="text-xs text-muted-foreground">Why it matters: {q.why}</p>
+            ) : null}
             <Textarea
               id={q.id}
               rows={2}

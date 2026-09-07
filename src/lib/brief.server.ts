@@ -2,7 +2,7 @@
 // Reads through the caller's RLS-scoped client, then asks Flas AI for a
 // short, action-oriented briefing based on the tenant's live numbers.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { callFlashAi, getBusinessContext } from "./flash-ai.server";
+import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
 import { getDashboardOverviewData } from "./dashboard.server";
 
 export type DailyBrief = {
@@ -13,8 +13,12 @@ export type DailyBrief = {
   cached: boolean;
 };
 
-function trendLine(label: string, t: { current: number; previous: number; changePct: number | null }) {
-  const change = t.changePct === null ? "no prior data" : `${t.changePct > 0 ? "+" : ""}${t.changePct}%`;
+function trendLine(
+  label: string,
+  t: { current: number; previous: number; changePct: number | null },
+) {
+  const change =
+    t.changePct === null ? "no prior data" : `${t.changePct > 0 ? "+" : ""}${t.changePct}%`;
   return `${label}: ${t.current} this week vs ${t.previous} last week (${change})`;
 }
 
@@ -52,11 +56,17 @@ async function generateDailyBrief(supabase: SupabaseClient): Promise<DailyBrief>
       "Be concrete, reference the actual numbers, and never invent data that is not provided.",
     ].join(" "),
     facts,
+    await aiOptionsFor(supabase, "daily_brief"),
   );
 
   let parsed: Partial<DailyBrief> = {};
   try {
-    parsed = JSON.parse(raw.replace(/^```(?:json)?/i, "").replace(/```$/, "").trim()) as Partial<DailyBrief>;
+    parsed = JSON.parse(
+      raw
+        .replace(/^```(?:json)?/i, "")
+        .replace(/```$/, "")
+        .trim(),
+    ) as Partial<DailyBrief>;
   } catch {
     parsed = { headline: "Today at a glance", summary: raw.slice(0, 320), actions: [] };
   }
@@ -107,19 +117,17 @@ export async function buildDailyBrief(
 
   const fresh = await generateDailyBrief(supabase);
 
-  await supabase
-    .from("daily_briefs")
-    .upsert(
-      {
-        tenant_id: tenantId as string,
-        brief_date: today,
-        headline: fresh.headline,
-        summary: fresh.summary,
-        actions: fresh.actions,
-        created_at: fresh.generatedAt,
-      },
-      { onConflict: "tenant_id,brief_date" },
-    );
+  await supabase.from("daily_briefs").upsert(
+    {
+      tenant_id: tenantId as string,
+      brief_date: today,
+      headline: fresh.headline,
+      summary: fresh.summary,
+      actions: fresh.actions,
+      created_at: fresh.generatedAt,
+    },
+    { onConflict: "tenant_id,brief_date" },
+  );
 
   return fresh;
 }

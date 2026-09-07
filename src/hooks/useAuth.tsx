@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { Session, User } from "@supabase/supabase-js";
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 type AuthState = {
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthState>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -79,6 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isSuperAdmin,
         signOut: async () => {
           await supabase.auth.signOut();
+          // Every cached query (contacts, messages, invoices...) is keyed
+          // without a per-user namespace, so it survived sign-out and the
+          // next person on a shared computer could see the previous user's
+          // data until each query happened to refetch. Clearing on sign-out
+          // closes that gap.
+          queryClient.clear();
         },
       }}
     >

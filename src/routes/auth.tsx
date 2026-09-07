@@ -6,6 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 
 import { supabase } from "@/integrations/supabase/client";
+import { resendVerification } from "@/lib/otp-resend.functions";
+import { useServerFn } from "@tanstack/react-start";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -23,7 +25,7 @@ export const Route = createFileRoute("/auth")({
     ],
   }),
   validateSearch: (search: Record<string, unknown>): { redirect?: string } =>
-    typeof search['redirect'] === "string" ? { redirect: search['redirect'] as string } : {},
+    typeof search["redirect"] === "string" ? { redirect: search["redirect"] as string } : {},
   component: AuthPage,
 });
 
@@ -38,6 +40,7 @@ function AuthPage() {
   const search = Route.useSearch();
   const dest = safePath(search.redirect);
   const { session } = useAuth();
+  const runResend = useServerFn(resendVerification);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
@@ -104,22 +107,32 @@ function AuthPage() {
     setForgotOpen(false);
   }
 
-  async function resendVerification() {
-    if (!email.trim() || resendSeconds > 0 || resendAttempts.current >= 5) return;
+  async function resendVerificationEmail() {
+    // Client-side cooldown is trivially bypassable (page reload / direct
+    // Supabase call). The server function below enforces the real limits in
+    // the DB via check_otp_attempt() and records every attempt in
+    // otp_attempts for super-admin visibility.
+    if (!email.trim()) return;
     setBusy(true);
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}${dest}` },
-    });
-    setBusy(false);
-    resendAttempts.current += 1;
-    setResendSeconds(60);
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      await runResend({
+        data: {
+          email: email.trim(),
+          kind: "signup_verify",
+          redirectTo: `${window.location.origin}${dest}`,
+        },
+      });
+      resendAttempts.current += 1;
+      setResendSeconds(60);
+      toast.success("A new verification email has been sent.");
+    } catch (e) {
+      // Server returns a uniform "if account exists..." message on the
+      // failure path to prevent account enumeration. Cooldown / limit
+      // errors are the informative ones the user actually needs.
+      toast.error(e instanceof Error ? e.message : "Could not resend.");
+    } finally {
+      setBusy(false);
     }
-    toast.success("A new verification email has been sent.");
   }
 
   async function verifyMfa(e: React.FormEvent) {
@@ -213,7 +226,11 @@ function AuthPage() {
                       Enter the 6-digit code from your authenticator app.
                     </p>
                   </div>
-                  <Button type="submit" className="w-full" disabled={busy || mfaCode.trim().length !== 6}>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={busy || mfaCode.trim().length !== 6}
+                  >
                     Verify and sign in
                   </Button>
                   <Button
@@ -245,7 +262,12 @@ function AuthPage() {
                   <Button type="submit" className="w-full" disabled={busy}>
                     {busy ? "Sending reset link…" : "Send password reset link"}
                   </Button>
-                  <Button type="button" variant="ghost" className="w-full" onClick={() => setForgotOpen(false)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => setForgotOpen(false)}
+                  >
                     Back to sign in
                   </Button>
                 </form>
@@ -287,7 +309,8 @@ function AuthPage() {
                   <div>
                     <h2 className="font-semibold">Check your email</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      We sent a verification link to <span className="font-medium text-foreground">{email}</span>.
+                      We sent a verification link to{" "}
+                      <span className="font-medium text-foreground">{email}</span>.
                     </p>
                   </div>
                   <Button
@@ -295,7 +318,7 @@ function AuthPage() {
                     variant="outline"
                     className="w-full"
                     disabled={busy || resendSeconds > 0 || resendAttempts.current >= 5}
-                    onClick={resendVerification}
+                    onClick={resendVerificationEmail}
                   >
                     {resendAttempts.current >= 5
                       ? "Resend limit reached"
@@ -303,7 +326,12 @@ function AuthPage() {
                         ? `Resend available in ${resendSeconds}s`
                         : "Resend verification email"}
                   </Button>
-                  <Button type="button" variant="ghost" className="w-full" onClick={() => setVerificationPending(false)}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="w-full"
+                    onClick={() => setVerificationPending(false)}
+                  >
                     Use a different email
                   </Button>
                 </div>

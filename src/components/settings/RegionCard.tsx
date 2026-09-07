@@ -136,13 +136,13 @@ export function RegionCard() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from(new Set([timezone, "UTC", ...COUNTRIES.map((c) => c.timezone)])).map(
-                      (tz) => (
-                        <SelectItem key={tz} value={tz}>
-                          {tz}
-                        </SelectItem>
-                      ),
-                    )}
+                    {Array.from(
+                      new Set([timezone, "UTC", ...COUNTRIES.map((c) => c.timezone)]),
+                    ).map((tz) => (
+                      <SelectItem key={tz} value={tz}>
+                        {tz}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

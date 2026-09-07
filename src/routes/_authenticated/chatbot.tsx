@@ -12,6 +12,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenant } from "@/hooks/useTenant";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Bot, Save } from "lucide-react";
@@ -44,6 +45,7 @@ const MODELS = [
 
 function ChatbotPage() {
   const qc = useQueryClient();
+  const { tenant } = useTenant();
   const [form, setForm] = useState({
     enabled: true,
     bot_name: "Assistant",
@@ -54,10 +56,18 @@ function ChatbotPage() {
     handoff_keywords: "",
   });
 
+  // Per-tenant bot settings — each company configures its own assistant.
+  // Previously this read/wrote a single platform-wide row shared by every
+  // tenant on the CRM.
   const settings = useQuery({
-    queryKey: ["bot_settings"],
+    queryKey: ["tenant_bot_settings", tenant?.id],
+    enabled: !!tenant?.id,
     queryFn: async () => {
-      const { data, error } = await supabase.from("bot_settings").select("*").maybeSingle();
+      const { data, error } = await supabase
+        .from("tenant_bot_settings")
+        .select("*")
+        .eq("tenant_id", tenant!.id)
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
@@ -79,23 +89,28 @@ function ChatbotPage() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("bot_settings").update({
-        enabled: form.enabled,
-        bot_name: form.bot_name,
-        greeting: form.greeting,
-        instructions: form.instructions,
-        model: form.model,
-        business_hours_only: form.business_hours_only,
-        handoff_keywords: form.handoff_keywords
-          .split(",")
-          .map((k) => k.trim())
-          .filter(Boolean),
-      });
+      if (!tenant?.id) throw new Error("Your workspace is still being set up.");
+      const { error } = await supabase.from("tenant_bot_settings").upsert(
+        {
+          tenant_id: tenant.id,
+          enabled: form.enabled,
+          bot_name: form.bot_name,
+          greeting: form.greeting,
+          instructions: form.instructions,
+          model: form.model,
+          business_hours_only: form.business_hours_only,
+          handoff_keywords: form.handoff_keywords
+            .split(",")
+            .map((k) => k.trim())
+            .filter(Boolean),
+        },
+        { onConflict: "tenant_id" },
+      );
       if (error) throw error;
     },
     onSuccess: () => {
       toast.success("Chatbot updated");
-      void qc.invalidateQueries({ queryKey: ["bot_settings"] });
+      void qc.invalidateQueries({ queryKey: ["tenant_bot_settings", tenant?.id] });
     },
     onError: (e: Error) => toast.error(e.message),
   });

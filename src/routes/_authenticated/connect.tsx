@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { ConnectBusiness } from "@/components/integrations/ConnectBusiness";
+import { IntegrationSettings } from "@/components/integrations/IntegrationSettings";
 import { IntegrationLogs } from "@/components/integrations/IntegrationLogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -155,6 +156,13 @@ function ConnectPage() {
 
       <div className="mb-8">
         <ConnectBusiness />
+      </div>
+
+      {/* Moved here from Settings: the WhatsApp connection, its numbers, the
+          website widget snippet, message templates, WordPress and API keys are
+          all integrations, and belong beside the connector cards. */}
+      <div className="mb-8">
+        <IntegrationSettings />
       </div>
 
       {/* How it works */}
@@ -326,8 +334,9 @@ function ConnectPage() {
                     and follow the README inside.
                   </li>
                   <li>
-                    Or paste this snippet in <strong>Online Store → Themes → Edit code →
-                    theme.liquid</strong>, just before <code>&lt;/body&gt;</code>:
+                    Or paste this snippet in{" "}
+                    <strong>Online Store → Themes → Edit code → theme.liquid</strong>, just before{" "}
+                    <code>&lt;/body&gt;</code>:
                   </li>
                 </ol>
               )}

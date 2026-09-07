@@ -91,7 +91,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
       {
         property: "og:description",
-        content: "One shared inbox for WhatsApp and website chat, with an AI assistant on duty 24/7.",
+        content:
+          "One shared inbox for WhatsApp and website chat, with an AI assistant on duty 24/7.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -135,8 +136,6 @@ function RootComponent() {
   useEffect(() => {
     installTelemetry();
   }, []);
-
-
 
   return (
     <QueryClientProvider client={queryClient}>

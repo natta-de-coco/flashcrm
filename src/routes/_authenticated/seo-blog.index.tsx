@@ -8,10 +8,7 @@ import { ExternalLink, FileText, Globe, PenSquare, Sparkles } from "lucide-react
 
 export const Route = createFileRoute("/_authenticated/seo-blog/")({
   head: () => ({
-    meta: [
-      { title: "SEO Studio — Flas CRM" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "SEO Studio — Flas CRM" }, { name: "robots", content: "noindex" }],
   }),
   component: SeoBlogHub,
 });

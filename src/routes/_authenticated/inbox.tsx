@@ -442,7 +442,6 @@ function InboxPage() {
     toast.success("Transcript CSV downloaded");
   }
 
-
   if (channel === "social") {
     return (
       <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 flex-col lg:h-[100dvh]">
@@ -496,7 +495,11 @@ function InboxPage() {
                         : "bg-destructive",
                   )}
                 />
-                {liveStatus === "live" ? "Live" : liveStatus === "connecting" ? "Connecting" : "Polling"}
+                {liveStatus === "live"
+                  ? "Live"
+                  : liveStatus === "connecting"
+                    ? "Connecting"
+                    : "Polling"}
               </span>
             </div>
             <Button
@@ -596,12 +599,7 @@ function InboxPage() {
       </div>
 
       {/* Chat pane */}
-      <div
-        className={cn(
-          "min-w-0 flex-1 flex-col lg:flex",
-          active ? "flex" : "hidden",
-        )}
-      >
+      <div className={cn("min-w-0 flex-1 flex-col lg:flex", active ? "flex" : "hidden")}>
         {!active ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
             Select a conversation to start monitoring.
@@ -669,9 +667,7 @@ function InboxPage() {
                 <select
                   className="h-9 rounded-md border bg-background px-2 text-xs"
                   value={active.assigned_to ?? ""}
-                  onChange={(e) =>
-                    void updateConversation({ assigned_to: e.target.value || null })
-                  }
+                  onChange={(e) => void updateConversation({ assigned_to: e.target.value || null })}
                 >
                   <option value="">Unassigned</option>
                   {(team.data ?? []).map((member) => (
@@ -769,10 +765,11 @@ function InboxPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {(products.data ?? [])
-                    .filter((p) =>
-                      !productSearch ||
-                      p.title.toLowerCase().includes(productSearch.toLowerCase()) ||
-                      (p.sku ?? "").toLowerCase().includes(productSearch.toLowerCase()),
+                    .filter(
+                      (p) =>
+                        !productSearch ||
+                        p.title.toLowerCase().includes(productSearch.toLowerCase()) ||
+                        (p.sku ?? "").toLowerCase().includes(productSearch.toLowerCase()),
                     )
                     .slice(0, 8)
                     .map((p) => {
@@ -796,7 +793,9 @@ function InboxPage() {
                           <span
                             className={cn(
                               "grid size-4 place-items-center rounded-full border",
-                              selected ? "border-brand bg-brand text-brand-foreground" : "border-current",
+                              selected
+                                ? "border-brand bg-brand text-brand-foreground"
+                                : "border-current",
                             )}
                           >
                             {selected && <Check className="size-3" />}
@@ -862,7 +861,6 @@ function InboxPage() {
               )}
             </div>
 
-
             <div className="chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
               {(messages.data ?? []).map((m) => {
                 const showTranslation = expandedTranslations.has(m.id);
@@ -870,7 +868,10 @@ function InboxPage() {
                 return (
                   <div
                     key={m.id}
-                    className={cn("flex", m.direction === "outbound" ? "justify-end" : "justify-start")}
+                    className={cn(
+                      "flex",
+                      m.direction === "outbound" ? "justify-end" : "justify-start",
+                    )}
                   >
                     <div
                       className={cn(
@@ -889,7 +890,9 @@ function InboxPage() {
                       {showTranslation && m.translated_body && (
                         <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
                           <p className="mb-1 font-semibold opacity-70">
-                            {m.detected_language ? `Translated from ${m.detected_language}` : "Translation"}
+                            {m.detected_language
+                              ? `Translated from ${m.detected_language}`
+                              : "Translation"}
                           </p>
                           <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
                         </div>
@@ -912,7 +915,11 @@ function InboxPage() {
                           className="flex items-center gap-1 text-[10px] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-40"
                         >
                           <Languages className="size-3" />
-                          {showTranslation ? "Hide" : hasTranslation ? "Show translation" : "Translate"}
+                          {showTranslation
+                            ? "Hide"
+                            : hasTranslation
+                              ? "Show translation"
+                              : "Translate"}
                         </button>
                         <span className="text-[10px] opacity-60">
                           {new Date(m.created_at).toLocaleTimeString([], {

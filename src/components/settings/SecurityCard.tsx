@@ -121,10 +121,11 @@ export function SecurityCard() {
         {enrollId && qrSvg && (
           <div className="grid gap-3 rounded-lg border p-3">
             <p className="text-sm">1. Scan this code with your authenticator app:</p>
-            <div
-              className="w-40 rounded-md bg-white p-2"
-              dangerouslySetInnerHTML={{ __html: qrSvg }}
-            />
+            <div className="w-40 rounded-md bg-white p-2">
+              {/* Supabase returns this as a data: URI, meant to be used
+                  directly as an <img> src — not raw markup to inject. */}
+              <img src={qrSvg} alt="Two-factor authentication QR code" className="h-full w-full" />
+            </div>
             <p className="text-sm">2. Enter the 6-digit code it shows:</p>
             <div className="flex gap-2">
               <Input

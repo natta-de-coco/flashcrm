@@ -13,6 +13,18 @@ export type WaWebhookBody = {
           from?: string;
           type?: string;
           text?: { body?: string };
+          image?: { id?: string; caption?: string; mime_type?: string };
+          audio?: { id?: string; mime_type?: string };
+          video?: { id?: string; caption?: string; mime_type?: string };
+          document?: { id?: string; caption?: string; filename?: string; mime_type?: string };
+          sticker?: { id?: string; mime_type?: string };
+          location?: { latitude?: number; longitude?: number; name?: string; address?: string };
+          interactive?: {
+            type?: string;
+            button_reply?: { id?: string; title?: string };
+            list_reply?: { id?: string; title?: string; description?: string };
+          };
+          button?: { text?: string; payload?: string };
         }>;
         statuses?: Array<{
           id?: string;
@@ -59,6 +71,7 @@ export async function logWebhookEvent(args: {
   eventType: string;
   payload: unknown;
   waMessageId?: string | null;
+  tenantId?: string | null;
 }) {
   const { data } = await supabaseAdmin
     .from("webhook_events")
@@ -68,6 +81,7 @@ export async function logWebhookEvent(args: {
       payload: (args.payload ?? {}) as never,
       wa_message_id: args.waMessageId ?? null,
       status: "received",
+      tenant_id: args.tenantId ?? null,
     })
     .select("id")
     .single();
@@ -128,9 +142,8 @@ async function resolveThresholds(num: WaNumberHealth): Promise<EffectiveThreshol
     .eq("wa_number_id", num.id)
     .limit(1)
     .maybeSingle();
-  const tenantId =
-    ((conv as { contacts?: { tenant_id?: string | null } | null } | null)?.contacts?.tenant_id ??
-      null) as string | null;
+  const tenantId = ((conv as { contacts?: { tenant_id?: string | null } | null } | null)?.contacts
+    ?.tenant_id ?? null) as string | null;
 
   let plan = "default";
   if (tenantId) {
@@ -219,28 +232,110 @@ export async function checkNumberHealth(waNumberId: string | null) {
   }
 }
 
+type WaEntry = NonNullable<WaWebhookBody["entry"]>[number];
+type WaChange = NonNullable<WaEntry["changes"]>[number];
+type WaValue = NonNullable<WaChange["value"]>;
+type WaMessage = NonNullable<WaValue["messages"]>[number];
+
+/**
+ * Builds a readable body for any inbound message type. Previously only
+ * `text` messages were stored at all — images/audio/video/documents/
+ * locations/button and list replies were silently dropped (message.text?.body
+ * was undefined, so the whole message was skipped). This at least keeps the
+ * conversation thread accurate; it does not yet download and re-host the
+ * actual media binary (Meta's media ids need a separate authenticated fetch
+ * that expires quickly — a real "save it to our own storage" pipeline is a
+ * bigger follow-up, not attempted here).
+ */
+function extractMessageBody(message: WaMessage): string | null {
+  if (message.text?.body) return message.text.body;
+  if (message.image) return message.image.caption ? `📷 ${message.image.caption}` : "📷 Photo";
+  if (message.video) return message.video.caption ? `🎥 ${message.video.caption}` : "🎥 Video";
+  if (message.audio) return "🎤 Voice/audio message";
+  if (message.sticker) return "🩹 Sticker";
+  if (message.document) {
+    return message.document.caption
+      ? `📄 ${message.document.caption} (${message.document.filename ?? "file"})`
+      : `📄 ${message.document.filename ?? "Document"}`;
+  }
+  if (message.location) {
+    const { latitude, longitude, name, address } = message.location;
+    const where =
+      name ||
+      address ||
+      (latitude != null && longitude != null ? `${latitude}, ${longitude}` : null);
+    return `📍 Location${where ? `: ${where}` : ""}`;
+  }
+  if (message.interactive?.button_reply)
+    return message.interactive.button_reply.title ?? "(button reply)";
+  if (message.interactive?.list_reply)
+    return message.interactive.list_reply.title ?? "(list reply)";
+  if (message.button) return message.button.text ?? "(button reply)";
+  return null;
+}
+
+/** Returns true the FIRST time this (source, id) pair is seen; false on every
+ *  retry. Backs webhook idempotency — Meta redelivers on any non-2xx or slow
+ *  response, and previously nothing stopped a retry from re-sending replies
+ *  or re-raising alerts. */
+async function claimWebhookEventOnce(source: string, eventId: string): Promise<boolean> {
+  const { error } = await supabaseAdmin
+    .from("webhook_dedup")
+    .insert({ event_source: source, event_id: eventId });
+  // Unique-violation (23505) means we've already processed this id.
+  return !error;
+}
+
 /**
  * Processes a WhatsApp Cloud API webhook payload: stores inbound messages,
  * runs the chatbot, delivers replies and records delivery-status callbacks.
+ * Every message/status is attributed to the tenant that owns the destination
+ * phone_number_id — a payload for a number we don't recognize is dropped
+ * rather than guessed at.
  */
 export async function processWaPayload(body: WaWebhookBody) {
-  const { ingestInboundMessage, sendWhatsAppText, storeOutbound, findWaNumberByPhoneId, resolveWaCredentials } =
-    await import("@/lib/wa.server");
+  const {
+    ingestInboundMessage,
+    sendWhatsAppText,
+    storeOutbound,
+    findWaNumberByPhoneId,
+    resolveWaCredentials,
+  } = await import("@/lib/wa.server");
   let handled = 0;
 
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const value = change.value;
       const contactName = value?.contacts?.[0]?.profile?.name ?? null;
-      const waNumberId = await findWaNumberByPhoneId(value?.metadata?.phone_number_id ?? null);
+      const waNumber = await findWaNumberByPhoneId(value?.metadata?.phone_number_id ?? null);
+
+      if (!waNumber) {
+        // Unknown/unlinked number — there is no tenant to attribute this to.
+        // Drop it rather than guess (guessing is exactly the S1 bug).
+        if ((value?.messages?.length ?? 0) > 0 || (value?.statuses?.length ?? 0) > 0) {
+          await raiseAlert({
+            title: "WhatsApp webhook for an unrecognized number",
+            message: `phone_number_id ${value?.metadata?.phone_number_id ?? "unknown"} does not match any connected wa_numbers row.`,
+            severity: "warning",
+            source: "webhook",
+          });
+        }
+        continue;
+      }
+      const { id: waNumberId, tenantId } = waNumber;
 
       for (const status of value?.statuses ?? []) {
         if (!status.id) continue;
+        if (
+          !(await claimWebhookEventOnce("whatsapp:status", status.id + ":" + (status.status ?? "")))
+        )
+          continue;
         handled += 1;
         await supabaseAdmin
           .from("messages")
           .update({ status: status.status ?? "unknown" })
-          .eq("wa_message_id", status.id);
+          .eq("wa_message_id", status.id)
+          .eq("tenant_id", tenantId);
         if (status.status === "failed") {
           const detail = status.errors?.[0]?.message ?? status.errors?.[0]?.title ?? null;
           await raiseAlert({
@@ -256,34 +351,39 @@ export async function processWaPayload(body: WaWebhookBody) {
       }
 
       for (const message of value?.messages ?? []) {
-        const text = message.text?.body;
+        const text = extractMessageBody(message);
         const from = message.from;
-        if (!text || !from) continue;
+        if (!text || !from || !message.id) continue;
+        if (!(await claimWebhookEventOnce("whatsapp:message", message.id))) continue;
         handled += 1;
 
-        const { conversationId, reply } = await ingestInboundMessage({
+        const { conversationId, reply, replyMessageId } = await ingestInboundMessage({
+          tenantId,
           channel: "whatsapp",
           phone: from,
           name: contactName,
           text,
-          waMessageId: message.id ?? null,
+          waMessageId: message.id,
           waNumberId,
         });
 
         if (reply) {
           try {
-            const waId = await sendWhatsAppText(from, reply, await resolveWaCredentials(waNumberId));
-            if (waId) {
+            const waId = await sendWhatsAppText(
+              from,
+              reply,
+              await resolveWaCredentials(tenantId, waNumberId),
+            );
+            if (waId && replyMessageId) {
               await supabaseAdmin
                 .from("messages")
                 .update({ wa_message_id: waId })
-                .eq("conversation_id", conversationId)
-                .is("wa_message_id", null)
-                .eq("body", reply);
+                .eq("id", replyMessageId);
             }
           } catch (sendError) {
             const detail = sendError instanceof Error ? sendError.message : "Delivery failed";
             await storeOutbound(
+              tenantId,
               conversationId,
               "(delivery failed — check WhatsApp credentials)",
               "bot",

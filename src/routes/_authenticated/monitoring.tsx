@@ -141,7 +141,10 @@ function MonitoringPage() {
           ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
           : 0,
         lastEventAt: rows.length
-          ? rows.map((r) => r.created_at).sort().slice(-1)[0]
+          ? rows
+              .map((r) => r.created_at)
+              .sort()
+              .slice(-1)[0]
           : null,
       };
     },
@@ -173,7 +176,8 @@ function MonitoringPage() {
         <div>
           <h1 className="text-2xl font-bold">Webhook monitoring</h1>
           <p className="text-sm text-muted-foreground">
-            Live delivery status for every WhatsApp event — refreshed automatically every 10 seconds.
+            Live delivery status for every WhatsApp event — refreshed automatically every 10
+            seconds.
           </p>
         </div>
         <Button
@@ -261,8 +265,7 @@ function MonitoringPage() {
                     label: "Handled by bot",
                     value: waAnalytics.data.totals.outbound
                       ? `${Math.round(
-                          (waAnalytics.data.totals.botReplies /
-                            waAnalytics.data.totals.outbound) *
+                          (waAnalytics.data.totals.botReplies / waAnalytics.data.totals.outbound) *
                             100,
                         )}%`
                       : "—",
@@ -333,8 +336,8 @@ function MonitoringPage() {
               )}
               {!insights && !insightsMutation.isPending && (
                 <p className="text-xs text-muted-foreground">
-                  Tip: run “Ask Flas AI what to improve” to get a plain-English action plan based
-                  on these numbers — deliverability, response time, bot balance and compliance.
+                  Tip: run “Ask Flas AI what to improve” to get a plain-English action plan based on
+                  these numbers — deliverability, response time, bot balance and compliance.
                 </p>
               )}
             </>
@@ -378,7 +381,9 @@ function MonitoringPage() {
                   </Badge>
                 </p>
                 {alert.message && (
-                  <p className="mt-0.5 break-words text-xs text-muted-foreground">{alert.message}</p>
+                  <p className="mt-0.5 break-words text-xs text-muted-foreground">
+                    {alert.message}
+                  </p>
                 )}
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
                   {new Date(alert.created_at).toLocaleString()}

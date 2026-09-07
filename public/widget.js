@@ -30,7 +30,6 @@
   ].join("");
   document.head.appendChild(css);
 
-
   var root = document.createElement("div");
   root.className = "flasw";
   root.innerHTML =
@@ -66,7 +65,6 @@
     }
     if (open) input.focus();
   });
-
 
   form.addEventListener("submit", function (event) {
     event.preventDefault();

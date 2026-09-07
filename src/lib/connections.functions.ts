@@ -92,6 +92,62 @@ export const startConnect = createServerFn({ method: "POST" })
     });
   });
 
+/**
+ * Which platforms can actually be connected right now, and what is missing when
+ * they cannot.
+ *
+ * Until now the only way to find this out was to click Connect and read a toast
+ * that disappeared. startAuthorization already computes the missing key names
+ * and the UI threw them away. This surfaces the same answer up front, so the
+ * card can say "needs your Meta app keys" before anyone is bounced to a
+ * provider tab that was never going to work.
+ *
+ * Never returns key values -- only whether each one is present.
+ */
+export const getConnectReadiness = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const tenantId = await callerTenantId(context.supabase, context.userId);
+    const { CONNECTORS } = await import("@/lib/connections-catalog");
+    const { resolveCredentials, providerEnvNames } = await import("@/lib/oauth.server");
+
+    // One lookup per provider family, not per connector -- Facebook and
+    // Instagram share the same Meta app.
+    const seen = new Map<string, { ready: boolean; missing: string[]; source: string }>();
+
+    const rows = [];
+    for (const c of CONNECTORS) {
+      if (!c.oauth || !c.provider) continue;
+      let state = seen.get(c.provider);
+      if (!state) {
+        const missing: string[] = [];
+        let source = "none";
+        if (tenantId) {
+          const creds = await resolveCredentials(c.provider, tenantId);
+          source = creds.source ?? "none";
+          const [idEnv, secretEnv] = providerEnvNames(c.provider);
+          if (!creds.id && idEnv) missing.push(idEnv);
+          if (!creds.secret && secretEnv) missing.push(secretEnv);
+        } else {
+          missing.push(...providerEnvNames(c.provider));
+        }
+        state = { ready: missing.length === 0, missing, source };
+        seen.set(c.provider, state);
+      }
+      rows.push({
+        id: c.id,
+        name: c.name,
+        provider: c.provider,
+        ready: state.ready,
+        missing: state.missing,
+        // "tenant" when this workspace pasted its own app keys, "shared" when
+        // it is falling back to the platform-wide ones.
+        source: state.source,
+      });
+    }
+    return rows;
+  });
+
 /** Flas Account Scan for one connected account. */
 export const scanConnectedAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -154,7 +210,7 @@ export const optimizeConnectedProfile = createServerFn({ method: "POST" })
     const supabase = context.supabase;
     const { data: account, error } = await supabase
       .from("social_accounts")
-      .select("id, platform, label, profile")
+      .select("id, platform, label, profile, tenant_id")
       .eq("id", data.id)
       .single();
     if (error || !account) throw new Error("Account not found");
@@ -177,6 +233,7 @@ export const optimizeConnectedProfile = createServerFn({ method: "POST" })
       profile: account.profile as Record<string, unknown> | null,
       business: (business ?? null) as Record<string, unknown> | null,
       findings: Array.isArray(scan?.findings) ? (scan.findings as string[]) : [],
+      tenantId: account.tenant_id,
     });
   });
 
@@ -219,9 +276,8 @@ export const retryConnections = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const tenantId = await callerTenantId(context.supabase, context.userId);
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
-    const { retryConnection, retryDueConnections } = await import(
-      "@/lib/integration-health.server"
-    );
+    const { retryConnection, retryDueConnections } =
+      await import("@/lib/integration-health.server");
     const results = data.accountId
       ? [
           await retryConnection({
