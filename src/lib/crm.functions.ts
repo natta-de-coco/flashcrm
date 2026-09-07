@@ -31,6 +31,7 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
     const { checkSendPermission } = await import("@/lib/safety.server");
     const { logAudit } = await import("@/lib/audit.server");
     const safety = await checkSendPermission({
+      tenantId: tenantId as string,
       conversationId: conversation.id,
       isTemplate: false,
     });
