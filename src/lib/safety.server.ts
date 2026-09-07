@@ -19,6 +19,10 @@ export type SendCheck = {
  *  - if routing rules assigned the lead to a number, sends must use that number
  */
 export async function checkSendPermission(args: {
+  // Required: supabaseAdmin bypasses RLS, so every lookup below is filtered by
+  // this tenant. Without it a caller could pass another company's conversation,
+  // contact or number id and have the gate evaluated against their data.
+  tenantId: string;
   conversationId?: string | null;
   contactId?: string | null;
   waNumberId?: string | null;
@@ -29,17 +33,33 @@ export async function checkSendPermission(args: {
   let waNumberId = args.waNumberId ?? null;
   let channel: string | null = null;
 
+  if (!args.tenantId) {
+    return {
+      allowed: false,
+      reasons: ["Your workspace is still being set up."],
+      contactId: null,
+      waNumberId: null,
+    };
+  }
+
   if (args.conversationId) {
     const { data: conv } = await supabaseAdmin
       .from("conversations")
       .select("contact_id, wa_number_id, channel")
       .eq("id", args.conversationId)
+      .eq("tenant_id", args.tenantId)
       .maybeSingle();
-    if (conv) {
-      contactId = contactId ?? conv.contact_id;
-      waNumberId = waNumberId ?? conv.wa_number_id ?? null;
-      channel = conv.channel;
+    if (!conv) {
+      return {
+        allowed: false,
+        reasons: ["This conversation is not available in your workspace."],
+        contactId: null,
+        waNumberId: null,
+      };
     }
+    contactId = contactId ?? conv.contact_id;
+    waNumberId = waNumberId ?? conv.wa_number_id ?? null;
+    channel = conv.channel;
   }
 
   // 1. Number must be connected & enabled
@@ -48,6 +68,7 @@ export async function checkSendPermission(args: {
       .from("wa_numbers")
       .select("id, label, active")
       .eq("id", waNumberId)
+      .eq("tenant_id", args.tenantId)
       .maybeSingle();
     if (!num) reasons.push("The selected WhatsApp number is not connected anymore.");
     else if (!num.active)
@@ -61,6 +82,7 @@ export async function checkSendPermission(args: {
       .from("contacts")
       .select("id, tenant_id, consent_given")
       .eq("id", contactId)
+      .eq("tenant_id", args.tenantId)
       .maybeSingle();
     contact = data ?? null;
   }
