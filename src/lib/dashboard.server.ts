@@ -182,7 +182,7 @@ export async function getDashboardOverviewData(
   const botReplies = num(botReplyCount);
   const accountRows = accounts.data ?? [];
   const interactionRows = interactions.data ?? [];
-  const leadsPrevWindowTotal = leadsWindowTotal;
+  const weekMessagesTruncated = false;
   const weekMessageRows = weekMsgs.data ?? [];
   const priorTotal = num(priorMsgTotal);
   const priorInbound = num(priorMsgInbound);
