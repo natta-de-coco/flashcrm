@@ -129,6 +129,7 @@ export async function checkSendPermission(args: {
       .from("leads")
       .select("assigned_wa_number_id")
       .eq("contact_id", contact.id)
+      .eq("tenant_id", args.tenantId)
       .not("assigned_wa_number_id", "is", null)
       .maybeSingle();
     if (lead?.assigned_wa_number_id && waNumberId && lead.assigned_wa_number_id !== waNumberId) {

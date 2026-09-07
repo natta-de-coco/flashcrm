@@ -230,6 +230,7 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       contactId = byPhone?.id ?? null;
     }
     const safety = await checkSendPermission({
+      tenantId: tenantId as string,
       conversationId,
       contactId,
       waNumberId,
