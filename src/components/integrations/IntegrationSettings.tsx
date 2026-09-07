@@ -243,7 +243,7 @@ export function IntegrationSettings() {
           <div className="grid gap-1.5">
             <Label>Webhook URL</Label>
             <div className="flex gap-2">
-              <Input readOnly value={webhookUrl} />
+              <Input readOnly value={webhookUrl} aria-label="WhatsApp webhook URL" />
               <Button variant="outline" onClick={() => copy(webhookUrl)}>
                 <Copy className="size-4" />
               </Button>
@@ -423,6 +423,7 @@ export function IntegrationSettings() {
                       Deliverability min
                       <Input
                         type="number"
+                        aria-label="Minimum delivery rate percent"
                         min={0}
                         max={100}
                         className="h-7 w-16 px-2 text-xs"
@@ -444,6 +445,7 @@ export function IntegrationSettings() {
                       Read rate min
                       <Input
                         type="number"
+                        aria-label="Minimum read rate percent"
                         min={0}
                         max={100}
                         className="h-7 w-16 px-2 text-xs"
@@ -507,7 +509,7 @@ export function IntegrationSettings() {
         </CardHeader>
         <CardContent className="grid gap-2">
           <div className="flex gap-2">
-            <Input readOnly value={embedSnippet} />
+            <Input readOnly value={embedSnippet} aria-label="Website widget embed snippet" />
             <Button variant="outline" onClick={() => copy(embedSnippet)}>
               <Copy className="size-4" />
             </Button>
