@@ -296,7 +296,15 @@ export function IntegrationSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Connected WhatsApp numbers</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            Connected WhatsApp numbers
+            {/* The count belongs in the heading: this card sits well below the
+                fold, and "can I see all of them?" should be answerable without
+                scrolling to the end of the list. */}
+            <Badge variant={(numbers.data ?? []).length > 0 ? "secondary" : "outline"}>
+              {(numbers.data ?? []).length}
+            </Badge>
+          </CardTitle>
           <CardDescription>
             Connect more than one WhatsApp Business number. Incoming chats are routed to the number
             the customer messaged, and replies go out from the same number.

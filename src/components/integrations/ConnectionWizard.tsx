@@ -49,6 +49,7 @@ export function ConnectionWizard({
   onOpenChange,
   onConnect,
   connecting,
+  openAt,
 }: {
   platformId: string;
   status: ConnectionStatus;
@@ -56,11 +57,17 @@ export function ConnectionWizard({
   onOpenChange: (open: boolean) => void;
   onConnect: () => void;
   connecting: boolean;
+  /** Jump straight to a step. "Add app keys" should land on the form, not on
+   *  page one of a guide the user has to click through. */
+  openAt?: Step;
 }) {
   const meta = connector(platformId);
   const guide = setupGuide(platformId);
   const trouble = troubleshooting(platformId);
-  const [step, setStep] = useState<Step>("prepare");
+  const [step, setStep] = useState<Step>(openAt ?? "prepare");
+  useEffect(() => {
+    if (open) setStep(openAt ?? "prepare");
+  }, [open, openAt]);
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);

@@ -110,6 +110,11 @@ export function ConnectBusiness() {
   const optimize = useServerFn(optimizeConnectedProfile);
   const disconnect = useServerFn(disconnectConnection);
   const [blocked, setBlocked] = useState<{ reason: string; missing: string[] } | null>(null);
+  // Keyed by connector id: a failed Connect belongs on the card the user
+  // pressed, not in a banner at the top of a nineteen-card grid.
+  const [connectErrors, setConnectErrors] = useState<
+    Record<string, { reason: string; missing: string[] }>
+  >({});
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [onlyConnected, setOnlyConnected] = useState(false);
@@ -132,8 +137,14 @@ export function ConnectBusiness() {
   });
 
   const connect = useMutation({
-    mutationFn: async (platform: string) =>
-      start({ data: { platform: platform as never, origin: window.location.origin } }),
+    mutationFn: async (platform: string) => {
+      setConnectErrors((prev) => {
+        const next = { ...prev };
+        delete next[platform];
+        return next;
+      });
+      return start({ data: { platform: platform as never, origin: window.location.origin } });
+    },
     onSuccess: (result) => {
       if (result.ready) {
         // Providers like Facebook/Google refuse to render inside an iframe
@@ -148,11 +159,19 @@ export function ConnectBusiness() {
       }
       // A toast disappears; this is setup information the user needs while
       // they go and fix it, so it stays until dismissed.
-      setBlocked({ reason: result.reason, missing: result.missing ?? [] });
+      const detail = { reason: result.reason, missing: result.missing ?? [] };
+      setBlocked(detail);
+      setConnectErrors((prev) => ({ ...prev, [connect.variables as string]: detail }));
       toast.info(result.reason);
     },
 
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error, platform) => {
+      setConnectErrors((prev) => ({
+        ...prev,
+        [platform]: { reason: e.message, missing: [] },
+      }));
+      toast.error(e.message);
+    },
   });
 
   const runScan = useMutation({
@@ -319,6 +338,7 @@ export function ConnectBusiness() {
                     connector={c}
                     accounts={accountsFor(c.id)}
                     readiness={readyById.get(c.id) ?? null}
+                    error={connectErrors[c.id] ?? null}
                     connecting={connect.isPending && connect.variables === c.id}
                     onConnect={() => connect.mutate(c.id)}
                     onScan={(id) => runScan.mutate(id)}
@@ -367,6 +387,7 @@ function ConnectorCard({
   connector,
   accounts,
   readiness,
+  error,
   connecting,
   busyId,
   onConnect,
@@ -377,6 +398,8 @@ function ConnectorCard({
   connector: Connector;
   /** null while loading, or for connectors with no OAuth flow. */
   readiness: { ready: boolean; missing: string[]; source: string } | null;
+  /** Why the last Connect on THIS card failed, shown in place of the status. */
+  error: { reason: string; missing: string[] } | null;
   accounts: Account[];
   connecting: boolean;
   busyId: string | null;
@@ -387,6 +410,8 @@ function ConnectorCard({
 }) {
   const connected = accounts.some((a) => a.active);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<"prepare" | "credentials">("prepare");
+  const needsKeys = Boolean(connector.oauth && readiness && !readiness.ready);
   // Whether the wizard has fields to collect for this channel.
   const hasGuidedSetup = Boolean(
     credentialSpec(connector.id, { provider: connector.provider ?? null }),
@@ -438,10 +463,22 @@ function ConnectorCard({
         <CardDescription className="text-xs">{connector.blurb}</CardDescription>
       </CardHeader>
       <CardContent className="flex min-w-0 flex-1 flex-col gap-2">
-        <div className="min-w-0 rounded-md border bg-muted/40 p-2 text-[11px] leading-snug">
-          <p className="break-words font-medium">{status.reason}</p>
-          <p className="break-words text-muted-foreground">Next: {status.fix}</p>
-        </div>
+        {error ? (
+          <div className="min-w-0 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-[11px] leading-snug">
+            <p className="break-words font-medium text-destructive">Couldn&apos;t connect</p>
+            <p className="break-words">{error.reason}</p>
+            {error.missing.length > 0 && (
+              <p className="mt-1 break-words text-muted-foreground">
+                Missing: {error.missing.join(", ")}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="min-w-0 rounded-md border bg-muted/40 p-2 text-[11px] leading-snug">
+            <p className="break-words font-medium">{status.reason}</p>
+            <p className="break-words text-muted-foreground">Next: {status.fix}</p>
+          </div>
+        )}
         <div className="flex flex-wrap gap-1">
           {connector.capabilities.map((cap) => (
             <Badge key={cap} variant="secondary" className="px-1.5 py-0 text-[10px] capitalize">
@@ -520,7 +557,22 @@ function ConnectorCard({
               </Link>
             </Button>
           ) : connector.oauth ? (
-            <>
+            // Readiness is known before the click. When the keys are missing,
+            // the button that does something useful is "Add app keys" -- not a
+            // Connect that is guaranteed to fail next to a badge explaining
+            // why. It opens the wizard on the key form itself.
+            needsKeys ? (
+              <Button
+                size="sm"
+                className="h-8 gap-1 text-xs"
+                onClick={() => {
+                  setWizardStep("credentials");
+                  setWizardOpen(true);
+                }}
+              >
+                <KeyRound className="size-3" /> Add app keys
+              </Button>
+            ) : (
               <Button
                 size="sm"
                 className="h-8 text-xs"
@@ -528,16 +580,9 @@ function ConnectorCard({
                 disabled={connecting}
                 onClick={onConnect}
               >
-                {connected ? "Connect another" : "Connect"}
+                {connecting ? "Opening…" : connected ? "Connect another" : "Connect"}
               </Button>
-              {/* Readiness is known before the click, so say so here rather
-                  than bouncing the user to a provider tab that cannot work. */}
-              {readiness && !readiness.ready && (
-                <Badge variant="outline" className="gap-1 text-[10px]">
-                  <KeyRound className="size-3" /> Needs app keys
-                </Badge>
-              )}
-            </>
+            )
           ) : hasGuidedSetup ? (
             // Channels without an OAuth flow are still set up the same way:
             // one guided wizard that collects what it needs in place. Showing
