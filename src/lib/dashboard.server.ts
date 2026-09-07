@@ -109,58 +109,88 @@ export async function getDashboardOverviewData(
   const priorStart = new Date(weekStart);
   priorStart.setDate(priorStart.getDate() - 7);
 
-  const [convs, contacts, msgs, weekMsgs, accounts, interactions, leadRows] = await Promise.all([
+  const weekStartIso = weekStart.toISOString();
+  const priorStartIso = priorStart.toISOString();
+
+  // Counts are aggregated by the database (head requests) instead of pulling
+  // raw rows, and every query degrades to a safe default on failure so one
+  // slow table can't blank the whole dashboard.
+  const num = (r: { count: number | null; error: unknown }) => (r.error ? 0 : (r.count ?? 0));
+
+  const [
+    convs,
+    contactCount,
+    botReplyCount,
+    weekMsgs,
+    priorMsgTotal,
+    priorMsgInbound,
+    accounts,
+    interactions,
+    leadsNowTotal,
+    leadsNowConsent,
+    leadsPrevTotal,
+    leadsTotalWindow,
+  ] = await Promise.all([
     supabase
       .from("conversations")
       .select(
         "id, status, channel, unread_count, last_message_at, last_message_preview, contacts(name)",
       )
       .order("last_message_at", { ascending: false })
-      .limit(100),
-    supabase.from("contacts").select("id, stage, value").limit(500),
-    supabase.from("messages").select("id, sender").limit(1000),
+      .limit(60),
+    supabase.from("contacts").select("id", { count: "exact", head: true }),
+    supabase.from("messages").select("id", { count: "exact", head: true }).eq("sender", "bot"),
     supabase
       .from("messages")
-      .select("id, sender, created_at")
-      .gte("created_at", priorStart.toISOString())
-      .limit(10000),
+      .select("sender, created_at")
+      .gte("created_at", weekStartIso)
+      .order("created_at", { ascending: false })
+      .limit(4000),
+    supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", priorStartIso)
+      .lt("created_at", weekStartIso),
+    supabase
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("sender", "contact")
+      .gte("created_at", priorStartIso)
+      .lt("created_at", weekStartIso),
     supabase.from("social_accounts").select("id, platform, label, active, last_synced_at, stats"),
     supabase
       .from("social_interactions")
-      .select("id, account_id, kind, status, created_at")
+      .select("account_id, status, created_at")
       .order("created_at", { ascending: false })
-      .limit(500),
+      .limit(300),
+    supabase.from("leads").select("id", { count: "exact", head: true }).gte("created_at", weekStartIso),
     supabase
       .from("leads")
-      .select("id, created_at, consent_given")
-      .gte("created_at", priorStart.toISOString())
-      .limit(5000),
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", weekStartIso)
+      .eq("consent_given", true),
+    supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", priorStartIso)
+      .lt("created_at", weekStartIso),
+    supabase.from("leads").select("id", { count: "exact", head: true }).gte("created_at", priorStartIso),
   ]);
 
-  const firstError =
-    convs.error ??
-    contacts.error ??
-    msgs.error ??
-    weekMsgs.error ??
-    accounts.error ??
-    interactions.error ??
-    leadRows.error;
-  if (firstError) throw new Error(firstError.message);
-
   const conversations = convs.data ?? [];
-  const contactRows = contacts.data ?? [];
-  const messageRows = msgs.data ?? [];
-  const fortnightMessageRows = weekMsgs.data ?? [];
-  const weekStartMs = weekStart.getTime();
-  const weekMessageRows = fortnightMessageRows.filter(
-    (m) => new Date(m.created_at).getTime() >= weekStartMs,
-  );
-  const priorMessageRows = fortnightMessageRows.filter(
-    (m) => new Date(m.created_at).getTime() < weekStartMs,
-  );
+  const contactsTotal = num(contactCount);
+  const botReplies = num(botReplyCount);
   const accountRows = accounts.data ?? [];
   const interactionRows = interactions.data ?? [];
-  const leads = leadRows.data ?? [];
+  const weekStartMs = weekStart.getTime();
+  const weekMessageRows = weekMsgs.data ?? [];
+  const priorTotal = num(priorMsgTotal);
+  const priorInbound = num(priorMsgInbound);
+  const leadsNow = num(leadsNowTotal);
+  const leadsPrev = num(leadsPrevTotal);
+  const leadsConsented = num(leadsNowConsent);
+  const leadsWindowTotal = num(leadsTotalWindow);
+
 
   // ---- 7-day activity buckets (received vs sent) ----
   const buckets: DayBucket[] = [];
