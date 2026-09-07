@@ -64,3 +64,28 @@ node supabase/verify/verify-oauth-roundtrip.mjs
 ```
 
 Both scripts exit non-zero on failure, so they can gate a deploy.
+
+
+## verify-tenant-isolation.mjs
+
+Two companies, real RLS, driven the way a browser client is (`role
+authenticated` plus a JWT sub). Checks that company A cannot read or modify
+company B: profiles, user_roles, alerts, and the legacy singleton tables.
+
+```bash
+node supabase/verify/verify-tenant-isolation.mjs
+```
+
+This exists because the owner opened Settings and saw people from another
+company under Team — the policy on `profiles` was `USING (true)`, and a sweep
+found four more tables with no scoping at all. Isolation is a discipline, not a
+property: every new table needs its own policy, and anything using the service
+role bypasses RLS entirely. So it gets a test rather than a promise.
+
+It has already earned its keep once. Applying the tenant-scoped `profiles`
+policy on top of Lovable's `ALTER FUNCTION current_tenant_id() SECURITY
+INVOKER` created a mutual recursion — the policy calls the function, the
+function reads the table, the policy runs again — and this harness hit "stack
+depth limit exceeded" on the first run. Production had not fallen over only
+because the planner happened to short-circuit the `OR`, which SQL does not
+guarantee. Fixed in `20260907200000`.
