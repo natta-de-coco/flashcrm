@@ -174,7 +174,7 @@ export async function callFlashAi(
         _provider: chosen.provider,
         _ok: ok,
         _duration_ms: Date.now() - startedAt,
-      } as never);
+      });
     } catch {
       /* accounting must never break the feature */
     }

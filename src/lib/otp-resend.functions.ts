@@ -145,7 +145,7 @@ export const resendVerification = createServerFn({ method: "POST" })
         _status: "sent",
         _error: null,
         _meta: { ip },
-      } as never);
+      });
       return { ok: true };
     } catch (e) {
       await supabaseAdmin.rpc("record_otp_attempt", {

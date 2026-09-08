@@ -31,7 +31,6 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
     const { checkSendPermission } = await import("@/lib/safety.server");
     const { logAudit } = await import("@/lib/audit.server");
     const safety = await checkSendPermission({
-      tenantId: tenantId as string,
       conversationId: conversation.id,
       isTemplate: false,
     });
@@ -231,7 +230,6 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       contactId = byPhone?.id ?? null;
     }
     const safety = await checkSendPermission({
-      tenantId: tenantId as string,
       conversationId,
       contactId,
       waNumberId,
