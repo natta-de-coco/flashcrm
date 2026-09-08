@@ -19,6 +19,7 @@ import {
   formatMoney,
   LANGUAGES,
   resolveTenantLocale,
+  DEFAULT_LOCALE,
 } from "@/lib/locale";
 import { getWorkspaceRegion, saveWorkspaceRegion } from "@/lib/workspace.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,9 +34,9 @@ export function RegionCard() {
   const region = useQuery({ queryKey: ["workspace-region"], queryFn: () => getWorkspaceRegion() });
 
   const [country, setCountry] = useState("AE");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState(DEFAULT_LOCALE.currency);
   const [locale, setLocale] = useState("en");
-  const [timezone, setTimezone] = useState("UTC");
+  const [timezone, setTimezone] = useState(DEFAULT_LOCALE.timezone);
 
   useEffect(() => {
     if (!region.data) return;

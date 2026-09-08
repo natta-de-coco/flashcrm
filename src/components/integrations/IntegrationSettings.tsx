@@ -222,7 +222,24 @@ export function IntegrationSettings() {
   });
 
   const webhookUrl = `${origin}/api/public/whatsapp/webhook`;
-  const embedSnippet = `<script src="${origin}/widget.js" async></script>`;
+  // The chat endpoint requires a site key -- an anonymous, tenant-less session
+  // was a cross-tenant hijack path. The snippet used to omit it, so every
+  // message the widget sent was rejected as an invalid payload.
+  const widgetSites = useQuery({
+    queryKey: ["widget-sites"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("lead_sites")
+        .select("id, name, site_key, status")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const widgetSite = (widgetSites.data ?? [])[0] ?? null;
+  const embedSnippet = widgetSite
+    ? `<script src="${origin}/widget.js" data-site-key="${widgetSite.site_key}" async></script>`
+    : "";
 
   function copy(value: string) {
     void navigator.clipboard.writeText(value);
@@ -509,13 +526,17 @@ export function IntegrationSettings() {
         </CardHeader>
         <CardContent className="grid gap-2">
           <div className="flex gap-2">
-            <Input readOnly value={embedSnippet} aria-label="Website widget embed snippet" />
-            <Button variant="outline" onClick={() => copy(embedSnippet)}>
+            <Input
+              readOnly
+              value={embedSnippet || "Add a website below to generate your snippet"}
+              aria-label="Website widget embed snippet"
+            />
+            <Button variant="outline" disabled={!embedSnippet} onClick={() => copy(embedSnippet)}>
               <Copy className="size-4" />
             </Button>
           </div>
           <a
-            href="/widget-demo"
+            href={widgetSite ? `/widget-demo?siteKey=${encodeURIComponent(widgetSite.site_key)}` : "/widget-demo"}
             target="_blank"
             rel="noreferrer"
             className="text-xs font-medium text-brand hover:underline"

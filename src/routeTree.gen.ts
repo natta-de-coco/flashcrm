@@ -20,6 +20,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as WhatsappBusinessApiRouteImport } from './routes/whatsapp-business-api'
+import { Route as WidgetDemoRouteImport } from './routes/widget-demo'
 import { Route as AuthenticatedAdvisorRouteImport } from './routes/_authenticated/advisor'
 import { Route as AuthenticatedCampaignPlannerRouteImport } from './routes/_authenticated/campaign-planner'
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
@@ -114,6 +115,11 @@ const TermsRoute = TermsRouteImport.update({
 const WhatsappBusinessApiRoute = WhatsappBusinessApiRouteImport.update({
   id: '/whatsapp-business-api',
   path: '/whatsapp-business-api',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WidgetDemoRoute = WidgetDemoRouteImport.update({
+  id: '/widget-demo',
+  path: '/widget-demo',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdvisorRoute = AuthenticatedAdvisorRouteImport.update({
@@ -345,6 +351,7 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
+  '/widget-demo': typeof WidgetDemoRoute
   '/advisor': typeof AuthenticatedAdvisorRoute
   '/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/catalog': typeof AuthenticatedCatalogRoute
@@ -397,6 +404,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
+  '/widget-demo': typeof WidgetDemoRoute
   '/advisor': typeof AuthenticatedAdvisorRoute
   '/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/catalog': typeof AuthenticatedCatalogRoute
@@ -451,6 +459,7 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
+  '/widget-demo': typeof WidgetDemoRoute
   '/_authenticated/advisor': typeof AuthenticatedAdvisorRoute
   '/_authenticated/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
@@ -506,6 +515,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/whatsapp-business-api'
+    | '/widget-demo'
     | '/advisor'
     | '/campaign-planner'
     | '/catalog'
@@ -558,6 +568,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/whatsapp-business-api'
+    | '/widget-demo'
     | '/advisor'
     | '/campaign-planner'
     | '/catalog'
@@ -611,6 +622,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/whatsapp-business-api'
+    | '/widget-demo'
     | '/_authenticated/advisor'
     | '/_authenticated/campaign-planner'
     | '/_authenticated/catalog'
@@ -666,6 +678,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   WhatsappBusinessApiRoute: typeof WhatsappBusinessApiRoute
+  WidgetDemoRoute: typeof WidgetDemoRoute
   PayTokenRoute: typeof PayTokenRoute
   VerifyTokenRoute: typeof VerifyTokenRoute
   ApiPublicOauthCallbackRoute: typeof ApiPublicOauthCallbackRoute
@@ -761,6 +774,13 @@ declare module '@tanstack/react-router' {
       path: '/whatsapp-business-api'
       fullPath: '/whatsapp-business-api'
       preLoaderRoute: typeof WhatsappBusinessApiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/widget-demo': {
+      id: '/widget-demo'
+      path: '/widget-demo'
+      fullPath: '/widget-demo'
+      preLoaderRoute: typeof WidgetDemoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/advisor': {
@@ -1165,6 +1185,7 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
   WhatsappBusinessApiRoute: WhatsappBusinessApiRoute,
+  WidgetDemoRoute: WidgetDemoRoute,
   PayTokenRoute: PayTokenRoute,
   VerifyTokenRoute: VerifyTokenRoute,
   ApiPublicOauthCallbackRoute: ApiPublicOauthCallbackRoute,

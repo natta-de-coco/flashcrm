@@ -116,6 +116,18 @@ function MonitoringPage() {
     },
   });
 
+  // Whether anything is connected at all decides between "no data yet" and
+  // "not configured" -- two very different messages for the reader.
+  const numbers = useQuery({
+    queryKey: ["monitoring-wa-numbers"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("wa_numbers").select("id, active");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const configured = (numbers.data ?? []).some((n) => n.active);
+
   const stats = useQuery({
     queryKey: ["webhook_stats"],
     refetchInterval: REFRESH_MS,
@@ -136,7 +148,10 @@ function MonitoringPage() {
         total: rows.length,
         failed,
         processed,
-        successRate: rows.length ? Math.round((processed / rows.length) * 100) : 100,
+        // No events is not a 100% success rate. Reporting one made a workspace
+        // with nothing connected look perfectly healthy, which is worse than
+        // showing nothing at all -- it hides the fact that setup is incomplete.
+        successRate: rows.length ? Math.round((processed / rows.length) * 100) : null,
         avgMs: durations.length
           ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
           : 0,
@@ -196,9 +211,20 @@ function MonitoringPage() {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: "Events (24h)", value: stats.data?.total ?? 0 },
-          { label: "Success rate", value: `${stats.data?.successRate ?? 100}%` },
+          {
+            label: "Success rate",
+            value:
+              stats.data?.successRate == null
+                ? configured
+                  ? "No data"
+                  : "Not configured"
+                : `${stats.data.successRate}%`,
+          },
           { label: "Failures (24h)", value: stats.data?.failed ?? 0 },
-          { label: "Avg processing", value: `${stats.data?.avgMs ?? 0} ms` },
+          {
+            label: "Avg processing",
+            value: stats.data?.total ? `${stats.data.avgMs} ms` : "—",
+          },
         ].map((card) => (
           <Card key={card.label}>
             <CardHeader className="pb-2">
@@ -224,7 +250,13 @@ function MonitoringPage() {
             <Button
               size="sm"
               onClick={() => insightsMutation.mutate()}
-              disabled={insightsMutation.isPending || waAnalytics.isLoading}
+              // Advice needs something to advise on. Asked with no traffic, the
+              // model has nothing but the prompt and invents plausible-sounding
+              // recommendations, which is worse than an unavailable button.
+              disabled={
+                insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total
+              }
+              title={!stats.data?.total ? "Available once messages have been sent" : undefined}
             >
               {insightsMutation.isPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -359,7 +391,11 @@ function MonitoringPage() {
         <CardContent className="space-y-2">
           {(alerts.data ?? []).length === 0 && (
             <p className="text-sm text-muted-foreground">
-              No alerts — everything has been delivering cleanly.
+              {!configured
+                ? "No WhatsApp number is connected yet, so there is nothing to monitor."
+                : stats.data?.total
+                  ? "No alerts — everything has been delivering cleanly."
+                  : "No alerts yet. Nothing has been sent through this workspace so far."}
             </p>
           )}
           {(alerts.data ?? []).map((alert) => (

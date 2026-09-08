@@ -225,13 +225,32 @@ export type TenantLocale = {
   region: ComplianceRegion;
 };
 
+/**
+ * Platform fallback, used only when a workspace has no country at all.
+ *
+ * These three must agree with each other. They previously did not -- the
+ * country said AE while the currency said USD and the timezone said UTC -- so
+ * a UAE workspace displayed dollars on a London clock.
+ */
 export const DEFAULT_LOCALE: TenantLocale = {
   country: "AE",
-  currency: "USD",
+  currency: "AED",
   locale: "en",
-  timezone: "UTC",
+  timezone: "Asia/Dubai",
   region: "gcc",
 };
+
+/**
+ * The values organizations columns carry when nobody has chosen anything.
+ *
+ * organizations.currency is `NOT NULL DEFAULT 'USD'`, so a workspace that has
+ * never visited Settings holds the literal string "USD" rather than NULL. That
+ * defeated the country-derived fallback below, which only fired on null — and
+ * is why picking the UAE still showed dollars. When the stored value is one of
+ * these and the country implies something else, the country wins.
+ */
+const UNSET_CURRENCY = "USD";
+const UNSET_TIMEZONE = "UTC";
 
 export function countryOption(code: string | null | undefined): CountryOption | undefined {
   return COUNTRIES.find((c) => c.code === (code ?? "").toUpperCase());
@@ -312,15 +331,27 @@ export function resolveTenantLocale(
   } | null,
 ): TenantLocale {
   const country = (org?.country ?? DEFAULT_LOCALE.country).toUpperCase();
+  const forCountry = countryOption(country);
+
+  // A stored value counts as "chosen" unless it is the column default and the
+  // country disagrees with it. A genuine US workspace is unaffected: its
+  // country is US, whose currency is USD, so deriving from the country returns
+  // the same answer.
+  const chosenCurrency =
+    org?.currency && !(org.currency.toUpperCase() === UNSET_CURRENCY && forCountry?.currency)
+      ? org.currency
+      : (forCountry?.currency ?? DEFAULT_LOCALE.currency);
+
+  const chosenTimezone =
+    org?.timezone && !(org.timezone === UNSET_TIMEZONE && forCountry?.timezone)
+      ? org.timezone
+      : (forCountry?.timezone ?? DEFAULT_LOCALE.timezone);
+
   return {
     country,
-    currency: (
-      org?.currency ??
-      countryOption(country)?.currency ??
-      DEFAULT_LOCALE.currency
-    ).toUpperCase(),
+    currency: chosenCurrency.toUpperCase(),
     locale: org?.locale ?? DEFAULT_LOCALE.locale,
-    timezone: org?.timezone ?? countryOption(country)?.timezone ?? DEFAULT_LOCALE.timezone,
+    timezone: chosenTimezone,
     region: (org?.compliance_region as ComplianceRegion | null) ?? regionForCountry(country),
   };
 }

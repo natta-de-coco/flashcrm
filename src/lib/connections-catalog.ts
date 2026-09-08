@@ -110,7 +110,11 @@ export const CONNECTORS: Connector[] = [
     blurb: "Channel videos, comments and channel statistics.",
     oauth: true,
     provider: "google",
-    capabilities: ["publish", "analytics", "messaging"],
+    // Comments are not messaging. YouTube exposes no direct-message API to
+    // businesses, and the setup wizard requests no messaging scope, so the
+    // card was promising an inbox that could never fill.
+    capabilities: ["publish", "analytics"],
+    unsupported: ["messaging", "profile"],
     manageUrl: "https://studio.youtube.com",
     profilePattern: (h) => `https://youtube.com/${h.startsWith("@") ? h : `channel/${h}`}`,
   },
@@ -130,10 +134,15 @@ export const CONNECTORS: Connector[] = [
     id: "google_business",
     name: "Google Business Profile",
     group: "social",
-    blurb: "Local posts, reviews, calls, direction requests.",
+    blurb: "Local posts, reviews, calls and direction requests.",
     oauth: true,
     provider: "google",
-    capabilities: ["publish", "analytics", "messaging", "profile"],
+    // Google shut down Business Profile chat and Business Messages on
+    // 31 July 2024, so messaging is not merely unimplemented here — it no
+    // longer exists on Google's side for anyone.
+    // https://support.google.com/business/answer/14919056
+    capabilities: ["publish", "analytics", "profile"],
+    unsupported: ["messaging"],
     manageUrl: "https://business.google.com/dashboard",
   },
   {

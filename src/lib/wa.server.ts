@@ -13,6 +13,29 @@ export type BotSettings = {
 };
 
 /**
+ * Whether a bot has enough configuration to answer a customer.
+ *
+ * Both bot tables default `enabled` to true, so a workspace created five
+ * minutes ago starts auto-replying to real customers with no business
+ * knowledge, no greeting and no handoff keywords — answering from the model's
+ * general knowledge, which is how a chatbot invents a delivery policy or a
+ * price.
+ *
+ * Gating on configuration rather than flipping the column default fixes it for
+ * workspaces that already exist, not only for new ones, and needs no migration.
+ * The flag still means "the owner wants a bot"; this decides whether there is
+ * yet a bot worth running. A handoff keyword list is deliberately not required
+ * — needsHumanHandoff already has sensible built-in behaviour.
+ */
+export function botIsConfigured(settings: BotSettings): boolean {
+  const instructions = (settings.instructions ?? "").trim();
+  const greeting = (settings.greeting ?? "").trim();
+  // Instructions are what ground it in the business. Without them the reply is
+  // whatever the model imagines, so this is the one that must be present.
+  return instructions.length >= 20 && greeting.length > 0;
+}
+
+/**
  * Per-tenant bot settings. Falls back to the platform-wide `bot_settings`
  * singleton's values (never its identity) only when a tenant has no row of
  * its own yet, so existing single-tenant behavior doesn't regress on day one.
@@ -325,7 +348,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
 
   // 4. Bot reply / handoff
   const settings = await getBotSettings(tenantId);
-  if (!settings || !settings.enabled || !conversation.bot_enabled) {
+  if (!settings || !settings.enabled || !conversation.bot_enabled || !botIsConfigured(settings)) {
     return {
       conversationId: conversation.id,
       reply: null as string | null,

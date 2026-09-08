@@ -8,6 +8,17 @@ const PayloadSchema = z.object({
   siteKey: z.string().min(10).max(120),
   name: z.string().max(80).optional(),
   message: z.string().min(1).max(2000),
+
+  // Identity, collected by the widget before the first message. The product
+  // has always claimed the widget captures a WhatsApp number and email before
+  // chatting; until now the endpoint had nowhere to put either.
+  email: z.string().email().max(320).optional(),
+  phone: z.string().trim().min(6).max(32).optional(),
+
+  // Consent to marketing is deliberately its own field, not implied by
+  // starting a chat. Someone asking a question has not agreed to receive
+  // campaigns, and treating those as the same thing is what earns blocks.
+  marketingConsent: z.boolean().optional(),
 });
 
 const corsHeaders = {
@@ -82,8 +93,38 @@ export const Route = createFileRoute("/api/public/widget/chat")({
             channel: "web",
             sessionId: parsed.sessionId,
             name: parsed.name ?? null,
+            phone: parsed.phone ?? null,
             text: parsed.message,
           });
+
+          // Attach the rest of the identity to the contact the ingest just
+          // matched or created. Done here rather than inside ingestInboundMessage
+          // because that function is also the WhatsApp webhook's path, where
+          // there is no web form and no consent to record.
+          if (parsed.phone && (parsed.email || parsed.marketingConsent)) {
+            try {
+              const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+              const patch: {
+                email?: string;
+                consent_given?: boolean;
+                consent_at?: string;
+              } = {};
+              if (parsed.email) patch.email = parsed.email;
+              if (parsed.marketingConsent) {
+                patch.consent_given = true;
+                patch.consent_at = new Date().toISOString();
+              }
+              await supabaseAdmin
+                .from("contacts")
+                .update(patch)
+                .eq("tenant_id", site.tenant_id)
+                .eq("phone", parsed.phone);
+            } catch (error) {
+              // The message is already delivered; failing to annotate the
+              // contact must not turn that into an error for the visitor.
+              console.error("[widget] could not record identity", error);
+            }
+          }
 
           return new Response(JSON.stringify({ reply }), { status: 200, headers: corsHeaders });
         } catch (error) {

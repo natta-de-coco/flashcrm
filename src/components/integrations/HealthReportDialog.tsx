@@ -15,8 +15,13 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getIntegrationHealthReport, retryConnections } from "@/lib/connections.functions";
+import { CONNECTORS } from "@/lib/connections-catalog";
 import { downloadHealthReportCsv, downloadHealthReportPdf } from "@/lib/integration-health";
 import type { HealthRow } from "@/lib/integration-health";
+
+/** Split once, so the dialog copy and the connector grid always agree. */
+const OAUTH_CONNECTORS = CONNECTORS.filter((c) => c.oauth);
+const KEYED_CONNECTORS = CONNECTORS.filter((c) => !c.oauth);
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CheckCircle2, FileDown, RefreshCw, Stethoscope } from "lucide-react";
@@ -79,8 +84,15 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
         <DialogHeader>
           <DialogTitle>Integration Health Report</DialogTitle>
           <DialogDescription>
-            Every platform, its exact status, the last error we received, permissions still missing
-            and the next retry step. Export it and share it with whoever owns the account.
+            {/* This said "every platform" while covering only the OAuth ones,
+                so the totals here and on the connector grid disagreed and
+                neither said why. Both numbers are derived from the catalogue
+                now, so they cannot drift apart again. */}
+            Status, last error, missing permissions and the next retry step for the{" "}
+            {OAUTH_CONNECTORS.length} connections that sign in with OAuth. The other{" "}
+            {KEYED_CONNECTORS.length} — {KEYED_CONNECTORS.map((c) => c.name).join(", ")} — connect
+            with keys or a plugin rather than a login, so they are checked on their own cards
+            instead. Export this and share it with whoever owns the account.
           </DialogDescription>
         </DialogHeader>
 

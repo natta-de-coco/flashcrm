@@ -28,7 +28,7 @@ import {
   Zap,
   ChevronDown,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -285,16 +285,16 @@ const WHATSAPP = "https://wa.me/9710509630506";
 function Landing() {
   useReveal();
 
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "/widget.js";
-    script.async = true;
-    document.body.appendChild(script);
-    return () => {
-      script.remove();
-      document.querySelector(".flasw")?.remove();
-    };
-  }, []);
+  // The chat widget is not loaded here.
+  //
+  // widget.js now requires a data-site-key: the chat endpoint refuses
+  // tenant-less sessions, so a keyless widget cannot deliver a message. This
+  // page had one embedded with no key, which meant the launcher opened, the
+  // visitor typed, and every message was silently rejected while the panel
+  // replied "a team member will reply shortly".
+  //
+  // To put a real one back, create a site under Integrations and embed
+  // widget.js with that key.
 
   const latest = POSTS.slice(0, 3);
 
@@ -426,7 +426,7 @@ function Landing() {
               style={{ ["--reveal-delay" as string]: "250ms" }}
               className="mt-2 text-xs text-muted-foreground"
             >
-              Cancel any time · try the chat bubble in the corner, it lands in the live inbox.
+              Cancel any time · no card needed to start.
             </p>
             </div>
 
