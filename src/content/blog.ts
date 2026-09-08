@@ -16,6 +16,8 @@
  * numbers. Publishing a figure that goes stale is worse than not publishing it.
  */
 
+import { AI_POSTS } from "./blog-posts/ai-workflows";
+import { SALES_POSTS } from "./blog-posts/sales-operations";
 import { BUYING_POSTS } from "./blog-posts/buying-guides";
 import { COMPARISON_POSTS } from "./blog-posts/comparisons";
 import { LEAD_CAPTURE_POSTS } from "./blog-posts/lead-capture";
@@ -797,7 +799,7 @@ Buttons: [Call us] [Get directions]</code></pre>
  * No import cycle: comparisons.ts -> define.ts -> blog.ts is a type-only
  * import, which is erased at compile time.
  */
-export const POSTS: Post[] = [...CORE_POSTS, ...COMPARISON_POSTS, ...BUYING_POSTS, ...LEAD_CAPTURE_POSTS];
+export const POSTS: Post[] = [...CORE_POSTS, ...COMPARISON_POSTS, ...BUYING_POSTS, ...LEAD_CAPTURE_POSTS, ...AI_POSTS];
 
 /** Newest first, which is the order both the index and the sitemap want. */
 export const POSTS_BY_DATE = [...POSTS].sort((a, b) => b.published.localeCompare(a.published));

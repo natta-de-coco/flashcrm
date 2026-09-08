@@ -1,6 +1,8 @@
 import { defineArticles } from "./define";
 
-export const AI_POSTS = defineArticles([
+/** Continues the release schedule after the previous batch. */
+export const AI_POSTS = defineArticles(
+  [
   {
     slug: "ai-chatbot-knowledge-base-checklist",
     title: "An AI chatbot knowledge base checklist for useful customer answers",
@@ -9,6 +11,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["ai chatbot knowledge base", "whatsapp chatbot training", "business chatbot content"],
     html: `
 <p>A chatbot cannot reliably explain a delivery policy that your own team describes three different ways. Before adding more instructions, make the business information clear, current and internally consistent.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Start with the questions customers actually ask</h2>
 <p>Review a sample of recent conversations with personal details removed. Group the recurring questions into products, pricing, service area, working hours and the next step for exceptions. The first knowledge set should cover those ordinary needs rather than every document the company has ever produced.</p>
 <p>Write each answer so a new employee could understand it. If the answer depends on a condition, state that condition beside the answer. Do not expect the chatbot to infer a policy from a collection of unrelated marketing paragraphs.</p>
@@ -40,6 +43,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["ai chatbot human handoff", "whatsapp bot human agent", "chatbot escalation design"],
     html: `
 <p>A chatbot that says “I will transfer you” has made a promise. If no agent receives the conversation or the customer has to repeat every detail, the promise has not been fulfilled. Handoff needs an operational design as well as a trigger.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Choose clear reasons to transfer</h2>
 <p>A direct request for a person is an obvious starting point. Other reasons may include repeated misunderstanding, an exception requiring approval or a question outside the approved business knowledge. Define these cases in language the team understands.</p>
 <p>Do not make customers guess a secret keyword. Test natural variations such as “Can someone call me?” or “I need to speak with your team.” Confirm which triggers your configured system supports instead of assuming every phrase will behave identically.</p>
@@ -65,6 +69,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["chatbot pricing accuracy", "ai chatbot wrong prices", "whatsapp sales bot pricing"],
     html: `
 <p>A wrong price is not a harmless chatbot flourish. It can create a customer expectation that the sales team must later correct. Pricing answers need a clear boundary between published facts, conditional estimates and quotations requiring a person.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Classify the kinds of price you use</h2>
 <p>A fixed product price, a starting service price and a custom quotation are different things. State which category applies to each offering. If the final amount depends on quantity, location or scope, the chatbot should ask for those details or explain that the team will quote.</p>
 <p>Do not feed an old customer quotation into general knowledge as if it were a public price list. It may contain a temporary offer or a negotiated exception that should not be repeated.</p>
@@ -95,6 +100,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["after hours whatsapp chatbot", "whatsapp out of hours support", "business chatbot availability"],
     html: `
 <p>A customer messaging at night may need a simple fact or may need a person who is not available until morning. An after-hours chatbot should distinguish those situations. Pretending the full team is present can create a promise the business cannot keep.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Define what can be answered without a live check</h2>
 <p>Approved opening hours, published service descriptions and the information needed for a quotation may be suitable starting points. Stock, bespoke prices and delivery commitments may require confirmation. Build the scope around the information your team can keep current.</p>
 <p>Flas describes answers from business knowledge and human handoff on its <a href="/features">feature page</a>. Test your actual configuration before treating it as an unattended service. A listed capability does not establish the quality of every answer.</p>
@@ -125,6 +131,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["whatsapp chatbot testing", "ai chatbot test plan", "chatbot quality checklist"],
     html: `
 <p>Three successful demo questions do not establish that a chatbot is ready for customers. A useful test plan includes ordinary requests, missing information and questions the bot should decline to answer confidently.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Write expected behaviour before testing</h2>
 <p>For each case, record what a correct response should accomplish. It might provide a published fact, ask for a missing quantity or transfer the conversation to a person. Avoid requiring one exact sentence unless the wording itself is essential.</p>
 <p>Use fictional customer details and approved business information. Keep the cases in a simple document so the team can repeat them after changing the knowledge or configuration.</p>
@@ -156,6 +163,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["human sounding whatsapp replies", "natural chatbot messages", "whatsapp customer service writing"],
     html: `
 <p>A message sounds natural when it responds to what the customer actually said. Adding emojis, a first name and an enthusiastic greeting does not help if the answer ignores the question. Good business writing begins with attention.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Lead with the useful answer</h2>
 <p>If the customer asks about delivery coverage, answer that before describing your company. If you need more information, explain the detail that changes the answer. Keep the first reply short enough that the customer can identify the next step without opening a long block of text.</p>
 <p>For example, “We can check delivery to your area. Which postcode or district should we use?” is more direct than a paragraph about commitment to excellent service. Adapt examples to the information your business actually needs.</p>
@@ -185,6 +193,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["whatsapp crm access roles", "crm permissions checklist", "shared inbox team access"],
     html: `
 <p>A person helping with website content may not need to read customer conversations or change billing information. A salesperson may need quotations without needing workspace administration. Start permissions from the job people do, rather than giving everyone the same access for convenience.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Map tasks to access</h2>
 <p>List the recurring responsibilities: answering messages, managing contacts, preparing documents, editing content and administering the company workspace. Identify the minimum practical access for each. Avoid designing roles around vague seniority labels when the actual tasks differ.</p>
 <p>Flas describes roles and per-company isolation on its <a href="/features">feature page</a>. Test the available roles against your requirements. A role name alone does not tell you every action it allows.</p>
@@ -215,6 +224,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["ai chatbot quality review", "chatbot monitoring routine", "whatsapp bot improvement"],
     html: `
 <p>A chatbot can become less useful without any software change. The business updates its hours, a promotion ends or customers begin asking about a new product. A weekly review helps the team notice the gap between current operations and automated answers.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Choose a sample with variety</h2>
 <p>Review routine answers, human handoffs, unanswered questions and conversations where the customer repeats themselves. Do not sample only the exchanges that ended neatly. Include a few cases from busy periods and outside working hours if the bot operates then.</p>
 <p>Use only the information needed for the review and keep customer details within the team's approved process. The purpose is to improve the answer and workflow, not to build a collection of unnecessary personal data.</p>
@@ -244,6 +254,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["whatsapp chatbot vs live chat", "ai vs human customer support", "chatbot sales handoff"],
     html: `
 <p>The choice between a chatbot and a person is rarely all-or-nothing. Some customer questions have a stable answer. Others require judgment, current information or authority to make an exception. Divide the work by that uncertainty rather than by a target percentage of automated conversations.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Automate questions with dependable answers</h2>
 <p>Published hours, standard product descriptions and the details needed to request a quotation can be useful starting points. The information must be current and the question must match the scope. Even a simple answer can become wrong when the business changes its policy.</p>
 <p>Flas's <a href="/features">AI chatbot and shared inbox features</a> support a combined workflow to evaluate. Test the answers from your actual knowledge and confirm how a person takes over.</p>
@@ -274,6 +285,7 @@ export const AI_POSTS = defineArticles([
     keywords: ["whatsapp automation checklist", "chatbot readiness", "business whatsapp automation"],
     html: `
 <p>If staff disagree about prices, hours and who should answer an enquiry, automation will inherit that confusion. Readiness is less about having a large message volume and more about having a process that can be explained consistently.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Can the team agree on the answers?</h2>
 <p>Choose ten common customer questions and ask two employees to answer them independently. Compare the facts, conditions and next steps. Differences may reveal missing policy or outdated information. Resolve those before asking a chatbot to choose between them.</p>
 <p>Keep an approved source for each answer and name the person who maintains it. A knowledge set assembled once and then forgotten will not stay aligned with the business.</p>
@@ -296,4 +308,6 @@ export const AI_POSTS = defineArticles([
 <p>Use the <a href="/blog/ai-chatbot-test-plan">test plan</a> and <a href="/blog/ai-chatbot-knowledge-base-checklist">knowledge checklist</a>. A business is ready to automate a workflow when it can explain the approved answer, recognise the exception and name the person responsible for what happens next.</p>
 `,
   },
-]);
+  ],
+  30,
+);

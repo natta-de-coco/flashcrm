@@ -1,6 +1,8 @@
 import { defineArticles } from "./define";
 
-export const SALES_POSTS = defineArticles([
+/** Continues the release schedule after the previous batch. */
+export const SALES_POSTS = defineArticles(
+  [
   {
     slug: "whatsapp-sales-pipeline-stages",
     title: "WhatsApp sales pipeline stages that reflect real progress",
@@ -9,6 +11,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["whatsapp sales pipeline", "crm pipeline stages", "whatsapp lead management"],
     html: `
 <p>A lively WhatsApp conversation can make an opportunity feel advanced even when the customer has not confirmed what they need. Sales stages should describe evidence of progress, not the number of messages exchanged or the agent's optimism.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Give each stage an entry condition</h2>
 <p>Begin with a small set of stages that the team can explain. A new enquiry has arrived. A qualified opportunity has a relevant requirement and enough information for a next step. A quotation has actually been prepared and sent. A won opportunity meets the business's agreed completion rule.</p>
 <p>These definitions are a suggested process. Map them to the stages your CRM supports rather than assuming every label can be customised. Flas's <a href="/features">contacts and pipeline features</a> provide the workflow to evaluate.</p>
@@ -38,6 +41,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["whatsapp quotation follow up", "sales quote follow up", "whatsapp sales messages"],
     html: `
 <p>“Any update?” is easy to send and difficult for a customer to act on. A useful quotation follow-up identifies the document, recalls the decision being made and offers help with the detail that may be holding it up.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Agree on the next step when you send the quote</h2>
 <p>Ask when the customer expects to review it and whether somebody else must approve it. Do not impose an arbitrary daily follow-up schedule. A buyer waiting for a weekly purchasing meeting has a different timeline from someone arranging an urgent repair.</p>
 <p>Record the agreed action with the quotation reference. This prevents another agent from sending a generic reminder without understanding the conversation.</p>
@@ -68,6 +72,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["quotation revision control", "whatsapp quotation management", "sales document versions"],
     html: `
 <p>A customer approves “the quote” after three different PDFs have been sent in the same chat. One contains the old quantity, one changes delivery and one corrects the price. Unless the team can identify the current document, approval is ambiguous.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Give the quotation a stable reference</h2>
 <p>Use the document reference supported by your sales system and a clear convention for revisions. The exact format matters less than consistency. Staff should be able to say which version is current and why an earlier version should no longer be used.</p>
 <p>Do not rely on filenames such as “final-final-new.pdf.” A filename copied into a chat is a poor substitute for a document record and a short explanation of what changed.</p>
@@ -98,6 +103,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["quotation to invoice workflow", "whatsapp invoicing workflow", "sales finance handoff"],
     html: `
 <p>A customer approves a quotation, but the invoice is prepared from an earlier version or sent to the wrong contact. The sale was not lost at the conversation stage; the handoff failed after agreement. A short set of checks can prevent that avoidable rework.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Identify the accepted commercial record</h2>
 <p>Before preparing the invoice, confirm the quotation reference and current scope. Check whether the customer accepted the full offer or only part of it. A message saying “go ahead with ten” needs to be reconciled with a quotation that lists twenty.</p>
 <p>Record who confirmed the acceptance and which details remain unresolved. Do not move uncertainty into an invoice and expect the finance team to reconstruct the conversation later.</p>
@@ -129,6 +135,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["whatsapp payment tracking", "crm invoice payment status", "sales payment follow up"],
     html: `
 <p>“I have paid” is useful information from a customer, but it is not the same event as your business confirming the payment against the correct invoice. Teams need a clear way to move between those states without asking the customer the same question repeatedly.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Define the states in plain language</h2>
 <p>Keep the working distinctions simple: invoice issued, customer reports payment, payment being checked and payment recorded. Map these to the statuses and notes your system supports. The wording should make it clear when staff are reporting a customer statement and when an authorised person has confirmed the record.</p>
 <p>Do not invent extra financial states merely to make a dashboard look detailed. Add a distinction only if it changes who needs to act.</p>
@@ -159,6 +166,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["whatsapp shift handover", "shared inbox handoff checklist", "customer conversation handover"],
     html: `
 <p>The next agent should not have to read an entire chat to discover that the customer is waiting for a revised delivery date. A good handover records the current state of the work, especially what the business has already promised.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Write for someone who was not present</h2>
 <p>Start with the customer's current requirement, not a chronological summary of every message. Then record the unresolved question, the latest relevant document and the next action. Use specific nouns and dates instead of “this,” “that” and “tomorrow” when those could become ambiguous.</p>
 <p>For example: “Customer needs twenty chairs for one office. Revised quotation Q-104 sent. Delivery date needs operations confirmation. Maya will check by Thursday afternoon.” This is an illustrative internal note, not a real customer record.</p>
@@ -184,6 +192,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["whatsapp inbox management", "daily crm review", "missed whatsapp enquiries"],
     html: `
 <p>An inbox can look under control because agents are replying to new messages while older enquiries remain unresolved. A daily review should find work that has become invisible, especially conversations without an owner or a clear next action.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Start with unowned work</h2>
 <p>Check new and unassigned conversations first. Confirm whether each is a sales enquiry, support request, irrelevant message or something needing clarification. Assign a responsible person to genuine work. Do not distribute conversations randomly without considering who can answer the question.</p>
 <p>Flas's <a href="/features">shared inbox features</a> include assignment, tags and statuses. Use them to make responsibility visible, then verify that staff understand what the labels mean.</p>
@@ -214,6 +223,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["whatsapp response time", "customer support response metrics", "whatsapp inbox kpi"],
     html: `
 <p>An instant “Thanks for your message” can make an inbox appear responsive while the customer still waits hours for an answer. Response-time reporting should distinguish acknowledgement from useful progress.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Define the events before calculating the metric</h2>
 <p>Record when the customer enquiry arrived, when an acknowledgement was sent and when the business provided a useful response. A useful response might answer the question, request a necessary detail or give a clear, owned next step. It should move the work forward.</p>
 <p>Keep automated and human events distinguishable in the review. Automation may provide a genuinely useful answer, but its speed alone does not prove the customer was helped.</p>
@@ -244,6 +254,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["support to sales handoff", "whatsapp customer handoff", "customer service sales crm"],
     html: `
 <p>A customer contacts support about an existing product and then asks about buying another one. That can become a useful sales conversation, but only if the original support need remains owned. A handoff should add help rather than make the customer repeat the problem to a different person.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Resolve or clearly retain the original issue</h2>
 <p>Before transferring anything, identify what still needs to happen on the support side. If the product problem is unresolved, keep a named owner for it. Buying interest should not cause the original request to disappear from view.</p>
 <p>Ask whether the customer would like help with the new purchase. A mention of another product is not always an invitation to start a sales sequence. Follow the customer's intention rather than treating every support interaction as an upsell opportunity.</p>
@@ -269,6 +280,7 @@ export const SALES_POSTS = defineArticles([
     keywords: ["whatsapp crm service business", "service quotation crm", "whatsapp lead to quote"],
     html: `
 <p>A service business often cannot answer a price enquiry from a product list. The team needs to understand the scope, location and timing before preparing a useful quotation. A WhatsApp CRM should support that investigation without turning every conversation into a long form.</p>
+<p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Identify the facts that change the quotation</h2>
 <p>For a fictional installation business, those facts might include the item to install, approximate size, site location and access constraints. For a cleaning service, they may include property type and the requested work. Use your own operation to choose the minimum useful details.</p>
 <p>Separate information the customer can provide from information that requires a site assessment. Staff should not make a firm promise from an uncertain description merely because the customer wants a quick answer.</p>
@@ -291,4 +303,6 @@ export const SALES_POSTS = defineArticles([
 <p>Use the <a href="/blog/quotation-revision-control-whatsapp">revision guide</a> and <a href="/blog/quotation-to-invoice-handoff">invoice handoff checklist</a>. The value of a service CRM is a clearer path from a vague enquiry to an agreed piece of work.</p>
 `,
   },
-]);
+  ],
+  40,
+);
