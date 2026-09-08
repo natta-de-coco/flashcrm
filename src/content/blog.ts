@@ -16,6 +16,10 @@
  * numbers. Publishing a figure that goes stale is worse than not publishing it.
  */
 
+import { BUYING_POSTS } from "./blog-posts/buying-guides";
+import { COMPARISON_POSTS } from "./blog-posts/comparisons";
+import { LEAD_CAPTURE_POSTS } from "./blog-posts/lead-capture";
+
 export type Post = {
   slug: string;
   title: string;
@@ -30,7 +34,8 @@ export type Post = {
   html: string;
 };
 
-export const POSTS: Post[] = [
+/** Hand-written guides. Generated batches are merged into POSTS below. */
+const CORE_POSTS: Post[] = [
   {
     slug: "whatsapp-business-app-vs-api",
     title: "WhatsApp Business App vs the Cloud API: which one does your business need?",
@@ -783,6 +788,16 @@ Buttons: [Call us] [Get directions]</code></pre>
 `,
   },
 ];
+
+/**
+ * Every published guide. Add a generated batch by importing it at the top and
+ * spreading it here -- the blog index, the article pages and /sitemap.xml all
+ * read from POSTS, so nothing else needs touching.
+ *
+ * No import cycle: comparisons.ts -> define.ts -> blog.ts is a type-only
+ * import, which is erased at compile time.
+ */
+export const POSTS: Post[] = [...CORE_POSTS, ...COMPARISON_POSTS, ...BUYING_POSTS, ...LEAD_CAPTURE_POSTS];
 
 /** Newest first, which is the order both the index and the sitemap want. */
 export const POSTS_BY_DATE = [...POSTS].sort((a, b) => b.published.localeCompare(a.published));
