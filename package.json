@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "errors": "node scripts/dump-errors.mjs"
+    "errors": "node scripts/dump-errors.mjs",
+    "test:capabilities": "node scripts/build-registry-bundle.mjs && node --test tests/capability-registry.test.mjs",
+    "docs:capabilities": "node scripts/generate-capability-matrix.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

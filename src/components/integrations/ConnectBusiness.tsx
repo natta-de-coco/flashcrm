@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
+import {
+  CAPABILITY_LABELS,
+  STATUS_LABELS,
+  advertisableCapabilities,
+  connectorDefinition,
+  resolveAllCapabilities,
+} from "@/lib/social-connector-definitions";
 import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
 import { HealthReportDialog } from "@/components/integrations/HealthReportDialog";
 import { connectorIcon } from "@/components/integrations/connector-icons";
@@ -409,6 +416,7 @@ function ConnectorCard({
   onDisconnect: (id: string) => void;
 }) {
   const connected = accounts.some((a) => a.active);
+  const definition = connectorDefinition(connector.id);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<"prepare" | "credentials">("prepare");
   const needsKeys = Boolean(connector.oauth && readiness && !readiness.ready);
@@ -479,21 +487,35 @@ function ConnectorCard({
             <p className="break-words text-muted-foreground">Next: {status.fix}</p>
           </div>
         )}
+        {/* Capability badges come from the connector registry, never from a
+            list kept on the card. The old list used one broad "messaging"
+            label covering comments, reviews and DMs at once, and claimed
+            "publish" for nine platforms Flas has no publish code for.
+
+            Only genuinely usable capabilities get a solid badge. Everything
+            else is shown with its real status rather than hidden, so the card
+            distinguishes "we have not built it" from "the provider has no
+            such API" -- and never shows either as available. */}
         <div className="flex flex-wrap gap-1">
-          {connector.capabilities.map((cap) => (
-            <Badge key={cap} variant="secondary" className="px-1.5 py-0 text-[10px] capitalize">
-              {cap}
-            </Badge>
-          ))}
-          {connector.unsupported?.map((cap) => (
-            <Badge
-              key={cap}
-              variant="outline"
-              className="px-1.5 py-0 text-[10px] capitalize text-muted-foreground line-through"
-            >
-              {cap}
-            </Badge>
-          ))}
+          {definition &&
+            advertisableCapabilities(definition).map((cap) => (
+              <Badge key={cap.key} variant="secondary" className="px-1.5 py-0 text-[10px]">
+                {CAPABILITY_LABELS[cap.key]}
+              </Badge>
+            ))}
+          {definition &&
+            resolveAllCapabilities(definition)
+              .filter((cap) => cap.status === "requires_provider_review" || cap.status === "limited_by_account_type")
+              .map((cap) => (
+                <Badge
+                  key={cap.key}
+                  variant="outline"
+                  className="px-1.5 py-0 text-[10px]"
+                  title={cap.note ?? STATUS_LABELS[cap.status]}
+                >
+                  {CAPABILITY_LABELS[cap.key]} · {STATUS_LABELS[cap.status].toLowerCase()}
+                </Badge>
+              ))}
         </div>
 
         {accounts.map((a) => (

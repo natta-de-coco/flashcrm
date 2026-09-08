@@ -2,6 +2,7 @@
 // single-use, unguessable state row created when the flow started — no session
 // is required, and no code is trusted without a matching live state.
 import { createFileRoute } from "@tanstack/react-router";
+import { capabilityCeiling } from "@/lib/social-connector-definitions";
 
 function back(origin: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();
@@ -154,7 +155,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                 expiresAt: tokens.expiresAt,
                 grantedScopes: tokens.scopes,
                 profile: {},
-                permissions: meta.capabilities,
+                permissions: [...capabilityCeiling(platform)],
               });
               return back(origin, { connected: platform, select_target: "1" });
             }
@@ -169,7 +170,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             expiresAt: tokens.expiresAt,
             grantedScopes: tokens.scopes,
             profile,
-            permissions: meta.capabilities,
+            permissions: [...capabilityCeiling(platform)],
           });
           await auditOutcome(
             "succeeded",

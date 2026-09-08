@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { CONNECTORS } from "@/lib/connections-catalog";
+import { capabilityCeiling } from "@/lib/social-connector-definitions";
 
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -58,7 +59,11 @@ const PLATFORMS: { id: string; label: string; hint: string }[] = [
     label: "Website (Flas blog)",
     hint: "Published on your Flas-hosted blog feed and used as SEO content — no plugin required.",
   },
-  ...CONNECTORS.filter((c) => c.capabilities.includes("publish")).map((c) => ({
+  // Only connectors that genuinely implement publishing. The old filter read a
+  // hardcoded capability list that claimed "publish" for nine social platforms
+  // Flas has no publish code for, so the composer offered targets it could
+  // never deliver to.
+  ...CONNECTORS.filter((c) => capabilityCeiling(c.id).has("publish")).map((c) => ({
     id: c.id === "wordpress" ? "wordpress" : c.id,
     label: c.id === "wordpress" ? "WordPress (your own site)" : c.name,
     hint: c.blurb,

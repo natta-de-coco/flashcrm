@@ -15,13 +15,19 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getIntegrationHealthReport, retryConnections } from "@/lib/connections.functions";
-import { CONNECTORS } from "@/lib/connections-catalog";
+import {
+  CONNECTOR_COUNTS,
+  NON_OAUTH_CONNECTORS,
+} from "@/lib/social-connector-definitions";
 import { downloadHealthReportCsv, downloadHealthReportPdf } from "@/lib/integration-health";
 import type { HealthRow } from "@/lib/integration-health";
 
-/** Split once, so the dialog copy and the connector grid always agree. */
-const OAUTH_CONNECTORS = CONNECTORS.filter((c) => c.oauth);
-const KEYED_CONNECTORS = CONNECTORS.filter((c) => !c.oauth);
+/**
+ * Counts come from the connector registry, so the grid and this dialog cannot
+ * disagree. The catalogue and the health report used to report different
+ * totals with no explanation of the gap.
+ */
+const KEYED_CONNECTORS = NON_OAUTH_CONNECTORS;
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CheckCircle2, FileDown, RefreshCw, Stethoscope } from "lucide-react";
@@ -89,8 +95,9 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
                 neither said why. Both numbers are derived from the catalogue
                 now, so they cannot drift apart again. */}
             Status, last error, missing permissions and the next retry step for the{" "}
-            {OAUTH_CONNECTORS.length} connections that sign in with OAuth. The other{" "}
-            {KEYED_CONNECTORS.length} — {KEYED_CONNECTORS.map((c) => c.name).join(", ")} — connect
+            {CONNECTOR_COUNTS.oauthPlatforms} API platform connectors that sign in with OAuth. The
+            other{" "}
+            {CONNECTOR_COUNTS.keyedOrPlugin} — {KEYED_CONNECTORS.map((c) => c.displayName).join(", ")} — connect
             with keys or a plugin rather than a login, so they are checked on their own cards
             instead. Export this and share it with whoever owns the account.
           </DialogDescription>

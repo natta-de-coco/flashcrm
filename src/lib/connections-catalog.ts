@@ -44,9 +44,7 @@ export type Connector = {
   /** OAuth provider family used for the token exchange. */
   provider?: "meta" | "google" | "linkedin" | "tiktok" | "twitter" | "pinterest";
   /** Capabilities the official API supports (subject to granted permissions). */
-  capabilities: Capability[];
   /** Capabilities the API does not support at all — shown as unavailable. */
-  unsupported?: Capability[];
   /** Where the owner manages the platform itself. */
   manageUrl: string;
   /** Handled by another Flas module instead of social_accounts. */
@@ -63,7 +61,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Page posts, comments, Messenger and Page insights.",
     oauth: true,
     provider: "meta",
-    capabilities: ["publish", "analytics", "messaging", "profile"],
     manageUrl: "https://business.facebook.com/latest/home",
     profilePattern: (h) => `https://facebook.com/${h}`,
   },
@@ -74,8 +71,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Feed, Reels, comments, DMs and account insights.",
     oauth: true,
     provider: "meta",
-    capabilities: ["publish", "analytics", "messaging"],
-    unsupported: ["profile"],
     manageUrl: "https://business.facebook.com/latest/instagram_content",
     profilePattern: (h) => `https://instagram.com/${h}`,
   },
@@ -86,8 +81,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Company page posts and follower/impression analytics.",
     oauth: true,
     provider: "linkedin",
-    capabilities: ["publish", "analytics", "profile"],
-    unsupported: ["messaging"],
     manageUrl: "https://www.linkedin.com/company/me/",
     profilePattern: (h) => `https://www.linkedin.com/company/${h}/`,
   },
@@ -98,8 +91,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Video publishing and video performance data.",
     oauth: true,
     provider: "tiktok",
-    capabilities: ["publish", "analytics"],
-    unsupported: ["messaging", "profile"],
     manageUrl: "https://www.tiktok.com/tiktokstudio",
     profilePattern: (h) => `https://www.tiktok.com/@${h}`,
   },
@@ -113,8 +104,6 @@ export const CONNECTORS: Connector[] = [
     // Comments are not messaging. YouTube exposes no direct-message API to
     // businesses, and the setup wizard requests no messaging scope, so the
     // card was promising an inbox that could never fill.
-    capabilities: ["publish", "analytics"],
-    unsupported: ["messaging", "profile"],
     manageUrl: "https://studio.youtube.com",
     profilePattern: (h) => `https://youtube.com/${h.startsWith("@") ? h : `channel/${h}`}`,
   },
@@ -125,8 +114,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Posts and public post metrics.",
     oauth: true,
     provider: "twitter",
-    capabilities: ["publish", "analytics"],
-    unsupported: ["profile"],
     manageUrl: "https://x.com/home",
     profilePattern: (h) => `https://x.com/${h.replace("@", "")}`,
   },
@@ -141,8 +128,6 @@ export const CONNECTORS: Connector[] = [
     // 31 July 2024, so messaging is not merely unimplemented here — it no
     // longer exists on Google's side for anyone.
     // https://support.google.com/business/answer/14919056
-    capabilities: ["publish", "analytics", "profile"],
-    unsupported: ["messaging"],
     manageUrl: "https://business.google.com/dashboard",
   },
   {
@@ -152,8 +137,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Pins, boards and pin analytics.",
     oauth: true,
     provider: "pinterest",
-    capabilities: ["publish", "analytics"],
-    unsupported: ["messaging"],
     manageUrl: "https://www.pinterest.com/business/hub/",
     profilePattern: (h) => `https://www.pinterest.com/${h}/`,
   },
@@ -164,8 +147,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Threads posts and post insights.",
     oauth: true,
     provider: "meta",
-    capabilities: ["publish", "analytics"],
-    unsupported: ["messaging", "profile"],
     manageUrl: "https://www.threads.net",
     profilePattern: (h) => `https://www.threads.net/@${h.replace("@", "")}`,
   },
@@ -175,7 +156,6 @@ export const CONNECTORS: Connector[] = [
     group: "messaging",
     blurb: "Numbers, templates, chatbot and conversations.",
     oauth: false,
-    capabilities: ["messaging", "analytics"],
     manageUrl: "https://business.facebook.com/wa/manage/",
     // No internalHref: this used to point at /connect, the page the card is
     // already on, so "Set up in Flas" went nowhere. WhatsApp has no OAuth
@@ -189,7 +169,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Campaign spend, CPL, creative fatigue signals.",
     oauth: true,
     provider: "meta",
-    capabilities: ["ads", "analytics"],
     manageUrl: "https://adsmanager.facebook.com",
   },
   {
@@ -199,7 +178,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Search spend, conversions and search terms.",
     oauth: true,
     provider: "google",
-    capabilities: ["ads", "analytics"],
     manageUrl: "https://ads.google.com",
   },
   {
@@ -209,7 +187,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "B2B campaign performance and lead gen forms.",
     oauth: true,
     provider: "linkedin",
-    capabilities: ["ads", "analytics"],
     manageUrl: "https://www.linkedin.com/campaignmanager/",
   },
   {
@@ -219,7 +196,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Campaign spend and creative performance.",
     oauth: true,
     provider: "tiktok",
-    capabilities: ["ads", "analytics"],
     manageUrl: "https://ads.tiktok.com",
   },
   {
@@ -229,7 +205,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Sessions, sources, conversions and landing pages.",
     oauth: true,
     provider: "google",
-    capabilities: ["analytics"],
     manageUrl: "https://analytics.google.com",
   },
   {
@@ -239,7 +214,6 @@ export const CONNECTORS: Connector[] = [
     blurb: "Impressions, clicks, positions and query data.",
     oauth: true,
     provider: "google",
-    capabilities: ["analytics"],
     manageUrl: "https://search.google.com/search-console",
   },
   {
@@ -248,7 +222,6 @@ export const CONNECTORS: Connector[] = [
     group: "commerce",
     blurb: "Lead plugin, blog sync and SEO publishing.",
     oauth: false,
-    capabilities: ["publish", "analytics"],
     manageUrl: "https://wordpress.org/support/",
     internalHref: "/seo-blog",
   },
@@ -258,7 +231,6 @@ export const CONNECTORS: Connector[] = [
     group: "commerce",
     blurb: "Store widget, products and order-driven leads.",
     oauth: false,
-    capabilities: ["publish", "analytics"],
     manageUrl: "https://admin.shopify.com",
     internalHref: "/connect",
   },
@@ -268,7 +240,6 @@ export const CONNECTORS: Connector[] = [
     group: "commerce",
     blurb: "Store leads and product catalogue sync.",
     oauth: false,
-    capabilities: ["analytics"],
     manageUrl: "https://woocommerce.com/document/woocommerce-rest-api/",
     internalHref: "/connect",
   },

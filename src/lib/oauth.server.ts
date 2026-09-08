@@ -2,6 +2,7 @@
 // user for a platform password: we redirect to the platform's own consent
 // screen and exchange the returned code for a token server-side.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { connectorDefinition } from "@/lib/social-connector-definitions";
 import type { AccountPlatform, Connector } from "./connections-catalog";
 import { connector } from "./connections-catalog";
 
@@ -13,7 +14,6 @@ type ProviderConfig = {
   idEnv: string;
   secretEnv: string;
   /** Scopes per platform id. */
-  scopes: Partial<Record<AccountPlatform, string[]>>;
   extraAuthParams?: Record<string, string>;
 };
 
@@ -23,40 +23,12 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
     idEnv: "META_APP_ID",
     secretEnv: "META_APP_SECRET",
-    scopes: {
-      facebook: [
-        "pages_show_list",
-        "pages_read_engagement",
-        "pages_manage_posts",
-        "pages_messaging",
-        "read_insights",
-      ],
-      instagram: [
-        "instagram_basic",
-        "instagram_manage_comments",
-        "instagram_manage_insights",
-        "instagram_content_publish",
-        "pages_show_list",
-      ],
-      threads: ["threads_basic", "threads_content_publish", "threads_manage_insights"],
-      meta_ads: ["ads_read", "ads_management", "business_management"],
-    },
   },
   google: {
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     idEnv: "GOOGLE_OAUTH_CLIENT_ID",
     secretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-    scopes: {
-      youtube: [
-        "https://www.googleapis.com/auth/youtube.readonly",
-        "https://www.googleapis.com/auth/youtube.force-ssl",
-      ],
-      google_business: ["https://www.googleapis.com/auth/business.manage"],
-      google_ads: ["https://www.googleapis.com/auth/adwords"],
-      google_analytics: ["https://www.googleapis.com/auth/analytics.readonly"],
-      search_console: ["https://www.googleapis.com/auth/webmasters.readonly"],
-    },
     extraAuthParams: { access_type: "offline", prompt: "consent", include_granted_scopes: "true" },
   },
   linkedin: {
@@ -64,27 +36,18 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
     idEnv: "LINKEDIN_CLIENT_ID",
     secretEnv: "LINKEDIN_CLIENT_SECRET",
-    scopes: {
-      linkedin: ["r_organization_social", "w_organization_social", "rw_organization_admin"],
-      linkedin_ads: ["r_ads", "r_ads_reporting"],
-    },
   },
   tiktok: {
     authorizeUrl: "https://www.tiktok.com/v2/auth/authorize/",
     tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/",
     idEnv: "TIKTOK_CLIENT_KEY",
     secretEnv: "TIKTOK_CLIENT_SECRET",
-    scopes: {
-      tiktok: ["user.info.basic", "user.info.profile", "user.info.stats", "video.list"],
-      tiktok_ads: ["user.info.basic"],
-    },
   },
   twitter: {
     authorizeUrl: "https://twitter.com/i/oauth2/authorize",
     tokenUrl: "https://api.twitter.com/2/oauth2/token",
     idEnv: "X_CLIENT_ID",
     secretEnv: "X_CLIENT_SECRET",
-    scopes: { twitter: ["tweet.read", "tweet.write", "users.read", "offline.access"] },
     // Real PKCE is generated per-authorization below.  The hardcoded challenge
     // used previously was equivalent to no PKCE at all and would be rejected by
     // X's confidential-client / stricter modes.
@@ -95,7 +58,6 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     tokenUrl: "https://api.pinterest.com/v5/oauth/token",
     idEnv: "PINTEREST_APP_ID",
     secretEnv: "PINTEREST_APP_SECRET",
-    scopes: { pinterest: ["boards:read", "pins:read", "pins:write", "user_accounts:read"] },
   },
 };
 
@@ -228,7 +190,11 @@ export async function startAuthorization(args: {
   });
   if (error) return { ready: false, reason: error.message, missing: [] };
 
-  const scopes = cfg.scopes[args.platform] ?? [];
+  // Scopes come from the connector registry, not from a list kept here.
+  // There were three copies of this data -- here, connection-setup.ts and
+  // connection-status.ts -- and they had already drifted: the setup wizard
+  // told users TikTok requests video.publish, which this file never sent.
+  const scopes = connectorDefinition(args.platform)?.requestedScopes ?? [];
   const params = new URLSearchParams({
     client_id: creds.id,
     redirect_uri: redirectUri,

@@ -30,8 +30,16 @@ export type SetupGuide = {
   requires: string[];
   /** Ordered steps the user follows. */
   steps: string[];
-  /** Permissions/scopes Flas requests. */
-  scopes?: string[];
+  /**
+   * Scopes are NOT listed here.
+   *
+   * This file used to carry its own copy, and it had drifted from what is
+   * actually requested: the Instagram guide advertised
+   * instagram_manage_messages and the TikTok guide advertised video.publish,
+   * neither of which oauth.server.ts has ever sent. The wizard now reads
+   * requestedScopes from the connector registry, so what the user is told and
+   * what the authorization URL asks for cannot disagree.
+   */
   /** Frequent failure reasons and the fix. */
   gotchas?: string[];
 };
@@ -52,14 +60,6 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Choose the Business, the Page and the Instagram account, then keep every permission toggle ON.",
       "Return to this tab; the card flips to Connected and Flas pulls your profile, media and insights.",
     ],
-    scopes: [
-      "instagram_basic",
-      "instagram_manage_comments",
-      "instagram_manage_messages",
-      "instagram_content_publish",
-      "pages_show_list",
-      "pages_read_engagement",
-    ],
     gotchas: [
       "Only DMs and comments received after the connection can be read — Meta does not backfill history.",
       "If you switch the Facebook Page, Instagram access is revoked and you must reconnect.",
@@ -73,13 +73,6 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Pick the Business Portfolio, then tick every Page you want inside Flas.",
       "Leave all permissions enabled, finish, and come back to this tab.",
     ],
-    scopes: [
-      "pages_show_list",
-      "pages_manage_posts",
-      "pages_read_engagement",
-      "pages_messaging",
-      "read_insights",
-    ],
     gotchas: [
       "Page roles set to Editor are not enough for Messenger — you need Admin (full control).",
       "business.facebook.com will never load inside the app preview; use the new tab that opens.",
@@ -91,7 +84,6 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Connect Instagram first.",
       "Press Connect on Threads and approve the Threads permissions in the new tab.",
     ],
-    scopes: ["threads_basic", "threads_content_publish", "threads_manage_insights"],
     gotchas: ["Threads has no DM API — replies to Threads DMs must be done in the app."],
   },
   google_business: {
@@ -105,7 +97,6 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Grant the Business Profile permission, then return here.",
       "Flas then syncs posts, reviews, calls and direction requests.",
     ],
-    scopes: ["https://www.googleapis.com/auth/business.manage"],
     gotchas: [
       "Google's Business Profile API requires a one-time API access approval on your Google Cloud project — request it once and it covers all your locations.",
       "Reviews can be replied to, but review deletion is not offered by the API.",
@@ -118,11 +109,6 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "If you use a Brand Account, pick the brand identity on the Google consent screen.",
       "Approve YouTube data + upload permissions.",
     ],
-    scopes: [
-      "https://www.googleapis.com/auth/youtube.readonly",
-      "https://www.googleapis.com/auth/youtube.force-ssl",
-      "https://www.googleapis.com/auth/yt-analytics.readonly",
-    ],
     gotchas: [
       "Uploads consume a large daily API quota — schedule videos rather than bulk-posting.",
     ],
@@ -134,7 +120,6 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Approve video publishing and analytics access.",
       "Flas posts as drafts to your TikTok inbox unless you approve direct publishing.",
     ],
-    scopes: ["user.info.basic", "video.list", "video.publish"],
     gotchas: [
       "TikTok has no comment or DM API for third parties — replies happen in TikTok Studio.",
       "Until your TikTok app is reviewed, only accounts you add as testers can connect.",
@@ -146,12 +131,6 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Press Connect and sign in to LinkedIn.",
       "Select the Company Page and approve posting + analytics.",
     ],
-    scopes: [
-      "w_member_social",
-      "r_organization_social",
-      "w_organization_social",
-      "rw_organization_admin",
-    ],
     gotchas: [
       "Personal-profile posting is limited by LinkedIn; company pages are fully supported.",
       "LinkedIn has no messaging API — DMs stay in LinkedIn.",
@@ -160,13 +139,11 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
   twitter: {
     requires: ["An X account with a developer project on at least the Basic tier for posting"],
     steps: ["Press Connect, authorise Flas on X, and return to this tab."],
-    scopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
     gotchas: ["X free tier is read-limited; posting volume depends on your X plan."],
   },
   pinterest: {
     requires: ["A Pinterest business account"],
     steps: ["Press Connect, approve pins + boards + analytics access."],
-    scopes: ["boards:read", "pins:read", "pins:write", "user_accounts:read"],
   },
   meta_ads: {
     requires: ["An ad account inside a Meta Business Portfolio you administer"],
@@ -174,29 +151,24 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Press Connect and choose the Business Portfolio.",
       "Tick the ad accounts Flas should read.",
     ],
-    scopes: ["ads_read", "business_management"],
     gotchas: ["Flas reads spend and results only — it never changes budgets or pauses campaigns."],
   },
   google_ads: {
     requires: ["Access to the Google Ads account (Standard or Admin)"],
     steps: ["Press Connect, sign in with Google, approve Google Ads read access."],
-    scopes: ["https://www.googleapis.com/auth/adwords"],
     gotchas: ["Manager (MCC) accounts must select the child account you want reported."],
   },
   linkedin_ads: {
     requires: ["Campaign Manager access on the LinkedIn ad account"],
     steps: ["Press Connect and approve the ads reporting permission."],
-    scopes: ["r_ads", "r_ads_reporting"],
   },
   tiktok_ads: {
     requires: ["A TikTok Ads Manager account"],
     steps: ["Press Connect and approve advertiser reporting access."],
-    scopes: ["ad.report", "advertiser.read"],
   },
   google_analytics: {
     requires: ["A GA4 property with at least Viewer access"],
     steps: ["Press Connect, sign in with Google, then pick the GA4 property."],
-    scopes: ["https://www.googleapis.com/auth/analytics.readonly"],
     gotchas: ["Universal Analytics (pre-GA4) properties no longer return data."],
   },
   search_console: {
@@ -205,7 +177,6 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
       "Verify flas.mobidigisol.com (or your own domain) in Search Console.",
       "Press Connect and approve read access.",
     ],
-    scopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
     gotchas: ["Search data lags 2–3 days — that is Google's delay, not Flas's."],
   },
   whatsapp: {

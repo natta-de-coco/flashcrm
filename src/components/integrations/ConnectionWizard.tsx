@@ -18,6 +18,11 @@ import { CredentialsStep } from "@/components/integrations/CredentialsStep";
 import { credentialSpec, OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
 import { CONNECTORS } from "@/lib/connections-catalog";
 import {
+  CAPABILITY_LABELS,
+  advertisableCapabilities,
+  connectorDefinition,
+} from "@/lib/social-connector-definitions";
+import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
@@ -63,6 +68,7 @@ export function ConnectionWizard({
 }) {
   const meta = connector(platformId);
   const guide = setupGuide(platformId);
+  const definition = connectorDefinition(platformId);
   const trouble = troubleshooting(platformId);
   const [step, setStep] = useState<Step>(openAt ?? "prepare");
   useEffect(() => {
@@ -208,9 +214,14 @@ export function ConnectionWizard({
             <section className="space-y-3">
               <div>
                 <p className="mb-1 font-medium">Permissions Flas will request</p>
-                {guide?.scopes?.length ? (
+                {/* Straight from the registry, which is the same list
+                    oauth.server.ts puts in the authorization URL. The wizard
+                    used to keep its own copy and it had drifted -- it promised
+                    instagram_manage_messages and tiktok video.publish, neither
+                    of which was ever requested. */}
+                {definition && definition.requestedScopes.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
-                    {guide.scopes.map((scope) => (
+                    {definition.requestedScopes.map((scope) => (
                       <Badge key={scope} variant="secondary" className="font-mono text-[10px]">
                         {scope}
                       </Badge>
@@ -221,10 +232,18 @@ export function ConnectionWizard({
                     This platform is configured manually inside Flas — no OAuth permissions needed.
                   </p>
                 )}
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Keep every toggle ON. A skipped permission silently disables the matching feature
-                  (for example DMs stop arriving in the inbox).
-                </p>
+                {/* Provider-specific, never generic. The previous copy warned
+                    every connector that "DMs stop arriving", including the
+                    nine that have no direct-message API at all. */}
+                {definition && definition.requestedScopes.length > 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Keep every toggle on. Declining one disables exactly the feature it covers:{" "}
+                    {advertisableCapabilities(definition)
+                      .map((cap) => CAPABILITY_LABELS[cap.key].toLowerCase())
+                      .join(", ") || "profile access"}
+                    .
+                  </p>
+                )}
               </div>
               {trouble?.reviewTimeline ? (
                 <div className="flex gap-2 rounded-md border bg-muted/40 p-3">
