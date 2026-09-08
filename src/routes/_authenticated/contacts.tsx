@@ -94,10 +94,28 @@ function ContactsPage() {
     },
   });
 
+  // Save used to be enabled with every field empty, storing a row called
+  // "Unnamed contact" with no phone and no email -- a record nobody can act on
+  // and nobody can find again. A contact needs a name and at least one way to
+  // reach them.
+  const contactProblem: string | null = (() => {
+    if (form.name.trim().length < 2) return "Enter a name.";
+    const digits = form.phone.replace(/[^0-9]/g, "");
+    const hasPhone = digits.length >= 6;
+    const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+    if (!hasPhone && !hasEmail) return "Add a WhatsApp number or an email.";
+    if (form.phone.trim() && !hasPhone) return "That number looks too short.";
+    if (form.email.trim() && !hasEmail) return "That email does not look right.";
+    if (form.value.trim() && !(Number(form.value) >= 0)) {
+      return "Deal value must be a positive number.";
+    }
+    return null;
+  })();
+
   const create = useMutation({
     mutationFn: async () => {
       const { error } = await supabase.from("contacts").insert({
-        name: form.name.trim() || "Unnamed contact",
+        name: form.name.trim(),
         phone: form.phone.trim() || null,
         email: form.email.trim() || null,
         company: form.company.trim() || null,
@@ -387,19 +405,29 @@ function ContactsPage() {
                 <DialogTitle>New contact</DialogTitle>
               </DialogHeader>
               <div className="grid gap-3">
+                {/* Deal value is money and was accepting any text, so "call
+                    back next week" saved as 0 with no complaint. Each field
+                    now declares its own type, which also gives phones and
+                    emails the right mobile keyboard. */}
                 {(
                   [
-                    ["name", "Name"],
-                    ["phone", "WhatsApp number"],
-                    ["email", "Email"],
-                    ["company", "Company"],
-                    ["value", "Deal value"],
+                    ["name", "Name", "text", true],
+                    ["phone", "WhatsApp number", "tel", false],
+                    ["email", "Email", "email", false],
+                    ["company", "Company", "text", false],
+                    ["value", "Deal value", "number", false],
                   ] as const
-                ).map(([key, label]) => (
+                ).map(([key, label, type, required]) => (
                   <div key={key} className="grid gap-1.5">
-                    <Label htmlFor={key}>{label}</Label>
+                    <Label htmlFor={key}>
+                      {label}
+                      {required && <span className="ml-0.5 text-destructive">*</span>}
+                    </Label>
                     <Input
                       id={key}
+                      type={type}
+                      {...(type === "number" ? { min: 0, step: "0.01" } : {})}
+                      {...(required ? { required: true, "aria-required": true } : {})}
                       value={form[key]}
                       onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                     />
@@ -433,8 +461,14 @@ function ContactsPage() {
                   </span>
                 </label>
               </div>
-              <DialogFooter>
-                <Button onClick={() => create.mutate()} disabled={create.isPending}>
+              <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
+                {contactProblem && (
+                  <p className="text-xs text-muted-foreground sm:mr-auto">{contactProblem}</p>
+                )}
+                <Button
+                  onClick={() => create.mutate()}
+                  disabled={create.isPending || contactProblem !== null}
+                >
                   Save contact
                 </Button>
               </DialogFooter>

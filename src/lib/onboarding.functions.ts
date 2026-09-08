@@ -170,6 +170,10 @@ export const listTeam = createServerFn({ method: "GET" })
         .select("id, email, staff_role, status, created_at")
         .eq("tenant_id", me.tenant_id)
         .eq("status", "pending")
+        // An invitation past its window can no longer be claimed, so listing
+        // it as pending would be telling the admin to keep waiting for
+        // something that can never arrive.
+        .gte("created_at", new Date(Date.now() - INVITE_TTL_DAYS * 86_400_000).toISOString())
         .order("created_at", { ascending: false }),
     ]);
     return { members: members ?? [], invites: invites ?? [], myId: context.userId };
@@ -289,6 +293,16 @@ export const removeStaff = createServerFn({ method: "POST" })
   });
 
 /** Claims pending invites for the caller's email after they sign up. */
+/**
+ * How long an invitation stays usable.
+ *
+ * team_invites has no expires_at column, so expiry is enforced against
+ * created_at rather than by adding a migration -- there is already one waiting
+ * to be applied, and an unbounded invitation is worth closing today. An
+ * invite that leaks a year from now must not still hand someone a workspace.
+ */
+export const INVITE_TTL_DAYS = 7;
+
 export const claimInvites = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -296,11 +310,21 @@ export const claimInvites = createServerFn({ method: "POST" })
     const email = authData.user?.email?.toLowerCase();
     if (!email) return { claimed: 0 };
 
+    // Membership is granted by matching an email, so that email has to have
+    // been proven. Without this, signing up as someone else's address would
+    // hand over their pending invitation and the workspace behind it.
+    if (!authData.user?.email_confirmed_at) {
+      throw new Error("Confirm your email address first — we sent you a link.");
+    }
+
+    const cutoff = new Date(Date.now() - INVITE_TTL_DAYS * 86_400_000).toISOString();
     const { data: invites } = await context.supabase
       .from("team_invites")
-      .select("id, tenant_id, staff_role")
+      .select("id, tenant_id, staff_role, created_at")
       .eq("email", email)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false });
     if (!invites?.length) return { claimed: 0 };
 
     const invite = invites[0];

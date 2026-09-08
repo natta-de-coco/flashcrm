@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { ConnectBusiness } from "@/components/integrations/ConnectBusiness";
+import { AiKeysCard } from "@/components/integrations/AiKeysCard";
 import { IntegrationSettings } from "@/components/integrations/IntegrationSettings";
 import { IntegrationLogs } from "@/components/integrations/IntegrationLogs";
 import { Badge } from "@/components/ui/badge";
@@ -406,6 +407,10 @@ function ConnectPage() {
           all integrations, and belong beside the connector cards. */}
       <div className="mb-8">
         <IntegrationSettings />
+      </div>
+
+      <div className="mb-8 max-w-3xl">
+        <AiKeysCard />
       </div>
 
       <div className="mt-8">

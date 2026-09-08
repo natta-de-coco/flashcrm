@@ -4,8 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import {
   InvoiceBuilder,
   emptyDocument,
-  type BuilderState,
-} from "@/components/sales/InvoiceBuilder";
+  type BuilderState, previewTotals } from "@/components/sales/InvoiceBuilder";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +29,31 @@ import { useServerFn } from "@tanstack/react-start";
 import { ArrowRight, Download, FileText, Plus, Receipt, Send } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
+/**
+ * Why a document cannot be finalised yet, or null when it can.
+ *
+ * Finalising locks a sequential number and generates a PDF, so a document that
+ * goes out with no customer, an empty line and a zero total burns a number on
+ * something unsendable -- and in a numbered series that gap is permanent.
+ * Saving a draft stays unrestricted; this only guards the irreversible step.
+ */
+function finaliseBlocker(state: BuilderState): string | null {
+  const named = state.customer.name.trim() || state.customer.company.trim();
+  if (!named) return "Add a customer name or company before finalising.";
+
+  const usable = state.items.filter(
+    (i) => (i.description ?? "").trim().length > 0 && Number(i.quantity) > 0,
+  );
+  if (usable.length === 0) {
+    return "Add at least one line with a description and a quantity above zero.";
+  }
+
+  if (previewTotals(state).grand <= 0) {
+    return "The total is zero — check the prices before finalising.";
+  }
+  return null;
+}
 
 export const Route = createFileRoute("/_authenticated/sales")({
   head: () => ({
@@ -314,12 +338,22 @@ function SalesPage() {
               >
                 Save draft
               </Button>
-              <Button disabled={save.isPending} onClick={() => save.mutate(true)}>
-                Finalise & number
+              <Button
+                disabled={save.isPending || finaliseBlocker(builder) !== null}
+                title={finaliseBlocker(builder) ?? undefined}
+                onClick={() => save.mutate(true)}
+              >
+                Finalise &amp; number
               </Button>
             </>
           }
         />
+        {finaliseBlocker(builder) && (
+          <p className="mb-4 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+            <strong className="text-foreground">Not ready to finalise:</strong>{" "}
+            {finaliseBlocker(builder)} You can still save it as a draft.
+          </p>
+        )}
         <InvoiceBuilder
           state={builder}
           onChange={setBuilder}

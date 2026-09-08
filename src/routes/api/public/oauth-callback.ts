@@ -26,23 +26,72 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        /**
+         * Records how an authorization ended.
+         *
+         * Only "connection.authorize_started" was ever written, so an attempt
+         * that failed left a start with no finish: the log could not
+         * distinguish a customer pressing Cancel from an expired state row
+         * from a token exchange that errored, and every one of those needs a
+         * different reply to the customer.
+         */
+        const auditOutcome = async (
+          outcome: string,
+          platform: string | null,
+          tenantId: string | null,
+          userId: string | null,
+          reason: string,
+        ) => {
+          try {
+            const { logAudit } = await import("@/lib/audit.server");
+            await logAudit({
+              action: `connection.authorize_${outcome}`,
+              tenantId,
+              actorId: userId,
+              entityType: "platform",
+              entityId: platform ?? "unknown",
+              details: { reason },
+            });
+          } catch (e) {
+            console.error("[oauth-callback] could not audit outcome", e);
+          }
+        };
+
         const url = new URL(request.url);
         const origin = url.origin;
         const state = url.searchParams.get("state") ?? "";
         const code = url.searchParams.get("code") ?? "";
         const denied = url.searchParams.get("error_description") ?? url.searchParams.get("error");
 
-        if (!state)
+        if (!state) {
+          await auditOutcome("failed", null, null, null, "No state parameter in the callback");
           return back(origin, { connect_error: "Authorization response was incomplete." });
+        }
 
         const { consumeState, exchangeCode } = await import("@/lib/oauth.server");
         const row = await consumeState(state);
         if (!row) {
+          await auditOutcome(
+            "expired",
+            null,
+            null,
+            null,
+            "State was already used or older than its expiry — start the connection again",
+          );
           return back(origin, {
             connect_error: "This authorization link expired. Please start the connection again.",
           });
         }
         if (denied || !code) {
+          await auditOutcome(
+            "cancelled",
+            row.platform,
+            row.tenant_id,
+            row.user_id ?? null,
+            denied
+              ? `Provider refused or the user declined: ${String(denied).slice(0, 200)}`
+              : "Provider returned no authorization code",
+          );
           return back(origin, {
             connect_error: `Authorization was not completed for ${row.platform.replace(/_/g, " ")}.`,
           });
@@ -51,6 +100,13 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
         const { connector } = await import("@/lib/connections-catalog");
         const meta = connector(row.platform);
         if (!meta?.provider) {
+          await auditOutcome(
+            "failed",
+            row.platform,
+            row.tenant_id,
+            row.user_id ?? null,
+            "No OAuth provider is configured for this platform",
+          );
           return back(origin, { connect_error: "Unsupported platform." });
         }
 
@@ -115,6 +171,13 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             profile,
             permissions: meta.capabilities,
           });
+          await auditOutcome(
+            "succeeded",
+            row.platform,
+            row.tenant_id,
+            row.user_id ?? null,
+            "Connected",
+          );
           return back(origin, { connected: row.platform });
         } catch (e) {
           // Log the raw error server-side, but only leak a sanitized code to
@@ -142,6 +205,13 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             console.error("[oauth-callback] could not record error", recordError);
           }
 
+          await auditOutcome(
+            "failed",
+            row.platform,
+            row.tenant_id,
+            row.user_id ?? null,
+            e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300),
+          );
           return back(origin, { connect_error: sanitizeError(e), platform: row.platform });
         }
       },

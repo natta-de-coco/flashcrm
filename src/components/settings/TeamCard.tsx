@@ -11,7 +11,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTenant } from "@/hooks/useTenant";
-import { inviteStaff, listTeam, removeStaff, setStaffRole } from "@/lib/onboarding.functions";
+import {
+  INVITE_TTL_DAYS,
+  inviteStaff,
+  listTeam,
+  removeStaff,
+  setStaffRole,
+} from "@/lib/onboarding.functions";
 import { ROLE_LABELS, isCompanyManager, routesFor } from "@/lib/permissions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -203,6 +209,10 @@ export function TeamCard() {
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Pending invites
             </p>
+            <p className="-mt-1 text-xs text-muted-foreground">
+              An invitation is claimable for {INVITE_TTL_DAYS} days, and only by someone who has
+              confirmed that email address. Expired ones stop appearing here — send a new one.
+            </p>
             {invites.map((i) => (
               <div
                 key={i.id}
@@ -210,7 +220,13 @@ export function TeamCard() {
               >
                 <p className="truncate text-sm">{i.email}</p>
                 <Badge variant="outline">
-                  {ROLE_LABELS[i.staff_role as AssignableRole]?.label ?? i.staff_role} · pending
+                  {ROLE_LABELS[i.staff_role as AssignableRole]?.label ?? i.staff_role} ·{" "}
+                  {(() => {
+                    const left =
+                      INVITE_TTL_DAYS -
+                      Math.floor((Date.now() - new Date(i.created_at).getTime()) / 86_400_000);
+                    return left <= 1 ? "expires today" : `${left} days left`;
+                  })()}
                 </Badge>
               </div>
             ))}

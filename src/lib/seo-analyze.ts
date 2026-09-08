@@ -59,6 +59,12 @@ export type SeoCheck = {
   label: string;
   passed: boolean;
   detail?: string;
+  /**
+   * False when the check cannot apply -- an article with no images cannot
+   * have image alt text. Such a check is excluded from the score rather than
+   * counted as passed, which is what made an entirely empty article score 22%.
+   */
+  applicable?: boolean;
 };
 
 export type SeoAuditInput = {
@@ -129,7 +135,9 @@ export function computeSeoAudit(input: SeoAuditInput): SeoAudit {
     {
       id: "alts",
       label: "All images have alt text",
-      passed: input.imageAlts.length === 0 || input.imageAlts.every((a) => a.trim().length > 0),
+      applicable: input.imageAlts.length > 0,
+      passed: input.imageAlts.length > 0 && input.imageAlts.every((a) => a.trim().length > 0),
+      detail: input.imageAlts.length === 0 ? "No images" : `${input.imageAlts.length} image(s)`,
     },
     {
       id: "readability",
@@ -140,13 +148,27 @@ export function computeSeoAudit(input: SeoAuditInput): SeoAudit {
     {
       id: "secondary",
       label: "Uses secondary keywords",
-      passed: input.secondaryKeywords.length === 0 || usedSecondary.length > 0,
-      detail: `${usedSecondary.length}/${input.secondaryKeywords.length}`,
+      applicable: input.secondaryKeywords.length > 0,
+      passed: input.secondaryKeywords.length > 0 && usedSecondary.length > 0,
+      detail:
+        input.secondaryKeywords.length === 0
+          ? "None set"
+          : `${usedSecondary.length}/${input.secondaryKeywords.length}`,
     },
   ];
 
-  const passed = checks.filter((c) => c.passed).length;
-  const score = Math.round((passed / checks.length) * 100);
+  // An article with no content has nothing to score. Reporting a number for
+  // it implied progress that did not exist -- a blank draft read as 22%.
+  const isEmpty = words === 0 && !input.title.trim() && !input.metaDescription.trim();
+  if (isEmpty) {
+    return { score: 0, checks, usedSecondary, wordCount: 0, grade, density };
+  }
+
+  // Only checks that can apply count towards the denominator, so "no images"
+  // neither helps nor hurts.
+  const applicable = checks.filter((c) => c.applicable !== false);
+  const passed = applicable.filter((c) => c.passed).length;
+  const score = applicable.length === 0 ? 0 : Math.round((passed / applicable.length) * 100);
   return { score, checks, usedSecondary, wordCount: words, grade, density };
 }
 

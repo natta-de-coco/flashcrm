@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/hooks/useTenant";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Bot, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -175,6 +175,11 @@ function ChatbotPage() {
             </div>
             <div className="grid gap-1.5">
               <Label>Model</Label>
+              {/* These are the shared Flas AI models. A workspace that has
+                  added its own OpenAI or Anthropic key uses that provider's
+                  model instead, and this picker does not apply to it -- which
+                  the page previously did not say, so the list looked like the
+                  only option there was. */}
               <Select value={form.model} onValueChange={(v) => setForm({ ...form, model: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -187,6 +192,14 @@ function ChatbotPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                These run on the shared Flas AI key. To use your own account instead, add an OpenAI
+                or Anthropic key under{" "}
+                <Link to="/connect" hash="ai-keys" className="text-brand underline underline-offset-2">
+                  Integrations → Your own AI keys
+                </Link>
+                . Your provider&apos;s model is used then, and this setting no longer applies.
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -145,7 +145,7 @@ export async function callFlashAi(
         }
       : chosen.provider === "anthropic"
         ? {
-            model: "claude-sonnet-4-5",
+            model: "claude-sonnet-5",
             max_tokens: 4096,
             system,
             messages: [{ role: "user", content: user }],
