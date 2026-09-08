@@ -90,13 +90,20 @@ Example of the shape (abbreviated):
    date is the clearest possible signal of scaled content generation, which
    Google's spam policy demotes. Do not publish them all at once.
 
-2. **Never invent a fact about a named competitor.** For any comparison post,
-   write the structure and the Flas side in full, and leave every competitor
-   claim as a marked placeholder:
-   `[VERIFY: Wati entry-tier price as of {date} — check wati.io/pricing]`.
-   A wrong price about a named company is false advertising, not an SEO problem.
-   Do not soften this by writing "around" or "approximately" — leave the
-   placeholder.
+2. **Never invent a fact about a named competitor.** Verified pricing for Wati,
+   Respond.io, Zoko, Chatwoot and Twilio is in `docs/competitor-pricing-verified.md`,
+   read from each vendor's own page on 2026-09-08. Use only those figures, and
+   always state the "verified September 2026" date beside them in the article.
+
+   Interakt and AiSensy base prices are marked LOW CONFIDENCE in that file and
+   are **not** verified — do not publish a price for either. If a post needs one,
+   leave `[VERIFY: Interakt Growth monthly price — recheck interakt.shop/pricing]`.
+
+   That file also lists what must be conceded about competitors (Chatwoot is
+   cheaper for a single agent; Zoko Starter also has unlimited agents; Chatwoot
+   is open source; Wati and Respond.io are far more established). Every
+   comparison post must include the genuine concessions. A comparison that finds
+   no competitor better at anything reads as marketing and converts worse.
 
 3. **Never claim a Flas feature that is not in the list above.** In particular,
    Flas does **not** currently support Gemini as a bring-your-own AI key (OpenAI
