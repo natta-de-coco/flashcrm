@@ -22,6 +22,10 @@ export const Route = createFileRoute("/sitemap.xml")({
           { path: "/auth", changefreq: "monthly", priority: "0.5" },
           { path: "/privacy", changefreq: "yearly", priority: "0.3" },
           { path: "/terms", changefreq: "yearly", priority: "0.3" },
+          // Commercial pages rank above the blog, so they carry the priority.
+          { path: "/pricing", changefreq: "monthly", priority: "0.9" },
+          { path: "/features", changefreq: "monthly", priority: "0.9" },
+          { path: "/whatsapp-business-api", changefreq: "monthly", priority: "0.9" },
           { path: "/blog", changefreq: "weekly", priority: "0.8" },
           // Every guide, with lastmod taken from the post itself so a revision
           // is actually signalled to crawlers rather than silently shipped.

@@ -24,11 +24,16 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
           </Link>
           <nav className="flex items-center gap-4">
             <Link
-              to="/"
-              hash="modules"
+              to="/features"
               className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
-              What&apos;s inside
+              Features
+            </Link>
+            <Link
+              to="/pricing"
+              className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
+            >
+              Pricing
             </Link>
             <Link
               to="/blog"
@@ -52,6 +57,15 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
         <p className="mt-3 flex flex-wrap items-center justify-center gap-3">
           <Link to="/" className="underline">
             Home
+          </Link>
+          <Link to="/features" className="underline">
+            Features
+          </Link>
+          <Link to="/pricing" className="underline">
+            Pricing
+          </Link>
+          <Link to="/whatsapp-business-api" className="underline">
+            WhatsApp API
           </Link>
           <Link to="/blog" className="underline">
             Guides

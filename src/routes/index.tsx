@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useReveal } from "@/hooks/useReveal";
+import { InboxPreview } from "@/components/marketing/InboxPreview";
+import { StickyCta } from "@/components/marketing/StickyCta";
 import { POSTS } from "@/content/blog";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
@@ -24,6 +26,7 @@ import {
   Sparkles,
   Users,
   Zap,
+  ChevronDown,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -81,6 +84,54 @@ export const Route = createFileRoute("/")({
               description: "Yearly plan: $240 per year instead of $360.",
             },
           ],
+        }),
+      },
+      {
+        // FAQPage is the highest-leverage structured data on a page like this:
+        // it is what produces the expandable questions under a search result.
+        // The answers below are identical to the ones rendered on the page --
+        // Google treats a mismatch as a violation, not a shortcut.
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: FAQS.map((f) => ({
+            "@type": "Question",
+            name: f.q,
+            acceptedAnswer: { "@type": "Answer", text: f.a },
+          })),
+        }),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          name: "Mobi Digital Solutions",
+          url: "https://mobidigisol.com",
+          email: "info@mobidigisol.com",
+          description:
+            "Digital growth systems for businesses: websites and e-commerce, WhatsApp and CRM automation, SEO and content, paid social and search, and custom software.",
+          sameAs: ["https://flas.mobidigisol.com"],
+          contactPoint: [
+            {
+              "@type": "ContactPoint",
+              contactType: "sales",
+              email: "info@mobidigisol.com",
+              telephone: "+971 50 963 0506",
+              availableLanguage: ["en", "ar"],
+            },
+          ],
+        }),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: "Flas CRM",
+          url: "https://flas.mobidigisol.com",
+          publisher: { "@type": "Organization", name: "Mobi Digital Solutions" },
         }),
       },
     ],
@@ -189,6 +240,46 @@ const STEPS = [
   },
 ];
 
+/**
+ * Written against real search phrasing rather than marketing copy: these are
+ * the questions the guides get asked, and the ones that appear in Google's
+ * "People also ask". Answers are deliberately direct -- a hedged answer wins
+ * no rich result and helps nobody.
+ *
+ * Kept in sync with the FAQPage JSON-LD below. Google requires the answer text
+ * on the page to match the structured data, so both read from this array.
+ */
+const FAQS = [
+  {
+    q: "Do I need the WhatsApp Business API to use Flas CRM?",
+    a: "Yes — Flas connects through the official WhatsApp Cloud API, which is what allows a whole team to answer from one number and lets the chatbot reply automatically. If you are still on the free WhatsApp Business app, Mobi Digital Solutions handles the move for you, including Meta business verification and display name approval.",
+  },
+  {
+    q: "Can I connect more than one WhatsApp number?",
+    a: "Yes. A workspace can hold several numbers — for example sales and support, or one per branch. Incoming chats are routed to the number the customer messaged, and replies go out from that same number, so the customer never sees a different sender.",
+  },
+  {
+    q: "How long does WhatsApp Business API approval take?",
+    a: "Business verification usually takes a few days once your documents are consistent, and display name review is normally quicker. Most delays come from avoidable mismatches — a trade licence name that differs from the Meta Business account, or a website with no visible phone number and address.",
+  },
+  {
+    q: "Will it work with my existing website?",
+    a: "Yes. There is a downloadable WordPress plugin, a Shopify theme package, and a single script tag for any other site. The popup asks a visitor for their WhatsApp number and email before the chat starts, so you capture the lead even if they never send a message.",
+  },
+  {
+    q: "How much does Flas CRM cost?",
+    a: "One month free, then $20 per month for your first six months instead of $30, or $240 a year instead of $360. WhatsApp's own per-message fees are charged separately by Meta and vary by country.",
+  },
+  {
+    q: "Is my data kept separate from other companies?",
+    a: "Every company is a separate tenant enforced by database row-level security, so one workspace cannot read another's contacts, conversations or credentials. Stored credentials are further restricted at the column level, audit logs record administrative actions, and each teammate's role decides what they can reach.",
+  },
+  {
+    q: "Can I use my own OpenAI or Claude key?",
+    a: "Yes. Flas AI works out of the box, or you can add your own OpenAI or Anthropic key in the workspace and all AI requests run against your account instead.",
+  },
+];
+
 const WHATSAPP = "https://wa.me/9710509630506";
 
 function Landing() {
@@ -220,12 +311,18 @@ function Landing() {
             </span>
           </span>
           <nav className="flex items-center gap-4">
-            <a
-              href="#modules"
+            <Link
+              to="/features"
               className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
-              What&apos;s inside
-            </a>
+              Features
+            </Link>
+            <Link
+              to="/pricing"
+              className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
+            >
+              Pricing
+            </Link>
             <Link
               to="/blog"
               className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
@@ -263,7 +360,8 @@ function Landing() {
             />
           </div>
 
-          <div className="mx-auto max-w-3xl px-6 py-20 text-center sm:py-28">
+          <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 sm:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
+            <div className="text-center lg:text-left">
             <span
               data-reveal
               className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand"
@@ -277,8 +375,8 @@ function Landing() {
 
             <h1
               data-reveal
-              style={{ ["--reveal-delay" as string]: "80ms" }}
-              className="mt-6 text-4xl font-bold tracking-tight sm:text-6xl"
+              style={{ ["--reveal-delay" as string]: "50ms" }}
+              className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl"
             >
               The complete WhatsApp &amp;{" "}
               <span className="bg-gradient-to-r from-brand to-brand-deep bg-clip-text text-transparent">
@@ -289,8 +387,8 @@ function Landing() {
 
             <p
               data-reveal
-              style={{ ["--reveal-delay" as string]: "160ms" }}
-              className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground sm:text-lg"
+              style={{ ["--reveal-delay" as string]: "100ms" }}
+              className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground sm:text-lg lg:mx-0"
             >
               Flas CRM brings every WhatsApp chat, social message, website lead, campaign, invoice
               and SEO post into one workspace — with Flas AI writing, replying and advising
@@ -299,8 +397,8 @@ function Landing() {
 
             <div
               data-reveal
-              style={{ ["--reveal-delay" as string]: "240ms" }}
-              className="mt-9 flex flex-wrap justify-center gap-3"
+              style={{ ["--reveal-delay" as string]: "150ms" }}
+              className="mt-9 flex flex-wrap justify-center gap-3 lg:justify-start"
             >
               <Button asChild size="lg" className="flas-sheen relative overflow-hidden">
                 <Link to="/auth">
@@ -314,7 +412,7 @@ function Landing() {
 
             <p
               data-reveal
-              style={{ ["--reveal-delay" as string]: "320ms" }}
+              style={{ ["--reveal-delay" as string]: "200ms" }}
               className="mt-5 text-sm"
             >
               <span className="text-muted-foreground line-through">$30/month</span>{" "}
@@ -325,11 +423,17 @@ function Landing() {
             </p>
             <p
               data-reveal
-              style={{ ["--reveal-delay" as string]: "380ms" }}
+              style={{ ["--reveal-delay" as string]: "250ms" }}
               className="mt-2 text-xs text-muted-foreground"
             >
               Cancel any time · try the chat bubble in the corner, it lands in the live inbox.
             </p>
+            </div>
+
+            {/* The product itself, rather than a stock photograph of a laptop. */}
+            <div data-reveal style={{ ["--reveal-delay" as string]: "300ms" }}>
+              <InboxPreview />
+            </div>
           </div>
         </section>
 
@@ -476,6 +580,49 @@ function Landing() {
           </div>
         </section>
 
+        {/* ── FAQ ───────────────────────────────────────────────────────────
+            Native <details> rather than a JS accordion: it is open-able before
+            hydration, keyboard-operable for free, and search engines read the
+            answer text whether or not it is expanded. */}
+        <section className="border-y bg-muted/30 py-20">
+          <div className="mx-auto max-w-3xl px-6">
+            <h2 data-reveal className="text-center text-3xl font-bold">
+              Questions people ask before signing up
+            </h2>
+            <p
+              data-reveal
+              style={{ ["--reveal-delay" as string]: "50ms" }}
+              className="mt-2 text-center text-sm text-muted-foreground"
+            >
+              Still unsure?{" "}
+              <a href="#quote" className="text-brand underline underline-offset-2">
+                Ask us directly
+              </a>{" "}
+              — we reply the same working day.
+            </p>
+
+            <div className="mt-10 grid gap-3">
+              {FAQS.map((f, i) => (
+                <details
+                  key={f.q}
+                  data-reveal
+                  style={{ ["--reveal-delay" as string]: `${Math.min(i, 5) * 40}ms` }}
+                  className="group rounded-2xl border bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left font-semibold [&::-webkit-details-marker]:hidden">
+                    {f.q}
+                    <ChevronDown
+                      aria-hidden
+                      className="size-4 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-180"
+                    />
+                  </summary>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ── About + quote ─────────────────────────────────────────────── */}
         <section className="mx-auto max-w-6xl px-6 pb-20">
           <div className="grid gap-8 lg:grid-cols-2">
@@ -527,6 +674,8 @@ function Landing() {
         </section>
       </main>
 
+      <StickyCta />
+
       <footer className="border-t py-8 text-center text-xs text-muted-foreground">
         <p className="font-medium text-foreground">
           Flas CRM — a product of Mobi Digital Solutions
@@ -536,6 +685,15 @@ function Landing() {
           workspace · flas.mobidigisol.com
         </p>
         <p className="mt-3 flex flex-wrap items-center justify-center gap-3">
+          <Link to="/features" className="underline">
+            Features
+          </Link>
+          <Link to="/pricing" className="underline">
+            Pricing
+          </Link>
+          <Link to="/whatsapp-business-api" className="underline">
+            WhatsApp API
+          </Link>
           <Link to="/blog" className="underline">
             Guides
           </Link>

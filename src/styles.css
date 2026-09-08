@@ -338,6 +338,35 @@
   pointer-events: none;
 }
 
+@keyframes flas-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* The sticky conversion bar that appears once the hero has been passed. */
+@keyframes flas-slide-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.flas-slide-up {
+  animation: flas-slide-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 /* A reader who has asked for less motion gets none of it -- including the
    loops, which are the ones that actually cause discomfort. */
 @media (prefers-reduced-motion: reduce) {
@@ -349,7 +378,8 @@
 
   .flas-drift,
   .flas-marquee-track,
-  .flas-sheen::after {
+  .flas-sheen::after,
+  .flas-slide-up {
     animation: none;
   }
 }

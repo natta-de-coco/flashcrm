@@ -489,6 +489,299 @@ Buttons: [Call us] [Get directions]</code></pre>
 <p>Collect the number on your own site, ask for two fields, trigger on engagement rather than arrival, promise a response time you can keep, and route it to whoever can actually answer. The technology is the easy part — the discipline of replying quickly is what turns it into revenue.</p>
 `,
   },
+
+  {
+    slug: "whatsapp-shared-inbox-for-teams",
+    title: "One number, five agents: how a shared WhatsApp inbox actually works",
+    excerpt:
+      "Passing a phone between staff does not scale. Here is what changes when a team answers one number properly, and the three habits that decide whether it works.",
+    category: "Operations",
+    published: "2026-09-08",
+    readingMinutes: 6,
+    keywords: [
+      "whatsapp shared inbox",
+      "whatsapp team inbox",
+      "multiple agents one whatsapp number",
+      "whatsapp for customer service teams",
+    ],
+    html: `
+<p>The moment a second person needs to answer WhatsApp, most businesses invent the same workaround: one phone on a desk, or the WhatsApp Business app linked to a few devices, and a rule that whoever sees it first replies.</p>
+
+<p>It holds until it does not. Two people answer the same customer with different prices. A chat gets read, silently, by someone who then gets distracted. Someone leaves and takes the login with them.</p>
+
+<h2>What a shared inbox changes</h2>
+
+<p>A shared inbox connects your number through the Cloud API to software that several people sign into. Each agent has their own account, and the conversation is a record rather than a notification.</p>
+
+<p>Four things become possible that were not before:</p>
+
+<ul>
+  <li><strong>Assignment.</strong> A chat belongs to someone. If it belongs to nobody, that is visible rather than assumed.</li>
+  <li><strong>Status.</strong> Open, pending, closed. "Did anyone deal with this?" becomes a filter instead of a question shouted across the office.</li>
+  <li><strong>Individual accounts.</strong> When someone leaves you revoke their access, not change a shared password everyone has to relearn.</li>
+  <li><strong>History that outlives the phone.</strong> Conversations live in your system. A lost or wiped handset costs you a handset.</li>
+</ul>
+
+<h2>The three habits that decide whether it works</h2>
+
+<p>The software is the easy half. Teams that get value from a shared inbox tend to share three habits.</p>
+
+<h3>1. Every chat has an owner within minutes</h3>
+
+<p>Unassigned chats are where conversations die. Whether you assign round-robin, by expertise, or by whoever claims it first matters far less than that the queue is never ambiguous. If a chat can sit for an hour with nobody responsible, it will.</p>
+
+<h3>2. Closing means closing</h3>
+
+<p>An inbox where everything stays open forever is a list, not a workflow. Agree what "closed" means — question answered, order placed, customer said thanks — and close things. The count of open chats should be a number someone can look at and act on.</p>
+
+<h3>3. Internal notes instead of side conversations</h3>
+
+<p>If the answer to "what did we quote this customer?" lives in someone's private chat with a colleague, the next agent starts from nothing. Notes on the conversation keep context with the customer rather than with the person who happened to handle it last.</p>
+
+<h2>What to measure</h2>
+
+<p>Two numbers tell you nearly everything:</p>
+
+<ul>
+  <li><strong>Median time to first reply.</strong> Not average — one chat answered three days later ruins an average and hides the typical experience.</li>
+  <li><strong>Chats with no owner right now.</strong> If this is ever more than a handful, the assignment habit has slipped.</li>
+</ul>
+
+<p>Resolution time is worth watching later. Early on, first-reply time is the number that moves revenue, because it is the one the customer feels.</p>
+
+<h2>Multiple numbers, one inbox</h2>
+
+<p>Once a team is comfortable, separating numbers by function — sales and support, or one per branch — usually helps more than it complicates, provided replies go out from whichever number the customer wrote to. A customer who messaged the Deira branch should not receive a reply from head office; it reads as a different business.</p>
+
+<h2>When you do not need this</h2>
+
+<p>If one person answers everything comfortably and nothing is being missed, the free WhatsApp Business app is doing its job. A shared inbox solves a coordination problem. Buying one before you have that problem adds cost and a migration for no gain — see our <a href="/blog/whatsapp-business-app-vs-api">comparison of the app and the API</a> for where the line sits.</p>
+`,
+  },
+
+  {
+    slug: "whatsapp-chatbot-that-customers-dont-hate",
+    title: "Building a WhatsApp chatbot customers do not hate",
+    excerpt:
+      "Most business chatbots are a maze between the customer and a human. A useful one answers the three questions people actually ask, then gets out of the way.",
+    category: "AI",
+    published: "2026-09-08",
+    readingMinutes: 6,
+    keywords: [
+      "whatsapp chatbot",
+      "whatsapp ai chatbot",
+      "whatsapp automated replies",
+      "chatbot human handoff",
+    ],
+    html: `
+<p>Ask anyone about business chatbots and you will hear the same complaint: it would not let them reach a person. That is the bar. Not intelligence — escape.</p>
+
+<p>A chatbot on WhatsApp has one advantage over the web widgets that earned that reputation: the customer is in a normal conversation, and if the bot is unhelpful they will simply type "human" and expect it to work. Build for that and the rest gets easier.</p>
+
+<h2>Answer the three questions, not thirty</h2>
+
+<p>Look at a month of your own conversations and the distribution is always lopsided. For most businesses, a handful of questions cover the majority of first messages:</p>
+
+<ul>
+  <li>Do you have <em>X</em>, and how much is it?</li>
+  <li>Where are you, and when are you open?</li>
+  <li>How long does delivery or installation take?</li>
+</ul>
+
+<p>A bot that answers those three accurately, instantly, at eleven at night, is genuinely valuable. A bot that attempts to handle every scenario will be wrong often enough that customers stop trusting any of it.</p>
+
+<p>Start narrow. Widen only where the transcripts show demand.</p>
+
+<h2>Ground it in your own information</h2>
+
+<p>A model answering from general knowledge will invent your delivery policy. Confidently. The fix is to give it your actual material — product list, prices, hours, locations, warranty terms — and instruct it to say it does not know rather than fill gaps.</p>
+
+<p>"I'm not sure about that, let me get someone" is a good answer. An invented price is a complaint, and possibly a refund.</p>
+
+<h2>Make the handoff obvious and instant</h2>
+
+<p>Three rules that matter more than anything else the bot does:</p>
+
+<ol>
+  <li><strong>Any request for a person works immediately.</strong> "Human", "agent", "speak to someone", or plain frustration. No confirmation step.</li>
+  <li><strong>The bot says it is a bot.</strong> Customers are far more tolerant of a machine that admits it than one pretending. It also stops them reading terseness as rudeness.</li>
+  <li><strong>Repetition triggers escalation.</strong> If someone asks the same thing twice, the bot has failed. Hand over rather than rephrase.</li>
+</ol>
+
+<h2>Know when to stay quiet</h2>
+
+<p>The bot should not answer when an agent is already in the conversation — nothing is worse than a machine interrupting a human mid-sentence. It also should not handle complaints. Someone who is angry needs a person, and a cheerful automated reply makes it worse.</p>
+
+<p>Detecting a complaint reliably is hard. Detecting "this conversation has an agent in it" is trivial, and covers most of the damage.</p>
+
+<h2>Read the transcripts weekly</h2>
+
+<p>This is the part that gets skipped, and it is where the improvement comes from. Fifteen minutes a week reading what the bot got wrong will teach you more than any amount of configuration up front.</p>
+
+<p>Watch for three patterns: questions it consistently misses, answers that are technically right but read badly, and handoffs that came too late.</p>
+
+<h2>Measure whether it helped</h2>
+
+<p>Not "messages handled" — a bot that handles a message badly still counts one. Better:</p>
+
+<ul>
+  <li>Conversations fully resolved without a human, where the customer did not come back unhappy</li>
+  <li>Median first-reply time across all conversations (this should fall sharply)</li>
+  <li>How often customers ask for a human in the first two messages — if this is high, the bot is in the way</li>
+</ul>
+
+<h2>The honest summary</h2>
+
+<p>A WhatsApp chatbot is at its best answering simple questions instantly outside working hours, and at its worst standing between a frustrated customer and your team. Build the escape hatch first, keep the scope narrow, ground it in your real information, and read what it says.</p>
+`,
+  },
+
+  {
+    slug: "quotation-to-payment-on-whatsapp",
+    title: "From quotation to payment without leaving WhatsApp",
+    excerpt:
+      "The gap between agreeing a price in a chat and getting paid is where deals go cold. Closing it is mostly about removing steps, not adding software.",
+    category: "Sales",
+    published: "2026-09-08",
+    readingMinutes: 5,
+    keywords: [
+      "whatsapp invoice",
+      "send quotation on whatsapp",
+      "whatsapp payment link",
+      "whatsapp sales process",
+    ],
+    html: `
+<p>A customer messages, asks about a product, likes the price, and says yes. Then someone opens a laptop, types the details into accounting software, exports a PDF, emails it, and the customer — who has been on WhatsApp this whole time — does not open the email for two days.</p>
+
+<p>That gap is where a surprising number of agreed deals quietly die. Not from objections. From friction.</p>
+
+<h2>Every extra step costs conversions</h2>
+
+<p>Count the steps between "yes" and "paid" in your business. For most it looks like: switch app, re-enter customer details, generate document, switch channel, wait, chase, resend, chase again.</p>
+
+<p>Each switch is a place the process stalls, and each re-entry is a place a wrong number gets typed. The improvement is almost never a better tool for one of those steps — it is removing steps.</p>
+
+<h2>What good looks like</h2>
+
+<p>The customer agrees in the chat. The agent creates the quotation from the same screen, with the customer's details already attached because the conversation knows who they are. The PDF goes into the thread they are already reading. They accept, and it becomes an invoice with a payment link in the same conversation.</p>
+
+<p>No app switching, no re-keying, no email that sits unopened.</p>
+
+<h2>Send a document, not just a number</h2>
+
+<p>It is tempting to type "that'll be 1,450 total" and move on. For small transactions, fine. For anything a customer needs to think about or justify to someone else, a proper document does real work:</p>
+
+<ul>
+  <li>It looks like a business rather than a conversation, which matters for larger amounts</li>
+  <li>It states what is included, which prevents the argument later</li>
+  <li>It can be forwarded to whoever actually approves the spend</li>
+  <li>It carries a validity date, which creates a reason to decide</li>
+</ul>
+
+<p>That last point is underused. "Valid for 14 days" is not a pressure tactic; it is a deadline, and deadlines are what turn intentions into decisions.</p>
+
+<h2>Mind the 24-hour window</h2>
+
+<p>This shapes follow-up more than most teams realise. While the customer has messaged you within the last day, you can write freely. After that, reaching them requires an approved template, which costs money and reads more formally.</p>
+
+<p>The practical consequence: send the quotation while the conversation is live, and if it goes quiet, one good follow-up the same day is worth more than three the following week. Our <a href="/blog/whatsapp-message-templates-that-get-approved">guide to templates</a> covers getting a payment-reminder template approved before you need it.</p>
+
+<h2>Chase in a way that does not annoy</h2>
+
+<p>A reasonable rhythm for an unanswered quotation:</p>
+
+<ol>
+  <li><strong>Same day, in the window:</strong> a short, human message — "sent that over, shout if anything needs changing."</li>
+  <li><strong>Around day three:</strong> an approved template that adds something rather than repeating — stock, a delivery slot, the validity date.</li>
+  <li><strong>Near expiry:</strong> one final note that the quotation is about to lapse.</li>
+</ol>
+
+<p>Then stop. Continuing past that earns blocks, and blocks damage the number your entire customer base uses.</p>
+
+<h2>Track the two numbers that matter</h2>
+
+<ul>
+  <li><strong>Quotation to acceptance rate.</strong> If it is low, the problem is usually price or clarity, not chasing.</li>
+  <li><strong>Days from acceptance to payment.</strong> If this is long, the problem is how easy you have made paying.</li>
+</ul>
+
+<p>They point at different fixes, which is exactly why they are worth separating.</p>
+`,
+  },
+
+  {
+    slug: "whatsapp-crm-for-uae-businesses",
+    title: "WhatsApp CRM for UAE businesses: what to get right locally",
+    excerpt:
+      "WhatsApp is the default business channel across the Gulf. Trade licences, VAT on invoices, Arabic and English, and Ramadan hours all change how you set it up.",
+    category: "Guides",
+    published: "2026-09-08",
+    readingMinutes: 6,
+    keywords: [
+      "whatsapp crm uae",
+      "whatsapp business api dubai",
+      "crm for dubai businesses",
+      "whatsapp business uae",
+    ],
+    html: `
+<p>In much of the Gulf, WhatsApp is not one channel among several — it is where business is done. Customers message rather than call, expect a reply the same hour, and will move to whichever supplier answers first.</p>
+
+<p>That makes the setup details matter more here than in markets where email still carries the load. A few are specific to the region.</p>
+
+<h2>Verification and your trade licence</h2>
+
+<p>Meta business verification is a documents check, and the mismatch that trips UAE businesses most often is the licence name against the trading name.</p>
+
+<p>A licence reading "Al Noor General Trading L.L.C." and a Meta Business account reading "Al Noor Electronics" is a rejection. Enter the legal name exactly as printed — including the L.L.C. — and use the trading name as your WhatsApp display name instead. Make sure the trading name appears clearly on your website, because that is the evidence a reviewer looks for when the two differ.</p>
+
+<p>Your website also needs a visible address and phone number. A single-page site with only a contact form is thin evidence that a business exists.</p>
+
+<h2>VAT belongs on the invoice</h2>
+
+<p>If you are VAT-registered, your tax invoices must carry your TRN, the VAT amount shown separately, and the required invoice wording. Whatever generates your invoices needs to handle this natively.</p>
+
+<p>Getting this wrong is not a formatting problem — it is a compliance problem that surfaces at the worst possible time. Configure the tax fields once, properly, before you send the first invoice from a new system.</p>
+
+<h2>Two languages, one inbox</h2>
+
+<p>Most Gulf businesses serve customers in both Arabic and English, often mixed within a single conversation. A few practical consequences:</p>
+
+<ul>
+  <li>Your team needs to reply in whichever language the customer opened in — switching them is friction.</li>
+  <li>Message templates should be submitted in both languages. Meta approves them per language, so an English-only library leaves half your customers getting an English reminder.</li>
+  <li>If you use an AI assistant, check its Arabic output with a native speaker before letting it answer customers unsupervised. Fluent-sounding and correct are not the same thing.</li>
+</ul>
+
+<h2>Working hours are not nine to five</h2>
+
+<p>The working week is Monday to Friday in the UAE, with Saturday trading common in retail. Ramadan shifts hours substantially, and Friday afternoons are quiet.</p>
+
+<p>Two things follow. Your away message should reflect the hours you actually keep, updated for Ramadan rather than left stale. And automated replies earn their keep in the evening — a customer messaging at nine at night who gets a real answer about stock and price is a customer who has stopped shopping around.</p>
+
+<h2>Data protection</h2>
+
+<p>The UAE's federal personal data protection law, and separate regimes inside the DIFC and ADGM, expect a lawful basis for processing personal data, a retention period, and a route for someone to request deletion. Saudi Arabia's PDPL imposes comparable obligations.</p>
+
+<p>Conveniently, the record that keeps you compliant with Meta — who consented, when, to what wording, and when they opted out — is broadly the record a regulator would ask for. Keep it once, keep it properly. Our <a href="/blog/whatsapp-opt-in-that-protects-you">guide to opt-in</a> covers what that record should contain.</p>
+
+<h2>Message costs vary by where your customers are</h2>
+
+<p>Meta prices template messages by the recipient's country, and the differences are large. A business messaging customers across the GCC and the subcontinent will see quite different costs per market — worth checking against Meta's current rate card before you plan a campaign, rather than after.</p>
+
+<h2>A sensible order to do things in</h2>
+
+<ol>
+  <li>Get your licence, website and Meta Business account saying the same thing</li>
+  <li>Decide whether to migrate your known number or start fresh</li>
+  <li>Submit templates in Arabic and English early</li>
+  <li>Configure VAT and your TRN before the first invoice</li>
+  <li>Set real working hours, and an evening bot that answers stock and price</li>
+  <li>Only then start campaigns — and only to people who opted in</li>
+</ol>
+
+<p>Businesses that skip to step six are the ones whose numbers get restricted in the first month.</p>
+`,
+  },
 ];
 
 /** Newest first, which is the order both the index and the sitemap want. */

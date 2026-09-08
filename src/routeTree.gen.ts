@@ -13,10 +13,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as BlogRouteImport } from './routes/blog'
+import { Route as FeaturesRouteImport } from './routes/features'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as WhatsappBusinessApiRouteImport } from './routes/whatsapp-business-api'
 import { Route as AuthenticatedAdvisorRouteImport } from './routes/_authenticated/advisor'
 import { Route as AuthenticatedCampaignPlannerRouteImport } from './routes/_authenticated/campaign-planner'
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
@@ -77,6 +80,16 @@ const BlogRoute = BlogRouteImport.update({
   path: '/blog',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FeaturesRoute = FeaturesRouteImport.update({
+  id: '/features',
+  path: '/features',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
@@ -95,6 +108,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WhatsappBusinessApiRoute = WhatsappBusinessApiRouteImport.update({
+  id: '/whatsapp-business-api',
+  path: '/whatsapp-business-api',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdvisorRoute = AuthenticatedAdvisorRouteImport.update({
@@ -313,10 +331,13 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/blog': typeof BlogRouteWithChildren
+  '/features': typeof FeaturesRoute
+  '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/advisor': typeof AuthenticatedAdvisorRoute
   '/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/catalog': typeof AuthenticatedCatalogRoute
@@ -361,10 +382,13 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/features': typeof FeaturesRoute
+  '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/advisor': typeof AuthenticatedAdvisorRoute
   '/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/catalog': typeof AuthenticatedCatalogRoute
@@ -411,10 +435,13 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/blog': typeof BlogRouteWithChildren
+  '/features': typeof FeaturesRoute
+  '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/_authenticated/advisor': typeof AuthenticatedAdvisorRoute
   '/_authenticated/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
@@ -462,10 +489,13 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/blog'
+    | '/features'
+    | '/pricing'
     | '/privacy'
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/whatsapp-business-api'
     | '/advisor'
     | '/campaign-planner'
     | '/catalog'
@@ -510,10 +540,13 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/features'
+    | '/pricing'
     | '/privacy'
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/whatsapp-business-api'
     | '/advisor'
     | '/campaign-planner'
     | '/catalog'
@@ -559,10 +592,13 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/blog'
+    | '/features'
+    | '/pricing'
     | '/privacy'
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/whatsapp-business-api'
     | '/_authenticated/advisor'
     | '/_authenticated/campaign-planner'
     | '/_authenticated/catalog'
@@ -610,10 +646,13 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   BlogRoute: typeof BlogRouteWithChildren
+  FeaturesRoute: typeof FeaturesRoute
+  PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  WhatsappBusinessApiRoute: typeof WhatsappBusinessApiRoute
   PayTokenRoute: typeof PayTokenRoute
   VerifyTokenRoute: typeof VerifyTokenRoute
   ApiPublicOauthCallbackRoute: typeof ApiPublicOauthCallbackRoute
@@ -662,6 +701,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BlogRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/features': {
+      id: '/features'
+      path: '/features'
+      fullPath: '/features'
+      preLoaderRoute: typeof FeaturesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacy': {
       id: '/privacy'
       path: '/privacy'
@@ -688,6 +741,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/whatsapp-business-api': {
+      id: '/whatsapp-business-api'
+      path: '/whatsapp-business-api'
+      fullPath: '/whatsapp-business-api'
+      preLoaderRoute: typeof WhatsappBusinessApiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/advisor': {
@@ -1076,10 +1136,13 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   BlogRoute: BlogRouteWithChildren,
+  FeaturesRoute: FeaturesRoute,
+  PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  WhatsappBusinessApiRoute: WhatsappBusinessApiRoute,
   PayTokenRoute: PayTokenRoute,
   VerifyTokenRoute: VerifyTokenRoute,
   ApiPublicOauthCallbackRoute: ApiPublicOauthCallbackRoute,
