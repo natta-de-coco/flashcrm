@@ -120,6 +120,28 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           // Log the raw error server-side, but only leak a sanitized code to
           // the browser URL (previous version echoed full SDK error text).
           console.error("[oauth-callback] failed", e);
+
+          // Also record it against the workspace, so a failed connection is
+          // visible in the manager portal instead of only in a console nobody
+          // reads. A connect failure the customer cannot explain is the single
+          // most common support message, and until now the only trace of it
+          // was a sanitised code in their address bar.
+          try {
+            const { normalizeProviderError, recordIntegrationError } = await import(
+              "@/lib/integration-errors.server"
+            );
+            await recordIntegrationError({
+              tenantId: row.tenant_id,
+              platform: row.platform,
+              feature: "oauth",
+              operation: "oauth_callback",
+              error: normalizeProviderError({ platform: row.platform, thrown: e }),
+            });
+          } catch (recordError) {
+            // Reporting must never turn a failed connection into a 500.
+            console.error("[oauth-callback] could not record error", recordError);
+          }
+
           return back(origin, { connect_error: sanitizeError(e), platform: row.platform });
         }
       },

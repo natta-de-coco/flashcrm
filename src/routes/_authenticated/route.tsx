@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
+  Bug,
   Bot,
   Building2,
   FileText,
@@ -112,7 +113,15 @@ const NAV_SECTIONS = [
 
 const MANAGER_SECTION = {
   title: "Manager",
-  items: [{ to: "/companies", label: "Companies", desc: "All client workspaces", icon: Building2 }],
+  items: [
+    { to: "/companies", label: "Companies", desc: "All client workspaces", icon: Building2 },
+    {
+      to: "/companies/errors",
+      label: "Errors & issues",
+      desc: "What customers are hitting",
+      icon: Bug,
+    },
+  ],
 } as const;
 
 const SIDEBAR_MIN = 224;

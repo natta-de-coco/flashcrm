@@ -42,6 +42,7 @@ import { Route as PayTokenRouteImport } from './routes/pay.$token'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as AuthenticatedCompaniesOrgIdRouteImport } from './routes/_authenticated/companies.$orgId'
 import { Route as AuthenticatedCompaniesEmailsRouteImport } from './routes/_authenticated/companies.emails'
+import { Route as AuthenticatedCompaniesErrorsRouteImport } from './routes/_authenticated/companies.errors'
 import { Route as AuthenticatedCompaniesSubscribersRouteImport } from './routes/_authenticated/companies.subscribers'
 import { Route as AuthenticatedSeoBlogIndexRouteImport } from './routes/_authenticated/seo-blog.index'
 import { Route as AuthenticatedSeoBlogStudioRouteImport } from './routes/_authenticated/seo-blog.studio'
@@ -228,6 +229,12 @@ const AuthenticatedCompaniesEmailsRoute =
     path: '/emails',
     getParentRoute: () => AuthenticatedCompaniesRoute,
   } as any)
+const AuthenticatedCompaniesErrorsRoute =
+  AuthenticatedCompaniesErrorsRouteImport.update({
+    id: '/errors',
+    path: '/errors',
+    getParentRoute: () => AuthenticatedCompaniesRoute,
+  } as any)
 const AuthenticatedCompaniesSubscribersRoute =
   AuthenticatedCompaniesSubscribersRouteImport.update({
     id: '/subscribers',
@@ -360,6 +367,7 @@ export interface FileRoutesByFullPath {
   '/blog/': typeof BlogIndexRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
+  '/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
   '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
   '/settings/email': typeof AuthenticatedSettingsEmailRoute
@@ -410,6 +418,7 @@ export interface FileRoutesByTo {
   '/blog': typeof BlogIndexRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
+  '/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
   '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
   '/settings/email': typeof AuthenticatedSettingsEmailRoute
@@ -464,6 +473,7 @@ export interface FileRoutesById {
   '/blog/': typeof BlogIndexRoute
   '/_authenticated/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
   '/_authenticated/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
+  '/_authenticated/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/_authenticated/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
   '/_authenticated/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
   '/_authenticated/settings/email': typeof AuthenticatedSettingsEmailRoute
@@ -518,6 +528,7 @@ export interface FileRouteTypes {
     | '/blog/'
     | '/companies/$orgId'
     | '/companies/emails'
+    | '/companies/errors'
     | '/companies/subscribers'
     | '/seo-blog/studio'
     | '/settings/email'
@@ -568,6 +579,7 @@ export interface FileRouteTypes {
     | '/blog'
     | '/companies/$orgId'
     | '/companies/emails'
+    | '/companies/errors'
     | '/companies/subscribers'
     | '/seo-blog/studio'
     | '/settings/email'
@@ -621,6 +633,7 @@ export interface FileRouteTypes {
     | '/blog/'
     | '/_authenticated/companies/$orgId'
     | '/_authenticated/companies/emails'
+    | '/_authenticated/companies/errors'
     | '/_authenticated/companies/subscribers'
     | '/_authenticated/seo-blog/studio'
     | '/_authenticated/settings/email'
@@ -904,6 +917,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCompaniesEmailsRouteImport
       parentRoute: typeof AuthenticatedCompaniesRoute
     }
+    '/_authenticated/companies/errors': {
+      id: '/_authenticated/companies/errors'
+      path: '/errors'
+      fullPath: '/companies/errors'
+      preLoaderRoute: typeof AuthenticatedCompaniesErrorsRouteImport
+      parentRoute: typeof AuthenticatedCompaniesRoute
+    }
     '/_authenticated/companies/subscribers': {
       id: '/_authenticated/companies/subscribers'
       path: '/subscribers'
@@ -1036,6 +1056,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedCompaniesRouteChildren {
   AuthenticatedCompaniesOrgIdRoute: typeof AuthenticatedCompaniesOrgIdRoute
   AuthenticatedCompaniesEmailsRoute: typeof AuthenticatedCompaniesEmailsRoute
+  AuthenticatedCompaniesErrorsRoute: typeof AuthenticatedCompaniesErrorsRoute
   AuthenticatedCompaniesSubscribersRoute: typeof AuthenticatedCompaniesSubscribersRoute
 }
 
@@ -1043,6 +1064,7 @@ const AuthenticatedCompaniesRouteChildren: AuthenticatedCompaniesRouteChildren =
   {
     AuthenticatedCompaniesOrgIdRoute: AuthenticatedCompaniesOrgIdRoute,
     AuthenticatedCompaniesEmailsRoute: AuthenticatedCompaniesEmailsRoute,
+    AuthenticatedCompaniesErrorsRoute: AuthenticatedCompaniesErrorsRoute,
     AuthenticatedCompaniesSubscribersRoute:
       AuthenticatedCompaniesSubscribersRoute,
   }
