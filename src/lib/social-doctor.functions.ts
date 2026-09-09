@@ -12,7 +12,12 @@ export const testSocialConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => AccountSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
+      "current_tenant_id",
+    );
+    // A recursion/timeout failure of this lookup used to be reported as
+    // "no workspace", which sent people hunting a problem that was not theirs.
+    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -48,7 +53,12 @@ export const getMetaTargets = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => AccountSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
+      "current_tenant_id",
+    );
+    // A recursion/timeout failure of this lookup used to be reported as
+    // "no workspace", which sent people hunting a problem that was not theirs.
+    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -104,7 +114,12 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => SelectTargetSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
+      "current_tenant_id",
+    );
+    // A recursion/timeout failure of this lookup used to be reported as
+    // "no workspace", which sent people hunting a problem that was not theirs.
+    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

@@ -47,6 +47,13 @@ export type Database = {
             foreignKeyName: "advisor_reports_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advisor_reports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -95,6 +102,13 @@ export type Database = {
             foreignKeyName: "ai_provider_keys_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_provider_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -139,6 +153,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ai_usage_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ai_usage_log_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -197,6 +218,13 @@ export type Database = {
             foreignKeyName: "api_keys_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -244,6 +272,13 @@ export type Database = {
           tenant_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "audit_log_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -298,6 +333,13 @@ export type Database = {
           tenant_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "auth_email_attempts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "auth_email_attempts_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -361,6 +403,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "bank_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "bank_accounts_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -499,6 +548,13 @@ export type Database = {
           website?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "billing_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "billing_settings_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -677,6 +733,13 @@ export type Database = {
             foreignKeyName: "business_profiles_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: true
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -721,6 +784,13 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "campaign_plans_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "campaign_plans_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -785,6 +855,13 @@ export type Database = {
             foreignKeyName: "campaigns_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaigns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -837,6 +914,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "connection_retry_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -915,6 +999,13 @@ export type Database = {
             foreignKeyName: "contacts_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -976,6 +1067,13 @@ export type Database = {
             columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_posts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -1058,6 +1156,13 @@ export type Database = {
             foreignKeyName: "conversations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -1110,6 +1215,13 @@ export type Database = {
             foreignKeyName: "daily_briefs_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_briefs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -1157,6 +1269,13 @@ export type Database = {
           tenant_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "deletion_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "deletion_requests_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1220,6 +1339,13 @@ export type Database = {
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_activity_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -1290,6 +1416,13 @@ export type Database = {
             foreignKeyName: "document_files_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_files_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -1322,6 +1455,13 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "document_sequences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "document_sequences_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1378,6 +1518,13 @@ export type Database = {
             columns: ["document_id"]
             isOneToOne: false
             referencedRelation: "sales_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_versions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -1450,6 +1597,13 @@ export type Database = {
             foreignKeyName: "email_delivery_log_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_delivery_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -1515,6 +1669,13 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "error_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "error_events_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1619,6 +1780,13 @@ export type Database = {
             foreignKeyName: "integration_errors_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_errors_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -1684,6 +1852,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "invoice_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoice_templates_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1759,6 +1934,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoices_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2077,6 +2259,13 @@ export type Database = {
             foreignKeyName: "leads_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -2141,6 +2330,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -2338,6 +2534,13 @@ export type Database = {
             foreignKeyName: "payment_allocations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_allocations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -2414,6 +2617,13 @@ export type Database = {
             foreignKeyName: "payments_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -2479,6 +2689,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "platform_apps_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "platform_apps_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2552,6 +2769,13 @@ export type Database = {
             foreignKeyName: "products_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -2608,6 +2832,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -2674,6 +2905,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reminders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -2781,6 +3019,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_document_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -3022,6 +3267,13 @@ export type Database = {
             foreignKeyName: "sales_documents_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3107,6 +3359,13 @@ export type Database = {
             columns: ["author_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "seo_articles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -3363,6 +3622,13 @@ export type Database = {
             foreignKeyName: "social_capabilities_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_capabilities_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3421,6 +3687,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "social_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_connection_tests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
             referencedColumns: ["id"]
           },
           {
@@ -3599,6 +3872,13 @@ export type Database = {
             foreignKeyName: "social_test_results_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "social_test_results_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3702,6 +3982,13 @@ export type Database = {
             foreignKeyName: "system_alerts_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3740,6 +4027,13 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tax_rates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tax_rates_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3792,6 +4086,13 @@ export type Database = {
             foreignKeyName: "team_invites_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_invites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3839,6 +4140,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tenant_bot_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tenant_bot_settings_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3915,6 +4223,13 @@ export type Database = {
             foreignKeyName: "tenant_smtp_config_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: true
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_smtp_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3953,6 +4268,13 @@ export type Database = {
           webhook_verified?: boolean
         }
         Relationships: [
+          {
+            foreignKeyName: "tenant_wa_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tenant_wa_config_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -4128,6 +4450,13 @@ export type Database = {
             foreignKeyName: "wa_templates_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wa_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -4212,6 +4541,13 @@ export type Database = {
           wa_message_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "webhook_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "webhook_events_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -4345,6 +4681,13 @@ export type Database = {
             foreignKeyName: "wordpress_sites_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "wordpress_sites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -4376,6 +4719,40 @@ export type Database = {
           slug: string | null
           subscription_status: string | null
           suspended: boolean | null
+        }
+        Insert: {
+          billing_state?: never
+          contacts?: never
+          created_at?: string | null
+          days_remaining?: never
+          id?: string | null
+          last_active?: never
+          members?: never
+          members_suspended?: never
+          messages?: never
+          name?: string | null
+          paid_until?: string | null
+          plan?: string | null
+          slug?: string | null
+          subscription_status?: string | null
+          suspended?: boolean | null
+        }
+        Update: {
+          billing_state?: never
+          contacts?: never
+          created_at?: string | null
+          days_remaining?: never
+          id?: string | null
+          last_active?: never
+          members?: never
+          members_suspended?: never
+          messages?: never
+          name?: string | null
+          paid_until?: string | null
+          plan?: string | null
+          slug?: string | null
+          subscription_status?: string | null
+          suspended?: boolean | null
         }
         Relationships: []
       }
@@ -4444,38 +4821,12 @@ export type Database = {
       }
     }
     Functions: {
-      access_state: {
-        Args: { _user?: string }
-        Returns: string
-      }
-      consume_oauth_state_hash: {
-        Args: { _state_hash: string }
-        Returns: {
-          code_verifier: string | null
-          id: string
-          platform: string
-          redirect_uri: string
-          tenant_id: string
-          user_id: string
-        }[]
-      }
-      expire_abandoned_oauth_attempts: {
-        Args: never
-        Returns: { deleted_count: number; expired_count: number }[]
-      }
-      is_legal_connection_transition: {
-        Args: { _from: string; _to: string }
-        Returns: boolean
-      }
-      try_lock_connection_refresh: {
-        Args: { _account_id: string }
-        Returns: boolean
-      }
       _is_locked_super_admin_email: {
         Args: { _email: string }
         Returns: boolean
       }
       _smtp_encryption_key: { Args: never; Returns: string }
+      access_state: { Args: { _user?: string }; Returns: string }
       am_i_super_admin: { Args: never; Returns: boolean }
       am_i_tenant_admin: { Args: never; Returns: boolean }
       check_ai_rate_limit: {
@@ -4519,7 +4870,25 @@ export type Database = {
           user_id: string
         }[]
       }
+      consume_oauth_state_hash: {
+        Args: { _state_hash: string }
+        Returns: {
+          code_verifier: string
+          id: string
+          platform: string
+          redirect_uri: string
+          tenant_id: string
+          user_id: string
+        }[]
+      }
       current_tenant_id: { Args: never; Returns: string }
+      expire_abandoned_oauth_attempts: {
+        Args: never
+        Returns: {
+          deleted_count: number
+          expired_count: number
+        }[]
+      }
       get_tenant_ai_key: {
         Args: { _tenant_id: string }
         Returns: {
@@ -4542,6 +4911,10 @@ export type Database = {
       increment_unread_count: {
         Args: { _conversation_id: string }
         Returns: number
+      }
+      is_legal_connection_transition: {
+        Args: { _from: string; _to: string }
+        Returns: boolean
       }
       is_super_admin: { Args: { _user?: string }; Returns: boolean }
       is_tenant_admin: { Args: { _user?: string }; Returns: boolean }
@@ -4659,6 +5032,10 @@ export type Database = {
       set_tenant_smtp_api_key: {
         Args: { _api_key: string }
         Returns: undefined
+      }
+      try_lock_connection_refresh: {
+        Args: { _account_id: string }
+        Returns: boolean
       }
       update_email_delivery: {
         Args: {
