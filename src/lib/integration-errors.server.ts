@@ -37,7 +37,16 @@ const SECRET_PATTERNS: RegExp[] = [
   /access_token=[^&\s"']+/gi,
   /client_secret=[^&\s"']+/gi,
   /refresh_token=[^&\s"']+/gi,
-  /(["']?(?:access_token|client_secret|refresh_token|app_secret|api_key|password)["']?\s*[:=]\s*)["']?[A-Za-z0-9._-]{8,}["']?/gi,
+  // An authorization code is short-lived but exchangeable: anyone who reads
+  // one out of a log before the real callback lands can trade it for a token.
+  /\bcode=[^&\s"']{8,}/gi,
+  // The state value is no longer stored, but it can still appear in an echoed
+  // request URL, and it is the other half of a callback replay.
+  /\bstate=[^&\s"']{16,}/gi,
+  // The value class includes / + = ~ deliberately. It previously stopped at
+  // [A-Za-z0-9._-], which meant a Google refresh token -- they begin "1//" --
+  // did not match and passed through redaction intact.
+  /(["']?(?:access_token|client_secret|refresh_token|app_secret|api_key|password)["']?\s*[:=]\s*)["']?[A-Za-z0-9._~+/=-]{8,}["']?/gi,
   /Bearer\s+[A-Za-z0-9._-]{8,}/gi,
   // Meta long-lived tokens are long opaque strings prefixed EAA...
   /\bEAA[A-Za-z0-9]{20,}\b/g,

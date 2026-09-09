@@ -1951,7 +1951,8 @@ export type Database = {
           id: string;
           platform: string;
           redirect_uri: string;
-          state: string;
+          state: string | null;
+          state_hash: string | null;
           tenant_id: string;
           used_at: string | null;
           user_id: string;
@@ -1965,7 +1966,8 @@ export type Database = {
           id?: string;
           platform: string;
           redirect_uri: string;
-          state: string;
+          state?: string | null;
+          state_hash?: string | null;
           tenant_id?: string;
           used_at?: string | null;
           user_id?: string;
@@ -1979,7 +1981,8 @@ export type Database = {
           id?: string;
           platform?: string;
           redirect_uri?: string;
-          state?: string;
+          state?: string | null;
+          state_hash?: string | null;
           tenant_id?: string;
           used_at?: string | null;
           user_id?: string;
@@ -3912,6 +3915,18 @@ export type Database = {
         Returns: { expired_count: number; deleted_count: number }[];
       };
       is_legal_connection_transition: { Args: { _from: string; _to: string }; Returns: boolean };
+      consume_oauth_state_hash: {
+        Args: { _state_hash: string };
+        Returns: {
+          id: string;
+          tenant_id: string;
+          user_id: string;
+          platform: string;
+          redirect_uri: string;
+          code_verifier: string | null;
+        }[];
+      };
+      try_lock_connection_refresh: { Args: { _account_id: string }; Returns: boolean };
       rotate_site_webhook_secret: { Args: { _site_id: string }; Returns: string };
       rotate_wa_number_app_secret: {
         Args: { _wa_number_id: string; _new_secret: string };

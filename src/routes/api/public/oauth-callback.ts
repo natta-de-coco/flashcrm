@@ -206,7 +206,14 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
         } catch (e) {
           // Log the raw error server-side, but only leak a sanitized code to
           // the browser URL (previous version echoed full SDK error text).
-          console.error("[oauth-callback] failed", e);
+          // Redacted before it reaches the log. A provider error frequently
+          // echoes the request, and the request carried the token — so an
+          // unfiltered console.error puts a live credential into whatever
+          // aggregates stdout, where it outlives the token itself.
+          const { redactSecrets } = await import("@/lib/integration-errors.server");
+          const safeMessage =
+            redactSecrets(e instanceof Error ? e.message : String(e)) ?? "Authorization failed";
+          console.error("[oauth-callback] failed:", safeMessage);
 
           // Also record it against the workspace, so a failed connection is
           // visible in the manager portal instead of only in a console nobody
@@ -229,16 +236,13 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             console.error("[oauth-callback] could not record error", recordError);
           }
 
-          await markAttemptState(
-            "callback_error",
-            e instanceof Error ? e.message.slice(0, 200) : "Token exchange failed",
-          );
+          await markAttemptState("callback_error", safeMessage.slice(0, 200));
           await auditOutcome(
             "failed",
             row.platform,
             row.tenant_id,
             row.user_id ?? null,
-            e instanceof Error ? e.message.slice(0, 300) : String(e).slice(0, 300),
+            safeMessage.slice(0, 300),
           );
           return back(origin, { connect_error: sanitizeError(e), platform: row.platform });
         }

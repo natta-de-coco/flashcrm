@@ -65,7 +65,11 @@ export type StartResult =
   { ready: true; url: string } | { ready: false; reason: string; missing: string[] };
 
 /** Providers that require PKCE (send code_challenge on auth, code_verifier on exchange). */
-const PKCE_PROVIDERS: Provider[] = ["twitter"];
+// TikTok requires PKCE; Google and X support S256 and reject nothing by
+// sending it. Meta's classic dialog and Pinterest are left out deliberately —
+// an unsupported code_challenge is an unknown parameter, and providers differ
+// in whether they ignore or reject those. Widen only with a verified source.
+const PKCE_PROVIDERS: Provider[] = ["twitter", "tiktok", "google"];
 
 function base64UrlEncode(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -148,6 +152,53 @@ export async function providerReadiness(tenantId?: string | null): Promise<
   return Object.fromEntries(entries) as Awaited<ReturnType<typeof providerReadiness>>;
 }
 
+/** SHA-256 as lowercase hex, matching what the database stores. */
+export async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * The origins a provider may redirect back to.
+ *
+ * OAUTH_ALLOWED_ORIGINS is a comma-separated list. When it is unset the
+ * deployment's own PUBLIC_APP_URL is used, and failing that localhost — so a
+ * developer is not blocked, while production is only ever as open as it is
+ * configured to be.
+ *
+ * Compared on the parsed origin rather than by string prefix: "https://flas.example"
+ * must not match "https://flas.example.attacker.test".
+ */
+export function resolveAllowedOrigin(candidate: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+    return null;
+  }
+
+  const configured = (process.env["OAUTH_ALLOWED_ORIGINS"] ?? process.env["PUBLIC_APP_URL"] ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+  const allowed = configured.length
+    ? configured
+    : ["http://localhost:8080", "http://127.0.0.1:8080"];
+
+  for (const entry of allowed) {
+    try {
+      if (new URL(entry).origin === parsed.origin) return parsed.origin;
+    } catch {
+      /* a malformed entry in configuration must not allow everything */
+    }
+  }
+  return null;
+}
+
 /** Builds the platform consent URL and records a single-use state row. */
 export async function startAuthorization(args: {
   platform: AccountPlatform;
@@ -173,8 +224,26 @@ export async function startAuthorization(args: {
     };
   }
 
+  // The origin arrives from the browser, so it decides where a provider sends
+  // an authorization code. Providers enforce their own redirect allowlists,
+  // which limits the damage, but an unchecked value here is still an
+  // attacker-controlled input reaching an outbound URL. Check it against ours.
+  const allowedOrigin = resolveAllowedOrigin(args.origin);
+  if (!allowedOrigin) {
+    return {
+      ready: false,
+      reason: "That redirect address is not allowed for this deployment.",
+      missing: [],
+    };
+  }
+
+  // crypto.randomUUID is CSPRNG-backed; two of them give ~244 bits.
   const state = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-  const redirectUri = `${args.origin}/api/public/oauth-callback`;
+  // Only the digest is stored. The state itself lives in the provider's
+  // redirect URL and nowhere we control, so reading oauth_states yields
+  // nothing that can be replayed against a live authorization.
+  const stateHash = await sha256Hex(state);
+  const redirectUri = `${allowedOrigin}/api/public/oauth-callback`;
 
   // Real PKCE for providers that need it — verifier stored per-state row.
   const usePkce = PKCE_PROVIDERS.includes(meta.provider);
@@ -184,7 +253,7 @@ export async function startAuthorization(args: {
     tenant_id: args.tenantId,
     user_id: args.userId,
     platform: args.platform,
-    state,
+    state_hash: stateHash,
     redirect_uri: redirectUri,
     code_verifier: pkce?.verifier ?? null,
   });
@@ -372,7 +441,10 @@ export async function consumeState(state: string): Promise<{
   redirect_uri: string;
   code_verifier: string | null;
 } | null> {
-  const { data, error } = await supabaseAdmin.rpc("consume_oauth_state", { _state: state });
+  // Looked up by digest, because the plaintext state is no longer stored.
+  const { data, error } = await supabaseAdmin.rpc("consume_oauth_state_hash", {
+    _state_hash: await sha256Hex(state),
+  });
   if (error) return null;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return null;

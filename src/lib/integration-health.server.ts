@@ -291,6 +291,27 @@ export async function retryConnection(args: {
     reason = probe.reason;
     scopes = probe.scopes;
   } else if (provider) {
+    // Serialise refreshes per account.
+    //
+    // Two concurrent health checks both called the provider, and the second
+    // response overwrote the first. Where a provider rotates the refresh token
+    // on use — Google and X do — the losing token is already invalidated, so
+    // the connection breaks precisely because we tried twice to fix it.
+    //
+    // The lock is transaction-scoped and non-blocking: a caller that loses the
+    // race skips the refresh rather than queueing behind it and then making a
+    // second redundant call.
+    const { data: gotLock } = await supabaseAdmin.rpc("try_lock_connection_refresh", {
+      _account_id: row.id,
+    });
+    if (gotLock === false) {
+      return {
+        platform: row.platform,
+        outcome: "healthy",
+        reason: "A refresh for this connection is already running; skipped this one.",
+      };
+    }
+
     try {
       const set = await refreshAccessToken({
         provider,

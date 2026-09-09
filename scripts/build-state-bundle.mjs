@@ -12,15 +12,55 @@ await build({
   entryPoints: ["src/lib/connection-state.ts"],
   outfile: "node_modules/.cache/flas-connection-state.mjs",
   format: "esm",
+  platform: "node",
   bundle: true,
   logLevel: "error",
   alias: { "@": "./src" },
+});
+
+const stubSupabase = {
+  name: "stub-supabase-admin",
+  setup(b) {
+    b.onResolve({ filter: /client\.server$/ }, () => ({
+      path: "stub-supabase-admin",
+      namespace: "stub",
+    }));
+    b.onLoad({ filter: /.*/, namespace: "stub" }, () => ({
+      contents:
+        "export const supabaseAdmin = new Proxy({}, { get() { throw new Error('supabaseAdmin touched in a pure-function test'); } });",
+      loader: "js",
+    }));
+  },
+};
+
+// Task 4: the redirect allowlist, state hashing and redaction helpers.
+await build({
+  entryPoints: ["src/lib/oauth.server.ts"],
+  outfile: "node_modules/.cache/flas-oauth.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [stubSupabase],
+});
+
+await build({
+  entryPoints: ["src/lib/integration-errors.server.ts"],
+  outfile: "node_modules/.cache/flas-redact.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [stubSupabase],
 });
 
 await build({
   entryPoints: ["src/lib/connection-state.server.ts"],
   outfile: "node_modules/.cache/flas-derive-state.mjs",
   format: "esm",
+  platform: "node",
   bundle: true,
   logLevel: "error",
   alias: { "@": "./src" },

@@ -210,10 +210,15 @@ export async function markAttempt(
   reason: string,
 ): Promise<void> {
   try {
+    // Keyed on the digest. The plaintext state column is NULL for every row
+    // written since the security hardening, so matching on it would update
+    // nothing at all and every attempt would stay "started" -- silently, which
+    // is the failure mode this whole area keeps producing.
+    const { sha256Hex } = await import("@/lib/oauth.server");
     await supabaseAdmin
       .from("oauth_states")
       .update({ attempt_state: attemptState, attempt_reason: reason.slice(0, 300) })
-      .eq("state", state);
+      .eq("state_hash", await sha256Hex(state));
   } catch (e) {
     console.error("[connection-state] could not mark attempt", e);
   }
