@@ -72,6 +72,16 @@ function ConnectPage() {
 
   useEffect(() => setOrigin(window.location.origin), []);
 
+  // Step 4 of the checklist needs to know whether any social account is live.
+  const socialAccounts = useQuery({
+    queryKey: ["connect-social-accounts"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("social_accounts").select("id, active");
+      if (error) throw error;
+      return (data ?? []) as { id: string; active: boolean }[];
+    },
+  });
+
   const waNumbers = useQuery({
     queryKey: ["connect-wa-numbers"],
     queryFn: async () => {
@@ -126,7 +136,9 @@ function ConnectPage() {
     { done: numbers.some((n) => n.active), label: "WhatsApp connected" },
     { done: allSites.length > 0, label: "Website added" },
     { done: allSites.some((s) => s.status === "active"), label: "Site live & capturing" },
-    { done: false, label: "AI & social growing" },
+    // Was hardcoded false, so the checklist read "0 of 4" forever even for a
+    // workspace with social accounts already connected.
+    { done: (socialAccounts.data ?? []).some((a) => a.active), label: "AI & social growing" },
   ];
   const doneCount = steps.filter((s) => s.done).length;
 

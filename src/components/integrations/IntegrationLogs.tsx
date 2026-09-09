@@ -7,12 +7,41 @@ import { ScrollText } from "lucide-react";
 
 const ACTION_LABEL: Record<string, string> = {
   "connection.authorize_started": "Authorization started",
+  // The OAuth callback records how each attempt ended. None of these were
+  // mapped, so a run of failures rendered as a run of identical "started"
+  // rows with no outcome and no reason -- the single most common support
+  // question about connecting a channel.
+  "connection.authorize_succeeded": "Authorization succeeded",
+  "connection.authorize_failed": "Authorization failed",
+  "connection.authorize_expired": "Authorization link expired",
+  "connection.authorize_cancelled": "Authorization cancelled",
+  "connection.authorize_blocked": "Could not start authorization",
+  "connection.platform_app_saved": "Platform app keys saved",
   "connection.connected": "Platform connected",
   "connection.disconnected": "Platform disconnected",
   "connection.scanned": "Flas profile scan",
   "site.activated": "Website plugin activated",
   "website.synced": "Website knowledge synced",
 };
+
+const FAILED_ACTIONS = new Set([
+  "connection.authorize_failed",
+  "connection.authorize_expired",
+  "connection.authorize_cancelled",
+  "connection.authorize_blocked",
+]);
+
+/**
+ * The human-readable reason stored alongside an audit row.
+ *
+ * It is written by the OAuth callback and already passed through
+ * redactSecrets, so it is safe to display; it was simply never read.
+ */
+function reasonOf(details: unknown): string | null {
+  if (!details || typeof details !== "object") return null;
+  const reason = (details as { reason?: unknown }).reason;
+  return typeof reason === "string" && reason.trim() ? reason : null;
+}
 
 /** Everything that happened across integrations — newest first. */
 export function IntegrationLogs() {
@@ -50,11 +79,20 @@ export function IntegrationLogs() {
                 className="flex items-start justify-between gap-3 border-b pb-2 text-xs last:border-0"
               >
                 <div className="min-w-0">
-                  <p className="font-medium">{ACTION_LABEL[row.action] ?? row.action}</p>
+                  <p
+                    className={
+                      FAILED_ACTIONS.has(row.action) ? "font-medium text-destructive" : "font-medium"
+                    }
+                  >
+                    {ACTION_LABEL[row.action] ?? row.action}
+                  </p>
                   <p className="truncate text-muted-foreground">
                     {row.actor_label ?? "System"}
                     {row.entity_id ? ` · ${row.entity_id}` : ""}
                   </p>
+                  {reasonOf(row.details) && (
+                    <p className="mt-0.5 text-muted-foreground">{reasonOf(row.details)}</p>
+                  )}
                 </div>
                 <span className="shrink-0 text-muted-foreground">
                   {new Date(row.created_at).toLocaleString()}

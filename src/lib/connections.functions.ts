@@ -50,7 +50,10 @@ export const getConnections = createServerFn({ method: "GET" })
       ...a,
       health: computeHealth({
         active: a.active,
-        access_token: a.connect_method === "oauth" || a.external_id ? "set" : "set",
+        // Both branches of this were "set", so health could never report a
+        // missing credential -- an account saved without a token showed as
+        // healthy right up until its first sync failed.
+        access_token: a.connect_method === "oauth" || a.external_id ? "set" : null,
         token_expires_at: a.token_expires_at,
         last_synced_at: a.last_synced_at,
       }),
@@ -77,19 +80,31 @@ export const startConnect = createServerFn({ method: "POST" })
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
     const { startAuthorization } = await import("@/lib/oauth.server");
     const { logAudit } = await import("@/lib/audit.server");
-    await logAudit({
-      action: "connection.authorize_started",
-      tenantId,
-      actorId: context.userId,
-      entityType: "platform",
-      entityId: data.platform,
-    });
-    return startAuthorization({
+
+    // Run first, then record what actually happened.
+    //
+    // This logged "Authorization started" before knowing whether one could
+    // start, so a workspace with no app keys -- or a deployment whose origin
+    // is not in OAUTH_ALLOWED_ORIGINS -- accumulated a row per click saying an
+    // authorization had begun when the customer was never sent anywhere. That
+    // is why the logs show repeated attempts against nothing connected.
+    const result = await startAuthorization({
       platform: data.platform,
       origin: data.origin.replace(/\/$/, ""),
       tenantId,
       userId: context.userId,
     });
+
+    await logAudit({
+      action: result.ready ? "connection.authorize_started" : "connection.authorize_blocked",
+      tenantId,
+      actorId: context.userId,
+      entityType: "platform",
+      entityId: data.platform,
+      ...(result.ready ? {} : { details: { reason: result.reason } }),
+    });
+
+    return result;
   });
 
 /**
