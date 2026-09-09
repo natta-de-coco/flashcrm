@@ -12,7 +12,9 @@
     "format": "prettier --write .",
     "errors": "node scripts/dump-errors.mjs",
     "test:capabilities": "node scripts/build-registry-bundle.mjs && node --test tests/capability-registry.test.mjs",
-    "docs:capabilities": "node scripts/generate-capability-matrix.mjs"
+    "docs:capabilities": "node scripts/generate-capability-matrix.mjs",
+    "test:connection-state": "node scripts/build-state-bundle.mjs && node --test tests/connection-state.test.mjs",
+    "test": "npm run test:capabilities && npm run test:connection-state"
   },
   "overrides": {
     "rolldown": "1.2.1"

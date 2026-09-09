@@ -1943,6 +1943,8 @@ export type Database = {
       };
       oauth_states: {
         Row: {
+          attempt_state: string;
+          attempt_reason: string | null;
           code_verifier: string | null;
           created_at: string;
           expires_at: string;
@@ -1955,6 +1957,8 @@ export type Database = {
           user_id: string;
         };
         Insert: {
+          attempt_state?: string;
+          attempt_reason?: string | null;
           code_verifier?: string | null;
           created_at?: string;
           expires_at?: string;
@@ -1967,6 +1971,8 @@ export type Database = {
           user_id?: string;
         };
         Update: {
+          attempt_state?: string;
+          attempt_reason?: string | null;
           code_verifier?: string | null;
           created_at?: string;
           expires_at?: string;
@@ -2890,6 +2896,9 @@ export type Database = {
           access_token: string | null;
           active: boolean;
           connect_method: string;
+          connection_state: string;
+          state_changed_at: string;
+          state_reason: string | null;
           created_at: string;
           external_id: string | null;
           granted_scopes: string[] | null;
@@ -2918,6 +2927,9 @@ export type Database = {
           access_token?: string | null;
           active?: boolean;
           connect_method?: string;
+          connection_state?: string;
+          state_changed_at?: string;
+          state_reason?: string | null;
           created_at?: string;
           external_id?: string | null;
           granted_scopes?: string[] | null;
@@ -2946,6 +2958,9 @@ export type Database = {
           access_token?: string | null;
           active?: boolean;
           connect_method?: string;
+          connection_state?: string;
+          state_changed_at?: string;
+          state_reason?: string | null;
           created_at?: string;
           external_id?: string | null;
           granted_scopes?: string[] | null;
@@ -3892,6 +3907,11 @@ export type Database = {
         }[];
       };
       purge_expired_oauth_states: { Args: never; Returns: number };
+      expire_abandoned_oauth_attempts: {
+        Args: never;
+        Returns: { expired_count: number; deleted_count: number }[];
+      };
+      is_legal_connection_transition: { Args: { _from: string; _to: string }; Returns: boolean };
       rotate_site_webhook_secret: { Args: { _site_id: string }; Returns: string };
       rotate_wa_number_app_secret: {
         Args: { _wa_number_id: string; _new_secret: string };

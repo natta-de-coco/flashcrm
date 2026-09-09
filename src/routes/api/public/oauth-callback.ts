@@ -58,6 +58,24 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           }
         };
 
+        /**
+         * Records the attempt's terminal state on its oauth_states row.
+         *
+         * The audit log says what happened; this makes the row itself say so,
+         * which is what the manager portal and the sweep read. Both matter:
+         * an attempt whose callback never arrives is only ever resolved by the
+         * expiry derivation, and one that does arrive should not still read
+         * "started" afterwards.
+         */
+        const markAttemptState = async (
+          attemptState: "callback_received" | "cancelled" | "callback_error" | "completed",
+          reason: string,
+        ) => {
+          if (!state) return;
+          const { markAttempt } = await import("@/lib/connection-state.server");
+          await markAttempt(state, attemptState, reason);
+        };
+
         const url = new URL(request.url);
         const origin = url.origin;
         const state = url.searchParams.get("state") ?? "";
@@ -84,6 +102,10 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           });
         }
         if (denied || !code) {
+          await markAttemptState(
+            "cancelled",
+            "The provider refused the request or the person declined it",
+          );
           await auditOutcome(
             "cancelled",
             row.platform,
@@ -172,6 +194,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             profile,
             permissions: [...capabilityCeiling(platform)],
           });
+          await markAttemptState("completed", "The account was connected");
           await auditOutcome(
             "succeeded",
             row.platform,
@@ -206,6 +229,10 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             console.error("[oauth-callback] could not record error", recordError);
           }
 
+          await markAttemptState(
+            "callback_error",
+            e instanceof Error ? e.message.slice(0, 200) : "Token exchange failed",
+          );
           await auditOutcome(
             "failed",
             row.platform,

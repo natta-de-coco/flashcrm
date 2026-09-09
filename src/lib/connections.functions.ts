@@ -247,6 +247,20 @@ export const disconnectConnection = createServerFn({ method: "POST" })
       .update({ active: false, health: "disconnected" })
       .eq("id", data.id);
     if (error) throw error;
+
+    // Recorded as a deliberate disconnect rather than lumped in with expiry,
+    // revocation and failed refresh, which all used to read "disconnected".
+    const tenantId = await callerTenantId(context.supabase, context.userId);
+    if (tenantId) {
+      const { transitionConnection } = await import("@/lib/connection-state.server");
+      await transitionConnection({
+        accountId: data.id,
+        tenantId,
+        to: "disconnected",
+        reason: "Disconnected by a user in this workspace",
+        actorId: context.userId,
+      });
+    }
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
       action: "connection.disconnected",

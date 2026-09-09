@@ -2,7 +2,8 @@
 // integration is Connected, Needs verification, Pending review, Expired or
 // Failing — and always states the exact reason plus the quickest fix.
 
-import type { Capability, ConnectorId } from "./connections-catalog";
+import { missingScopesFor } from "./connection-state";
+import type { ConnectorId } from "./connections-catalog";
 
 export type ConnectionState =
   "connected" | "needs_verification" | "pending_review" | "expired" | "failing" | "not_connected";
@@ -23,6 +24,8 @@ export type AccountLike = {
   token_expires_at: string | null;
   last_synced_at: string | null;
   last_analytics_sync_at?: string | null;
+  /** Scopes the provider returned on the token response. */
+  granted_scopes?: string[] | null;
   permissions?: string[] | null;
   external_id?: string | null;
   connect_method?: string | null;
@@ -39,24 +42,6 @@ const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatu
 };
 
 /** Permissions Flas needs before a capability actually works. */
-export const REQUIRED_PERMISSIONS: Partial<
-  Record<ConnectorId, Partial<Record<Capability, string[]>>>
-> = {
-  instagram: {
-    messaging: ["instagram_manage_messages"],
-    publish: ["instagram_content_publish"],
-    analytics: ["instagram_basic"],
-  },
-  facebook: {
-    messaging: ["pages_messaging"],
-    publish: ["pages_manage_posts"],
-    analytics: ["read_insights", "pages_read_engagement"],
-  },
-  google_business: { analytics: ["https://www.googleapis.com/auth/business.manage"] },
-  youtube: { publish: ["https://www.googleapis.com/auth/youtube.force-ssl"] },
-  tiktok: { publish: ["video.publish"] },
-  linkedin: { publish: ["w_organization_social"] },
-};
 
 export function connectionStatus(account: AccountLike | undefined): ConnectionStatus {
   const build = (state: ConnectionState, reason: string, fix: string): ConnectionStatus => ({
@@ -98,12 +83,21 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
     );
   }
 
-  const permissions = account.permissions ?? [];
-  const required = REQUIRED_PERMISSIONS[account.platform as ConnectorId];
-  if (required && permissions.length > 0) {
-    const missing = Object.values(required)
-      .flat()
-      .filter((scope): scope is string => Boolean(scope) && !permissions.includes(scope));
+  // Reads granted_scopes -- the scopes the provider actually returned.
+  //
+  // The previous version read `permissions`, which connections.server.ts writes
+  // as the JSON object { granted: [...] } while this file typed it as an
+  // array. `permissions.length > 0` was therefore never true and this branch
+  // had never executed once. It also compared against REQUIRED_PERMISSIONS, a
+  // fourth hand-maintained scope list that named scopes Flas does not request
+  // (instagram_manage_messages, video.publish), so it would have reported
+  // permanent false positives even with the shape corrected.
+  //
+  // missingScopesFor() derives from the connector registry and counts only
+  // capabilities Flas has actually implemented, so a customer is never asked
+  // to re-authorize for a permission that unlocks nothing.
+  {
+    const missing = missingScopesFor(account.platform, account.granted_scopes ?? []);
     if (missing.length > 0) {
       return build(
         "needs_verification",

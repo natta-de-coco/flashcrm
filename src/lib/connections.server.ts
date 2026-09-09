@@ -2,6 +2,7 @@
 // after authorization, connection health, Flas account scans and the AI
 // profile optimizer. Tokens are only ever touched with the admin client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { deriveConnectionState } from "@/lib/connection-state.server";
 import type { AccountPlatform } from "./connections-catalog";
 import { connector } from "./connections-catalog";
 import { callFlashAi } from "./flash-ai.server";
@@ -158,6 +159,24 @@ export async function saveAuthorizedConnection(args: {
     granted_scopes: args.grantedScopes?.length ? args.grantedScopes : null,
     active: true,
     health: "connected",
+    // The state model is authoritative; `health` is retained for one release
+    // so existing readers keep working through the deploy. Derived rather than
+    // assumed "connected": a consent screen where the customer unticked a
+    // permission lands in scope_incomplete, which the old code could not say.
+    connection_state: deriveConnectionState({
+      active: true,
+      access_token: args.token,
+      token_expires_at: args.expiresAt,
+      granted_scopes: args.grantedScopes ?? null,
+      platform: args.platform,
+    }).state,
+    state_reason: deriveConnectionState({
+      active: true,
+      access_token: args.token,
+      token_expires_at: args.expiresAt,
+      granted_scopes: args.grantedScopes ?? null,
+      platform: args.platform,
+    }).reason,
     status_reason: null,
     last_error: null,
     last_error_at: null,

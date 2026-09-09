@@ -5,7 +5,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connector, CONNECTORS } from "./connections-catalog";
 import type { AccountPlatform } from "./connections-catalog";
-import { connectionStatus, REQUIRED_PERMISSIONS } from "./connection-status";
+import { connectionStatus } from "./connection-status";
+import { missingScopesFor } from "./connection-state";
 import type { ConnectionState } from "./connection-status";
 import type { HealthReport, HealthRow } from "./integration-health";
 import { refreshAccessToken } from "./oauth.server";
@@ -46,13 +47,10 @@ function grantedScopes(row: AccountRow): string[] {
 }
 
 function missingScopes(row: AccountRow): string[] {
-  const granted = grantedScopes(row);
-  if (granted.length === 0) return [];
-  const required = REQUIRED_PERMISSIONS[row.platform as AccountPlatform];
-  if (!required) return [];
-  return Object.values(required)
-    .flat()
-    .filter((scope): scope is string => Boolean(scope) && !granted.includes(scope));
+  // Derived from the connector registry rather than the old REQUIRED_PERMISSIONS
+  // table, which listed scopes Flas never requests and would have reported them
+  // as permanently missing.
+  return missingScopesFor(row.platform, grantedScopes(row));
 }
 
 function nextStepFor(state: ConnectionState, row: AccountRow | undefined): string {
@@ -324,6 +322,12 @@ export async function retryConnection(args: {
   }
 
   const recovered = outcome === "healthy" || outcome === "recovered" || outcome === "refreshed";
+
+  // A 5xx, a rate limit or a timeout is the provider being unavailable, not
+  // the customer's authorization being wrong. Distinguishing them decides both
+  // the message shown and whether the token is kept.
+  const providerDown =
+    !recovered && /\b5\d\d\b|rate limit|too many requests|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable/i.test(reason);
   const retryCount = recovered ? 0 : row.retry_count + 1;
 
   await supabaseAdmin
@@ -333,8 +337,24 @@ export async function retryConnection(args: {
       refresh_token: refreshToken,
       token_expires_at: expiresAt,
       ...(scopes?.length ? { granted_scopes: scopes } : {}),
-      active: recovered,
+      // `active` is deliberately NOT cleared on a provider outage. Setting it
+      // false during an hour of Meta 5xx would sign every customer out of a
+      // connection that is perfectly valid, and they would all reconnect for
+      // nothing.
+      active: recovered || providerDown,
       health: recovered ? "connected" : "disconnected",
+      // Four different failures used to write the single word "disconnected".
+      // They need different messages and different owners: a revoked grant is
+      // the customer's to fix, a failed refresh is ours to retry, and a
+      // provider outage is nobody's to fix here.
+      connection_state: recovered
+        ? "connected"
+        : providerDown
+          ? "provider_unavailable"
+          : /revok|invalid[_ ]grant|reauthor|\b190\b|\b401\b|\b403\b/i.test(reason)
+            ? "revoked"
+            : "refresh_failed",
+      state_reason: reason.slice(0, 500),
       status_reason: reason,
       last_error: recovered ? null : reason,
       last_error_at: recovered ? null : now,

@@ -159,7 +159,12 @@ async function checkLiterals(table, column) {
     [`public."${table}"`],
   );
   for (const r of rows) {
-    if (!r.def.includes(column)) continue;
+    // Whole-identifier match, not a substring. Matching loosely meant the
+    // column `state` picked up the CHECK belonging to `attempt_state`, so both
+    // workspaces were seeded with the same literal and collided on the unique
+    // index -- silently dropping that table's checks.
+    const mentioned = new RegExp(`(^|[^A-Za-z0-9_])${column}([^A-Za-z0-9_]|$)`).test(r.def);
+    if (!mentioned) continue;
     const literals = [...r.def.matchAll(/'([^']+)'/g)].map((m) => m[1]);
     if (literals.length) return literals;
   }
@@ -324,9 +329,12 @@ if (process.env.SABOTAGE) {
 
 console.log("\n=== seeding ===");
 for (const [table, ids] of Object.entries(seeded)) {
-  const note =
-    typeof ids.a === "object" ? `skipped (${ids.a.error.slice(0, 60)})` : ids.a ? "ok" : "no id column";
-  console.log(`  ${table.padEnd(26)} ${note}`);
+  // Report BOTH workspaces. Reporting only A hid a case where B failed to
+  // seed, which silently dropped that table's cross-workspace checks -- the
+  // count fell and nothing said so.
+  const describe = (v) =>
+    typeof v === "object" && v ? `skipped (${v.error.slice(0, 50)})` : v ? "ok" : "no id";
+  console.log(`  ${table.padEnd(26)} A:${describe(ids.a).padEnd(20)} B:${describe(ids.b)}`);
 }
 
 console.log("\n=== cross-workspace access (target: workspace B rows) ===");
