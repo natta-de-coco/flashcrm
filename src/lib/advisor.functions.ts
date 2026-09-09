@@ -46,7 +46,8 @@ export const saveAdvisorContext = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ProfileSchema.parse(input))
   .handler(async ({ context, data }) => {
     const supabase = context.supabase;
-    const { data: tenantId } = await supabase.rpc("current_tenant_id");
+    const { data: tenantId, error: tenantError } = await supabase.rpc("current_tenant_id");
+    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
     if (!tenantId) throw new Error("No workspace found for this account.");
 
     const { error } = await supabase
