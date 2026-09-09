@@ -314,8 +314,9 @@ export async function getDashboardOverviewData(
     stats: {
       open: conversations.filter((c) => c.status === "open").length,
       unread: unreadTotal,
-      contacts: contactRows.length,
-      botReplies: messageRows.filter((m) => m.sender === "bot").length,
+      contacts: contactsTotal,
+      botReplies,
+
     },
     activity: { buckets, weekTotal, todayTotal },
     trends,
