@@ -3,6 +3,7 @@
 import { PageHeader } from "@/components/PageHeader";
 import { useTenant } from "@/hooks/useTenant";
 import { todayInTimeZone } from "@/lib/locale";
+import { salesDraftBlocker } from "@/lib/form-validation";
 import {
   InvoiceBuilder,
   emptyDocument,
@@ -53,23 +54,6 @@ function finaliseBlocker(state: BuilderState): string | null {
 
   if (previewTotals(state).grand <= 0) {
     return "The total is zero — check the prices before finalising.";
-  }
-  return null;
-}
-
-/**
- * Why this document cannot be saved as a draft yet, or null when it can.
- *
- * Deliberately far weaker than finaliseBlocker: an unfinished draft is a
- * legitimate thing to keep, and the UI says so. This only stops a document
- * with nothing in it at all -- no customer, no described line -- which was
- * saveable and produced a blank 0.00 entry in the list.
- */
-function draftBlocker(state: BuilderState): string | null {
-  const named = state.customer.name.trim() || state.customer.company.trim();
-  const anyLine = state.items.some((i) => (i.description ?? "").trim().length > 0);
-  if (!named && !anyLine) {
-    return "Add a customer or a line item before saving a draft.";
   }
   return null;
 }
@@ -356,8 +340,8 @@ function SalesPage() {
               </Button>
               <Button
                 variant="outline"
-                disabled={save.isPending || draftBlocker(builder) !== null}
-                title={draftBlocker(builder) ?? undefined}
+                disabled={save.isPending || salesDraftBlocker(builder) !== null}
+                title={salesDraftBlocker(builder) ?? undefined}
                 onClick={() => save.mutate(false)}
               >
                 Save draft

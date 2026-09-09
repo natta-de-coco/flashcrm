@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
 import { formatMoney } from "@/lib/billing-math";
+import { productFormError } from "@/lib/form-validation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Package, Plus, Trash2 } from "lucide-react";
@@ -45,26 +46,6 @@ type Product = {
 };
 
 const emptyForm = { title: "", sku: "", price: "", description: "", image: "" };
-
-/**
- * Why the product cannot be saved yet, or null when it can.
- *
- * `min="0"` on the input is only a native hint, and a React-controlled field
- * never enforces it: typing -10 left Add product enabled and stored a negative
- * price, which then flows into quotes and invoices.
- */
-function productFormError(form: typeof emptyForm): string | null {
-  if (!form.title.trim()) return "Give the product a title.";
-  if (form.price.trim()) {
-    const price = Number(form.price);
-    if (!Number.isFinite(price)) return "Price must be a number.";
-    if (price < 0) return "Price cannot be negative.";
-  }
-  if (form.image.trim() && !/^https?:\/\//i.test(form.image.trim())) {
-    return "Image URL must start with http:// or https://";
-  }
-  return null;
-}
 
 function CatalogPage() {
   const qc = useQueryClient();

@@ -119,3 +119,15 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
 });
+
+// The form validators. Extracted from the route files so the rules that decide
+// whether bad input can be saved are asserted directly rather than by clicking.
+await build({
+  entryPoints: ["src/lib/form-validation.ts"],
+  outfile: "node_modules/.cache/flas-form-validation.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});

@@ -9,6 +9,7 @@ import { CONNECTORS } from "@/lib/connections-catalog";
 import { capabilityCeiling } from "@/lib/social-connector-definitions";
 
 import { supabase } from "@/integrations/supabase/client";
+import { contentDraftBlocker } from "@/lib/form-validation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarClock, FileText, Trash2 } from "lucide-react";
@@ -85,20 +86,6 @@ const emptyForm = {
   seoDescription: "",
   seoKeywords: "",
 };
-
-/**
- * Why this post cannot be saved as a draft yet, or null when it can.
- *
- * Save draft was gated only on the request being in flight, so pressing it on
- * an untouched form stored an empty row that showed up in the list as
- * "Untitled post" with nothing in it.
- */
-function draftBlocker(form: typeof emptyForm): string | null {
-  if (!form.title.trim() && !form.body.trim()) {
-    return "Add a title or body to save a draft.";
-  }
-  return null;
-}
 
 function ContentPage() {
   const qc = useQueryClient();
@@ -283,16 +270,16 @@ function ContentPage() {
               <Button
                 variant="outline"
                 className="flex-1"
-                disabled={savePost.isPending || draftBlocker(form) !== null}
-                title={draftBlocker(form) ?? undefined}
+                disabled={savePost.isPending || contentDraftBlocker(form) !== null}
+                title={contentDraftBlocker(form) ?? undefined}
                 onClick={() => savePost.mutate("draft")}
               >
                 Save draft
               </Button>
               <Button
                 className="flex-1 gap-2"
-                disabled={savePost.isPending || !form.scheduled_at || draftBlocker(form) !== null}
-                title={draftBlocker(form) ?? undefined}
+                disabled={savePost.isPending || !form.scheduled_at || contentDraftBlocker(form) !== null}
+                title={contentDraftBlocker(form) ?? undefined}
                 onClick={() => savePost.mutate("scheduled")}
               >
                 <CalendarClock className="size-4" />
