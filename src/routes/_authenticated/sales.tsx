@@ -57,6 +57,23 @@ function finaliseBlocker(state: BuilderState): string | null {
   return null;
 }
 
+/**
+ * Why this document cannot be saved as a draft yet, or null when it can.
+ *
+ * Deliberately far weaker than finaliseBlocker: an unfinished draft is a
+ * legitimate thing to keep, and the UI says so. This only stops a document
+ * with nothing in it at all -- no customer, no described line -- which was
+ * saveable and produced a blank 0.00 entry in the list.
+ */
+function draftBlocker(state: BuilderState): string | null {
+  const named = state.customer.name.trim() || state.customer.company.trim();
+  const anyLine = state.items.some((i) => (i.description ?? "").trim().length > 0);
+  if (!named && !anyLine) {
+    return "Add a customer or a line item before saving a draft.";
+  }
+  return null;
+}
+
 export const Route = createFileRoute("/_authenticated/sales")({
   head: () => ({
     meta: [
@@ -339,7 +356,8 @@ function SalesPage() {
               </Button>
               <Button
                 variant="outline"
-                disabled={save.isPending}
+                disabled={save.isPending || draftBlocker(builder) !== null}
+                title={draftBlocker(builder) ?? undefined}
                 onClick={() => save.mutate(false)}
               >
                 Save draft

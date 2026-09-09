@@ -4,7 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
+import { formatMoney } from "@/lib/billing-math";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Package, Plus, Trash2 } from "lucide-react";
@@ -44,8 +46,31 @@ type Product = {
 
 const emptyForm = { title: "", sku: "", price: "", description: "", image: "" };
 
+/**
+ * Why the product cannot be saved yet, or null when it can.
+ *
+ * `min="0"` on the input is only a native hint, and a React-controlled field
+ * never enforces it: typing -10 left Add product enabled and stored a negative
+ * price, which then flows into quotes and invoices.
+ */
+function productFormError(form: typeof emptyForm): string | null {
+  if (!form.title.trim()) return "Give the product a title.";
+  if (form.price.trim()) {
+    const price = Number(form.price);
+    if (!Number.isFinite(price)) return "Price must be a number.";
+    if (price < 0) return "Price cannot be negative.";
+  }
+  if (form.image.trim() && !/^https?:\/\//i.test(form.image.trim())) {
+    return "Image URL must start with http:// or https://";
+  }
+  return null;
+}
+
 function CatalogPage() {
   const qc = useQueryClient();
+  // Prices are shown in the workspace currency; a bare number sat next to the
+  // SKU badge and read as one value, e.g. "31390 368".
+  const { tenant } = useTenant();
   const [form, setForm] = useState(emptyForm);
 
   const { data: products = [], isLoading } = useQuery({
@@ -62,6 +87,9 @@ function CatalogPage() {
 
   const createProduct = useMutation({
     mutationFn: async () => {
+      // Checked again here: the button is one guard, not the only one.
+      const invalid = productFormError(form);
+      if (invalid) throw new Error(invalid);
       const { error } = await supabase.from("products").insert({
         title: form.title.trim(),
         sku: form.sku.trim() || null,
@@ -160,12 +188,15 @@ function CatalogPage() {
             </div>
             <Button
               className="w-full gap-2"
-              disabled={!form.title.trim() || createProduct.isPending}
+              disabled={productFormError(form) !== null || createProduct.isPending}
               onClick={() => createProduct.mutate()}
             >
               <Plus className="size-4" />
               Add product
             </Button>
+            {productFormError(form) ? (
+              <p className="text-xs text-destructive">{productFormError(form)}</p>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -203,7 +234,9 @@ function CatalogPage() {
                     <p className="font-medium">{product.title}</p>
                     {product.sku && <Badge variant="outline">{product.sku}</Badge>}
                     {product.price !== null && (
-                      <Badge variant="secondary">{product.price.toString()}</Badge>
+                      <Badge variant="secondary">
+                        {formatMoney(product.price, tenant?.currency ?? "AED")}
+                      </Badge>
                     )}
                   </div>
                   {product.description && (

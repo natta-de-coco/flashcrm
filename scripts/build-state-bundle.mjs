@@ -84,3 +84,25 @@ await build({
     },
   ],
 });
+
+// QA pass: the tenant-timezone date helper and the single navigation source
+// that global search is built from. Both are pure and dependency-free.
+await build({
+  entryPoints: ["src/lib/locale.ts"],
+  outfile: "node_modules/.cache/flas-locale.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+await build({
+  entryPoints: ["src/lib/navigation.ts"],
+  outfile: "node_modules/.cache/flas-navigation.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});

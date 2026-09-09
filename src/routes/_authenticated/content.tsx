@@ -86,6 +86,20 @@ const emptyForm = {
   seoKeywords: "",
 };
 
+/**
+ * Why this post cannot be saved as a draft yet, or null when it can.
+ *
+ * Save draft was gated only on the request being in flight, so pressing it on
+ * an untouched form stored an empty row that showed up in the list as
+ * "Untitled post" with nothing in it.
+ */
+function draftBlocker(form: typeof emptyForm): string | null {
+  if (!form.title.trim() && !form.body.trim()) {
+    return "Add a title or body to save a draft.";
+  }
+  return null;
+}
+
 function ContentPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -269,7 +283,8 @@ function ContentPage() {
               <Button
                 variant="outline"
                 className="flex-1"
-                disabled={savePost.isPending}
+                disabled={savePost.isPending || draftBlocker(form) !== null}
+                title={draftBlocker(form) ?? undefined}
                 onClick={() => savePost.mutate("draft")}
               >
                 Save draft

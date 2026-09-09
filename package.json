@@ -14,8 +14,9 @@
     "test:capabilities": "node scripts/build-registry-bundle.mjs && node --test tests/capability-registry.test.mjs",
     "docs:capabilities": "node scripts/generate-capability-matrix.mjs",
     "test:connection-state": "node scripts/build-state-bundle.mjs && node --test tests/connection-state.test.mjs",
-    "test": "npm run test:capabilities && npm run test:connection-state && npm run test:oauth-security",
-    "test:oauth-security": "node scripts/build-state-bundle.mjs && node --test tests/oauth-security.test.mjs"
+    "test": "npm run test:capabilities && npm run test:connection-state && npm run test:oauth-security && npm run test:qa",
+    "test:oauth-security": "node scripts/build-state-bundle.mjs && node --test tests/oauth-security.test.mjs",
+    "test:qa": "node scripts/build-state-bundle.mjs && node --test tests/qa-regressions.test.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

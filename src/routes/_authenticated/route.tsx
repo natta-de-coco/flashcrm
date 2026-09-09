@@ -44,6 +44,20 @@ export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
 });
 
+/**
+ * The palette binds Cmd *or* Ctrl, but the hint always said the Mac one, which
+ * is wrong for the Windows users this was tested on. Evaluated at render rather
+ * than at module load so it is not baked into a server-rendered payload.
+ */
+function shortcutHint(): string {
+  if (typeof navigator === "undefined") return "Ctrl K";
+  const platform =
+    (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+    navigator.platform ??
+    "";
+  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘K" : "Ctrl K";
+}
+
 const SIDEBAR_MIN = 224;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_KEY = "flash.sidebar.width";
@@ -338,7 +352,7 @@ function AuthenticatedLayout() {
               <Search className="size-4" />
               Search Flas…
               <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
-                ⌘K
+                {shortcutHint()}
               </kbd>
             </button>
             <div className="ml-auto">
