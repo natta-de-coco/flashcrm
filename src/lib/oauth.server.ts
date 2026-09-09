@@ -13,6 +13,15 @@ type ProviderConfig = {
   tokenUrl: string;
   idEnv: string;
   secretEnv: string;
+  /**
+   * Facebook Login for Business replaces the scope list with a *configuration*
+   * created in the app dashboard, passed as `config_id`. Meta's own guidance is
+   * that scope "can still be included, but we recommend that you do not use it"
+   * once a configuration exists, because the configuration is what the business
+   * actually consented to. Optional: unset means the classic scope flow, which
+   * is what every existing connection was made with.
+   */
+  configIdEnv?: string;
   /** Scopes per platform id. */
   extraAuthParams?: Record<string, string>;
 };
@@ -23,6 +32,7 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     tokenUrl: "https://graph.facebook.com/v21.0/oauth/access_token",
     idEnv: "META_APP_ID",
     secretEnv: "META_APP_SECRET",
+    configIdEnv: "META_LOGIN_CONFIG_ID",
   },
   google: {
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -264,23 +274,62 @@ export async function startAuthorization(args: {
   // connection-status.ts -- and they had already drifted: the setup wizard
   // told users TikTok requests video.publish, which this file never sent.
   const scopes = connectorDefinition(args.platform)?.requestedScopes ?? [];
-  const params = new URLSearchParams({
-    client_id: creds.id,
-    redirect_uri: redirectUri,
-    response_type: "code",
+  const params = buildAuthorizeParams({
+    provider: meta.provider,
+    clientId: creds.id,
+    redirectUri,
     state,
-    ...(scopes.length ? { scope: scopes.join(meta.provider === "meta" ? "," : " ") } : {}),
-    ...(cfg.extraAuthParams ?? {}),
+    scopes,
+    extraAuthParams: cfg.extraAuthParams,
+    configId: cfg.configIdEnv ? process.env[cfg.configIdEnv] : undefined,
+    pkceChallenge: pkce?.challenge,
   });
-  if (pkce) {
-    params.set("code_challenge", pkce.challenge);
+  return { ready: true, url: `${cfg.authorizeUrl}?${params.toString()}` };
+}
+
+/**
+ * Builds the authorization query string. Pure — no database, no clock, no
+ * randomness — so the rules below are covered by tests rather than only by
+ * whatever a live provider happens to accept.
+ */
+export function buildAuthorizeParams(args: {
+  provider: Provider;
+  clientId: string;
+  redirectUri: string;
+  state: string;
+  /** Readonly: the registry exposes its scope lists as const. */
+  scopes: readonly string[];
+  // Explicit `| undefined` because the project sets exactOptionalPropertyTypes.
+  extraAuthParams?: Record<string, string> | undefined;
+  configId?: string | undefined;
+  pkceChallenge?: string | undefined;
+}): URLSearchParams {
+  // A configuration supersedes the scope list. Sending both invites the two to
+  // disagree, and the configuration is the one the business granted.
+  const useConfigId = Boolean(args.configId);
+  const scopeSeparator = args.provider === "meta" ? "," : " ";
+
+  const params = new URLSearchParams({
+    client_id: args.clientId,
+    redirect_uri: args.redirectUri,
+    response_type: "code",
+    state: args.state,
+    ...(useConfigId ? { config_id: args.configId as string } : {}),
+    ...(!useConfigId && args.scopes.length
+      ? { scope: args.scopes.join(scopeSeparator) }
+      : {}),
+    ...(args.extraAuthParams ?? {}),
+  });
+
+  if (args.pkceChallenge) {
+    params.set("code_challenge", args.pkceChallenge);
     params.set("code_challenge_method", "S256");
   }
-  if (meta.provider === "tiktok") {
+  if (args.provider === "tiktok") {
     params.delete("client_id");
-    params.set("client_key", creds.id);
+    params.set("client_key", args.clientId);
   }
-  return { ready: true, url: `${cfg.authorizeUrl}?${params.toString()}` };
+  return params;
 }
 
 type TokenResponse = {

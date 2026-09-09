@@ -51,6 +51,27 @@ whether they ignore or reject those. Widen this list only against a source that
 says the provider supports PKCE — not on the assumption that extra parameters
 are harmless.
 
+### Facebook Login for Business (`config_id`)
+
+Meta's Business Login replaces the scope list with a **configuration** created
+in the app dashboard. Set `META_LOGIN_CONFIG_ID` and the authorize URL sends
+`config_id` and **no** `scope`; leave it unset and the classic scope flow is
+used, which is what every existing connection was made with.
+
+The two are alternatives, never both. Meta's guidance is that scope "can still
+be included, but we recommend that you do not use it" once a configuration
+exists — the configuration is what the business actually consented to, so a
+scope list sent alongside it can only disagree with it. That rule, and the fact
+that `state`, `redirect_uri`, `response_type=code` and PKCE survive either
+flow, are covered by `tests/oauth-authorize-params.test.mjs`.
+
+**The JavaScript SDK flow is deliberately not used.** `FB.login()` returns a
+short-lived user token in the browser, outside the state row that binds an
+authorization to a workspace and a user — so it bypasses tenant binding,
+single-use consumption, the redirect allowlist and the audit trail all at once.
+Business Login works over the ordinary redirect flow, so there is nothing to
+gain by moving the grant into the browser.
+
 ### Redirect allowlist configuration
 
 `OAUTH_ALLOWED_ORIGINS` — comma-separated origins the provider may redirect
