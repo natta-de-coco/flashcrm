@@ -205,7 +205,7 @@ export const testTenantSmtp = createServerFn({ method: "POST" })
       _status: result.ok ? "sent" : "failed",
       _error: result.error ?? null,
       _meta: {},
-    });
+    } as never);
 
     return result;
   });

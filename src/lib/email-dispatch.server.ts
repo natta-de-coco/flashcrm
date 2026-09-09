@@ -169,7 +169,7 @@ async function logEmailAttempt(
       _status: result.ok ? "sent" : "failed",
       _error: result.error ?? null,
       _meta: {},
-    });
+    } as never);
   } catch (e) {
     console.error("[email] failed to log delivery attempt", e);
   }

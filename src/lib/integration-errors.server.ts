@@ -418,7 +418,7 @@ export async function recordIntegrationError(args: {
       _retryable: args.error.retryable,
       _api_version: args.error.apiVersion,
       _fingerprint: fingerprint,
-    });
+    } as never);
   } catch (loggingError) {
     console.error("[integration-errors] failed to record", loggingError);
   }
