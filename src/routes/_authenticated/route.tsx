@@ -10,6 +10,7 @@ import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
 import { canReach } from "@/lib/permissions";
+import { MANAGER_SECTION, NAV_SECTIONS, type NavSection } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -43,95 +44,9 @@ export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
 });
 
-/*
- * Grouped navigation. Every item carries a one-line caption so each selection
- * explains itself — no guessing what a module does.
- */
-const NAV_SECTIONS = [
-  {
-    title: "Main",
-    items: [
-      {
-        to: "/dashboard",
-        label: "Home",
-        desc: "Live pulse of every channel",
-        icon: LayoutDashboard,
-      },
-      { to: "/inbox", label: "Inbox", desc: "WhatsApp & website chats", icon: Inbox },
-      { to: "/contacts", label: "Contacts", desc: "People & pipeline", icon: Users },
-      {
-        to: "/marketing",
-        label: "Leads & Marketing",
-        desc: "Capture, consent, campaigns",
-        icon: Mail,
-      },
-      { to: "/social", label: "Social Hub", desc: "IG, FB, YouTube, X & more", icon: Megaphone },
-      { to: "/content", label: "Content & SEO", desc: "Posts & articles", icon: FileText },
-      { to: "/seo-blog", label: "SEO Studio", desc: "Image-to-post AI studio", icon: Sparkles },
-    ],
-  },
-  {
-    title: "Business",
-    items: [
-      {
-        to: "/advisor",
-        label: "Business Advisor",
-        desc: "Expert AI growth guidance",
-        icon: Briefcase,
-      },
-      {
-        to: "/campaign-planner",
-        label: "Campaign Planner",
-        desc: "AI audience & channel targeting",
-        icon: Target,
-      },
-      {
-        to: "/sales",
-        label: "Quotes & Invoices",
-        desc: "Send PDFs, get paid on WhatsApp",
-        icon: Receipt,
-      },
-
-      { to: "/catalog", label: "Products", desc: "What you sell", icon: Package },
-      { to: "/chatbot", label: "Chatbot", desc: "AI auto-replies", icon: Bot },
-    ],
-  },
-  {
-    title: "System",
-    items: [
-      {
-        to: "/monitoring",
-        label: "Monitoring",
-        desc: "Alerts, webhooks & Meta health",
-        icon: Activity,
-      },
-      { to: "/connect", label: "Integrations", desc: "WhatsApp, social, website & keys", icon: Plug },
-      { to: "/settings", label: "Settings", desc: "Billing, team, security & data", icon: Settings },
-    ],
-  },
-] as const;
-
-const MANAGER_SECTION = {
-  title: "Manager",
-  items: [
-    { to: "/companies", label: "Companies", desc: "All client workspaces", icon: Building2 },
-    {
-      to: "/companies/errors",
-      label: "Errors & issues",
-      desc: "What customers are hitting",
-      icon: Bug,
-    },
-  ],
-} as const;
-
 const SIDEBAR_MIN = 224;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_KEY = "flash.sidebar.width";
-
-type NavSection = {
-  title: string;
-  items: readonly { to: string; label: string; desc: string; icon: LucideIcon }[];
-};
 
 /**
  * Shared grouped nav — used by the desktop sidebar and the mobile drawer.

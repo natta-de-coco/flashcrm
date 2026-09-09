@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { todayInTimeZone } from "@/lib/locale";
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 
@@ -71,8 +72,14 @@ export function emptyItem(): BuilderItem {
   };
 }
 
-export function emptyDocument(currency: string, taxRate: number, terms: string): BuilderState {
-  const today = new Date().toISOString().slice(0, 10);
+export function emptyDocument(
+  currency: string,
+  taxRate: number,
+  terms: string,
+  timeZone: string | null,
+): BuilderState {
+  // The tenant's calendar day, not the server's.
+  const today = todayInTimeZone(timeZone);
   return {
     id: null,
     kind: "invoice",

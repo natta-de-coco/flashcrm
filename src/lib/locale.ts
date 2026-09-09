@@ -373,6 +373,30 @@ export function formatMoney(amount: number, locale: TenantLocale): string {
   }
 }
 
+/**
+ * Today's calendar date in a given zone, as YYYY-MM-DD.
+ *
+ * `new Date().toISOString().slice(0, 10)` is the UTC date, which is the wrong
+ * day for the first hours of every morning east of Greenwich: at 01:00 in
+ * Dubai it still reads yesterday. That is how a quotation raised on the 10th
+ * was issued dated the 9th.
+ *
+ * en-CA is used purely because its Intl output is already YYYY-MM-DD.
+ */
+export function todayInTimeZone(timeZone: string | null | undefined): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timeZone || "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    // An unknown zone string must not break document creation.
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 export function formatDate(value: string | Date, locale: TenantLocale): string {
   const date = typeof value === "string" ? new Date(value) : value;
   try {

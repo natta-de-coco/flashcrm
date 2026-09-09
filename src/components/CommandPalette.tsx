@@ -7,49 +7,38 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
+import { NAV_SECTIONS } from "@/lib/navigation";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  Briefcase,
-  FileText,
-  Inbox,
-  LayoutDashboard,
-  Mail,
-  Megaphone,
-  Package,
-  Settings,
-  Users,
-} from "lucide-react";
+import { FileText, Package, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
-type Hit = { id: string; label: string; sub?: string; to: string };
-
-const PAGES: Hit[] = [
-  { id: "p-dash", label: "Home", sub: "Dashboard", to: "/dashboard" },
-  { id: "p-inbox", label: "Inbox", sub: "All conversations", to: "/inbox" },
-  { id: "p-contacts", label: "Contacts", sub: "People & pipeline", to: "/contacts" },
-  { id: "p-marketing", label: "Leads & Marketing", sub: "Capture & campaigns", to: "/marketing" },
-  { id: "p-social", label: "Social Hub", sub: "Accounts & engagement", to: "/social" },
-  { id: "p-content", label: "Content & SEO", sub: "Posts & articles", to: "/content" },
-  { id: "p-seo", label: "SEO Studio", sub: "Image-to-post AI", to: "/seo-blog" },
-  { id: "p-advisor", label: "Business Advisor", sub: "Expert AI growth guidance", to: "/advisor" },
-  { id: "p-catalog", label: "Products", sub: "Catalog", to: "/catalog" },
-  { id: "p-monitor", label: "Monitoring", sub: "Alerts & webhooks", to: "/monitoring" },
-  { id: "p-settings", label: "Settings", sub: "Numbers, keys & team", to: "/settings" },
-];
-
-const ICONS: Record<string, typeof Inbox> = {
-  "/dashboard": LayoutDashboard,
-  "/inbox": Inbox,
-  "/contacts": Users,
-  "/marketing": Mail,
-  "/social": Megaphone,
-  "/content": FileText,
-  "/seo-blog": FileText,
-  "/advisor": Briefcase,
-  "/catalog": Package,
-  "/monitoring": Settings,
-  "/settings": Settings,
+type Hit = {
+  id: string;
+  label: string;
+  sub?: string;
+  to: string;
+  // Explicitly `| undefined` because exactOptionalPropertyTypes is on: a nav
+  // item without keywords assigns undefined rather than omitting the key.
+  keywords?: string | undefined;
+  icon?: LucideIcon | undefined;
 };
+
+/**
+ * Pages come from the one nav definition, so search can no longer fall behind
+ * the sidebar. It previously held its own copy and had drifted: Quotes &
+ * Invoices, Chatbot, Campaign Planner and Integrations were all reachable from
+ * the sidebar but unfindable here.
+ */
+const PAGES: Hit[] = NAV_SECTIONS.flatMap((section) =>
+  section.items.map((item) => ({
+    id: `p-${item.to}`,
+    label: item.label,
+    sub: item.desc,
+    to: item.to,
+    keywords: item.keywords,
+    icon: item.icon,
+  })),
+);
 
 /**
  * Universal search (Cmd/Ctrl + K). Jumps to any page and searches live
@@ -74,6 +63,12 @@ export function CommandPalette({
   // Global shortcut.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // `key` is optional on a KeyboardEvent in practice: autofill, password
+      // managers and IME composition all dispatch keydowns without one. This
+      // listener is on window, so throwing here breaks whichever page the
+      // customer happened to be on -- it surfaced as a crash on /sales, which
+      // has nothing to do with the palette.
+      if (typeof e.key !== "string") return;
       if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         onOpenChange(!open);
@@ -116,18 +111,21 @@ export function CommandPalette({
           label: c.name,
           sub: c.phone ?? c.email ?? c.company ?? "Contact",
           to: "/contacts",
+          icon: Users,
         })),
         products: (products.data ?? []).map((p) => ({
           id: p.id,
           label: p.title,
           sub: p.sku ?? "Product",
           to: "/catalog",
+          icon: Package,
         })),
         articles: (articles.data ?? []).map((a) => ({
           id: a.id,
           label: a.title,
           sub: a.status,
           to: "/seo-blog",
+          icon: FileText,
         })),
       });
     }, 220);
@@ -167,11 +165,11 @@ export function CommandPalette({
           group.hits.length ? (
             <CommandGroup key={group.heading} heading={group.heading}>
               {group.hits.map((hit) => {
-                const Icon = ICONS[hit.to] ?? FileText;
+                const Icon = hit.icon ?? FileText;
                 return (
                   <CommandItem
                     key={`${group.heading}-${hit.id}`}
-                    value={`${hit.label} ${hit.sub ?? ""} ${group.heading}`}
+                    value={`${hit.label} ${hit.sub ?? ""} ${hit.keywords ?? ""} ${group.heading}`}
                     onSelect={() => go(hit.to)}
                   >
                     <Icon className="mr-2 size-4 shrink-0 text-muted-foreground" />

@@ -11,6 +11,8 @@ export type TenantInfo = {
   subscription_renews_at: string | null;
   suspended: boolean;
   currency: string;
+  /** IANA zone. Dates a customer sees must be computed in it, not in UTC. */
+  timezone: string | null;
 };
 
 type TenantState = {
@@ -60,7 +62,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     const { data: org } = await supabase
       .from("organizations")
       .select(
-        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency",
+        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency, timezone",
       )
       .eq("id", profile.tenant_id)
       .maybeSingle();
