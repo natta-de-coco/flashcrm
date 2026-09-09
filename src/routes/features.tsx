@@ -48,8 +48,14 @@ const GROUPS = [
       },
       {
         icon: MessageSquare,
-        title: "Social DMs and comments",
-        body: "Instagram, Facebook, YouTube, X and Google Business messages and comments arrive in the same inbox, with AI-suggested replies, so nothing waits unseen in a separate app.",
+        title: "Social comments, in progress",
+        // Do not restore a claim here without checking the capability registry
+        // in social-connector-definitions.ts first. The previous copy promised
+        // an inbox for Instagram, Facebook, YouTube, X and Google Business
+        // messages; the registry reports that no connector implements DM or
+        // comment sync today, and Google shut Business Messages down on
+        // 31 July 2024. The registry is the source of truth for this sentence.
+        body: "Facebook and Instagram comment sync is built and waiting on Meta's app review, which each workspace completes with its own Business account. Until it clears, social replies still happen on the platform — WhatsApp and website chat are the two channels the shared inbox covers today.",
       },
     ],
   },

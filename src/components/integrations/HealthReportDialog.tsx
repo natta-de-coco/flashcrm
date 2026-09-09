@@ -150,7 +150,11 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
-                disabled={runRetry.isPending}
+                // Nothing to retry when every connection is healthy. The server
+                // already handles that case gracefully, so this only saves a
+                // pointless round trip -- but a button that looks actionable
+                // and does nothing is its own small lie.
+                disabled={runRetry.isPending || attention.length === 0}
                 onClick={() => runRetry.mutate(undefined)}
               >
                 <RefreshCw className={`size-4 ${runRetry.isPending ? "animate-spin" : ""}`} />

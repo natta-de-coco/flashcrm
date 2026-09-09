@@ -153,8 +153,11 @@ const MODULES = [
   },
   {
     icon: MessageSquare,
-    title: "Social inbox — DMs & comments",
-    body: "Instagram, Facebook, YouTube, X and Google Business messages and comments land in the same inbox with AI-suggested replies.",
+    title: "Social comments — in review",
+    // See the note in features.tsx: the capability registry, not this file,
+    // decides what may be claimed here. No connector implements DM or comment
+    // sync yet, and Google Business Messages shut down on 31 July 2024.
+    body: "Facebook and Instagram comment sync is built and pending Meta's app review. WhatsApp and website chat are what the shared inbox covers today.",
   },
   {
     icon: Users,
