@@ -7,6 +7,7 @@ import { describe, it } from "node:test";
 
 import { todayInTimeZone } from "../node_modules/.cache/flas-locale.mjs";
 import { NAV_SECTIONS } from "../node_modules/.cache/flas-navigation.mjs";
+import { ConnectSchema } from "../node_modules/.cache/flas-social-schema.mjs";
 
 describe("issue dates use the workspace timezone, not UTC", () => {
   // The reported case: 2026-09-10 01:00 in Dubai is still 2026-09-09 in UTC,
@@ -107,5 +108,50 @@ describe("global search can reach every page in the sidebar", () => {
   it("has no duplicate routes, which would double every search hit", () => {
     const routes = items.map((i) => i.to);
     assert.equal(new Set(routes).size, routes.length);
+  });
+});
+
+describe("the manual social-connect endpoint refuses a credential-less account", () => {
+  const valid = {
+    platform: "instagram",
+    label: "Client bakery IG",
+    externalId: "17841400000000000",
+    accessToken: "IGQVJYtest-token-value",
+  };
+
+  it("accepts a complete submission", () => {
+    assert.equal(ConnectSchema.parse(valid).accessToken, valid.accessToken);
+  });
+
+  it("rejects a missing access token", () => {
+    // The form fix alone did not close this: the endpoint is callable directly.
+    const { accessToken: _omitted, ...withoutToken } = valid;
+    assert.throws(() => ConnectSchema.parse(withoutToken));
+  });
+
+  it("rejects an empty access token", () => {
+    // `.optional()` with no minimum let "" through, storing an account that
+    // looked connected and failed on first sync.
+    assert.throws(() => ConnectSchema.parse({ ...valid, accessToken: "" }));
+  });
+
+  it("rejects a whitespace-only access token", () => {
+    assert.throws(() => ConnectSchema.parse({ ...valid, accessToken: "   " }));
+  });
+
+  it("trims a surrounding-whitespace token rather than storing it padded", () => {
+    // Pasted credentials routinely carry a trailing newline.
+    const parsed = ConnectSchema.parse({ ...valid, accessToken: "  tok-en  " });
+    assert.equal(parsed.accessToken, "tok-en");
+  });
+
+  it("still allows TikTok to omit the account id", () => {
+    // TikTok resolves the account from the token; requiring an id would break it.
+    const { externalId: _omitted, ...noId } = valid;
+    assert.doesNotThrow(() => ConnectSchema.parse({ ...noId, platform: "tiktok" }));
+  });
+
+  it("rejects an unknown platform", () => {
+    assert.throws(() => ConnectSchema.parse({ ...valid, platform: "myspace" }));
   });
 });

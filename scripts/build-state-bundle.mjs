@@ -106,3 +106,16 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
 });
+
+// The manual social-connect input schema. A live QA pass found the endpoint
+// accepted an empty access token even after the form was fixed, so the schema
+// itself is asserted here.
+await build({
+  entryPoints: ["src/lib/social-schema.ts"],
+  outfile: "node_modules/.cache/flas-social-schema.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});

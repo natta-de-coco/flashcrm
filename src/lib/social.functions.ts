@@ -1,23 +1,7 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
+import { ConnectSchema, PLATFORMS } from "@/lib/social-schema";
 import { z } from "zod";
-
-const PLATFORMS = [
-  "instagram",
-  "facebook",
-  "youtube",
-  "twitter",
-  "linkedin",
-  "tiktok",
-  "google_business",
-] as const;
-
-const ConnectSchema = z.object({
-  platform: z.enum(PLATFORMS),
-  label: z.string().min(2).max(80),
-  externalId: z.string().max(200).optional(),
-  accessToken: z.string().max(2000).optional(),
-});
 
 const IdSchema = z.object({ id: z.string().uuid() });
 

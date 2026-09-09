@@ -291,7 +291,8 @@ function ContentPage() {
               </Button>
               <Button
                 className="flex-1 gap-2"
-                disabled={savePost.isPending || !form.scheduled_at}
+                disabled={savePost.isPending || !form.scheduled_at || draftBlocker(form) !== null}
+                title={draftBlocker(form) ?? undefined}
                 onClick={() => savePost.mutate("scheduled")}
               >
                 <CalendarClock className="size-4" />
