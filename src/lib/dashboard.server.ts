@@ -109,7 +109,16 @@ export async function getDashboardOverviewData(
   const priorStart = new Date(weekStart);
   priorStart.setDate(priorStart.getDate() - 7);
 
-  const [convs, contacts, msgs, weekMsgs, accounts, interactions, leadRows] = await Promise.all([
+  const [
+    convs,
+    contactCount,
+    contactSample,
+    botReplyCount,
+    weekMsgs,
+    accounts,
+    interactions,
+    leadRows,
+  ] = await Promise.all([
     supabase
       .from("conversations")
       .select(
@@ -117,8 +126,11 @@ export async function getDashboardOverviewData(
       )
       .order("last_message_at", { ascending: false })
       .limit(100),
+    // Real totals come from database-side counts, not a capped row sample —
+    // otherwise the numbers freeze once a workspace passes the limit.
+    supabase.from("contacts").select("id", { count: "exact", head: true }),
     supabase.from("contacts").select("id, stage, value").limit(500),
-    supabase.from("messages").select("id, sender").limit(1000),
+    supabase.from("messages").select("id", { count: "exact", head: true }).eq("sender", "bot"),
     supabase
       .from("messages")
       .select("id, sender, created_at")
@@ -137,19 +149,24 @@ export async function getDashboardOverviewData(
       .limit(5000),
   ]);
 
-  const firstError =
-    convs.error ??
-    contacts.error ??
-    msgs.error ??
-    weekMsgs.error ??
-    accounts.error ??
-    interactions.error ??
-    leadRows.error;
-  if (firstError) throw new Error(firstError.message);
+  // One failing table must degrade its own widget, not blank the dashboard.
+  for (const result of [
+    convs,
+    contactCount,
+    contactSample,
+    botReplyCount,
+    weekMsgs,
+    accounts,
+    interactions,
+    leadRows,
+  ]) {
+    if (result.error) console.error("[dashboard] partial failure", result.error.message);
+  }
 
   const conversations = convs.data ?? [];
-  const contactRows = contacts.data ?? [];
-  const messageRows = msgs.data ?? [];
+  const contactRows = contactSample.data ?? [];
+  const contactsTotal = contactCount.count ?? contactRows.length;
+  const botReplies = botReplyCount.count ?? 0;
   const fortnightMessageRows = weekMsgs.data ?? [];
   const weekStartMs = weekStart.getTime();
   const weekMessageRows = fortnightMessageRows.filter(
@@ -161,6 +178,7 @@ export async function getDashboardOverviewData(
   const accountRows = accounts.data ?? [];
   const interactionRows = interactions.data ?? [];
   const leads = leadRows.data ?? [];
+
 
   // ---- 7-day activity buckets (received vs sent) ----
   const buckets: DayBucket[] = [];
