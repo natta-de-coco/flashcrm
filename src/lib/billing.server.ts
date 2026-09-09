@@ -37,7 +37,8 @@ export type ItemInput = {
 };
 
 export async function requireTenantId(supabase: AnyClient): Promise<string> {
-  const { data } = await supabase.rpc("current_tenant_id");
+  const { data, error } = await supabase.rpc("current_tenant_id");
+  if (error) throw new Error(`Could not load your workspace: ${error.message}`);
   if (!data) throw new Error("No workspace found for this account.");
   return data as string;
 }
