@@ -110,9 +110,13 @@ export function InboxPreview() {
           what gives the depth -- on a flat background it would read as grey. */}
       <div className="overflow-hidden rounded-3xl border border-white/40 bg-card/70 shadow-2xl backdrop-blur-xl dark:border-white/10">
         <div className="flex items-center gap-3 border-b border-border/60 bg-card/60 px-4 py-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand/15 text-sm font-bold text-brand">
-            AZ
-          </span>
+          <img
+            src="/store-avatar.png"
+            alt="A to Z Security Trading"
+            width={36}
+            height={36}
+            className="size-9 shrink-0 rounded-full object-cover ring-1 ring-border"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">A to Z Security Trading</p>
             <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">

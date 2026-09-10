@@ -820,7 +820,7 @@ export type Database = {
           sent_at: string | null
           status: string
           subject: string
-          tenant_id: string | null
+          tenant_id: string
         }
         Insert: {
           audience_tag?: string | null
@@ -834,7 +834,7 @@ export type Database = {
           sent_at?: string | null
           status?: string
           subject?: string
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Update: {
           audience_tag?: string | null
@@ -848,7 +848,7 @@ export type Database = {
           sent_at?: string | null
           status?: string
           subject?: string
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -979,7 +979,36 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "contact_branches_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_branches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_branches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_branches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
       }
       contact_identities: {
         Row: {
@@ -1002,6 +1031,7 @@ export type Database = {
           is_primary?: boolean
           kind: string
           label?: string | null
+          normalized?: string | null
           tenant_id: string
           value: string
         }
@@ -1013,10 +1043,47 @@ export type Database = {
           is_primary?: boolean
           kind?: string
           label?: string | null
+          normalized?: string | null
           tenant_id?: string
           value?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "contact_identities_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "contact_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_identities_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_identities_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_identities_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_identities_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
       }
       contacts: {
         Row: {
@@ -1033,7 +1100,7 @@ export type Database = {
           phone: string | null
           stage: Database["public"]["Enums"]["lead_stage"]
           tags: string[]
-          tenant_id: string | null
+          tenant_id: string
           updated_at: string
           value: number
         }
@@ -1051,7 +1118,7 @@ export type Database = {
           phone?: string | null
           stage?: Database["public"]["Enums"]["lead_stage"]
           tags?: string[]
-          tenant_id?: string | null
+          tenant_id?: string
           updated_at?: string
           value?: number
         }
@@ -1069,7 +1136,7 @@ export type Database = {
           phone?: string | null
           stage?: Database["public"]["Enums"]["lead_stage"]
           tags?: string[]
-          tenant_id?: string | null
+          tenant_id?: string
           updated_at?: string
           value?: number
         }
@@ -1183,7 +1250,7 @@ export type Database = {
           last_message_preview: string | null
           status: Database["public"]["Enums"]["conv_status"]
           tags: string[]
-          tenant_id: string | null
+          tenant_id: string
           unread_count: number
           updated_at: string
           wa_number_id: string | null
@@ -1200,7 +1267,7 @@ export type Database = {
           last_message_preview?: string | null
           status?: Database["public"]["Enums"]["conv_status"]
           tags?: string[]
-          tenant_id?: string | null
+          tenant_id?: string
           unread_count?: number
           updated_at?: string
           wa_number_id?: string | null
@@ -1217,7 +1284,7 @@ export type Database = {
           last_message_preview?: string | null
           status?: Database["public"]["Enums"]["conv_status"]
           tags?: string[]
-          tenant_id?: string | null
+          tenant_id?: string
           unread_count?: number
           updated_at?: string
           wa_number_id?: string | null
@@ -2261,7 +2328,7 @@ export type Database = {
           status: string
           subscribed: boolean
           tags: string[]
-          tenant_id: string | null
+          tenant_id: string
         }
         Insert: {
           assigned_to?: string | null
@@ -2282,7 +2349,7 @@ export type Database = {
           status?: string
           subscribed?: boolean
           tags?: string[]
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Update: {
           assigned_to?: string | null
@@ -2303,7 +2370,7 @@ export type Database = {
           status?: string
           subscribed?: boolean
           tags?: string[]
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Relationships: [
           {
@@ -2369,7 +2436,7 @@ export type Database = {
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id: string | null
           status: string
-          tenant_id: string | null
+          tenant_id: string
           translated_body: string | null
           wa_message_id: string | null
         }
@@ -2384,7 +2451,7 @@ export type Database = {
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
           status?: string
-          tenant_id?: string | null
+          tenant_id?: string
           translated_body?: string | null
           wa_message_id?: string | null
         }
@@ -2399,7 +2466,7 @@ export type Database = {
           sender?: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
           status?: string
-          tenant_id?: string | null
+          tenant_id?: string
           translated_body?: string | null
           wa_message_id?: string | null
         }
@@ -4432,7 +4499,7 @@ export type Database = {
           label: string
           phone_number_id: string
           read_rate_min: number | null
-          tenant_id: string | null
+          tenant_id: string
         }
         Insert: {
           access_token: string
@@ -4447,7 +4514,7 @@ export type Database = {
           label: string
           phone_number_id: string
           read_rate_min?: number | null
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Update: {
           access_token?: string
@@ -4462,7 +4529,7 @@ export type Database = {
           label?: string
           phone_number_id?: string
           read_rate_min?: number | null
-          tenant_id?: string | null
+          tenant_id?: string
         }
         Relationships: []
       }
@@ -4481,7 +4548,7 @@ export type Database = {
           reviewed_at: string | null
           status: string
           submitted_at: string | null
-          tenant_id: string | null
+          tenant_id: string
           updated_at: string
           variables: string[]
           wa_number_id: string | null
@@ -4500,7 +4567,7 @@ export type Database = {
           reviewed_at?: string | null
           status?: string
           submitted_at?: string | null
-          tenant_id?: string | null
+          tenant_id?: string
           updated_at?: string
           variables?: string[]
           wa_number_id?: string | null
@@ -4519,7 +4586,7 @@ export type Database = {
           reviewed_at?: string | null
           status?: string
           submitted_at?: string | null
-          tenant_id?: string | null
+          tenant_id?: string
           updated_at?: string
           variables?: string[]
           wa_number_id?: string | null
@@ -5051,11 +5118,11 @@ export type Database = {
         Args: { _doc_type: string; _tenant_id: string }
         Returns: string
       }
-      purge_expired_oauth_states: { Args: never; Returns: number }
-      resolve_contact_by_identity: {
-        Args: { _kind: string; _tenant_id: string; _value: string }
-        Returns: { branch_id: string; contact_id: string }[]
+      normalize_contact_identity: {
+        Args: { _kind: string; _value: string }
+        Returns: string
       }
+      purge_expired_oauth_states: { Args: never; Returns: number }
       record_ai_usage: {
         Args: {
           _duration_ms: number
@@ -5103,6 +5170,13 @@ export type Database = {
       replace_sales_document_items: {
         Args: { _document_id: string; _items: Json; _tenant_id: string }
         Returns: undefined
+      }
+      resolve_contact_by_identity: {
+        Args: { _kind: string; _tenant_id: string; _value: string }
+        Returns: {
+          branch_id: string
+          contact_id: string
+        }[]
       }
       rotate_site_webhook_secret: {
         Args: { _site_id: string }
