@@ -18,7 +18,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 /** Only providers flash-ai.server.ts can actually call. */
-const ProviderSchema = z.enum(["openai", "anthropic"]);
+const ProviderSchema = z.enum(["openai", "anthropic", "google"]);
 
 export const AI_PROVIDERS = [
   {
@@ -32,6 +32,12 @@ export const AI_PROVIDERS = [
     name: "Anthropic (Claude)",
     hint: "Starts with sk-ant-… Create one at console.anthropic.com → API keys.",
     keysUrl: "https://console.anthropic.com/settings/keys",
+  },
+  {
+    id: "google" as const,
+    name: "Google (Gemini)",
+    hint: "Starts with AIza… Create one at aistudio.google.com → Get API key.",
+    keysUrl: "https://aistudio.google.com/app/apikey",
   },
 ];
 
