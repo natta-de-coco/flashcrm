@@ -3,7 +3,12 @@
 import { PageHeader } from "@/components/PageHeader";
 import { useTenant } from "@/hooks/useTenant";
 import { todayInTimeZone } from "@/lib/locale";
-import { salesDraftBlocker } from "@/lib/form-validation";
+import {
+  documentChargeBlocker,
+  invoiceLineBlocker,
+  lineText,
+  salesDraftBlocker,
+} from "@/lib/form-validation";
 import {
   InvoiceBuilder,
   emptyDocument,
@@ -45,12 +50,18 @@ function finaliseBlocker(state: BuilderState): string | null {
   const named = state.customer.name.trim() || state.customer.company.trim();
   if (!named) return "Add a customer name or company before finalising.";
 
-  const usable = state.items.filter(
-    (i) => (i.description ?? "").trim().length > 0 && Number(i.quantity) > 0,
-  );
+  // `name` as well as `description`: the line-item field labelled "Description
+  // shown on the PDF" writes `name`, and `description` is only ever set by
+  // picking a catalogue product. Testing description alone made every
+  // hand-typed invoice permanently unfinalisable, with the banner pointing at
+  // a field the user had already filled in.
+  const usable = state.items.filter((i) => lineText(i).length > 0 && Number(i.quantity) > 0);
   if (usable.length === 0) {
     return "Add at least one line with a description and a quantity above zero.";
   }
+
+  const badLine = invoiceLineBlocker(state.items) ?? documentChargeBlocker(state);
+  if (badLine) return badLine;
 
   if (previewTotals(state).grand <= 0) {
     return "The total is zero — check the prices before finalising.";

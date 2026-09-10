@@ -57,13 +57,66 @@ export function contentDraftBlocker(form: { title: string; body: string }): stri
  */
 export function salesDraftBlocker(state: {
   customer: { name: string; company: string };
-  items: { description?: string | null }[];
+  items: { name?: string | null; description?: string | null }[];
 }): string | null {
   const named = state.customer.name.trim() || state.customer.company.trim();
-  const anyLine = state.items.some((i) => (i.description ?? "").trim().length > 0);
+  // Both fields, because the line-item input labelled "Description shown on the
+  // PDF" writes `name`. `description` is only ever set by picking a catalogue
+  // product, so testing it alone treats every hand-typed line as empty.
+  const anyLine = state.items.some((i) => lineText(i).length > 0);
   if (!named && !anyLine) {
     return "Add a customer or a line item before saving a draft.";
   }
+  return null;
+}
+
+/** The text a line actually shows on the document, from whichever field holds it. */
+export function lineText(item: { name?: string | null; description?: string | null }): string {
+  return ((item.name ?? "").trim() || (item.description ?? "").trim()).trim();
+}
+
+export type InvoiceLine = {
+  name?: string | null;
+  description?: string | null;
+  quantity: number | string;
+  unit_price: number | string;
+  discount_value?: number | string;
+  tax_rate?: number | string;
+};
+
+/**
+ * Why a document cannot be finalised, looking only at its lines.
+ *
+ * The negative case is not cosmetic. lineTotals floors a line at 0 while
+ * previewTotals accumulates the raw gross, so a quantity of -2 at 100 shows the
+ * line as 0.00 and silently takes 200 off the grand total — a wrong number sent
+ * to a customer, with nothing on screen to suggest it.
+ */
+export function invoiceLineBlocker(items: InvoiceLine[]): string | null {
+  const num = (v: number | string | undefined) => Number(v ?? 0);
+  for (const [index, item] of items.entries()) {
+    const where = lineText(item) || `line ${index + 1}`;
+    if (num(item.quantity) < 0) return `Quantity cannot be negative on ${where}.`;
+    if (num(item.unit_price) < 0) return `Price cannot be negative on ${where}.`;
+    if (num(item.discount_value) < 0) return `Discount cannot be negative on ${where}.`;
+    if (num(item.tax_rate) < 0) return `Tax rate cannot be negative on ${where}.`;
+    if (!Number.isFinite(num(item.quantity)) || !Number.isFinite(num(item.unit_price))) {
+      return `${where} has a value that is not a number.`;
+    }
+  }
+  return null;
+}
+
+/** Totals that must never be negative on a document. */
+export function documentChargeBlocker(doc: {
+  invoice_discount?: number | string;
+  shipping?: number | string;
+  additional_charges?: number | string;
+}): string | null {
+  const num = (v: number | string | undefined) => Number(v ?? 0);
+  if (num(doc.invoice_discount) < 0) return "The invoice discount cannot be negative.";
+  if (num(doc.shipping) < 0) return "Shipping cannot be negative.";
+  if (num(doc.additional_charges) < 0) return "Other charges cannot be negative.";
   return null;
 }
 

@@ -8,6 +8,9 @@ import { describe, it } from "node:test";
 
 import {
   contentDraftBlocker,
+  documentChargeBlocker,
+  invoiceLineBlocker,
+  lineText,
   manualSocialFormError,
   productFormError,
   salesDraftBlocker,
@@ -174,5 +177,88 @@ describe("pasting a social access token", () => {
     // inline hint flickers between fields as the customer types.
     const err = manualSocialFormError(social({ externalId: "", accessToken: "" }), meta);
     assert.match(err, /access token/i);
+  });
+});
+
+describe("a line's text comes from whichever field the form wrote", () => {
+  // The line-item input labelled "Description shown on the PDF" writes `name`;
+  // `description` is only set by picking a catalogue product. Reading
+  // description alone made every hand-typed quotation unfinalisable.
+  it("prefers name, the field the form actually writes", () => {
+    assert.equal(lineText({ name: "Installation", description: "catalogue text" }), "Installation");
+  });
+
+  it("falls back to description for a catalogue line", () => {
+    assert.equal(lineText({ name: "", description: "Solar panel 200W" }), "Solar panel 200W");
+  });
+
+  it("treats whitespace as empty", () => {
+    assert.equal(lineText({ name: "   ", description: null }), "");
+  });
+
+  it("a hand-typed line counts as content for a draft", () => {
+    // The reported bug: a filled-in line was treated as empty.
+    const state = {
+      customer: { name: "", company: "" },
+      items: [{ name: "Hand-typed service", description: null }],
+    };
+    assert.equal(salesDraftBlocker(state), null);
+  });
+});
+
+describe("invoice lines cannot carry values that corrupt the total", () => {
+  const good = { name: "Widget", quantity: 2, unit_price: 100, discount_value: 0, tax_rate: 5 };
+
+  it("accepts ordinary lines", () => {
+    assert.equal(invoiceLineBlocker([good, { ...good, name: "Gadget" }]), null);
+  });
+
+  it("accepts numeric strings, which is what form inputs hold", () => {
+    assert.equal(invoiceLineBlocker([{ ...good, quantity: "3", unit_price: "49.50" }]), null);
+  });
+
+  it("rejects a negative quantity and names the line", () => {
+    // Why this is not cosmetic: lineTotals floors a line at 0 while
+    // previewTotals sums the raw gross, so -2 x 100 displayed as 0.00 and
+    // silently took 200 off the grand total sent to the customer.
+    assert.equal(
+      invoiceLineBlocker([{ ...good, quantity: -2 }]),
+      "Quantity cannot be negative on Widget.",
+    );
+  });
+
+  it("names an untitled line by its position", () => {
+    const out = invoiceLineBlocker([good, { ...good, name: "", quantity: -1 }]);
+    assert.match(out ?? "", /line 2/);
+  });
+
+  it("rejects a negative price, discount or tax rate", () => {
+    assert.match(invoiceLineBlocker([{ ...good, unit_price: -1 }]) ?? "", /Price cannot be negative/);
+    assert.match(
+      invoiceLineBlocker([{ ...good, discount_value: -5 }]) ?? "",
+      /Discount cannot be negative/,
+    );
+    assert.match(invoiceLineBlocker([{ ...good, tax_rate: -5 }]) ?? "", /Tax rate cannot be negative/);
+  });
+
+  it("rejects a value that is not a number", () => {
+    assert.match(invoiceLineBlocker([{ ...good, quantity: "abc" }]) ?? "", /not a number/);
+  });
+
+  it("an empty document has no bad lines", () => {
+    assert.equal(invoiceLineBlocker([]), null);
+  });
+});
+
+describe("document-level charges cannot be negative", () => {
+  it("accepts zero and missing charges", () => {
+    assert.equal(documentChargeBlocker({}), null);
+    assert.equal(documentChargeBlocker({ invoice_discount: 0, shipping: 0, additional_charges: 0 }), null);
+  });
+
+  it("rejects each negative charge by name", () => {
+    assert.match(documentChargeBlocker({ invoice_discount: -10 }) ?? "", /invoice discount/);
+    assert.match(documentChargeBlocker({ shipping: -1 }) ?? "", /Shipping/);
+    assert.match(documentChargeBlocker({ additional_charges: "-3" }) ?? "", /Other charges/);
   });
 });
