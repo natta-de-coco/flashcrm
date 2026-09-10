@@ -64,6 +64,23 @@ const SIGN_IN_LABEL: Record<string, string> = {
   pinterest: "Continue with Pinterest",
 };
 
+/** What the person will choose on the provider's own screen. */
+const ACCOUNT_CHOICE_NOTE: Record<string, string> = {
+  youtube:
+    "Google will ask which account to use. If you manage a brand or company channel, choose it there — the Google email you sign in with does not have to match the channel's name.",
+  facebook:
+    "Facebook will ask which Pages and Instagram accounts to share. Tick every one you want Flas to reach; you choose which to connect afterwards.",
+  instagram:
+    "Facebook will ask which Pages and Instagram accounts to share. Tick every one you want Flas to reach; you choose which to connect afterwards.",
+  linkedin:
+    "Sign in as a Super admin of the Company Page. You will then see every Page you have a role on and choose which to connect.",
+  tiktok:
+    "TikTok will ask you to sign in. The account you sign in with is the one that is connected.",
+  twitter: "X will ask you to sign in. The account you sign in with is the one that is connected.",
+  pinterest:
+    "Pinterest will ask you to sign in. The account you sign in with is the one that is connected.",
+};
+
 const PROVIDER_NAME: Record<string, string> = {
   google: "Google",
   meta: "Facebook",
@@ -76,7 +93,11 @@ const PROVIDER_NAME: Record<string, string> = {
 /** What a connected channel of this platform can do in Flas, from the registry. */
 function platformCapabilities(id: string) {
   const def = connectorDefinition(id);
-  if (!def) return { available: [] as Array<{ label: string; review: boolean }>, unavailable: [] as string[] };
+  if (!def)
+    return {
+      available: [] as Array<{ label: string; review: boolean }>,
+      unavailable: [] as string[],
+    };
   const available: Array<{ label: string; review: boolean }> = [];
   const unavailable = new Set<string>();
   for (const key of Object.keys(def.capabilities) as CapabilityKey[]) {
@@ -86,7 +107,11 @@ function platformCapabilities(id: string) {
       // the app first -- a plain tick would promise something that does not
       // work yet.
       available.push({ label: CAPABILITY_LABELS[key], review: facts.reviewRequired });
-    } else if (!facts.providerSupports && facts.note && !/does not offer an API for this/.test(facts.note)) {
+    } else if (
+      !facts.providerSupports &&
+      facts.note &&
+      !/does not offer an API for this/.test(facts.note)
+    ) {
       // DM read and DM send usually share one reason; say it once.
       unavailable.add(facts.note);
     }
@@ -109,14 +134,18 @@ export function SocialConnectionWizard({
   intent?: WizardIntent;
 }) {
   const start = useServerFn(startConnect);
-  const [picked, setPicked] = useState<string | null>(intent.kind === "add" ? null : intent.platform);
+  const [picked, setPicked] = useState<string | null>(
+    intent.kind === "add" ? null : intent.platform,
+  );
   const [busy, setBusy] = useState(false);
   const [blocker, setBlocker] = useState<{ reason: string; missing: string[] } | null>(null);
 
   const platform = intent.kind === "add" ? picked : intent.platform;
   const def = platform ? connectorDefinition(platform) : undefined;
   const meta = platform ? connector(platform) : undefined;
-  const providerName = meta?.provider ? (PROVIDER_NAME[meta.provider] ?? meta.provider) : "the platform";
+  const providerName = meta?.provider
+    ? (PROVIDER_NAME[meta.provider] ?? meta.provider)
+    : "the platform";
 
   // The tiers this authorization will ask for.
   const tiers: AuthorizationTier[] = (() => {
@@ -131,7 +160,10 @@ export function SocialConnectionWizard({
     if (!def) return [] as string[];
     try {
       return def.authorizationTiers?.length
-        ? scopesForTiers(def, tiers.map((t) => t.id))
+        ? scopesForTiers(
+            def,
+            tiers.map((t) => t.id),
+          )
         : [...def.requestedScopes];
     } catch {
       return [];
@@ -147,7 +179,9 @@ export function SocialConnectionWizard({
         data: {
           platform: platform as never,
           origin: window.location.origin,
-          ...(intent.kind === "reconnect" ? { purpose: "reconnect" as const, accountId: intent.accountId } : {}),
+          ...(intent.kind === "reconnect"
+            ? { purpose: "reconnect" as const, accountId: intent.accountId }
+            : {}),
           ...(intent.kind === "upgrade"
             ? { purpose: "upgrade" as const, accountId: intent.accountId, tierIds: [intent.tierId] }
             : {}),
@@ -159,7 +193,10 @@ export function SocialConnectionWizard({
       }
       setBlocker({ reason: result.reason, missing: result.missing });
     } catch (e) {
-      setBlocker({ reason: e instanceof Error ? e.message : "Could not start the sign-in.", missing: [] });
+      setBlocker({
+        reason: e instanceof Error ? e.message : "Could not start the sign-in.",
+        missing: [],
+      });
     } finally {
       setBusy(false);
     }
@@ -243,9 +280,8 @@ export function SocialConnectionWizard({
 
             {platform && usesChannelModel(platform) && intent.kind === "add" && (
               <p className="text-xs text-muted-foreground">
-                {providerName} will ask which account to use. If you manage a brand or company
-                channel, choose it there — the Google email you sign in with does not have to match
-                the channel&apos;s name.
+                {ACCOUNT_CHOICE_NOTE[platform] ??
+                  `${providerName} will ask you to sign in. Use the account you want this workspace to manage.`}
               </p>
             )}
 

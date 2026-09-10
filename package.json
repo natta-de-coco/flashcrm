@@ -18,7 +18,7 @@
     "test:oauth-security": "node scripts/build-state-bundle.mjs && node --test tests/oauth-security.test.mjs",
     "test:authorize-params": "node scripts/build-state-bundle.mjs && node --test tests/oauth-authorize-params.test.mjs",
     "test:social-secrets": "node scripts/build-state-bundle.mjs && node --test tests/social-secrets.test.mjs",
-    "test:social-channels": "node scripts/build-registry-bundle.mjs && node scripts/build-state-bundle.mjs && node --test tests/social-channels.test.mjs"
+    "test:social-channels": "node scripts/build-registry-bundle.mjs && node scripts/build-state-bundle.mjs && node --test tests/social-channels.test.mjs tests/social-channels-2c.test.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

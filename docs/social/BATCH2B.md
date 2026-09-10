@@ -94,8 +94,8 @@ where their account went.
 
 | Suite | Result |
 |---|---|
-| `tests/social-channels.test.mjs` | 38 / 38. New Meta tests cover tiers, the discovery family, parsing, eligibility, no token in any candidate, and the secret staying out of the URL |
-| All unit suites | 163 / 163 |
+| `tests/social-channels.test.mjs` | 37 / 37. The 10 new Meta tests cover tiers, the discovery family, parsing, eligibility, no token in any candidate, and the secret staying out of the URL. `MUTATION=grant_all` fails 3, as required |
+| All unit suites | 162 / 162 |
 | `tsc --noEmit`, `vite build`, lint | clean (0 lint errors) |
 
 ## Remaining limitations
@@ -135,3 +135,5 @@ return to the pre-2B flow; channels connected through 2B keep their encrypted Pa
 tokens and continue to sync.
 
 **Not production-ready.**
+
+_Correction: the Batch 2B commit message (`ea1989b`) says 38 channel-model tests, 163 in total and 11 for Meta. The measured numbers are 37, 162 and 10. The commit is left as it is rather than rewritten._

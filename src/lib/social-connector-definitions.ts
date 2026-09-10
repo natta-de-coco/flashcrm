@@ -137,12 +137,7 @@ export type ResolvedCapability = CapabilityFacts & {
 export type ConnectorCategory = "social" | "messaging" | "ads" | "analytics" | "commerce";
 
 export type AuthMethod =
-  | "oauth2"
-  | "oauth2_pkce"
-  | "api_key"
-  | "app_password"
-  | "plugin"
-  | "webhook_shared_secret";
+  "oauth2" | "oauth2_pkce" | "api_key" | "app_password" | "plugin" | "webhook_shared_secret";
 
 export type ConnectorDefinition = {
   /** Stable id. Never change one — it is stored on rows and in URLs. */
@@ -218,7 +213,9 @@ const notBuilt = (requiredScopes: readonly string[], note: string): CapabilityFa
 });
 
 /** Every key defaults to unsupported; a connector overrides what it really has. */
-function caps(overrides: Partial<Record<CapabilityKey, CapabilityFacts>>): Record<CapabilityKey, CapabilityFacts> {
+function caps(
+  overrides: Partial<Record<CapabilityKey, CapabilityFacts>>,
+): Record<CapabilityKey, CapabilityFacts> {
   const base = {} as Record<CapabilityKey, CapabilityFacts>;
   for (const key of CAPABILITY_KEYS) {
     base[key] = unsupported("This provider does not offer an API for this.");
@@ -284,7 +281,8 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       {
         id: "messages",
         label: "Read Messenger conversations",
-        purpose: "Flas would like permission to read Messenger conversations people start with your Page.",
+        purpose:
+          "Flas would like permission to read Messenger conversations people start with your Page.",
         capabilities: ["direct_messages_read"],
         initial: false,
         wontDo: ["send messages as your Page"],
@@ -292,7 +290,8 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       {
         id: "replies",
         label: "Reply to comments",
-        purpose: "Flas would like permission to post replies to comments on your Page, when you send one from Flas.",
+        purpose:
+          "Flas would like permission to post replies to comments on your Page, when you send one from Flas.",
         capabilities: ["comments_reply"],
         initial: false,
         wontDo: ["publish new posts", "delete comments"],
@@ -509,8 +508,9 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["LinkedIn Company Page (organization admin)"],
     authMethod: "oauth2",
-    requestedScopes: ["r_organization_social", "w_organization_social", "rw_organization_admin"],
-    optionalScopes: [],
+    // w_organization_social (posting) is not requested: Flas has no publish code.
+    requestedScopes: ["r_organization_social", "rw_organization_admin"],
+    optionalScopes: ["w_organization_social"],
     providerReviewRequired: true,
     sandboxAvailable: false,
     setupRequirements: [
@@ -521,19 +521,53 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     docs: [
       "https://learn.microsoft.com/en-us/linkedin/marketing/community-management/community-management-overview",
     ],
-    lastVerified: "2026-09-08",
+    lastVerified: "2026-09-11",
+    // No identity scopes: LinkedIn shares a member's name or email only
+    // through its separate OpenID product, which Flas does not request.
+    identityScopes: [],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Company Pages, posts and follower statistics",
+        purpose:
+          "Flas would like permission to list the LinkedIn Pages you administer, read their posts and read their follower statistics.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        // Verified 2026-09-11: LinkedIn's organization lookup and follower
+        // statistics APIs list rw_organization_admin, described as "Manage
+        // organization pages and retrieve reporting data".
+        scopeCaveat:
+          "LinkedIn only lets apps read a Page's details and statistics under a permission it describes as managing your organization's pages. Flas uses it to read, and changes nothing on your Pages.",
+        wontDo: [
+          "post on your Pages",
+          "change Page details or admins",
+          "read your private messages",
+        ],
+      },
+      {
+        id: "publishing",
+        label: "Publish posts",
+        purpose: "Flas would like permission to publish posts on your LinkedIn Pages.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "LinkedIn member-to-member inbox messaging is not available through these organization scopes; it requires a separate partner-only messaging product.",
       "The Community Management API product must be approved before organization scopes are granted.",
+      "Only a Page's Super admins can connect it; LinkedIn shares Page statistics with no other role.",
     ],
     capabilities: caps({
       profile: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["r_organization_social"],
+        requiredScopes: ["rw_organization_admin"],
         reviewRequired: true,
       },
-      publish: notBuilt(["w_organization_social"], "Scope requested; no publish code exists."),
+      publish: notBuilt(
+        ["w_organization_social"],
+        "Not built; w_organization_social is not requested.",
+      ),
       comments_read: notBuilt(
         ["r_organization_social"],
         "Comments on organization posts are readable, but Flas syncs only posts and follower statistics.",
@@ -548,9 +582,9 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       analytics: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["r_organization_social"],
+        requiredScopes: ["r_organization_social", "rw_organization_admin"],
         reviewRequired: true,
-        note: "Follower statistics only.",
+        note: "Posts and follower statistics.",
       },
     }),
   },
@@ -571,7 +605,30 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "https://developers.tiktok.com/doc/login-kit-web",
       "https://developers.tiktok.com/doc/display-api-overview",
     ],
-    lastVerified: "2026-09-08",
+    lastVerified: "2026-09-11",
+    identityScopes: ["user.info.basic"],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Profile, videos and statistics",
+        purpose:
+          "Flas would like permission to see your TikTok profile, your public videos and the follower, like and video counts TikTok shares.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        wontDo: [
+          "post, edit or delete videos",
+          "read your messages",
+          "change your account settings",
+        ],
+      },
+      {
+        id: "publishing",
+        label: "Publish videos",
+        purpose: "Flas would like permission to publish videos to your TikTok account.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "TikTok exposes no direct-message API to third-party applications.",
       "Publishing needs video.publish, which Flas does not request.",
@@ -580,7 +637,7 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       profile: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["user.info.basic"],
+        requiredScopes: ["user.info.basic", "user.info.profile"],
         reviewRequired: false,
       },
       publish: notBuilt(
@@ -663,7 +720,8 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       {
         id: "replies",
         label: "Reply to comments",
-        purpose: "Flas would like permission to post replies to comments on behalf of your channel.",
+        purpose:
+          "Flas would like permission to post replies to comments on behalf of your channel.",
         capabilities: ["comments_reply"],
         initial: false,
       },
@@ -713,13 +771,40 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["X account on a plan whose API tier permits the endpoints used"],
     authMethod: "oauth2_pkce",
-    requestedScopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
-    optionalScopes: ["dm.read", "dm.write"],
+    // tweet.write is not requested: Flas has no code that posts to X.
+    requestedScopes: ["tweet.read", "users.read", "offline.access"],
+    optionalScopes: ["tweet.write", "dm.read", "dm.write"],
     providerReviewRequired: false,
     sandboxAvailable: false,
     setupRequirements: ["X developer account", "Paid API tier for meaningful read volume"],
     docs: ["https://docs.x.com/x-api/introduction"],
-    lastVerified: "2026-09-08",
+    lastVerified: "2026-09-11",
+    // Verified 2026-09-11: GET /2/users/me needs tweet.read and users.read.
+    // offline.access is what makes X return a refresh token; without it the
+    // access token dies after two hours and the channel with it.
+    identityScopes: ["tweet.read", "users.read", "offline.access"],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Profile, posts and public metrics",
+        purpose:
+          "Flas would like permission to see your X profile, your posts and their public metrics, and to stay connected without asking you to sign in every two hours.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        wontDo: [
+          "post, like or repost",
+          "read or send direct messages",
+          "follow or unfollow anyone",
+        ],
+      },
+      {
+        id: "publishing",
+        label: "Publish posts",
+        purpose: "Flas would like permission to publish posts on your X account.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "Direct messages need dm.read and dm.write, which Flas does not request.",
       "Read volume on the free tier is too low for practical monitoring.",
@@ -728,13 +813,10 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       profile: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["users.read"],
+        requiredScopes: ["tweet.read", "users.read"],
         reviewRequired: false,
       },
-      publish: notBuilt(
-        ["tweet.write"],
-        "The scope is requested, but Flas has no code that posts to X.",
-      ),
+      publish: notBuilt(["tweet.write"], "Not built; tweet.write is not requested."),
       comments_read: notBuilt(
         ["tweet.read"],
         "Replies are readable, but Flas syncs only the account's own posts and their metrics.",
@@ -822,13 +904,34 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["Pinterest business account"],
     authMethod: "oauth2",
-    requestedScopes: ["boards:read", "pins:read", "pins:write", "user_accounts:read"],
-    optionalScopes: [],
+    // Only what the one implemented capability needs. boards:read, pins:read
+    // and pins:write were requested with no code using them.
+    requestedScopes: ["user_accounts:read"],
+    optionalScopes: ["boards:read", "pins:read", "pins:write"],
     providerReviewRequired: true,
     sandboxAvailable: true,
     setupRequirements: ["Pinterest developer app", "Standard access approval for production"],
     docs: ["https://developers.pinterest.com/docs/api/v5/introduction/"],
-    lastVerified: "2026-09-08",
+    lastVerified: "2026-09-11",
+    identityScopes: ["user_accounts:read"],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Account profile",
+        purpose:
+          "Flas would like permission to see your Pinterest account name, picture and follower count.",
+        capabilities: ["profile"],
+        initial: true,
+        wontDo: ["create, edit or delete Pins or boards", "see your secret boards"],
+      },
+      {
+        id: "publishing",
+        label: "Create Pins",
+        purpose: "Flas would like permission to create Pins on your boards.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "No direct-message capability is available under the scopes Flas requests.",
       "Flas performs no Pinterest content sync — connecting validates the account only.",
@@ -841,7 +944,7 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
         reviewRequired: false,
         note: "The account is validated on connect; no content is synced.",
       },
-      publish: notBuilt(["pins:write"], "Scope requested; no pin-creation code exists."),
+      publish: notBuilt(["pins:write"], "Not built; pins:write is not requested."),
       comments_read: notBuilt(["pins:read"], "Not built."),
       analytics: notBuilt(["user_accounts:read"], "Not built."),
       direct_messages_read: unsupported(
@@ -1015,7 +1118,10 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "Not implemented. Connect is disabled until a TikTok for Business Marketing API adapter exists.",
     ],
     capabilities: caps({
-      profile: notBuilt(["advertiser.read"], "Advertiser identity needs the Marketing API; not built."),
+      profile: notBuilt(
+        ["advertiser.read"],
+        "Advertiser identity needs the Marketing API; not built.",
+      ),
       ads_read: notBuilt(
         ["advertiser.read"],
         "No advertising scope is requested, so no ads data is reachable.",
@@ -1206,7 +1312,15 @@ export function resolveAllCapabilities(connector: ConnectorDefinition): Resolved
  * authorization, channels discovered from it and chosen by the user. Others
  * still use the one-account-per-platform flow until their batch migrates them.
  */
-export const CHANNEL_MODEL_CONNECTORS: readonly string[] = ["youtube", "facebook", "instagram"];
+export const CHANNEL_MODEL_CONNECTORS: readonly string[] = [
+  "youtube",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "tiktok",
+  "twitter",
+  "pinterest",
+];
 
 /**
  * Connectors whose single sign-in also discovers channels of a sibling
@@ -1217,6 +1331,10 @@ export const DISCOVERY_FAMILY: Readonly<Record<string, readonly string[]>> = {
   facebook: ["facebook", "instagram"],
   instagram: ["facebook", "instagram"],
   youtube: ["youtube"],
+  linkedin: ["linkedin"],
+  tiktok: ["tiktok"],
+  twitter: ["twitter"],
+  pinterest: ["pinterest"],
 };
 
 export function usesChannelModel(connectorId: string): boolean {
@@ -1230,7 +1348,8 @@ export function tierAvailability(
 ): { offerable: boolean; reason: string | null } {
   for (const key of tier.capabilities) {
     const facts = connector.capabilities[key];
-    if (!facts.providerSupports) return { offerable: false, reason: facts.note ?? "Not offered by this provider." };
+    if (!facts.providerSupports)
+      return { offerable: false, reason: facts.note ?? "Not offered by this provider." };
     if (!facts.flasImplements) return { offerable: false, reason: "Not available in Flas yet." };
   }
   return { offerable: true, reason: null };
@@ -1250,7 +1369,10 @@ export function tierScopes(connector: ConnectorDefinition, tier: AuthorizationTi
  * scopes are always included; unofferable tiers are refused, not quietly
  * dropped, so a caller cannot request a permission for code that does not exist.
  */
-export function scopesForTiers(connector: ConnectorDefinition, tierIds: readonly string[]): string[] {
+export function scopesForTiers(
+  connector: ConnectorDefinition,
+  tierIds: readonly string[],
+): string[] {
   const tiers = connector.authorizationTiers ?? [];
   const out = new Set<string>(connector.identityScopes ?? []);
   for (const id of tierIds) {
@@ -1278,9 +1400,7 @@ export function initialTierIds(connector: ConnectorDefinition): string[] {
  * is that a badge cannot appear for something that does not work.
  */
 export function advertisableCapabilities(connector: ConnectorDefinition): ResolvedCapability[] {
-  return resolveAllCapabilities(connector).filter((c) =>
-    USABLE_STATUSES.includes(c.status),
-  );
+  return resolveAllCapabilities(connector).filter((c) => USABLE_STATUSES.includes(c.status));
 }
 
 /**
@@ -1294,7 +1414,9 @@ export function capabilityCeiling(connectorId: string): Set<CapabilityKey> {
   const def = connectorDefinition(connectorId);
   if (!def) return new Set();
   return new Set(
-    CAPABILITY_KEYS.filter((k) => def.capabilities[k].providerSupports && def.capabilities[k].flasImplements),
+    CAPABILITY_KEYS.filter(
+      (k) => def.capabilities[k].providerSupports && def.capabilities[k].flasImplements,
+    ),
   );
 }
 

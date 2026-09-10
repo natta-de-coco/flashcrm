@@ -24,12 +24,27 @@ const PROVIDER_LABEL: Record<string, string> = {
   youtube: "Google",
   facebook: "Facebook",
   instagram: "Facebook",
+  linkedin: "LinkedIn",
+  tiktok: "TikTok",
+  twitter: "X",
+  pinterest: "Pinterest",
 };
 
 const AUDIENCE_LABEL: Record<string, string> = {
   youtube: "Subscribers",
   facebook: "Followers",
   instagram: "Followers",
+  linkedin: "Followers",
+  tiktok: "Followers",
+  twitter: "Followers",
+  pinterest: "Followers",
+};
+
+/** What the second metric counts, per platform. */
+const CONTENT_LABEL: Record<string, string> = {
+  youtube: "Videos",
+  tiktok: "Videos",
+  pinterest: "Pins",
 };
 
 export function ChannelPicker({
@@ -62,7 +77,9 @@ export function ChannelPicker({
       connect({
         data: {
           authorizationId,
-          externalIds: (q.data?.channels ?? []).filter((c) => selected.includes(key(c))).map((c) => c.externalId),
+          externalIds: (q.data?.channels ?? [])
+            .filter((c) => selected.includes(key(c)))
+            .map((c) => c.externalId),
         },
       }),
   });
@@ -93,7 +110,9 @@ export function ChannelPicker({
   const signedIn = (
     <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
       <UserRound className="size-3.5" /> Signed in as{" "}
-      <span className="font-medium text-foreground">{authorization.signedInAs ?? "an unnamed account"}</span>
+      <span className="font-medium text-foreground">
+        {authorization.signedInAs ?? `a ${provider} account`}
+      </span>
     </p>
   );
 
@@ -106,7 +125,9 @@ export function ChannelPicker({
             <CheckCircle2 className="size-5 text-brand" />
             {n} channel{n === 1 ? "" : "s"} connected successfully
           </p>
-          <p className="text-sm text-muted-foreground">Recent content and statistics are being fetched now.</p>
+          <p className="text-sm text-muted-foreground">
+            Recent content and statistics are being fetched now.
+          </p>
           <div className="flex gap-2">
             <Button asChild size="sm">
               <Link to="/social">Go to Social Hub</Link>
@@ -142,7 +163,11 @@ export function ChannelPicker({
           <p>
             {meta
               ? "This Facebook account does not manage any Pages Flas can see. A Page is required, and Facebook asks which Pages to share — tick every Page you want Flas to reach."
-              : "No channel was found for this account. If your channel belongs to a brand or company account, sign in again and choose that account on the account screen."}
+              : authorization.platform === "linkedin"
+                ? "This LinkedIn member has no approved admin role on any Company Page. Ask a Super admin of the Page to add you, then sign in again."
+                : authorization.platform === "youtube"
+                  ? "No channel was found for this account. If your channel belongs to a brand or company account, sign in again and choose that account on the account screen."
+                  : `${provider} did not return an account for this sign-in. Sign in again, or try another account.`}
           </p>
           <Button size="sm" className="w-fit" onClick={() => onSignInAgain(authorization.platform)}>
             {anotherAccount}
@@ -153,7 +178,7 @@ export function ChannelPicker({
   }
 
   // Grouped by platform, in a stable order.
-  const groups = ["facebook", "instagram", "youtube"]
+  const groups = ["facebook", "instagram", "youtube", "linkedin", "tiktok", "twitter", "pinterest"]
     .map((p) => ({ platform: p, items: channels.filter((c) => c.platform === p) }))
     .filter((g) => g.items.length > 0);
   const chosen = channels.filter((c) => selected.includes(key(c)));
@@ -161,10 +186,12 @@ export function ChannelPicker({
   return (
     <Card className="mt-4">
       <CardHeader>
-        <CardTitle className="text-base">{confirming ? "Confirm the connection" : "Choose channels"}</CardTitle>
+        <CardTitle className="text-base">
+          {confirming ? "Confirm the connection" : "Choose channels"}
+        </CardTitle>
         <CardDescription>
-          We found {channels.length} channel{channels.length === 1 ? "" : "s"} you can manage. Choose the
-          ones this workspace should manage — nothing is connected until you confirm.
+          We found {channels.length} channel{channels.length === 1 ? "" : "s"} you can manage.
+          Choose the ones this workspace should manage — nothing is connected until you confirm.
         </CardDescription>
         {signedIn}
       </CardHeader>
@@ -221,7 +248,12 @@ export function ChannelPicker({
                       />
                     )}
                     {c.avatarUrl ? (
-                      <img src={c.avatarUrl} alt="" className="size-10 rounded-full" loading="lazy" />
+                      <img
+                        src={c.avatarUrl}
+                        alt=""
+                        className="size-10 rounded-full"
+                        loading="lazy"
+                      />
                     ) : (
                       <div className="size-10 rounded-full bg-muted" />
                     )}
@@ -239,11 +271,15 @@ export function ChannelPicker({
                         {c.accountType} · ID {c.maskedId}
                       </p>
                       {c.linkedTo && (
-                        <p className="text-xs text-muted-foreground">Linked to Page: {c.linkedTo.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Linked to Page: {c.linkedTo.name}
+                        </p>
                       )}
                       <p className="mt-1 text-xs text-muted-foreground">
                         {AUDIENCE_LABEL[c.platform] ?? "Audience"} {fmt(c.metrics.audience)}
-                        {c.metrics.content !== null ? ` · Posts ${fmt(c.metrics.content)}` : ""}
+                        {c.metrics.content !== null
+                          ? ` · ${CONTENT_LABEL[c.platform] ?? "Posts"} ${fmt(c.metrics.content)}`
+                          : ""}
                       </p>
                       {!c.eligible && c.ineligibleReason && (
                         <p className="mt-1 text-xs text-destructive">{c.ineligibleReason}</p>
@@ -269,9 +305,14 @@ export function ChannelPicker({
                         {p.state === "needs_permission" && (
                           <span className="text-muted-foreground"> — can be enabled later</span>
                         )}
-                        {p.state === "declined" && <span className="text-destructive"> — declined</span>}
+                        {p.state === "declined" && (
+                          <span className="text-destructive"> — declined</span>
+                        )}
                         {p.state === "not_implemented" && (
-                          <span className="text-muted-foreground"> — not available in Flas yet</span>
+                          <span className="text-muted-foreground">
+                            {" "}
+                            — not available in Flas yet
+                          </span>
                         )}
                       </li>
                     ))}

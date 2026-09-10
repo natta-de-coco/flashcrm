@@ -150,7 +150,9 @@ export function providerEnvNames(provider: Provider): string[] {
  * workspace, and where the keys come from. Drives the "Add app keys" state in
  * the Integrations screen so a company always sees the exact blocker.
  */
-export async function providerReadiness(tenantId?: string | null): Promise<
+export async function providerReadiness(
+  tenantId?: string | null,
+): Promise<
   Record<Provider, { ready: boolean; source: "workspace" | "shared" | "none"; envNames: string[] }>
 > {
   const providers = Object.keys(PROVIDERS) as Provider[];
@@ -195,7 +197,11 @@ export function resolveAllowedOrigin(candidate: string): string | null {
   } catch {
     return null;
   }
-  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+  if (
+    parsed.protocol !== "https:" &&
+    parsed.hostname !== "localhost" &&
+    parsed.hostname !== "127.0.0.1"
+  ) {
     return null;
   }
 
@@ -320,7 +326,10 @@ export async function startAuthorization(args: {
   try {
     if (def?.authorizationTiers?.length) {
       const { initialTierIds, scopesForTiers } = await import("@/lib/social-connector-definitions");
-      requestedScopes = scopesForTiers(def, args.tierIds?.length ? args.tierIds : initialTierIds(def));
+      requestedScopes = scopesForTiers(
+        def,
+        args.tierIds?.length ? args.tierIds : initialTierIds(def),
+      );
     } else {
       requestedScopes = [...(def?.requestedScopes ?? [])];
     }
@@ -350,9 +359,8 @@ export async function startAuthorization(args: {
   // connection. The sweep runs here because nothing else ever called it --
   // abandoned attempts were only ever *read* as expired, never retired.
   try {
-    const { beginAuthorization, sweepAbandonedAttempts } = await import(
-      "@/lib/connection-state.server"
-    );
+    const { beginAuthorization, sweepAbandonedAttempts } =
+      await import("@/lib/connection-state.server");
     await beginAuthorization({
       tenantId: args.tenantId,
       platform: args.platform,
@@ -410,9 +418,7 @@ export function buildAuthorizeParams(args: {
     response_type: "code",
     state: args.state,
     ...(useConfigId ? { config_id: args.configId as string } : {}),
-    ...(!useConfigId && args.scopes.length
-      ? { scope: args.scopes.join(scopeSeparator) }
-      : {}),
+    ...(!useConfigId && args.scopes.length ? { scope: args.scopes.join(scopeSeparator) } : {}),
     ...(args.extraAuthParams ?? {}),
   });
 
@@ -505,8 +511,39 @@ function applyClientCredentials(
     body.set("client_secret", secret);
     return;
   }
+  // Pinterest and X (for confidential clients) authenticate the client with
+  // HTTP Basic -- see tokenRequestHeaders. The secret must not also be in the
+  // body: RFC 6749 forbids using two client-authentication methods at once.
+  // X's PKCE flow still takes client_id in the body; Pinterest's does not.
+  if (BASIC_AUTH_PROVIDERS.includes(provider)) {
+    if (provider === "twitter") body.set("client_id", id);
+    return;
+  }
   body.set("client_id", id);
   body.set("client_secret", secret);
+}
+
+/**
+ * Providers whose token endpoint takes client credentials as HTTP Basic.
+ * Verified 2026-09-11: Pinterest's token docs use Basic; X's say confidential
+ * clients "will need to use a basic authentication scheme".
+ */
+const BASIC_AUTH_PROVIDERS: readonly Provider[] = ["pinterest", "twitter"];
+
+/** Token-endpoint headers, including HTTP Basic for providers that need it. */
+export function tokenRequestHeaders(
+  provider: Provider,
+  id: string,
+  secret: string,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    Accept: "application/json",
+  };
+  if (BASIC_AUTH_PROVIDERS.includes(provider)) {
+    headers["Authorization"] = `Basic ${btoa(`${id}:${secret}`)}`;
+  }
+  return headers;
 }
 
 /** Exchanges an authorization code for an access token (and refresh token). */
@@ -537,7 +574,7 @@ export async function exchangeCode(args: {
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    headers: tokenRequestHeaders(args.provider, creds.id, creds.secret),
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
@@ -616,7 +653,7 @@ export async function refreshAccessToken(args: {
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    headers: tokenRequestHeaders(args.provider, creds.id, creds.secret),
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;

@@ -11,10 +11,7 @@
  * one, or writes one unencrypted. Discovery results carry public metadata only.
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import {
-  connectorDefinition,
-  type ConnectorDefinition,
-} from "@/lib/social-connector-definitions";
+import { connectorDefinition, type ConnectorDefinition } from "@/lib/social-connector-definitions";
 import { declinedScopes } from "@/lib/social-channel-capabilities";
 import { decryptSecret, encryptSecret, readKeyRing } from "@/lib/social-secrets.server";
 import {
@@ -23,6 +20,7 @@ import {
   TOKEN_READ_COLUMNS,
 } from "@/lib/social-token-store.server";
 import { isLegalTransition, type ConnectionState } from "@/lib/connection-state";
+import { linkedInHeaders } from "@/lib/linkedin-api";
 
 /** A discovery result may be acted on for this long; after that, re-authorize. */
 export const DISCOVERY_TTL_MS = 60 * 60 * 1000;
@@ -48,7 +46,11 @@ export type ProviderIdentity = { userId: string | null; emailHint: string | null
 /* ---------------------------------------------------------------- tokens */
 
 /** AAD for authorization tokens: bound to the specific authorization row. */
-function authAad(tenantId: string, authorizationId: string, field: "access_token" | "refresh_token") {
+function authAad(
+  tenantId: string,
+  authorizationId: string,
+  field: "access_token" | "refresh_token",
+) {
   return `flas-social:v1:${tenantId}:authorization:${authorizationId}:${field}`;
 }
 
@@ -61,10 +63,16 @@ export async function encryptAuthorizationTokens(args: {
   const ring = readKeyRing(); // throws when not configured: nothing is stored
   return {
     access_token_enc: args.accessToken
-      ? await encryptSecret(args.accessToken, authAad(args.tenantId, args.authorizationId, "access_token"))
+      ? await encryptSecret(
+          args.accessToken,
+          authAad(args.tenantId, args.authorizationId, "access_token"),
+        )
       : null,
     refresh_token_enc: args.refreshToken
-      ? await encryptSecret(args.refreshToken, authAad(args.tenantId, args.authorizationId, "refresh_token"))
+      ? await encryptSecret(
+          args.refreshToken,
+          authAad(args.tenantId, args.authorizationId, "refresh_token"),
+        )
       : null,
     token_key_id: ring.active,
   };
@@ -86,7 +94,8 @@ export async function readAuthorizationTokens(row: {
   };
 }
 
-const AUTH_TOKEN_COLUMNS = "id, tenant_id, provider, access_token_enc, refresh_token_enc, expires_at, granted_scopes, requested_scopes, authorization_state";
+const AUTH_TOKEN_COLUMNS =
+  "id, tenant_id, provider, access_token_enc, refresh_token_enc, expires_at, granted_scopes, requested_scopes, authorization_state";
 
 /**
  * Tokens for one channel. Channel-model accounts read them from their
@@ -110,7 +119,11 @@ export async function readTokensForAccount(account: {
     .eq("id", account.authorization_id)
     .eq("tenant_id", account.tenant_id)
     .maybeSingle();
-  if (!auth || auth.authorization_state === "disconnected" || auth.authorization_state === "revoked") {
+  if (
+    !auth ||
+    auth.authorization_state === "disconnected" ||
+    auth.authorization_state === "revoked"
+  ) {
     return { access: null, refresh: null, source: "none" };
   }
   const t = await readAuthorizationTokens(auth);
@@ -159,14 +172,18 @@ type YouTubeChannelItem = {
 export function parseYouTubeChannels(json: { items?: YouTubeChannelItem[] }): DiscoveredChannel[] {
   const num = (v: string | undefined) => (v !== undefined && /^\d+$/.test(v) ? Number(v) : null);
   return (json.items ?? [])
-    .filter((it): it is YouTubeChannelItem & { id: string } => typeof it.id === "string" && it.id.length > 0)
+    .filter(
+      (it): it is YouTubeChannelItem & { id: string } =>
+        typeof it.id === "string" && it.id.length > 0,
+    )
     .map((it) => ({
       externalId: it.id,
       platform: "youtube",
       accountType: "YouTube channel",
       name: it.snippet?.title?.trim() || "Untitled channel",
       handle: it.snippet?.customUrl ?? null,
-      avatarUrl: it.snippet?.thumbnails?.medium?.url ?? it.snippet?.thumbnails?.default?.url ?? null,
+      avatarUrl:
+        it.snippet?.thumbnails?.medium?.url ?? it.snippet?.thumbnails?.default?.url ?? null,
       description: it.snippet?.description ? it.snippet.description.slice(0, 280) : null,
       metrics: {
         // A channel can hide its subscriber count; show "hidden", never 0.
@@ -188,14 +205,20 @@ export function parseYouTubeChannels(json: { items?: YouTubeChannelItem[] }): Di
 export async function discoverYouTubeChannels(
   token: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ ok: true; channels: DiscoveredChannel[] } | { ok: false; code: string; httpStatus: number | null }> {
+): Promise<
+  | { ok: true; channels: DiscoveredChannel[] }
+  | { ok: false; code: string; httpStatus: number | null }
+> {
   try {
     const res = await fetchImpl(
       "https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true&maxResults=50",
       { headers: { Authorization: `Bearer ${token}` } },
     );
     if (!res.ok) return { ok: false, code: "discovery_failed", httpStatus: res.status };
-    return { ok: true, channels: parseYouTubeChannels((await res.json()) as { items?: YouTubeChannelItem[] }) };
+    return {
+      ok: true,
+      channels: parseYouTubeChannels((await res.json()) as { items?: YouTubeChannelItem[] }),
+    };
   } catch {
     return { ok: false, code: "provider_unavailable", httpStatus: null };
   }
@@ -311,9 +334,335 @@ export async function discoverMetaIdentity(
   }
 }
 
+/* ------------------------------------------------------------ LinkedIn */
+
+type LinkedInAcl = {
+  role?: string;
+  state?: string;
+  organization?: string;
+  organizationTarget?: string;
+  roleAssignee?: string;
+};
+type LinkedInOrg = {
+  id?: number;
+  localizedName?: string;
+  vanityName?: string;
+  primaryOrganizationType?: string;
+};
+type LinkedInOrgBatch = { results?: Record<string, LinkedInOrg> };
+
+/** LinkedIn's names for Page admin roles, as its own UI shows them. */
+const LINKEDIN_ROLE_LABEL: Record<string, string> = {
+  ADMINISTRATOR: "Super admin",
+  CONTENT_ADMINISTRATOR: "Content admin",
+  ANALYST: "Analyst",
+  CURATOR: "Curator",
+  DIRECT_SPONSORED_CONTENT_POSTER: "Sponsored content poster",
+  RECRUITING_POSTER: "Recruiting poster",
+  LEAD_GEN_FORMS_MANAGER: "Lead gen forms manager",
+};
+
+/** "urn:li:organization:123" -> "123". Anything else (a school URN, junk) -> null. */
+export function linkedInOrgId(urn: string | undefined): string | null {
+  const m = /^urn:li:organization:(\d+)$/.exec(urn ?? "");
+  return m ? (m[1] as string) : null;
+}
+
+/**
+ * Pure: turns organizationAcls plus the organization lookups into candidates.
+ *
+ * Only a Super admin (ADMINISTRATOR) can be connected. LinkedIn returns the
+ * full organization record and its follower statistics only to that role; an
+ * Analyst or Content admin is shown the Page with the reason, rather than
+ * connected to a channel whose sync would be refused on the first run.
+ */
+export function parseLinkedInOrganizations(
+  acls: { elements?: LinkedInAcl[] },
+  orgs: LinkedInOrgBatch,
+): DiscoveredChannel[] {
+  const rolesByOrg = new Map<string, Set<string>>();
+  for (const el of acls.elements ?? []) {
+    if (el.state && el.state !== "APPROVED") continue;
+    const id = linkedInOrgId(el.organization ?? el.organizationTarget);
+    if (!id || !el.role) continue;
+    const roles = rolesByOrg.get(id) ?? new Set<string>();
+    roles.add(el.role);
+    rolesByOrg.set(id, roles);
+  }
+  return [...rolesByOrg].map(([id, roles]) => {
+    const org = orgs.results?.[id];
+    const admin = roles.has("ADMINISTRATOR");
+    const roleNames = [...roles]
+      .map((r) => LINKEDIN_ROLE_LABEL[r] ?? r.toLowerCase().replace(/_/g, " "))
+      .join(", ");
+    const kind = org?.primaryOrganizationType;
+    return {
+      externalId: id,
+      platform: "linkedin",
+      accountType:
+        kind === "SCHOOL"
+          ? "LinkedIn school page"
+          : kind === "BRAND"
+            ? "LinkedIn showcase page"
+            : "LinkedIn company page",
+      name: org?.localizedName?.trim() || "LinkedIn page",
+      handle: org?.vanityName ?? null,
+      // logoV2 is a media-asset URN, not a URL. Resolving it costs another
+      // call per Page; the picker shows a placeholder instead.
+      avatarUrl: null,
+      description: `Your role: ${roleNames}`,
+      metrics: { audience: null, content: null, views: null },
+      eligible: admin,
+      ineligibleReason: admin
+        ? null
+        : `LinkedIn shares a Page's statistics only with its Super admins. Your role on this Page: ${roleNames}.`,
+      linkedTo: null,
+    };
+  });
+}
+
+/**
+ * The Pages this member has an approved role on. Administered Pages are looked
+ * up in full; the rest through organizationsLookup, which returns their public
+ * name without admin rights, so the picker can say which Page it is.
+ */
+export async function discoverLinkedInOrganizations(
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<
+  | { ok: true; channels: DiscoveredChannel[]; memberId: string | null }
+  | { ok: false; code: string; httpStatus: number | null }
+> {
+  const headers = linkedInHeaders(token);
+  try {
+    const aclRes = await fetchImpl(
+      "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&state=APPROVED&count=100",
+      { headers },
+    );
+    if (!aclRes.ok) {
+      return {
+        ok: false,
+        code: aclRes.status === 403 ? "scope_incomplete" : "discovery_failed",
+        httpStatus: aclRes.status,
+      };
+    }
+    const acls = (await aclRes.json()) as { elements?: LinkedInAcl[] };
+    // The query asks for APPROVED roles; filter anyway, so a pending request
+    // for Super admin is never looked up -- or treated -- as administered.
+    const els = (acls.elements ?? []).filter((e) => !e.state || e.state === "APPROVED");
+    const idsFor = (admin: boolean) => [
+      ...new Set(
+        els
+          .filter((e) => (e.role === "ADMINISTRATOR") === admin)
+          .map((e) => linkedInOrgId(e.organization ?? e.organizationTarget))
+          .filter((x): x is string => x !== null),
+      ),
+    ];
+    const adminIds = idsFor(true);
+    const otherIds = idsFor(false).filter((id) => !adminIds.includes(id));
+    const lookup = async (path: string, ids: string[]): Promise<LinkedInOrgBatch> => {
+      if (ids.length === 0) return {};
+      // Names are cosmetic: a failed lookup leaves the list usable.
+      const r = await fetchImpl(
+        `https://api.linkedin.com/rest/${path}?ids=List(${ids.join(",")})`,
+        { headers },
+      );
+      return r.ok ? ((await r.json()) as LinkedInOrgBatch) : {};
+    };
+    const [admin, other] = await Promise.all([
+      lookup("organizations", adminIds),
+      lookup("organizationsLookup", otherIds),
+    ]);
+    const memberId = /^urn:li:person:(.+)$/.exec(els[0]?.roleAssignee ?? "")?.[1] ?? null;
+    return {
+      ok: true,
+      channels: parseLinkedInOrganizations(acls, {
+        results: { ...other.results, ...admin.results },
+      }),
+      memberId,
+    };
+  } catch {
+    return { ok: false, code: "provider_unavailable", httpStatus: null };
+  }
+}
+
+/* ------------------------------------------------- single-account providers */
+
+const count = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+
+type TikTokUser = {
+  open_id?: string;
+  avatar_url?: string;
+  avatar_url_100?: string;
+  display_name?: string;
+  username?: string;
+  bio_description?: string;
+  follower_count?: number;
+  video_count?: number;
+};
+
+/**
+ * The user-info fields this grant may ask for. TikTok ties each field to a
+ * scope and rejects a request for a field whose scope was not granted, so a
+ * person who unticked "profile" must still be discoverable.
+ */
+export function tiktokUserFields(granted: readonly string[]): string {
+  const fields = ["open_id", "avatar_url", "avatar_url_100", "display_name"];
+  if (granted.includes("user.info.profile")) fields.push("username", "bio_description");
+  if (granted.includes("user.info.stats")) fields.push("follower_count", "video_count");
+  return fields.join(",");
+}
+
+/** Pure: a TikTok user-info response -> the one account it describes. */
+export function parseTikTokUser(json: { data?: { user?: TikTokUser } }): DiscoveredChannel[] {
+  const u = json.data?.user;
+  if (!u?.open_id) return [];
+  return [
+    {
+      externalId: u.open_id,
+      platform: "tiktok",
+      accountType: "TikTok account",
+      name: u.display_name?.trim() || u.username || "TikTok account",
+      handle: u.username ? `@${u.username}` : null,
+      avatarUrl: u.avatar_url_100 ?? u.avatar_url ?? null,
+      description: u.bio_description ? u.bio_description.slice(0, 280) : null,
+      metrics: { audience: count(u.follower_count), content: count(u.video_count), views: null },
+      eligible: true,
+      ineligibleReason: null,
+      linkedTo: null,
+    },
+  ];
+}
+
+type XUser = {
+  id?: string;
+  name?: string;
+  username?: string;
+  description?: string;
+  profile_image_url?: string;
+  public_metrics?: { followers_count?: number; tweet_count?: number; post_count?: number };
+};
+
+/** Pure: an X /2/users/me response -> the one account it describes. */
+export function parseXUser(json: { data?: XUser }): DiscoveredChannel[] {
+  const u = json.data;
+  if (!u?.id || !/^\d+$/.test(u.id)) return [];
+  const m = u.public_metrics;
+  return [
+    {
+      externalId: u.id,
+      platform: "twitter",
+      accountType: "X account",
+      name: u.name?.trim() || u.username || "X account",
+      handle: u.username ? `@${u.username}` : null,
+      avatarUrl: u.profile_image_url ?? null,
+      description: u.description ? u.description.slice(0, 280) : null,
+      metrics: {
+        audience: count(m?.followers_count),
+        content: count(m?.post_count ?? m?.tweet_count),
+        views: null,
+      },
+      eligible: true,
+      ineligibleReason: null,
+      linkedTo: null,
+    },
+  ];
+}
+
+type PinterestUser = {
+  id?: string;
+  username?: string;
+  account_type?: string;
+  business_name?: string;
+  profile_image?: string;
+  about?: string;
+  follower_count?: number;
+  pin_count?: number;
+  monthly_views?: number;
+};
+
+/** Pure: a Pinterest /v5/user_account response -> the one account it describes. */
+export function parsePinterestUser(json: PinterestUser): DiscoveredChannel[] {
+  const id = json.id ?? json.username;
+  if (!id) return [];
+  return [
+    {
+      externalId: id,
+      platform: "pinterest",
+      accountType:
+        json.account_type === "BUSINESS"
+          ? "Pinterest business account"
+          : "Pinterest personal account",
+      name: json.business_name?.trim() || json.username || "Pinterest account",
+      handle: json.username ? `@${json.username}` : null,
+      avatarUrl: json.profile_image ?? null,
+      description: json.about ? json.about.slice(0, 280) : null,
+      metrics: {
+        audience: count(json.follower_count),
+        content: count(json.pin_count),
+        views: count(json.monthly_views),
+      },
+      eligible: true,
+      ineligibleReason: null,
+      linkedTo: null,
+    },
+  ];
+}
+
+async function fetchProviderJson(
+  url: string,
+  token: string,
+  fetchImpl: typeof fetch,
+): Promise<{ ok: true; json: unknown } | { ok: false; code: string; httpStatus: number | null }> {
+  try {
+    const res = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return { ok: false, code: "discovery_failed", httpStatus: res.status };
+    return { ok: true, json: await res.json() };
+  } catch {
+    return { ok: false, code: "provider_unavailable", httpStatus: null };
+  }
+}
+
+/** Discovery for providers where one sign-in is exactly one account. */
+export async function discoverSingleAccount(
+  platform: "tiktok" | "twitter" | "pinterest",
+  token: string,
+  granted: readonly string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<
+  | { ok: true; channels: DiscoveredChannel[] }
+  | { ok: false; code: string; httpStatus: number | null }
+> {
+  if (platform === "tiktok") {
+    const r = await fetchProviderJson(
+      `https://open.tiktokapis.com/v2/user/info/?fields=${tiktokUserFields(granted)}`,
+      token,
+      fetchImpl,
+    );
+    if (!r.ok) return r;
+    // TikTok answers 200 with an error object for some failures.
+    const err = (r.json as { error?: { code?: string } }).error;
+    if (err?.code && err.code !== "ok")
+      return { ok: false, code: "discovery_failed", httpStatus: 200 };
+    return { ok: true, channels: parseTikTokUser(r.json as { data?: { user?: TikTokUser } }) };
+  }
+  if (platform === "twitter") {
+    const r = await fetchProviderJson(
+      "https://api.x.com/2/users/me?user.fields=profile_image_url,username,name,description,public_metrics",
+      token,
+      fetchImpl,
+    );
+    return r.ok ? { ok: true, channels: parseXUser(r.json as { data?: XUser }) } : r;
+  }
+  const r = await fetchProviderJson("https://api.pinterest.com/v5/user_account", token, fetchImpl);
+  return r.ok ? { ok: true, channels: parsePinterestUser(r.json as PinterestUser) } : r;
+}
+
 export async function discoverChannels(
   platform: string,
   token: string,
+  /** Scopes from the token response; TikTok's user-info fields depend on them. */
+  granted: readonly string[] = [],
 ): Promise<{
   identity: ProviderIdentity;
   channels: DiscoveredChannel[];
@@ -347,6 +696,30 @@ export async function discoverChannels(
       grantedScopes: granted,
     };
   }
+  if (platform === "linkedin") {
+    const found = await discoverLinkedInOrganizations(token);
+    return {
+      // LinkedIn shares no name or email without the OpenID product, which
+      // Flas does not request; the member id comes from the role records.
+      identity: { userId: found.ok ? found.memberId : null, emailHint: null },
+      channels: found.ok ? found.channels : [],
+      error: found.ok ? (found.channels.length ? null : "no_pages") : found.code,
+      grantedScopes: null,
+    };
+  }
+  if (platform === "tiktok" || platform === "twitter" || platform === "pinterest") {
+    const found = await discoverSingleAccount(platform, token, granted);
+    const only = found.ok ? found.channels[0] : undefined;
+    return {
+      identity: {
+        userId: only?.externalId ?? null,
+        emailHint: only ? (only.handle ?? only.name) : null,
+      },
+      channels: found.ok ? found.channels : [],
+      error: found.ok ? null : found.code,
+      grantedScopes: null,
+    };
+  }
   return {
     identity: { userId: null, emailHint: null },
     channels: [],
@@ -373,7 +746,12 @@ export async function completeChannelAuthorization(args: {
   platform: string;
   provider: string;
   stateHash: string;
-  tokens: { token: string; refreshToken: string | null; expiresAt: string | null; scopes: string[] };
+  tokens: {
+    token: string;
+    refreshToken: string | null;
+    expiresAt: string | null;
+    scopes: string[];
+  };
 }): Promise<CompletionOutcome> {
   // What the attempt was for. Read by digest from the consumed row: the row
   // survives consumption, and the plaintext state is never stored.
@@ -393,14 +771,17 @@ export async function completeChannelAuthorization(args: {
   if (args.provider === "meta") {
     try {
       const { exchangeForLongLivedToken } = await import("@/lib/oauth.server");
-      const longLived = await exchangeForLongLivedToken({ tenantId: args.tenantId, token: tokens.token });
+      const longLived = await exchangeForLongLivedToken({
+        tenantId: args.tenantId,
+        token: tokens.token,
+      });
       tokens = { ...tokens, token: longLived.token, expiresAt: longLived.expiresAt };
     } catch {
       exchangeNote = "long_lived_exchange_failed";
     }
   }
 
-  const discovery = await discoverChannels(args.platform, tokens.token);
+  const discovery = await discoverChannels(args.platform, tokens.token, tokens.scopes);
 
   const authorizationId = crypto.randomUUID();
   const tokenColumns = await encryptAuthorizationTokens({
@@ -432,7 +813,10 @@ export async function completeChannelAuthorization(args: {
   if (error) throw new Error(`Could not store the authorization: ${error.message}`);
 
   // Reconnect / upgrade: if the same channel came back, rebind it and stop.
-  if (attempt?.target_account_id && (attempt.purpose === "reconnect" || attempt.purpose === "upgrade")) {
+  if (
+    attempt?.target_account_id &&
+    (attempt.purpose === "reconnect" || attempt.purpose === "upgrade")
+  ) {
     const { data: target } = await supabaseAdmin
       .from("social_accounts")
       .select("id, external_id, platform")
@@ -474,7 +858,12 @@ export async function completeChannelAuthorization(args: {
  * what makes returning from disconnected/revoked legitimate, and the path
  * records that: -> ready_to_authorize -> authorization_started -> to.
  */
-async function moveAccountTo(accountId: string, tenantId: string, to: ConnectionState, actorId: string | null) {
+async function moveAccountTo(
+  accountId: string,
+  tenantId: string,
+  to: ConnectionState,
+  actorId: string | null,
+) {
   const { transitionConnection } = await import("@/lib/connection-state.server");
   const { data: row } = await supabaseAdmin
     .from("social_accounts")
@@ -489,7 +878,13 @@ async function moveAccountTo(accountId: string, tenantId: string, to: Connection
       ? ["authorization_started", to]
       : ["ready_to_authorize", "authorization_started", to];
   for (const step of path) {
-    await transitionConnection({ accountId, tenantId, to: step, reason: "new_authorization", actorId });
+    await transitionConnection({
+      accountId,
+      tenantId,
+      to: step,
+      reason: "new_authorization",
+      actorId,
+    });
   }
 }
 
@@ -518,8 +913,12 @@ export async function connectDiscoveredChannels(args: {
     .eq("tenant_id", args.tenantId)
     .maybeSingle();
   if (!auth) throw new Error("That authorization was not found in this workspace.");
-  if (auth.authorization_state !== "active") throw new Error("That authorization is no longer active. Sign in again.");
-  if (!auth.discovered_at || Date.now() - new Date(auth.discovered_at).getTime() > DISCOVERY_TTL_MS) {
+  if (auth.authorization_state !== "active")
+    throw new Error("That authorization is no longer active. Sign in again.");
+  if (
+    !auth.discovered_at ||
+    Date.now() - new Date(auth.discovered_at).getTime() > DISCOVERY_TTL_MS
+  ) {
     throw new Error("This channel list has expired. Sign in again to refresh it.");
   }
 
@@ -527,7 +926,8 @@ export async function connectDiscoveredChannels(args: {
   const chosen = args.externalIds.map((id) => {
     const found = discovered.find((c) => c.externalId === id);
     if (!found) throw new Error("A selected channel is not one this sign-in can manage.");
-    if (!found.eligible) throw new Error(found.ineligibleReason ?? "That channel cannot be connected.");
+    if (!found.eligible)
+      throw new Error(found.ineligibleReason ?? "That channel cannot be connected.");
     return found;
   });
 
@@ -560,7 +960,9 @@ export async function connectDiscoveredChannels(args: {
     }
     const pageToken = pageTokens.get(`${ch.platform}:${ch.externalId}`);
     if (!pageToken) {
-      throw new Error(`Facebook did not return access to ${ch.name}. Sign in again and allow access to it.`);
+      throw new Error(
+        `Facebook did not return access to ${ch.name}. Sign in again and allow access to it.`,
+      );
     }
     return encryptTokensForStorage({
       tenantId: args.tenantId,
@@ -636,7 +1038,8 @@ export async function connectDiscoveredChannels(args: {
         })
         .select("id")
         .single();
-      if (error || !data) throw new Error(`Could not connect ${ch.name}: ${error?.message ?? "unknown"}`);
+      if (error || !data)
+        throw new Error(`Could not connect ${ch.name}: ${error?.message ?? "unknown"}`);
       connected.push({ accountId: data.id, externalId: ch.externalId, rebound: false });
     }
   }
@@ -706,7 +1109,11 @@ export async function refreshAuthorization(args: {
   tenantId: string;
 }): Promise<
   | { ok: true; token: string; expiresAt: string | null; scopes: string[] }
-  | { ok: false; code: "refresh_in_progress" | "no_refresh_token" | "refresh_failed"; reason: string }
+  | {
+      ok: false;
+      code: "refresh_in_progress" | "no_refresh_token" | "refresh_failed";
+      reason: string;
+    }
 > {
   const { data: auth } = await supabaseAdmin
     .from("social_authorizations")
@@ -727,7 +1134,11 @@ export async function refreshAuthorization(args: {
   try {
     const current = await readAuthorizationTokens(auth);
     if (!current.refresh) {
-      return { ok: false, code: "no_refresh_token", reason: "The provider issued no refresh token; reconnect once." };
+      return {
+        ok: false,
+        code: "no_refresh_token",
+        reason: "The provider issued no refresh token; reconnect once.",
+      };
     }
     const { refreshAccessToken } = await import("@/lib/oauth.server");
     const set = await refreshAccessToken({

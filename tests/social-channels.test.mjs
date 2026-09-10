@@ -76,8 +76,9 @@ describe("progressive scopes come from the registry", () => {
 
   test("YouTube uses the channel model; platforms not yet migrated do not", () => {
     assert.equal(usesChannelModel("youtube"), true);
-    // Facebook moved to the channel model in Batch 2B. LinkedIn follows in 2C.
-    assert.equal(usesChannelModel("linkedin"), false);
+    // Facebook moved in Batch 2B; LinkedIn, TikTok, X and Pinterest in 2C.
+    // Threads has no sync at all and stays on the previous flow.
+    assert.equal(usesChannelModel("threads"), false);
   });
 });
 

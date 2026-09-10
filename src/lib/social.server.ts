@@ -4,6 +4,7 @@
 // client; only social account tokens are read via the admin client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
+import { LINKEDIN_API_VERSION } from "@/lib/linkedin-api";
 
 type RlsClient = {
   from: (table: string) => never;
@@ -327,7 +328,8 @@ async function syncYouTube(account: SocialAccountSecret): Promise<SyncResult> {
   // otherwise every call would fail with 403 and be swallowed below. Legacy
   // API-key rows read public comments the way they always did.
   const canReadComments =
-    !oauth || (account.granted_scopes ?? []).includes("https://www.googleapis.com/auth/youtube.force-ssl");
+    !oauth ||
+    (account.granted_scopes ?? []).includes("https://www.googleapis.com/auth/youtube.force-ssl");
   for (const vid of canReadComments ? videoIds.slice(0, 5) : []) {
     try {
       const threads = await yt(
@@ -448,7 +450,7 @@ async function syncLinkedIn(account: SocialAccountSecret): Promise<SyncResult> {
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
-        "LinkedIn-Version": "202405",
+        "LinkedIn-Version": LINKEDIN_API_VERSION,
         "X-Restli-Protocol-Version": "2.0.0",
       },
     });
