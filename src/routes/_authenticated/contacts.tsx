@@ -1,3 +1,4 @@
+import { ContactDetailDialog } from "@/components/contacts/ContactDetailDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -70,6 +71,8 @@ function ContactsPage() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  // Which contact's numbers and branches are open, if any.
+  const [detailFor, setDetailFor] = useState<{ id: string; name: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importConsent, setImportConsent] = useState(false);
@@ -477,6 +480,12 @@ function ContactsPage() {
         </div>
       </header>
 
+      <ContactDetailDialog
+        contactId={detailFor?.id ?? null}
+        contactName={detailFor?.name ?? ""}
+        onOpenChange={(open) => !open && setDetailFor(null)}
+      />
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {STAGES.map((stage) => {
           const rows = filtered.filter((c) => c.stage === stage.id);
@@ -501,6 +510,17 @@ function ContactsPage() {
                           {c.phone ?? c.email ?? "No contact details"}
                           {c.company ? ` · ${c.company}` : ""}
                         </p>
+                        {/* One customer often has several numbers and more than
+                            one branch. This is where they are kept together, so
+                            a message from the second number joins this thread
+                            instead of starting a new contact. */}
+                        <button
+                          type="button"
+                          onClick={() => setDetailFor({ id: c.id, name: c.name })}
+                          className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                          Numbers &amp; branches
+                        </button>
                         {c.consent_given ? (
                           <Badge variant="outline" className="mt-1 text-[10px]">
                             Consented

@@ -229,18 +229,45 @@ export async function ingestInboundMessage(args: IngestArgs) {
   const { tenantId, channel, phone, sessionId, name, text, waMessageId, waNumberId } = args;
   if (!tenantId) throw new Error("ingestInboundMessage: tenantId is required");
 
-  // 1. Contact — matched by phone WITHIN this tenant only.
+  // 1. Contact — matched by identity WITHIN this tenant only.
+  //
+  // A customer is not one number. They message from a mobile, then the office
+  // landline, then a second branch; matching contacts.phone exactly made each
+  // one a new stranger with its own thread and half the history. Identities
+  // resolve every number a customer has onto the one contact, and say which
+  // branch it belongs to when they have several.
   let contactId: string | null = null;
+  let branchId: string | null = null;
   if (phone) {
-    const { data: existing } = await supabaseAdmin
-      .from("contacts")
-      .select("id")
-      .eq("phone", phone)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-    if (existing) {
-      contactId = existing.id;
-      if (name) await supabaseAdmin.from("contacts").update({ name }).eq("id", existing.id);
+    // Normalization lives in the database so the webhook, the widget and any
+    // importer cannot each canonicalize slightly differently.
+    const { data: resolved } = await supabaseAdmin.rpc("resolve_contact_by_identity", {
+      _tenant_id: tenantId,
+      _kind: "phone",
+      _value: phone,
+    });
+    const hit = (Array.isArray(resolved) ? resolved[0] : resolved) as
+      | { contact_id?: string; branch_id?: string | null }
+      | null
+      | undefined;
+
+    if (hit?.contact_id) {
+      contactId = hit.contact_id;
+      branchId = hit.branch_id ?? null;
+    } else {
+      // Fall back to the legacy column for any contact the backfill did not
+      // cover — one created between the migration and this deploy.
+      const { data: existing } = await supabaseAdmin
+        .from("contacts")
+        .select("id")
+        .eq("phone", phone)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      contactId = existing?.id ?? null;
+    }
+
+    if (contactId) {
+      if (name) await supabaseAdmin.from("contacts").update({ name }).eq("id", contactId);
     } else {
       const { data: created, error } = await supabaseAdmin
         .from("contacts")
@@ -250,6 +277,25 @@ export async function ingestInboundMessage(args: IngestArgs) {
       if (error) throw error;
       contactId = created.id;
     }
+
+    // Record the number as an identity so the next message from it resolves
+    // directly, including for contacts that predate this table. Conflicts are
+    // ignored: the unique index means the number is already claimed, and
+    // reassigning it here would silently move a customer's number between
+    // records.
+    await supabaseAdmin
+      .from("contact_identities")
+      .insert({
+        tenant_id: tenantId,
+        contact_id: contactId,
+        kind: "phone",
+        value: phone,
+        label: "WhatsApp",
+      })
+      .then(
+        () => undefined,
+        () => undefined,
+      );
   }
 
   // 2. Conversation
