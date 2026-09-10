@@ -217,11 +217,12 @@ list below prevents a connection from completing.
 
 ### High
 
-**4. Facebook comment replies cannot work.** `pages_manage_engagement` is never
-requested. `pages_read_engagement` is read-only, so `replyToComment()` fails
-against Facebook every time. The scope is listed under `optionalScopes` in
-`src/lib/social-connector-definitions.ts` and needs moving into
-`requestedScopes` — plus Meta review, since it is an Advanced Access permission.
+**4. Facebook comment replies — fixed in code, waiting on Meta.**
+`pages_manage_engagement` is requested since 2026-09-10 (it was missing, so
+`replyToComment()` was rejected every time). Two things remain, both outside
+the code: Meta must grant Advanced Access for it through app review, and every
+Page connected before that date must press Reconnect to grant the new scope —
+the connect screen now flags those Pages as missing it.
 
 **5. Tokens are stored in plaintext.** `social_accounts.access_token` and
 `refresh_token` are not encrypted at rest. The pattern to copy already exists:

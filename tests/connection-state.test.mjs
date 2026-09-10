@@ -200,8 +200,20 @@ describe("scope completeness", () => {
   });
 
   test("a fully granted account reports nothing missing", () => {
-    const granted = ["pages_show_list", "pages_read_engagement", "pages_messaging", "read_insights"];
+    const granted = [
+      "pages_show_list", "pages_read_engagement", "pages_messaging", "read_insights",
+      "pages_manage_engagement",
+    ];
     assert.deepEqual(missingScopesFor("facebook", granted), []);
+  });
+
+  test("a Page connected before comment replies needed a scope is told to reconnect", () => {
+    // Requested since 2026-09-10. A Page that granted everything under the old
+    // scope list must surface the gap, not silently keep failing replies.
+    const grantedBeforeTheChange = [
+      "pages_show_list", "pages_read_engagement", "pages_messaging", "read_insights",
+    ];
+    assert.deepEqual(missingScopesFor("facebook", grantedBeforeTheChange), ["pages_manage_engagement"]);
   });
 
   test("a declined permission is reported", () => {

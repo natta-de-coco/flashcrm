@@ -216,8 +216,11 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "pages_manage_posts",
       "pages_messaging",
       "read_insights",
+      // Required to create a comment reply. pages_read_engagement is read-only,
+      // so without this replyToComment() was rejected by Meta every time.
+      "pages_manage_engagement",
     ],
-    optionalScopes: ["pages_manage_engagement", "pages_manage_metadata"],
+    optionalScopes: ["pages_manage_metadata"],
     providerReviewRequired: true,
     sandboxAvailable: true,
     setupRequirements: [
@@ -254,12 +257,12 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       comments_reply: {
         providerSupports: true,
         flasImplements: true,
-        // Verified 2026-09-08: pages_read_engagement is read-only. Creating a
-        // comment needs pages_manage_engagement, which is NOT requested — so
-        // replyToComment() in social.server.ts fails against Facebook today.
+        // Verified 2026-09-08: pages_read_engagement is read-only; creating a
+        // comment needs pages_manage_engagement. Requested since 2026-09-10.
+        // Accounts connected before then lack the grant and must reconnect.
         requiredScopes: ["pages_manage_engagement"],
         reviewRequired: true,
-        note: "Flas can post the reply, but pages_manage_engagement is not requested at authorization, so Meta rejects it.",
+        note: "Needs Meta Advanced Access for pages_manage_engagement. Pages connected before 2026-09-10 must reconnect to grant it.",
       },
       direct_messages_read: {
         providerSupports: true,

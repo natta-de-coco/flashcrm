@@ -3,7 +3,7 @@
 **Generated from `src/lib/social-connector-definitions.ts` — do not edit by hand.**
 Regenerate with `npm run docs:capabilities`.
 
-Generated 2026-09-08 · 19 connectors (15 API platform connectors using OAuth, 4 connected with keys or a plugin).
+Generated 2026-09-10 · 19 connectors (15 API platform connectors using OAuth, 4 connected with keys or a plugin).
 
 ## How to read this
 
@@ -28,7 +28,7 @@ only ever be narrower.
 
 | Connector | Profile | Publishing | Read comments | Reply to comments | Read DMs | Send DMs | Read reviews | Reply to reviews | Analytics | Read ads | Manage ads | Webhooks |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Facebook Pages | yes | provider only | review | **scope missing** | review | provider only | — | — | review | — | — | provider only |
+| Facebook Pages | yes | provider only | review | review | review | provider only | — | — | review | — | — | provider only |
 | Instagram Professional | account type | provider only | review | review | provider only | provider only | — | — | review | — | — | — |
 | Threads | provider only | provider only | provider only | provider only | — | — | — | — | provider only | — | — | — |
 | LinkedIn Company Pages | review | provider only | provider only | provider only | — | — | — | — | review | — | — | — |
@@ -55,8 +55,8 @@ only ever be narrower.
 - **ID**: `facebook` · **Category**: social · **Auth**: oauth2
 - **Account types**: Facebook Page (admin access via a Business account)
 - **Provider review required**: yes · **Sandbox**: yes · **Last verified**: 2026-09-08
-- **Requested scopes**: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `pages_messaging`, `read_insights`
-- **Not requested**: `pages_manage_engagement`, `pages_manage_metadata`
+- **Requested scopes**: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `pages_messaging`, `read_insights`, `pages_manage_engagement`
+- **Not requested**: `pages_manage_metadata`
 - **Setup**: Meta app with Facebook Login for Business; Business verification for Advanced Access; The connecting user must be an admin of the Page
 - **Docs**: <https://developers.facebook.com/docs/pages-api> · <https://developers.facebook.com/docs/permissions/reference/pages_manage_engagement>
 
@@ -65,7 +65,7 @@ only ever be narrower.
 | Profile | yes | yes | Available | `pages_show_list` |  |
 | Publishing | yes | no | Not implemented yet | `pages_manage_posts` | The scope is requested, but Flas has no code that creates a Facebook post. |
 | Read comments | yes | yes | Requires provider review | `pages_read_engagement` |  |
-| Reply to comments | yes | yes | Missing permission | `pages_manage_engagement` | Flas can post the reply, but pages_manage_engagement is not requested at authorization, so Meta rejects it. |
+| Reply to comments | yes | yes | Requires provider review | `pages_manage_engagement` | Needs Meta Advanced Access for pages_manage_engagement. Pages connected before 2026-09-10 must reconnect to grant it. |
 | Read DMs | yes | yes | Requires provider review | `pages_messaging` | Messenger conversations on the Page. Requires Advanced Access to pages_messaging. |
 | Send DMs | yes | no | Not implemented yet | `pages_messaging` | Messenger send is not built. Meta's 24-hour messaging window would apply. |
 | Read reviews | no | no | Not supported by provider | — | This provider does not offer an API for this. |

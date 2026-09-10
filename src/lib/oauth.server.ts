@@ -240,10 +240,19 @@ export async function startAuthorization(args: {
   // attacker-controlled input reaching an outbound URL. Check it against ours.
   const allowedOrigin = resolveAllowedOrigin(args.origin);
   if (!allowedOrigin) {
+    // Almost always a deployment that was never told its own address: with no
+    // OAUTH_ALLOWED_ORIGINS or PUBLIC_APP_URL the allowlist is loopback only,
+    // and every provider is refused. Name the setting so the fix is obvious.
+    let attempted = "this address";
+    try {
+      attempted = new URL(args.origin).origin;
+    } catch {
+      /* keep the generic wording for a malformed origin */
+    }
     return {
       ready: false,
-      reason: "That redirect address is not allowed for this deployment.",
-      missing: [],
+      reason: `${attempted} is not an allowed sign-in return address for this deployment. Add it to OAUTH_ALLOWED_ORIGINS in the host's secrets and redeploy.`,
+      missing: ["OAUTH_ALLOWED_ORIGINS"],
     };
   }
 
