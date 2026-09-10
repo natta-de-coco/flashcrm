@@ -57,10 +57,11 @@ export const getAuthorizationDiscovery = createServerFn({ method: "GET" })
     const { data: existing } = ids.length
       ? await context.supabase
           .from("social_accounts")
-          .select("id, external_id, active")
-          .eq("platform", auth.platform)
+          .select("id, platform, external_id, active")
           .in("external_id", ids)
-      : { data: [] as Array<{ id: string; external_id: string | null; active: boolean }> };
+      : {
+          data: [] as Array<{ id: string; platform: string; external_id: string | null; active: boolean }>,
+        };
 
     const expired =
       !auth.discovered_at || Date.now() - new Date(auth.discovered_at).getTime() > DISCOVERY_TTL_MS;
@@ -76,7 +77,11 @@ export const getAuthorizationDiscovery = createServerFn({ method: "GET" })
         expired,
       },
       channels: candidates.map((c) => {
-        const match = (existing ?? []).find((e) => e.external_id === c.externalId);
+        // Matched on platform AND id: one Meta sign-in lists both Facebook
+        // Pages and Instagram accounts.
+        const match = (existing ?? []).find(
+          (e) => e.external_id === c.externalId && e.platform === c.platform,
+        );
         return {
           ...c,
           maskedId: maskIdentifier(c.externalId),

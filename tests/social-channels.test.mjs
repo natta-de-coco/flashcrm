@@ -20,7 +20,8 @@ import {
   usesChannelModel,
 } from "../node_modules/.cache/flas-registry.mjs";
 import * as caps from "../node_modules/.cache/flas-channel-caps.mjs";
-import { parseYouTubeChannels } from "../node_modules/.cache/flas-authorizations.mjs";
+import { parseMetaChannels, parseYouTubeChannels } from "../node_modules/.cache/flas-authorizations.mjs";
+import { DISCOVERY_FAMILY } from "../node_modules/.cache/flas-registry.mjs";
 
 const MUTATION = process.env.MUTATION ?? "";
 if (MUTATION === "grant_all") console.log("!! MUTATION: every scope treated as granted — the suite must FAIL");
@@ -75,7 +76,8 @@ describe("progressive scopes come from the registry", () => {
 
   test("YouTube uses the channel model; platforms not yet migrated do not", () => {
     assert.equal(usesChannelModel("youtube"), true);
-    assert.equal(usesChannelModel("facebook"), false);
+    // Facebook moved to the channel model in Batch 2B. LinkedIn follows in 2C.
+    assert.equal(usesChannelModel("linkedin"), false);
   });
 });
 
@@ -182,6 +184,106 @@ describe("YouTube discovery parsing", () => {
       const text = JSON.stringify(c).toLowerCase();
       assert.equal(/token|secret|bearer/.test(text), false);
     }
+  });
+});
+
+describe("Meta: progressive scopes and one sign-in for two platforms (Batch 2B)", () => {
+  const fb = connectorDefinition("facebook");
+  const ig = connectorDefinition("instagram");
+
+  test("a first Facebook connection never asks for publishing, Messenger or reply permissions", () => {
+    const scopes = scopesForTiers(fb, initialTierIds(fb));
+    for (const s of ["pages_manage_posts", "pages_messaging", "pages_manage_engagement"]) {
+      assert.equal(scopes.includes(s), false, `${s} should not be requested on first connection`);
+    }
+    assert.deepEqual(
+      [...scopes].sort(),
+      ["pages_read_engagement", "pages_show_list", "public_profile", "read_insights"].sort(),
+    );
+  });
+
+  test("a first Instagram connection never asks for publishing or comment permissions", () => {
+    const scopes = scopesForTiers(ig, initialTierIds(ig));
+    assert.equal(scopes.includes("instagram_content_publish"), false);
+    assert.equal(scopes.includes("instagram_manage_comments"), false);
+    assert.ok(scopes.includes("pages_show_list"), "Instagram accounts are reached through Pages");
+  });
+
+  test("publishing tiers cannot be requested: publishing is not built", () => {
+    assert.throws(() => scopesForTiers(fb, ["basic", "publishing"]), /cannot be requested/);
+    assert.throws(() => scopesForTiers(ig, ["basic", "publishing"]), /cannot be requested/);
+  });
+
+  test("one Meta sign-in discovers both Facebook and Instagram channels", () => {
+    assert.deepEqual([...DISCOVERY_FAMILY.facebook].sort(), ["facebook", "instagram"]);
+    assert.equal(usesChannelModel("facebook"), true);
+    assert.equal(usesChannelModel("instagram"), true);
+  });
+
+  const pages = [
+    {
+      id: "p1", name: "A to Z Security Equipment", username: "atozsecurity", category: "Security",
+      picture: "https://fb.test/p1.jpg", followers: 900,
+      // Present on the input, exactly as meta-discovery returns it -- and it
+      // must never reach a candidate.
+      pageAccessToken: "EAAPAGE-TOKEN-p1-SHOULD-NEVER-LEAK",
+      tasks: ["MANAGE", "CREATE_CONTENT"],
+      instagram: { id: "ig1", username: "atozsecurityequipment", name: "A to Z", picture: "https://ig.test/1.jpg", followers: 4200, biography: "b" },
+    },
+    {
+      id: "p2", name: "Rover Walkie Talkie UAE", username: null, category: null,
+      picture: null, followers: null, pageAccessToken: "EAAPAGE-TOKEN-p2", tasks: ["ANALYZE"], instagram: null,
+    },
+  ];
+
+  test("each Page, and each linked Instagram account, becomes a candidate", () => {
+    const c = parseMetaChannels(pages, ["pages_show_list", "instagram_basic"]);
+    assert.equal(c.length, 3);
+    assert.deepEqual(c.map((x) => `${x.platform}:${x.externalId}`), ["facebook:p1", "instagram:ig1", "facebook:p2"]);
+  });
+
+  test("an Instagram candidate names the Page it is linked to", () => {
+    const ig1 = parseMetaChannels(pages, ["pages_show_list", "instagram_basic"]).find((x) => x.platform === "instagram");
+    assert.equal(ig1.linkedTo.name, "A to Z Security Equipment");
+    assert.equal(ig1.handle, "@atozsecurityequipment");
+  });
+
+  test("an Instagram account without Instagram permission is shown but not connectable", () => {
+    const ig1 = parseMetaChannels(pages, ["pages_show_list"]).find((x) => x.platform === "instagram");
+    assert.equal(ig1.eligible, false);
+    assert.match(ig1.ineligibleReason, /Instagram access was not granted/);
+  });
+
+  test("a Page is not connectable when Page access was not shared", () => {
+    const p1 = parseMetaChannels(pages, []).find((x) => x.externalId === "p1");
+    assert.equal(p1.eligible, false);
+  });
+
+  test("no Page token ever reaches a candidate", () => {
+    const text = JSON.stringify(parseMetaChannels(pages, ["pages_show_list", "instagram_basic"]));
+    assert.equal(text.includes("EAAPAGE"), false);
+    assert.equal(/token/i.test(text), false);
+  });
+});
+
+describe("Meta long-lived exchange keeps the app secret out of URLs", () => {
+  test("it POSTs a form body and the URL carries no secret", async () => {
+    const { exchangeForLongLivedToken } = await import("../node_modules/.cache/flas-oauth.mjs");
+    process.env.META_APP_ID = "test-app-id";
+    process.env.META_APP_SECRET = "SECRET-MUST-NOT-BE-IN-URL";
+    let seen;
+    const fake = async (url, init) => {
+      seen = { url: String(url), init };
+      return new Response(JSON.stringify({ access_token: "LONG-LIVED", expires_in: 5184000 }), { status: 200 });
+    };
+    const set = await exchangeForLongLivedToken({ tenantId: null, token: "SHORT-LIVED", fetchImpl: fake });
+    assert.equal(set.token, "LONG-LIVED");
+    assert.equal(seen.init.method, "POST");
+    assert.equal(seen.url.includes("SECRET-MUST-NOT-BE-IN-URL"), false, "the app secret is in the URL");
+    assert.equal(seen.url.includes("client_secret"), false);
+    assert.equal(seen.url.includes("SHORT-LIVED"), false, "the user token is in the URL");
+    assert.match(String(seen.init.body), /grant_type=fb_exchange_token/);
+    assert.ok(set.expiresAt, "the long-lived expiry is recorded");
   });
 });
 

@@ -17,7 +17,11 @@ import {
 } from "@/lib/social-connector-definitions";
 import { declinedScopes } from "@/lib/social-channel-capabilities";
 import { decryptSecret, encryptSecret, readKeyRing } from "@/lib/social-secrets.server";
-import { readStoredTokens, TOKEN_READ_COLUMNS } from "@/lib/social-token-store.server";
+import {
+  encryptTokensForStorage,
+  readStoredTokens,
+  TOKEN_READ_COLUMNS,
+} from "@/lib/social-token-store.server";
 import { isLegalTransition, type ConnectionState } from "@/lib/connection-state";
 
 /** A discovery result may be acted on for this long; after that, re-authorize. */
@@ -35,6 +39,8 @@ export type DiscoveredChannel = {
   /** Some discovered assets cannot be connected (a personal Instagram account). */
   eligible: boolean;
   ineligibleReason: string | null;
+  /** For an Instagram account: the Facebook Page it is linked to. */
+  linkedTo: { platform: string; name: string } | null;
 };
 
 export type ProviderIdentity = { userId: string | null; emailHint: string | null };
@@ -95,7 +101,9 @@ export async function readTokensForAccount(account: {
   access_token?: string | null;
   refresh_token?: string | null;
 }): Promise<{ access: string | null; refresh: string | null; source: string }> {
-  if (!account.authorization_id) return readStoredTokens(account);
+  // A channel with its own token -- a Facebook Page or linked Instagram
+  // account -- uses it. Otherwise the token is on the authorization.
+  if (!account.authorization_id || account.access_token_enc) return readStoredTokens(account);
   const { data: auth } = await supabaseAdmin
     .from("social_authorizations")
     .select(AUTH_TOKEN_COLUMNS)
@@ -168,6 +176,7 @@ export function parseYouTubeChannels(json: { items?: YouTubeChannelItem[] }): Di
       },
       eligible: true,
       ineligibleReason: null,
+      linkedTo: null,
     }));
 }
 
@@ -192,18 +201,158 @@ export async function discoverYouTubeChannels(
   }
 }
 
+/* ---------------------------------------------------------------- Meta */
+
+type MetaPageLike = {
+  id: string;
+  name: string;
+  username: string | null;
+  category: string | null;
+  picture: string | null;
+  followers: number | null;
+  instagram: {
+    id: string;
+    username: string | null;
+    name: string | null;
+    picture: string | null;
+    followers: number | null;
+    biography: string | null;
+  } | null;
+};
+
+/**
+ * Pure: turns discovered Pages into channel candidates -- each Facebook Page,
+ * and each Instagram professional account linked to one.
+ *
+ * It copies named fields only. A Page's access token is on the input object
+ * and is deliberately never copied: discovery results are stored and shown in
+ * the browser, and a Page token must never be in either.
+ *
+ * Eligibility follows what was actually granted. Meta lets a person untick
+ * permissions, so a login can reach an Instagram account it has no Instagram
+ * permission for; that account is shown, but not connectable.
+ */
+export function parseMetaChannels(
+  pages: readonly MetaPageLike[],
+  granted: readonly string[],
+): DiscoveredChannel[] {
+  const has = (s: string) => granted.includes(s);
+  const out: DiscoveredChannel[] = [];
+  for (const p of pages) {
+    out.push({
+      externalId: p.id,
+      platform: "facebook",
+      accountType: "Facebook Page",
+      name: p.name,
+      handle: p.username ? `@${p.username}` : null,
+      avatarUrl: p.picture,
+      description: p.category,
+      metrics: { audience: p.followers, content: null, views: null },
+      eligible: has("pages_show_list"),
+      ineligibleReason: has("pages_show_list")
+        ? null
+        : "Facebook did not share your Pages with Flas. Sign in again and allow Page access.",
+      linkedTo: null,
+    });
+    if (p.instagram) {
+      out.push({
+        externalId: p.instagram.id,
+        platform: "instagram",
+        accountType: "Instagram professional account",
+        name: p.instagram.name ?? p.instagram.username ?? "Instagram account",
+        handle: p.instagram.username ? `@${p.instagram.username}` : null,
+        avatarUrl: p.instagram.picture,
+        description: p.instagram.biography ? p.instagram.biography.slice(0, 280) : null,
+        metrics: { audience: p.instagram.followers, content: null, views: null },
+        eligible: has("instagram_basic"),
+        ineligibleReason: has("instagram_basic")
+          ? null
+          : "Instagram access was not granted. Use Connect Instagram to add this account.",
+        linkedTo: { platform: "facebook", name: p.name },
+      });
+    }
+  }
+  return out;
+}
+
+/** Permissions the person actually granted. Meta's token response has no scope list. */
+export async function discoverMetaPermissions(
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string[]> {
+  try {
+    const res = await fetchImpl("https://graph.facebook.com/v21.0/me/permissions", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { data?: Array<{ permission?: string; status?: string }> };
+    return (json.data ?? [])
+      .filter((p) => p.status === "granted" && typeof p.permission === "string")
+      .map((p) => p.permission as string);
+  } catch {
+    return [];
+  }
+}
+
+/** Who signed in. Meta shares a name, not an email, without the email scope. */
+export async function discoverMetaIdentity(
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ProviderIdentity> {
+  try {
+    const res = await fetchImpl("https://graph.facebook.com/v21.0/me?fields=id,name", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return { userId: null, emailHint: null };
+    const json = (await res.json()) as { id?: string; name?: string };
+    return { userId: json.id ?? null, emailHint: json.name ?? null };
+  } catch {
+    return { userId: null, emailHint: null };
+  }
+}
+
 export async function discoverChannels(
   platform: string,
   token: string,
-): Promise<{ identity: ProviderIdentity; channels: DiscoveredChannel[]; error: string | null }> {
+): Promise<{
+  identity: ProviderIdentity;
+  channels: DiscoveredChannel[];
+  error: string | null;
+  /** Filled for providers whose token response carries no scope list. */
+  grantedScopes: string[] | null;
+}> {
   if (platform === "youtube") {
     const [identity, found] = await Promise.all([
       discoverGoogleIdentity(token),
       discoverYouTubeChannels(token),
     ]);
-    return { identity, channels: found.ok ? found.channels : [], error: found.ok ? null : found.code };
+    return {
+      identity,
+      channels: found.ok ? found.channels : [],
+      error: found.ok ? null : found.code,
+      grantedScopes: null,
+    };
   }
-  return { identity: { userId: null, emailHint: null }, channels: [], error: "discovery_not_implemented" };
+  if (platform === "facebook" || platform === "instagram") {
+    const { discoverMetaTargets } = await import("@/lib/meta-discovery.server");
+    const [identity, granted, targets] = await Promise.all([
+      discoverMetaIdentity(token),
+      discoverMetaPermissions(token),
+      discoverMetaTargets(token),
+    ]);
+    return {
+      identity,
+      channels: targets.ok ? parseMetaChannels(targets.pages, granted) : [],
+      error: targets.ok ? (targets.noPages ? "no_pages" : null) : "discovery_failed",
+      grantedScopes: granted,
+    };
+  }
+  return {
+    identity: { userId: null, emailHint: null },
+    channels: [],
+    error: "discovery_not_implemented",
+    grantedScopes: null,
+  };
 }
 
 /* ------------------------------------------------------------ callback */
@@ -235,14 +384,30 @@ export async function completeChannelAuthorization(args: {
     .eq("tenant_id", args.tenantId)
     .maybeSingle();
 
-  const discovery = await discoverChannels(args.platform, args.tokens.token);
+  // Meta: swap the short-lived user token (valid for hours) for a long-lived
+  // one (about 60 days) BEFORE discovery. Page tokens fetched with a
+  // long-lived user token do not expire; fetched with a short-lived one, every
+  // Page connection dies within hours. The previous flow never made this swap.
+  let tokens = args.tokens;
+  let exchangeNote: string | null = null;
+  if (args.provider === "meta") {
+    try {
+      const { exchangeForLongLivedToken } = await import("@/lib/oauth.server");
+      const longLived = await exchangeForLongLivedToken({ tenantId: args.tenantId, token: tokens.token });
+      tokens = { ...tokens, token: longLived.token, expiresAt: longLived.expiresAt };
+    } catch {
+      exchangeNote = "long_lived_exchange_failed";
+    }
+  }
+
+  const discovery = await discoverChannels(args.platform, tokens.token);
 
   const authorizationId = crypto.randomUUID();
   const tokenColumns = await encryptAuthorizationTokens({
     tenantId: args.tenantId,
     authorizationId,
-    accessToken: args.tokens.token,
-    refreshToken: args.tokens.refreshToken,
+    accessToken: tokens.token,
+    refreshToken: tokens.refreshToken,
   });
   const now = new Date().toISOString();
   const { error } = await supabaseAdmin.from("social_authorizations").insert({
@@ -255,9 +420,11 @@ export async function completeChannelAuthorization(args: {
     provider_email_hint: discovery.identity.emailHint,
     ...tokenColumns,
     requested_scopes: attempt?.requested_scopes ?? [],
-    granted_scopes: args.tokens.scopes,
-    expires_at: args.tokens.expiresAt,
+    // Meta's token response lists no scopes; discovery read /me/permissions.
+    granted_scopes: tokens.scopes.length ? tokens.scopes : (discovery.grantedScopes ?? []),
+    expires_at: tokens.expiresAt,
     authorization_state: "active",
+    state_reason: exchangeNote,
     discovered_assets: discovery.channels as never,
     discovered_at: now,
     last_validation_success_at: discovery.error ? null : now,
@@ -268,11 +435,16 @@ export async function completeChannelAuthorization(args: {
   if (attempt?.target_account_id && (attempt.purpose === "reconnect" || attempt.purpose === "upgrade")) {
     const { data: target } = await supabaseAdmin
       .from("social_accounts")
-      .select("id, external_id")
+      .select("id, external_id, platform")
       .eq("id", attempt.target_account_id)
       .eq("tenant_id", args.tenantId)
       .maybeSingle();
-    if (target?.external_id && discovery.channels.some((c) => c.externalId === target.external_id)) {
+    if (
+      target?.external_id &&
+      discovery.channels.some(
+        (c) => c.externalId === target.external_id && c.platform === target.platform && c.eligible,
+      )
+    ) {
       await connectDiscoveredChannels({
         tenantId: args.tenantId,
         userId: args.userId,
@@ -339,7 +511,9 @@ export async function connectDiscoveredChannels(args: {
 
   const { data: auth } = await supabaseAdmin
     .from("social_authorizations")
-    .select("id, tenant_id, platform, granted_scopes, requested_scopes, discovered_assets, discovered_at, authorization_state")
+    .select(
+      "id, tenant_id, platform, provider, granted_scopes, requested_scopes, discovered_assets, discovered_at, authorization_state, access_token_enc, refresh_token_enc",
+    )
     .eq("id", args.authorizationId)
     .eq("tenant_id", args.tenantId)
     .maybeSingle();
@@ -349,7 +523,6 @@ export async function connectDiscoveredChannels(args: {
     throw new Error("This channel list has expired. Sign in again to refresh it.");
   }
 
-  const def = connectorDefinition(auth.platform) as ConnectorDefinition;
   const discovered = (auth.discovered_assets ?? []) as unknown as DiscoveredChannel[];
   const chosen = args.externalIds.map((id) => {
     const found = discovered.find((c) => c.externalId === id);
@@ -358,11 +531,54 @@ export async function connectDiscoveredChannels(args: {
     return found;
   });
 
-  const declined = declinedScopes(def, auth.granted_scopes, auth.requested_scopes);
-  const target: ConnectionState = declined.length > 0 ? "scope_incomplete" : "connected";
+  // Meta: every Page has its own token. They are fetched fresh here with the
+  // stored user token -- discovery never held one -- and each is stored
+  // encrypted on its own channel. An Instagram account uses the token of the
+  // Page it is linked to.
+  const pageTokens = new Map<string, string>();
+  if (chosen.some((c) => c.platform === "facebook" || c.platform === "instagram")) {
+    const user = await readAuthorizationTokens(auth);
+    if (!user.access) throw new Error("This sign-in has no usable token. Sign in again.");
+    const { discoverMetaTargets } = await import("@/lib/meta-discovery.server");
+    const fresh = await discoverMetaTargets(user.access);
+    for (const p of fresh.pages) {
+      if (!p.pageAccessToken) continue;
+      pageTokens.set(`facebook:${p.id}`, p.pageAccessToken);
+      if (p.instagram) pageTokens.set(`instagram:${p.instagram.id}`, p.pageAccessToken);
+    }
+  }
+  const channelTokenColumns = async (ch: DiscoveredChannel) => {
+    if (ch.platform !== "facebook" && ch.platform !== "instagram") {
+      // The token lives on the authorization. None is left on the channel.
+      return {
+        access_token: null,
+        refresh_token: null,
+        access_token_enc: null,
+        refresh_token_enc: null,
+        token_key_id: null,
+      };
+    }
+    const pageToken = pageTokens.get(`${ch.platform}:${ch.externalId}`);
+    if (!pageToken) {
+      throw new Error(`Facebook did not return access to ${ch.name}. Sign in again and allow access to it.`);
+    }
+    return encryptTokensForStorage({
+      tenantId: args.tenantId,
+      platform: ch.platform,
+      accessToken: pageToken,
+      refreshToken: null,
+    });
+  };
+
   const connected: Array<{ accountId: string; externalId: string; rebound: boolean }> = [];
 
   for (const ch of chosen) {
+    // Each channel is judged by its own platform's registry entry: one Meta
+    // sign-in can produce both Facebook and Instagram channels.
+    const chDef = connectorDefinition(ch.platform) as ConnectorDefinition;
+    const declined = declinedScopes(chDef, auth.granted_scopes, auth.requested_scopes);
+    const target: ConnectionState = declined.length > 0 ? "scope_incomplete" : "connected";
+    const tokenColumns = await channelTokenColumns(ch);
     const common = {
       label: ch.name,
       account_type: ch.accountType,
@@ -381,12 +597,7 @@ export async function connectDiscoveredChannels(args: {
       health: "connected",
       connect_method: "oauth",
       legacy_manual_connection: false,
-      // The token lives on the authorization. None is left on the channel.
-      access_token: null,
-      refresh_token: null,
-      access_token_enc: null,
-      refresh_token_enc: null,
-      token_key_id: null,
+      ...tokenColumns,
       last_error: null,
       last_error_at: null,
       retry_count: 0,
@@ -400,7 +611,7 @@ export async function connectDiscoveredChannels(args: {
       .from("social_accounts")
       .select("id")
       .eq("tenant_id", args.tenantId)
-      .eq("platform", auth.platform)
+      .eq("platform", ch.platform)
       .eq("external_id", ch.externalId)
       .maybeSingle();
 
@@ -418,7 +629,7 @@ export async function connectDiscoveredChannels(args: {
         .from("social_accounts")
         .insert({
           tenant_id: args.tenantId,
-          platform: auth.platform,
+          platform: ch.platform,
           ...common,
           connection_state: target,
           state_reason: "new_authorization",

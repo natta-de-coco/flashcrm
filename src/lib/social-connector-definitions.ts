@@ -265,6 +265,46 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "Advanced Access requires Meta app review before the connector works for anyone outside your own Business.",
       "Conversations older than the Page's retention window are not returned.",
     ],
+    identityScopes: ["public_profile"],
+    // Batch 2B. pages_manage_posts is never requested: publishing is not built.
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Pages, posts, comments and statistics",
+        purpose:
+          "Flas would like permission to see the Facebook Pages you choose, their posts and comments, and the Page statistics Facebook shares.",
+        capabilities: ["profile", "comments_read", "analytics"],
+        initial: true,
+        wontDo: [
+          "post, edit or delete anything on your Pages",
+          "see your Facebook password",
+          "read your personal profile, friends or private messages",
+        ],
+      },
+      {
+        id: "messages",
+        label: "Read Messenger conversations",
+        purpose: "Flas would like permission to read Messenger conversations people start with your Page.",
+        capabilities: ["direct_messages_read"],
+        initial: false,
+        wontDo: ["send messages as your Page"],
+      },
+      {
+        id: "replies",
+        label: "Reply to comments",
+        purpose: "Flas would like permission to post replies to comments on your Page, when you send one from Flas.",
+        capabilities: ["comments_reply"],
+        initial: false,
+        wontDo: ["publish new posts", "delete comments"],
+      },
+      {
+        id: "publishing",
+        label: "Publish posts",
+        purpose: "Flas would like permission to publish posts to your Page.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     capabilities: caps({
       profile: {
         providerSupports: true,
@@ -347,11 +387,50 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "Personal Instagram accounts cannot be connected — the API is Professional-only.",
       "Instagram DMs are a separate permission (instagram_manage_messages) that Flas does not request.",
     ],
+    identityScopes: ["public_profile"],
+    // Batch 2B. instagram_content_publish is never requested: publishing is not built.
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Profile, posts and statistics",
+        purpose:
+          "Flas would like permission to see the Instagram professional accounts linked to your Facebook Pages, their posts, and the account statistics Instagram shares.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        wontDo: [
+          "post, edit or delete anything on your account",
+          "see your Instagram or Facebook password",
+          "read your direct messages",
+        ],
+      },
+      {
+        id: "comments",
+        label: "Read and reply to comments",
+        purpose:
+          "Flas would like permission to read comments on your posts and post the replies you send from Flas.",
+        capabilities: ["comments_read", "comments_reply"],
+        initial: false,
+        // instagram_manage_comments covers reading AND replying; Instagram
+        // does not offer a read-only comment permission.
+        scopeCaveat:
+          "Instagram grants reading and replying to comments as one permission. Flas replies only when you send a reply yourself.",
+        wontDo: ["delete comments", "publish new posts"],
+      },
+      {
+        id: "publishing",
+        label: "Publish posts",
+        purpose: "Flas would like permission to publish posts to your Instagram account.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     capabilities: caps({
       profile: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["instagram_basic"],
+        // pages_show_list: an Instagram professional account is reached through
+        // the Facebook Page it is linked to, so listing Pages is part of it.
+        requiredScopes: ["instagram_basic", "pages_show_list"],
         reviewRequired: false,
         accountTypeLimited: true,
         note: "Business or Creator accounts only.",
@@ -1127,7 +1206,18 @@ export function resolveAllCapabilities(connector: ConnectorDefinition): Resolved
  * authorization, channels discovered from it and chosen by the user. Others
  * still use the one-account-per-platform flow until their batch migrates them.
  */
-export const CHANNEL_MODEL_CONNECTORS: readonly string[] = ["youtube"];
+export const CHANNEL_MODEL_CONNECTORS: readonly string[] = ["youtube", "facebook", "instagram"];
+
+/**
+ * Connectors whose single sign-in also discovers channels of a sibling
+ * platform. One Meta login finds both Facebook Pages and the Instagram
+ * professional accounts linked to them, so neither needs a second login.
+ */
+export const DISCOVERY_FAMILY: Readonly<Record<string, readonly string[]>> = {
+  facebook: ["facebook", "instagram"],
+  instagram: ["facebook", "instagram"],
+  youtube: ["youtube"],
+};
 
 export function usesChannelModel(connectorId: string): boolean {
   return CHANNEL_MODEL_CONNECTORS.includes(connectorId);

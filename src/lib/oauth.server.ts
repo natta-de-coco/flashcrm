@@ -549,6 +549,42 @@ export async function exchangeCode(args: {
 }
 
 /**
+ * Swaps a short-lived Meta user token (valid for hours) for a long-lived one
+ * (about 60 days). Page tokens fetched with a long-lived user token do not
+ * expire, which is why this runs at connect time, before any Page token is
+ * requested.
+ *
+ * Server-side only: the request carries the app secret. It is sent as a POST
+ * form body, never a query string, so the secret cannot land in a URL, a proxy
+ * log or a provider access log. Meta's documentation shows a GET; the endpoint
+ * accepts the same parameters as a POST body (verified 2026-09-11 -- a POST
+ * with a bad client_id returns "Invalid Client ID", so the body was parsed,
+ * while a PUT reports the parameter missing).
+ */
+export async function exchangeForLongLivedToken(args: {
+  tenantId?: string | null;
+  token: string;
+  fetchImpl?: typeof fetch;
+}): Promise<TokenSet> {
+  const creds = await resolveCredentials("meta", args.tenantId);
+  if (!creds.id || !creds.secret) throw new Error("Platform app credentials are missing.");
+  const res = await (args.fetchImpl ?? fetch)(PROVIDERS.meta.tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: new URLSearchParams({
+      grant_type: "fb_exchange_token",
+      client_id: creds.id,
+      client_secret: creds.secret,
+      fb_exchange_token: args.token,
+    }).toString(),
+  });
+  const json = (await res.json().catch(() => ({}))) as TokenResponse;
+  const set = readTokenSet(json);
+  if (!res.ok || !set) throw new Error(`Meta token extension failed (HTTP ${res.status}).`);
+  return set;
+}
+
+/**
  * Refreshes an access token. Meta long-lived page tokens have no refresh
  * token, so we exchange the existing token for a fresh long-lived one instead.
  */
@@ -564,17 +600,9 @@ export async function refreshAccessToken(args: {
 
   if (args.provider === "meta") {
     if (!args.currentToken) throw new Error("No token to extend.");
-    const url = `${cfg.tokenUrl}?${new URLSearchParams({
-      grant_type: "fb_exchange_token",
-      client_id: creds.id,
-      client_secret: creds.secret,
-      fb_exchange_token: args.currentToken,
-    }).toString()}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    const json = (await res.json().catch(() => ({}))) as TokenResponse;
-    const set = readTokenSet(json);
-    if (!res.ok || !set) throw new Error(`Meta token extension failed (HTTP ${res.status}).`);
-    return set;
+    // Was a GET with client_secret in the query string -- the app secret in a
+    // URL, which Batch 1 forbids. Now a POST body, via the shared function.
+    return exchangeForLongLivedToken({ tenantId: args.tenantId ?? null, token: args.currentToken });
   }
 
   if (!args.refreshToken) {
