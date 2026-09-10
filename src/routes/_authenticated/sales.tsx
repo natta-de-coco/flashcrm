@@ -1,6 +1,8 @@
 // Sales hub — create quotations and invoices, send them on WhatsApp, take
 // payment and let Flas send the stamped PAID copy automatically.
 import { PageHeader } from "@/components/PageHeader";
+import { useTenant } from "@/hooks/useTenant";
+import { todayInTimeZone } from "@/lib/locale";
 import {
   InvoiceBuilder,
   emptyDocument,
@@ -117,6 +119,9 @@ function downloadBase64(base64: string, filename: string) {
 
 function SalesPage() {
   const qc = useQueryClient();
+  // Issue dates are the tenant's calendar day. Computing them from UTC dated a
+  // quotation raised on the 10th in Dubai as the 9th.
+  const { tenant } = useTenant();
   const loadWorkspace = useServerFn(getSalesWorkspace);
   const loadDocument = useServerFn(getSalesDocument);
   const saveDoc = useServerFn(saveSalesDocument);
@@ -157,6 +162,7 @@ function SalesPage() {
       settings?.default_currency ?? "AED",
       Number(settings?.default_tax_rate ?? 0),
       settings?.default_terms ?? "",
+      tenant?.timezone ?? null,
     );
     next.kind = kind;
     setBuilder(next);
@@ -179,7 +185,7 @@ function SalesPage() {
           address: snapshot["address"] ?? "",
           vat_number: snapshot["vat_number"] ?? "",
         },
-        issue_date: (doc["issue_date"] as string) ?? new Date().toISOString().slice(0, 10),
+        issue_date: (doc["issue_date"] as string) ?? todayInTimeZone(tenant?.timezone ?? null),
         due_date: (doc["due_date"] as string) ?? "",
         valid_until: (doc["valid_until"] as string) ?? "",
         currency: (doc["currency"] as string) ?? "AED",

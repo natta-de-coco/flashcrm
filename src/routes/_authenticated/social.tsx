@@ -116,6 +116,8 @@ const PLATFORMS: {
   tokenLabel: string;
   tokenPlaceholder: string;
   hint: string;
+  /** TikTok resolves the account from the token, so its id really is optional. */
+  idOptional?: boolean;
 }[] = [
   {
     id: "instagram",
@@ -173,6 +175,7 @@ const PLATFORMS: {
     icon: Music2,
     idLabel: "Open ID (optional)",
     idPlaceholder: "Leave blank to use the token's account",
+    idOptional: true,
     tokenLabel: "Access token",
     tokenPlaceholder: "act.…",
     hint: "TikTok for Developers → your app → video.list and user.info.basic scopes.",
@@ -191,6 +194,27 @@ const PLATFORMS: {
 
 function platformMeta(id: string) {
   return PLATFORMS.find((p) => p.id === id) ?? PLATFORMS[0]!;
+}
+
+/**
+ * Why the form cannot be submitted yet, or null when it can.
+ *
+ * Save was previously gated on the display name alone, so an empty token
+ * saved an account that could never authenticate -- it appeared in the list
+ * looking connected and failed on first sync, with nothing on screen
+ * explaining why.
+ */
+function manualFormError(form: {
+  platform: string;
+  label: string;
+  externalId: string;
+  accessToken: string;
+}): string | null {
+  const meta = platformMeta(form.platform);
+  if (form.label.trim().length < 2) return "Give this account a display name.";
+  if (!form.accessToken.trim()) return `${meta.tokenLabel} is required.`;
+  if (!meta.idOptional && !form.externalId.trim()) return `${meta.idLabel} is required.`;
+  return null;
 }
 
 /** First useful audience number from a sync, if any. */
@@ -417,25 +441,47 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>Display name</Label>
+              <Label htmlFor="social-label">Display name</Label>
               <Input
+                id="social-label"
+                name="social-account-label"
+                autoComplete="off"
                 placeholder="e.g. Client's bakery IG"
                 value={form.label}
                 onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>{platformMeta(form.platform).idLabel}</Label>
+              <Label htmlFor="social-external-id">{platformMeta(form.platform).idLabel}</Label>
               <Input
+                id="social-external-id"
+                // Unnamed, this looked like a generic text field and the browser
+                // filled it with the saved CRM login email.
+                name="social-account-external-id"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 placeholder={platformMeta(form.platform).idPlaceholder}
                 value={form.externalId}
                 onChange={(e) => setForm((f) => ({ ...f, externalId: e.target.value }))}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>{platformMeta(form.platform).tokenLabel}</Label>
+              <Label htmlFor="social-access-token">{platformMeta(form.platform).tokenLabel}</Label>
               <Input
+                id="social-access-token"
+                name="social-account-token"
                 type="password"
+                // A pasted API credential, not a password to remember.
+                // new-password is what stops a manager offering the saved login;
+                // the vendor opt-outs stop 1Password and LastPass overlaying it.
+                autoComplete="new-password"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                data-1p-ignore
+                data-lpignore="true"
                 placeholder={platformMeta(form.platform).tokenPlaceholder}
                 value={form.accessToken}
                 onChange={(e) => setForm((f) => ({ ...f, accessToken: e.target.value }))}
@@ -447,14 +493,17 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
             <div className="sm:col-span-2">
               <Button
                 size="sm"
-                disabled={form.label.trim().length < 2 || connectMutation.isPending}
+                disabled={manualFormError(form) !== null || connectMutation.isPending}
                 onClick={() => connectMutation.mutate()}
               >
                 {connectMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
                 Save account
               </Button>
+              {manualFormError(form) ? (
+                <p className="mt-1.5 text-xs text-destructive">{manualFormError(form)}</p>
+              ) : null}
               <p className="mt-1.5 text-xs text-muted-foreground">
-                Tokens are stored encrypted-at-rest and are never shown back in the app.
+                Tokens are stored server-side and are never shown back in the app.
               </p>
             </div>
           </div>

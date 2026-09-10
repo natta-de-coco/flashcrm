@@ -87,7 +87,9 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           return back(origin, { connect_error: "Authorization response was incomplete." });
         }
 
-        const { consumeState, exchangeCode } = await import("@/lib/oauth.server");
+        const { consumeState, exchangeCode, ProviderTokenError } = await import(
+          "@/lib/oauth.server"
+        );
         const row = await consumeState(state);
         if (!row) {
           await auditOutcome(
@@ -229,7 +231,20 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
               platform: row.platform,
               feature: "oauth",
               operation: "oauth_callback",
-              error: normalizeProviderError({ platform: row.platform, thrown: e }),
+              // A refusal carries the provider's own status and body, so the
+              // Meta code table can name the actual cause. Without them
+              // normalizeProviderError files every refusal as a transient
+              // network fault and tells the customer to wait for a retry that
+              // will never succeed.
+              error:
+                e instanceof ProviderTokenError
+                  ? normalizeProviderError({
+                      platform: row.platform,
+                      httpStatus: e.httpStatus,
+                      body: e.body,
+                      thrown: e,
+                    })
+                  : normalizeProviderError({ platform: row.platform, thrown: e }),
             });
           } catch (recordError) {
             // Reporting must never turn a failed connection into a 500.

@@ -354,6 +354,33 @@ export type TokenSet = {
   scopes: string[];
 };
 
+/**
+ * A token endpoint that answered, and refused.
+ *
+ * The status and the parsed body travel with the error because
+ * normalizeProviderError needs both to say anything specific. Given only a
+ * thrown Error it takes its "never reached the provider" branch and files the
+ * refusal as a transient network fault -- so a wrong app secret, an
+ * unregistered redirect URI, and an app still in Development mode were all
+ * recorded as "usually a temporary network problem, no action needed", and the
+ * Meta code table was unreachable from the one flow that needed it most.
+ *
+ * The body is the provider's parsed JSON. It is passed to normalizeProviderError,
+ * which redacts before anything is stored; it is never returned to the browser.
+ */
+export class ProviderTokenError extends Error {
+  readonly httpStatus: number;
+  readonly body: unknown;
+  constructor(provider: Provider, httpStatus: number, body: unknown) {
+    // The wording is load-bearing: sanitizeError in the callback matches
+    // "token exchange failed" to choose the code shown in the browser.
+    super(`Token exchange failed for ${provider} (HTTP ${httpStatus}).`);
+    this.name = "ProviderTokenError";
+    this.httpStatus = httpStatus;
+    this.body = body;
+  }
+}
+
 function readTokenSet(json: TokenResponse): TokenSet | null {
   const token = json.access_token ?? json.data?.access_token;
   if (!token) return null;
@@ -421,7 +448,7 @@ export async function exchangeCode(args: {
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
   const set = readTokenSet(json);
   if (!res.ok || !set) {
-    throw new Error(`Token exchange failed for ${args.provider} (HTTP ${res.status}).`);
+    throw new ProviderTokenError(args.provider, res.status, json);
   }
   return set;
 }
