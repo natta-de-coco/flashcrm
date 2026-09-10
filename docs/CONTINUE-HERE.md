@@ -1,0 +1,284 @@
+# Continuing Flas CRM on another machine
+
+Everything needed to pick this up on a second PC: clone, run, push, and the
+list of what is actually broken.
+
+Written 2026-09-09. Every command below was run against this repository.
+
+---
+
+## 1. The repository
+
+```
+https://github.com/natta-de-coco/flashcrm
+```
+
+That is the live one. Lovable syncs it, and pushing to its `main` deploys to
+`flas.mobidigisol.com`.
+
+There is a second remote, `origin` →
+`github.com/natta-de-coco/Chat-Connect-Pro.git`. It is **stale** — its `main`
+sits many commits behind. Do not work from it. If a clone ever shows the wrong
+history, check `git remote -v` first.
+
+```bash
+git clone https://github.com/natta-de-coco/flashcrm.git
+```
+
+The remote in a fresh clone is called `origin` and points at flashcrm. On the
+current PC the same repository is called `lovable`, because that clone has both.
+So on the new machine, wherever these notes say `lovable`, say `origin`.
+
+---
+
+## 2. Prerequisites
+
+| Tool | Version | Note |
+|---|---|---|
+| Node.js | 20 or newer | `node --test` is used as the test runner |
+| npm | ships with Node | `bun.lock` is present but `package-lock.json` is authoritative |
+| Git | any recent | — |
+
+No Docker. The database tests download and run a real Postgres through
+`embedded-postgres`, which is already a dependency.
+
+```bash
+cd flashcrm
+npm install
+```
+
+---
+
+## 3. Environment variables
+
+**Put real values in `.env.local`, never in `.env`.**
+
+`.env`, `.env.development` and `.env.production` are **tracked in git**. Writing
+a secret into one commits it. `.env.local` matches the `*.local` rule in
+`.gitignore` and stays on your machine. Vite's `loadEnv()` reads it for both
+client and server variables and it overrides `.env`, so nothing else changes.
+
+Copy the shape from `.env.example`. The minimum to boot:
+
+```
+SUPABASE_URL=https://qvssburewegshdkhsqef.supabase.co
+VITE_SUPABASE_URL=https://qvssburewegshdkhsqef.supabase.co
+SUPABASE_PUBLISHABLE_KEY=<the anon key, already in .env>
+VITE_SUPABASE_PUBLISHABLE_KEY=<same>
+SUPABASE_SERVICE_ROLE_KEY=<server only — see below>
+```
+
+The publishable key is public by design and is already committed in `.env`, so
+the first four come across with the clone.
+
+`SUPABASE_SERVICE_ROLE_KEY` bypasses RLS entirely. Without it the app still
+boots and renders, but every `supabaseAdmin` path returns 500 — the WhatsApp
+webhook, the lead widget, the OAuth callback that finishes a connection, the
+Paddle webhook, and the public v1 API. Get it from the Supabase project the
+Lovable workspace owns. **Never give it a `VITE_` prefix** and never put it in
+`.env`.
+
+---
+
+## 4. Running it
+
+```bash
+npm run dev
+```
+
+Then the checks, in the order they get fastest feedback:
+
+```bash
+npx tsc --noEmit          # types
+npm test                  # 88 unit tests, ~2s
+npx vite build            # production build
+```
+
+The database suites each boot a throwaway Postgres, so they take a minute or
+two. Run them before any push that touches SQL or RLS:
+
+```bash
+node supabase/verify/verify-migrations.mjs
+node supabase/verify/verify-tenant-isolation.mjs
+node supabase/verify/verify-social-tenant-isolation.mjs
+node supabase/verify/verify-secret-exposure.mjs
+node supabase/verify/verify-platform-apps-grants.mjs
+node supabase/verify/verify-oauth-roundtrip.mjs
+node supabase/verify/verify-oauth-security.mjs
+node supabase/verify/verify-connection-state.mjs
+node supabase/verify/verify-tenant-id-not-null.mjs
+```
+
+All nine pass on `work` as of this writing.
+
+**The tests are `node --test`, not Vitest.** `npx vitest run` reports "no test
+files found" and that means nothing — an external audit already drew the wrong
+conclusion from it. Every suite carries a sabotage mode that proves it fails
+when its guard is removed, e.g. `SABOTAGE=1 node supabase/verify/verify-oauth-security.mjs`
+or `MUTATION=open_redirect node --test tests/oauth-security.test.mjs`.
+
+---
+
+## 5. Pull and push
+
+Work happens on the `work` branch. `main` on this clone tracks the stale
+`origin` and is not what deploys.
+
+**Start of a session — always pull first.** Lovable commits directly to `main`,
+so the remote moves on its own even when nobody else is at a keyboard:
+
+```bash
+git fetch origin
+git log --oneline HEAD..origin/main     # what landed while you were away
+git merge origin/main                   # or: git rebase origin/main
+```
+
+**Pushing deploys.** A push to `main` triggers a Lovable build and goes live:
+
+```bash
+npx tsc --noEmit && npm test && npx vite build   # gate first
+git push origin work:main
+```
+
+### When the push is rejected
+
+It means Lovable committed while you worked. Do not force-push — its commits
+are real work and `--force` destroys them.
+
+```bash
+git branch backup/pre-merge-$(date +%Y%m%d-%H%M)   # cheap insurance
+git fetch origin
+git merge --no-commit --no-ff origin/main
+```
+
+`src/integrations/supabase/types.ts` is the file that conflicts, every time.
+It is generated by introspecting the live database, so **take Lovable's version
+as the base** and re-apply anything of yours the generator has not seen yet —
+new columns, views and RPCs. Match its style: no semicolons, keys in
+alphabetical order. Then:
+
+```bash
+npx tsc --noEmit && npm test && npx vite build
+git commit
+git push origin work:main
+```
+
+A worked example is commit `2605b64`.
+
+### Database changes
+
+Migrations in `supabase/migrations/` are **not applied by pushing**. They are
+files. To apply one, paste it into Lovable's SQL panel and run it.
+
+The Supabase dashboard will not work for this: the project belongs to Lovable's
+own Supabase organisation, so a personal Supabase login lands on an empty
+"Your organizations" page and cannot open the SQL editor. Lovable's chat is the
+only route.
+
+Every migration here is written to be safe to run twice.
+
+---
+
+## 6. What is left, in priority order
+
+### Blocking — social connections do not work at all right now
+
+**1. `OAUTH_ALLOWED_ORIGINS` is not set in Lovable Secrets.**
+
+This is why the Facebook wizard says *"That redirect address is not allowed for
+this deployment."* `resolveAllowedOrigin()` in `src/lib/oauth.server.ts` reads
+`OAUTH_ALLOWED_ORIGINS`, falls back to `PUBLIC_APP_URL`, and failing both falls
+back to localhost. Neither is set, so the allowlist is literally localhost and
+the live origin matches nothing. It blocks **every** provider, not just Meta.
+
+Fix — Lovable → project settings → Secrets:
+
+```
+OAUTH_ALLOWED_ORIGINS = https://flas.mobidigisol.com
+```
+
+No trailing slash, no path; it is compared as a parsed origin. Redeploy after.
+
+**2. `SUPABASE_SERVICE_ROLE_KEY` is not set in Lovable Secrets.** The
+`platform_apps` screen and the AI-keys screen both need it, as does the OAuth
+callback that saves a finished connection.
+
+**3. Register the callback URL with every provider.** One URL for all of them:
+
+```
+https://flas.mobidigisol.com/api/public/oauth-callback
+```
+
+The provider is identified by the state row, not the path, so there is nothing
+per-provider to keep in sync.
+
+Those three are the whole of "smooth social connectivity". Nothing else in the
+list below prevents a connection from completing.
+
+### High
+
+**4. Facebook comment replies cannot work.** `pages_manage_engagement` is never
+requested. `pages_read_engagement` is read-only, so `replyToComment()` fails
+against Facebook every time. The scope is listed under `optionalScopes` in
+`src/lib/social-connector-definitions.ts` and needs moving into
+`requestedScopes` — plus Meta review, since it is an Advanced Access permission.
+
+**5. Tokens are stored in plaintext.** `social_accounts.access_token` and
+`refresh_token` are not encrypted at rest. The pattern to copy already exists:
+`tenant_smtp_config.api_key_enc` uses `pgp_sym_encrypt` with a Vault key. It is
+all-or-nothing across twenty-plus read paths in `social.server.ts`,
+`social-doctor.server.ts`, `wa.server.ts`, `integration-health.server.ts`,
+`meta-discovery.server.ts` and `flash-ai.server.ts` — any site left on the
+plaintext column breaks the moment writes switch. Key rotation depends on this
+and has not started.
+
+**6. Social publishing does not exist for any social network.** The capability
+registry records it plainly — *"The scope is requested, but Flas has no code
+that creates a Facebook post"* — and `social.server.ts` exports only
+`syncSocialAccount`, `replyToComment`, `draftSocialReply` and
+`composeSocialCaption`. `publish` resolves to `implemented` for WordPress only.
+The marketing pages were corrected in `b0fea49` to stop claiming otherwise;
+the feature itself is still missing.
+
+**7. `20260909120000_tenant_id_not_null.sql` is written but not applied.**
+Verified safe: all seven tables held zero NULL rows in production when it was
+written. Paste it into Lovable's SQL panel.
+
+### Medium
+
+8. The UI does not read `connection_state` yet — the state machine landed in
+   `20260908100000` but no screen surfaces it (Batch 1 Task 6).
+9. Batch 1 tasks 5–8 are not started.
+10. Social posts cannot carry an image; `social_posts` has no media column.
+11. Catalog and price import from the WordPress/Shopify plugin does not exist.
+12. `organizations.name` has no unique constraint.
+13. `documents/$token` rebuilds the PDF on every request — no cache, no rate
+    limit. Same for `plugin/download` and its ZIP.
+14. MFA/TOTP is implemented but never enforced.
+15. Fifteen tables still allow a NULL `tenant_id`. That is deliberate — see the
+    exclusion list and reasons in `20260909120000_tenant_id_not_null.sql`.
+
+### Known false alarms
+
+An external audit (2026-09-09) reported two blockers that are **not real**.
+Both were checked against the live database:
+
+- *"10 security migrations never applied to production."* They are applied.
+  `get_tenant_ai_key`, `check_ai_rate_limit`, `is_tenant_admin` and
+  `am_i_tenant_admin` all answer `42501` (permission denied) rather than
+  `PGRST202` (not found) through PostgREST, against controls in both
+  directions. Re-running those migrations would throw, not no-op — 22 of them
+  are not idempotent.
+- *"Zero automated test coverage."* It ran Vitest. See section 4.
+
+---
+
+## 7. Ground rules carried over
+
+- Do not call the social system production-ready.
+- Do not push without approval.
+- Do not connect production accounts, publish posts, send DMs, reply to
+  comments or create ads while testing.
+- Preserve git history — never force-push over Lovable's commits.
+- Database changes go through migrations, with rollback instructions.
+- Every fix gets a test that is proven to fail without it.
