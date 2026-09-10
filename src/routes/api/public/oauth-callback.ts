@@ -2,7 +2,13 @@
 // single-use, unguessable state row created when the flow started — no session
 // is required, and no code is trusted without a matching live state.
 import { createFileRoute } from "@tanstack/react-router";
-import { capabilityCeiling } from "@/lib/social-connector-definitions";
+import { capabilityCeiling, usesChannelModel } from "@/lib/social-connector-definitions";
+
+/** Redirects to any in-app path. Params are fixed codes and opaque ids only. */
+function backTo(origin: string, path: string, params: Record<string, string>) {
+  const qs = new URLSearchParams(params).toString();
+  return new Response(null, { status: 302, headers: { Location: `${origin}${path}?${qs}` } });
+}
 
 function back(origin: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();
@@ -194,6 +200,55 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             tenantId: row.tenant_id,
             codeVerifier,
           });
+          // Batch 2A: channel-model platforms store ONE authorization,
+          // discover the channels it reaches, and let the person choose. The
+          // redirect carries an opaque authorization id -- never a token, and
+          // never a channel id the browser could substitute.
+          if (usesChannelModel(row.platform)) {
+            const { completeChannelAuthorization } = await import(
+              "@/lib/social-authorizations.server"
+            );
+            const { sha256Hex } = await import("@/lib/oauth.server");
+            const outcome = await completeChannelAuthorization({
+              tenantId: row.tenant_id,
+              userId: row.user_id ?? null,
+              platform: row.platform,
+              provider: meta.provider,
+              stateHash: await sha256Hex(state),
+              tokens: {
+                token: tokens.token,
+                refreshToken: tokens.refreshToken ?? null,
+                expiresAt: tokens.expiresAt,
+                scopes: tokens.scopes,
+              },
+            });
+            await markAttemptState("completed", `channel_authorization_${outcome.kind}`);
+            await auditOutcome(
+              "succeeded",
+              row.platform,
+              row.tenant_id,
+              row.user_id ?? null,
+              outcome.kind,
+            );
+            if (outcome.kind === "reconnected") {
+              return backTo(origin, "/channels", {
+                reconnected: row.platform,
+                account: outcome.accountId,
+              });
+            }
+            if (outcome.kind === "no_channels") {
+              return backTo(origin, "/channels", {
+                authorization: outcome.authorizationId,
+                step: "none",
+                reason: outcome.reason,
+              });
+            }
+            return backTo(origin, "/channels", {
+              authorization: outcome.authorizationId,
+              step: "select",
+            });
+          }
+
           const { discoverProfile, saveAuthorizedConnection } =
             await import("@/lib/connections.server");
           const platform = row.platform as Parameters<typeof discoverProfile>[0];

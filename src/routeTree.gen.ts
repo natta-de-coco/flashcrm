@@ -24,6 +24,7 @@ import { Route as WidgetDemoRouteImport } from './routes/widget-demo'
 import { Route as AuthenticatedAdvisorRouteImport } from './routes/_authenticated/advisor'
 import { Route as AuthenticatedCampaignPlannerRouteImport } from './routes/_authenticated/campaign-planner'
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
+import { Route as AuthenticatedChannelsRouteImport } from './routes/_authenticated/channels'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
 import { Route as AuthenticatedCompaniesRouteImport } from './routes/_authenticated/companies'
 import { Route as AuthenticatedConnectRouteImport } from './routes/_authenticated/connect'
@@ -136,6 +137,11 @@ const AuthenticatedCampaignPlannerRoute =
 const AuthenticatedCatalogRoute = AuthenticatedCatalogRouteImport.update({
   id: '/catalog',
   path: '/catalog',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedChannelsRoute = AuthenticatedChannelsRouteImport.update({
+  id: '/channels',
+  path: '/channels',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedChatbotRoute = AuthenticatedChatbotRouteImport.update({
@@ -355,6 +361,7 @@ export interface FileRoutesByFullPath {
   '/advisor': typeof AuthenticatedAdvisorRoute
   '/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/catalog': typeof AuthenticatedCatalogRoute
+  '/channels': typeof AuthenticatedChannelsRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
   '/companies': typeof AuthenticatedCompaniesRouteWithChildren
   '/connect': typeof AuthenticatedConnectRoute
@@ -408,6 +415,7 @@ export interface FileRoutesByTo {
   '/advisor': typeof AuthenticatedAdvisorRoute
   '/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/catalog': typeof AuthenticatedCatalogRoute
+  '/channels': typeof AuthenticatedChannelsRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
   '/companies': typeof AuthenticatedCompaniesRouteWithChildren
   '/connect': typeof AuthenticatedConnectRoute
@@ -463,6 +471,7 @@ export interface FileRoutesById {
   '/_authenticated/advisor': typeof AuthenticatedAdvisorRoute
   '/_authenticated/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
+  '/_authenticated/channels': typeof AuthenticatedChannelsRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRoute
   '/_authenticated/companies': typeof AuthenticatedCompaniesRouteWithChildren
   '/_authenticated/connect': typeof AuthenticatedConnectRoute
@@ -519,6 +528,7 @@ export interface FileRouteTypes {
     | '/advisor'
     | '/campaign-planner'
     | '/catalog'
+    | '/channels'
     | '/chatbot'
     | '/companies'
     | '/connect'
@@ -572,6 +582,7 @@ export interface FileRouteTypes {
     | '/advisor'
     | '/campaign-planner'
     | '/catalog'
+    | '/channels'
     | '/chatbot'
     | '/companies'
     | '/connect'
@@ -626,6 +637,7 @@ export interface FileRouteTypes {
     | '/_authenticated/advisor'
     | '/_authenticated/campaign-planner'
     | '/_authenticated/catalog'
+    | '/_authenticated/channels'
     | '/_authenticated/chatbot'
     | '/_authenticated/companies'
     | '/_authenticated/connect'
@@ -802,6 +814,13 @@ declare module '@tanstack/react-router' {
       path: '/catalog'
       fullPath: '/catalog'
       preLoaderRoute: typeof AuthenticatedCatalogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/channels': {
+      id: '/_authenticated/channels'
+      path: '/channels'
+      fullPath: '/channels'
+      preLoaderRoute: typeof AuthenticatedChannelsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/chatbot': {
@@ -1124,6 +1143,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdvisorRoute: typeof AuthenticatedAdvisorRoute
   AuthenticatedCampaignPlannerRoute: typeof AuthenticatedCampaignPlannerRoute
   AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
+  AuthenticatedChannelsRoute: typeof AuthenticatedChannelsRoute
   AuthenticatedChatbotRoute: typeof AuthenticatedChatbotRoute
   AuthenticatedCompaniesRoute: typeof AuthenticatedCompaniesRouteWithChildren
   AuthenticatedConnectRoute: typeof AuthenticatedConnectRoute
@@ -1143,6 +1163,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdvisorRoute: AuthenticatedAdvisorRoute,
   AuthenticatedCampaignPlannerRoute: AuthenticatedCampaignPlannerRoute,
   AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
+  AuthenticatedChannelsRoute: AuthenticatedChannelsRoute,
   AuthenticatedChatbotRoute: AuthenticatedChatbotRoute,
   AuthenticatedCompaniesRoute: AuthenticatedCompaniesRouteWithChildren,
   AuthenticatedConnectRoute: AuthenticatedConnectRoute,

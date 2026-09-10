@@ -20,6 +20,8 @@ export type SocialAccountSecret = {
   access_token: string | null;
   /** "oauth" for accounts connected through the callback; "manual" = legacy. */
   connect_method?: string | null;
+  /** Scopes the provider granted. Features whose scope is absent are skipped, not attempted. */
+  granted_scopes?: readonly string[] | null;
 };
 
 export type SyncResult = { ok: boolean; posts: number; interactions: number; error?: string };
@@ -320,8 +322,13 @@ async function syncYouTube(account: SocialAccountSecret): Promise<SyncResult> {
     }
   }
 
-  // Latest comments on the 5 most recent uploads (works with an API key).
-  for (const vid of videoIds.slice(0, 5)) {
+  // Latest comments on the 5 most recent uploads. An OAuth channel reads them
+  // only if the comments permission (youtube.force-ssl) was actually granted;
+  // otherwise every call would fail with 403 and be swallowed below. Legacy
+  // API-key rows read public comments the way they always did.
+  const canReadComments =
+    !oauth || (account.granted_scopes ?? []).includes("https://www.googleapis.com/auth/youtube.force-ssl");
+  for (const vid of canReadComments ? videoIds.slice(0, 5) : []) {
     try {
       const threads = await yt(
         `/commentThreads?part=snippet&videoId=${vid}&maxResults=20&order=time`,

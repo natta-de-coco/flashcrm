@@ -29,6 +29,7 @@ import {
   Package,
   Plug,
   Receipt,
+  Share2,
   Settings,
   Sparkles,
   Target,
@@ -88,6 +89,13 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         desc: "IG, FB, YouTube, X & more",
         icon: Megaphone,
         keywords: "instagram facebook youtube twitter x tiktok linkedin posts accounts connect",
+      },
+      {
+        to: "/channels",
+        label: "Social Channels",
+        desc: "Connect & manage channels",
+        icon: Share2,
+        keywords: "add channel connect youtube facebook instagram reconnect permissions accounts",
       },
       {
         to: "/content",

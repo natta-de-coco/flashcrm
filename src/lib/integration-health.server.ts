@@ -14,6 +14,9 @@ import {
 } from "./connection-state";
 import { redactSecrets } from "./integration-errors.server";
 import { encryptTokensForStorage, readStoredTokens } from "./social-token-store.server";
+import { readTokensForAccount, refreshAuthorization } from "./social-authorizations.server";
+import { declinedScopes } from "./social-channel-capabilities";
+import { connectorDefinition } from "./social-connector-definitions";
 import type { ConnectionState } from "./connection-status";
 import type { HealthReport, HealthRow } from "./integration-health";
 import { refreshAccessToken } from "./oauth.server";
@@ -47,14 +50,16 @@ type AccountRow = {
   connection_state: string;
   last_validation_success_at: string | null;
   legacy_manual_connection: boolean;
+  /** Batch 2A: set when the token lives on a shared social_authorizations row. */
+  authorization_id: string | null;
 };
 
 const ACCOUNT_COLUMNS =
-  "id, tenant_id, platform, label, active, access_token, refresh_token, access_token_enc, refresh_token_enc, token_key_id, token_expires_at, granted_scopes, permissions, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method, connection_state, last_validation_success_at, legacy_manual_connection";
+  "id, tenant_id, platform, label, active, access_token, refresh_token, access_token_enc, refresh_token_enc, token_key_id, token_expires_at, granted_scopes, permissions, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, authorization_id";
 
 /** The report shows status only; it never selects a token column. */
 const REPORT_COLUMNS =
-  "id, tenant_id, platform, label, active, token_expires_at, granted_scopes, permissions, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method, connection_state, last_validation_success_at, legacy_manual_connection";
+  "id, tenant_id, platform, label, active, token_expires_at, granted_scopes, permissions, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, authorization_id";
 
 function grantedScopes(row: AccountRow): string[] {
   if (row.granted_scopes?.length) return row.granted_scopes;
@@ -322,7 +327,7 @@ export async function retryConnection(args: {
 
   let stored: { access: string | null; refresh: string | null; source: string };
   try {
-    stored = await readStoredTokens(row);
+    stored = row.authorization_id ? await readTokensForAccount(row) : await readStoredTokens(row);
   } catch {
     stored = { access: null, refresh: null, source: "undecryptable" };
   }
@@ -356,6 +361,44 @@ export async function retryConnection(args: {
         accessToken: stored.access,
         refreshToken: stored.refresh,
       });
+    }
+  } else if (provider && row.authorization_id) {
+    // Batch 2A: the token belongs to the authorization, shared by every
+    // channel on it, so it is refreshed there under the authorization's own
+    // lease -- two channels of one Google login cannot race each other.
+    const r = await refreshAuthorization({
+      authorizationId: row.authorization_id,
+      tenantId: row.tenant_id,
+    });
+    if (!r.ok && r.code === "refresh_in_progress") {
+      return {
+        platform: row.platform,
+        outcome: "refresh_in_progress",
+        reason: "REFRESH_IN_PROGRESS: another check is already refreshing this connection.",
+      };
+    }
+    if (r.ok) {
+      expiresAt = r.expiresAt;
+      refreshPatch = {
+        last_refresh_success_at: new Date().toISOString(),
+        refresh_failure_reason: null,
+      };
+      const verify = await probeToken(row.platform, r.token);
+      validated = verify.ok;
+      if (verify.ok) {
+        outcome = "refreshed";
+        reason = `Token refreshed automatically. ${verify.reason}`;
+        scopes = verify.scopes ?? (r.scopes.length ? r.scopes : undefined);
+      } else {
+        outcome = "needs_reconnect";
+        reason = `Refresh succeeded but the platform still refused access: ${verify.reason}`;
+      }
+    } else {
+      outcome = "needs_reconnect";
+      reason = `${probe.reason} Automatic refresh failed: ${r.reason}`;
+      refreshPatch = {
+        refresh_failure_reason: (redactSecrets(reason) ?? "refresh failed").slice(0, 500),
+      };
     }
   } else if (provider) {
     // Phase 16: a row lease, not an in-memory or transaction-scoped lock. It
@@ -423,7 +466,25 @@ export async function retryConnection(args: {
 
   // Everything below is stored, shown on screen or logged: redact first.
   const safeReason = redactSecrets(reason) ?? "Connection check failed.";
-  const missing = scopes ? missingScopesFor(row.platform, scopes) : missingScopes(row);
+  // Batch 2A: a channel on an authorization is judged against what that
+  // authorization ASKED for. A YouTube channel connected with basic access has
+  // not "lost" the comments permission it never requested -- that is an
+  // upgrade, not a fault.
+  let missing: string[];
+  if (row.authorization_id) {
+    const { data: auth } = await supabaseAdmin
+      .from("social_authorizations")
+      .select("requested_scopes, granted_scopes")
+      .eq("id", row.authorization_id)
+      .eq("tenant_id", row.tenant_id)
+      .maybeSingle();
+    const def = connectorDefinition(row.platform);
+    missing = def
+      ? declinedScopes(def, scopes ?? auth?.granted_scopes ?? [], auth?.requested_scopes ?? [])
+      : [];
+  } else {
+    missing = scopes ? missingScopesFor(row.platform, scopes) : missingScopes(row);
+  }
   const observed = classifyHealthObservation({
     from,
     validated,

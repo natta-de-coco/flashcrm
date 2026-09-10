@@ -39,7 +39,16 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     tokenUrl: "https://oauth2.googleapis.com/token",
     idEnv: "GOOGLE_OAUTH_CLIENT_ID",
     secretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-    extraAuthParams: { access_type: "offline", prompt: "consent", include_granted_scopes: "true" },
+    // select_account: Google shows its account chooser every time, including
+    // Brand Accounts, so nobody connects the wrong personal account because
+    // the browser happened to be signed in to it. consent: a refresh token is
+    // returned on every authorization. include_granted_scopes: an upgrade adds
+    // permissions without dropping the ones already granted.
+    extraAuthParams: {
+      access_type: "offline",
+      prompt: "select_account consent",
+      include_granted_scopes: "true",
+    },
   },
   linkedin: {
     authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
@@ -215,6 +224,12 @@ export async function startAuthorization(args: {
   origin: string;
   tenantId: string;
   userId: string;
+  /** Batch 2A: what this attempt is for. Defaults to a first connection. */
+  purpose?: "connect" | "reconnect" | "upgrade";
+  /** Batch 2A: authorization tiers to request. Defaults to the initial tiers. */
+  tierIds?: readonly string[];
+  /** Batch 2A: the channel a reconnect or upgrade is for. */
+  targetAccountId?: string | null;
 }): Promise<StartResult> {
   const meta = connector(args.platform);
   if (!meta?.oauth || !meta.provider) {
@@ -296,7 +311,31 @@ export async function startAuthorization(args: {
     );
   }
 
+  // Scopes come from the registry. Connectors with authorization tiers ask
+  // only for the tiers requested (the initial ones on a first connection) --
+  // progressive authorization -- and a tier for code that does not exist is
+  // refused, not silently requested.
+  const def = connectorDefinition(args.platform);
+  let requestedScopes: string[];
+  try {
+    if (def?.authorizationTiers?.length) {
+      const { initialTierIds, scopesForTiers } = await import("@/lib/social-connector-definitions");
+      requestedScopes = scopesForTiers(def, args.tierIds?.length ? args.tierIds : initialTierIds(def));
+    } else {
+      requestedScopes = [...(def?.requestedScopes ?? [])];
+    }
+  } catch (e) {
+    return {
+      ready: false,
+      reason: e instanceof Error ? e.message : "That permission cannot be requested.",
+      missing: [],
+    };
+  }
+
   const { error } = await supabaseAdmin.from("oauth_states").insert({
+    purpose: args.purpose ?? "connect",
+    target_account_id: args.targetAccountId ?? null,
+    requested_scopes: requestedScopes,
     tenant_id: args.tenantId,
     user_id: args.userId,
     platform: args.platform,
@@ -314,7 +353,12 @@ export async function startAuthorization(args: {
     const { beginAuthorization, sweepAbandonedAttempts } = await import(
       "@/lib/connection-state.server"
     );
-    await beginAuthorization({ tenantId: args.tenantId, platform: args.platform, actorId: args.userId });
+    await beginAuthorization({
+      tenantId: args.tenantId,
+      platform: args.platform,
+      actorId: args.userId,
+      accountId: args.targetAccountId ?? null,
+    });
     await sweepAbandonedAttempts().catch(() => undefined);
   } catch {
     /* bookkeeping only */
@@ -324,7 +368,7 @@ export async function startAuthorization(args: {
   // There were three copies of this data -- here, connection-setup.ts and
   // connection-status.ts -- and they had already drifted: the setup wizard
   // told users TikTok requests video.publish, which this file never sent.
-  const scopes = connectorDefinition(args.platform)?.requestedScopes ?? [];
+  const scopes = requestedScopes;
   const params = buildAuthorizeParams({
     provider: meta.provider,
     clientId: creds.id,

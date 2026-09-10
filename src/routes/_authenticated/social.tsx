@@ -320,7 +320,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
             "Paste a token" fallback was removed in Batch 1 -- social tokens
             now originate only from the OAuth callback, never a browser form. */}
         <Button asChild size="sm">
-          <Link to="/connect">Connect an account</Link>
+          <Link to="/channels">Add Channel</Link>
         </Button>
       </CardHeader>
       <CardContent className="grid gap-3">

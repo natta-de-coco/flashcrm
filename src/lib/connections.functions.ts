@@ -28,7 +28,7 @@ export const getConnections = createServerFn({ method: "GET" })
       supabase
         .from("social_accounts")
         .select(
-          "id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, missing_scopes",
+          "id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, missing_scopes, authorization_id",
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -84,11 +84,59 @@ export const getConnections = createServerFn({ method: "GET" })
 export const startConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ platform: PlatformSchema, origin: z.string().url() }).parse(input),
+    z
+      .object({
+        platform: PlatformSchema,
+        origin: z.string().url(),
+        purpose: z.enum(["connect", "reconnect", "upgrade"]).optional(),
+        tierIds: z.array(z.string().max(40)).max(10).optional(),
+        accountId: z.string().uuid().optional(),
+      })
+      .parse(input),
   )
   .handler(async ({ data, context }) => {
     const tenantId = await callerTenantId(context.supabase, context.userId);
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
+
+    // A reconnect or upgrade names a channel. It must be visible to the caller
+    // through RLS -- i.e. in their own workspace -- and on the same platform.
+    let tierIds = data.tierIds;
+    if (data.accountId) {
+      const { data: account } = await context.supabase
+        .from("social_accounts")
+        .select("id, platform, authorization_id")
+        .eq("id", data.accountId)
+        .maybeSingle();
+      if (!account || account.platform !== data.platform) {
+        throw new Error("That channel was not found in this workspace.");
+      }
+      // An upgrade keeps every tier already granted and adds the new one, so
+      // the new authorization is a superset rather than a replacement.
+      if (data.purpose === "upgrade" && account.authorization_id) {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { data: auth } = await supabaseAdmin
+          .from("social_authorizations")
+          .select("granted_scopes")
+          .eq("id", account.authorization_id)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        const { connectorDefinition, tierScopes } = await import(
+          "@/lib/social-connector-definitions"
+        );
+        const def = connectorDefinition(data.platform);
+        const granted = new Set(auth?.granted_scopes ?? []);
+        const already = def
+          ? (def.authorizationTiers ?? [])
+              .filter((t) => {
+                const scopes = tierScopes(def, t);
+                return scopes.length > 0 && scopes.every((sc) => granted.has(sc));
+              })
+              .map((t) => t.id)
+          : [];
+        tierIds = [...new Set([...already, ...(data.tierIds ?? [])])];
+      }
+    }
+
     const { startAuthorization } = await import("@/lib/oauth.server");
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -103,6 +151,9 @@ export const startConnect = createServerFn({ method: "POST" })
       origin: data.origin.replace(/\/$/, ""),
       tenantId,
       userId: context.userId,
+      purpose: data.purpose ?? "connect",
+      ...(tierIds?.length ? { tierIds } : {}),
+      targetAccountId: data.accountId ?? null,
     });
   });
 

@@ -23,7 +23,13 @@ import {
   readStoredTokens,
 } from "@/lib/social-token-store.server";
 
-export type RevokeResult = "revoked" | "not_supported" | "no_token" | "provider_revoke_failed";
+export type RevokeResult =
+  | "revoked"
+  | "not_supported"
+  | "no_token"
+  | "provider_revoke_failed"
+  /** Another channel still uses this authorization, so it was not revoked. */
+  | "shared_authorization";
 
 /**
  * Asks the provider to invalidate the grant. Only Meta and Google are wired;
@@ -69,26 +75,39 @@ export async function disconnectSocialAccount(args: {
 }): Promise<DisconnectResult> {
   const { data: row, error } = await supabaseAdmin
     .from("social_accounts")
-    .select(`id, tenant_id, platform, ${TOKEN_READ_COLUMNS}`)
+    .select(`id, tenant_id, platform, authorization_id, ${TOKEN_READ_COLUMNS}`)
     .eq("id", args.accountId)
     .eq("tenant_id", args.tenantId)
     .maybeSingle();
   if (error) return { ok: false, reason: "lookup_failed" };
   if (!row) return { ok: false, reason: "not_found" };
 
-  // A token that no longer decrypts is still removed below; it just cannot be
-  // revoked at the provider first.
-  let token: string | null = null;
-  try {
-    token = (await readStoredTokens(row)).access;
-  } catch {
-    token = null;
+  let providerRevoke: RevokeResult;
+  if (row.authorization_id) {
+    // Batch 2A: the token belongs to an authorization other channels may
+    // share. Revoke at the provider only when this is the last channel using
+    // it -- otherwise disconnecting one YouTube channel would silently break
+    // another connected through the same Google login.
+    const { detachFromAuthorization } = await import("@/lib/social-authorizations.server");
+    const detached = await detachFromAuthorization({
+      accountId: row.id,
+      tenantId: args.tenantId,
+      authorizationId: row.authorization_id,
+    });
+    providerRevoke = detached.lastChannel
+      ? await revokeAtProvider(detached.provider ?? undefined, detached.token, args.fetchImpl)
+      : "shared_authorization";
+  } else {
+    // A token that no longer decrypts is still removed below; it just cannot
+    // be revoked at the provider first.
+    let token: string | null = null;
+    try {
+      token = (await readStoredTokens(row)).access;
+    } catch {
+      token = null;
+    }
+    providerRevoke = await revokeAtProvider(connector(row.platform)?.provider, token, args.fetchImpl);
   }
-  const providerRevoke = await revokeAtProvider(
-    connector(row.platform)?.provider,
-    token,
-    args.fetchImpl,
-  );
 
   const { error: clearError } = await supabaseAdmin
     .from("social_accounts")
@@ -99,6 +118,8 @@ export async function disconnectSocialAccount(args: {
       active: false,
       health: "disconnected",
       next_retry_at: null,
+      // No path to a token remains: not on the row, not via an authorization.
+      authorization_id: null,
     })
     .eq("id", row.id)
     .eq("tenant_id", args.tenantId);

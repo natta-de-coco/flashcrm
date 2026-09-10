@@ -85,6 +85,27 @@ await build({
   ],
 });
 
+// Batch 2A: per-channel capability states (pure) and channel discovery parsing.
+await build({
+  entryPoints: ["src/lib/social-channel-capabilities.ts"],
+  outfile: "node_modules/.cache/flas-channel-caps.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+await build({
+  entryPoints: ["src/lib/social-authorizations.server.ts"],
+  outfile: "node_modules/.cache/flas-authorizations.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [stubSupabase],
+});
+
 // Batch 1 / Phase 6: token encryption. No imports, so no stubs needed.
 await build({
   entryPoints: ["src/lib/social-secrets.server.ts"],

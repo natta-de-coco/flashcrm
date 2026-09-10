@@ -107,16 +107,18 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     type SocialPlatform = import("@/lib/social.server").SocialPlatform;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { TOKEN_READ_COLUMNS, readStoredTokens } = await import(
-      "@/lib/social-token-store.server"
-    );
+    const { TOKEN_READ_COLUMNS } = await import("@/lib/social-token-store.server");
+    const { readTokensForAccount } = await import("@/lib/social-authorizations.server");
     const { data: secret } = await supabaseAdmin
       .from("social_accounts")
-      .select(`tenant_id, platform, connect_method, ${TOKEN_READ_COLUMNS}`)
+      .select(
+        `tenant_id, platform, connect_method, authorization_id, granted_scopes, ${TOKEN_READ_COLUMNS}`,
+      )
       .eq("id", account.id)
       .eq("tenant_id", account.tenant_id)
       .single();
-    const tokens = secret ? await readStoredTokens(secret) : null;
+    // Channel-model accounts read the token from their authorization.
+    const tokens = secret ? await readTokensForAccount(secret) : null;
 
     const { syncSocialAccount } = await import("@/lib/social.server");
     const result = await syncSocialAccount({
@@ -126,6 +128,7 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
       external_id: account.external_id,
       access_token: tokens?.access ?? null,
       connect_method: secret?.connect_method ?? null,
+      granted_scopes: secret?.granted_scopes ?? null,
     });
 
     const { logAudit } = await import("@/lib/audit.server");

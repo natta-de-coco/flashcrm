@@ -169,6 +169,34 @@ export type ConnectorDefinition = {
   lastVerified: string;
   knownLimitations: readonly string[];
   capabilities: Readonly<Record<CapabilityKey, CapabilityFacts>>;
+  /**
+   * Scopes needed only to identify WHO authorized ("Signed in as"), never tied
+   * to a channel capability. Requested with every authorization.
+   */
+  identityScopes?: readonly string[];
+  /**
+   * Progressive authorization (Batch 2A). The first connection asks only for
+   * the `initial` tiers; everything else is an upgrade the user turns on later.
+   * A tier's scopes are DERIVED from its capabilities' requiredScopes -- never
+   * listed separately -- so the registry stays the only place scopes live.
+   * Absent: the connector still requests all of requestedScopes at once.
+   */
+  authorizationTiers?: readonly AuthorizationTier[];
+};
+
+export type AuthorizationTier = {
+  id: string;
+  /** Short name on the Manage screen: "Read public comments". */
+  label: string;
+  /** Plain-language request shown before the provider's consent screen. */
+  purpose: string;
+  capabilities: readonly CapabilityKey[];
+  /** Asked for on first connection. Everything else is an upgrade. */
+  initial: boolean;
+  /** Provider-specific reassurance: what Flas will not do with this. */
+  wontDo?: readonly string[];
+  /** Provider-specific warning when the provider bundles more power into the scope than Flas uses. */
+  scopeCaveat?: string;
 };
 
 /** Shorthand for a capability the provider does not offer at all. */
@@ -523,6 +551,44 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "https://developers.google.com/youtube/v3/guides/auth/installed-apps",
     ],
     lastVerified: "2026-09-08",
+    identityScopes: ["openid", "https://www.googleapis.com/auth/userinfo.email"],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Channel, videos and statistics",
+        purpose:
+          "Flas would like permission to view your YouTube channel, its videos and the channel statistics YouTube shares, and to see which Google account you signed in with.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        wontDo: [
+          "change or delete anything on your channel",
+          "see your Google password",
+          "access Gmail, Drive or other Google services",
+        ],
+      },
+      {
+        id: "comments",
+        label: "Read public comments",
+        purpose:
+          "Flas would like permission to read the public comments on your videos so they appear in your Flas inbox.",
+        capabilities: ["comments_read"],
+        initial: false,
+        // Verified 2026-09-11 against Google's scope list: youtube.force-ssl is
+        // "See, edit, and permanently delete your YouTube videos, ratings,
+        // comments and captions". It is the only scope that grants comment
+        // access to an OAuth client, so the customer is told what it covers.
+        scopeCaveat:
+          "Google only grants comment access together with permission to edit and delete videos and comments. Flas uses it to read comments and does not edit or delete anything.",
+        wontDo: ["delete or edit videos, comments or captions", "change your channel settings"],
+      },
+      {
+        id: "replies",
+        label: "Reply to comments",
+        purpose: "Flas would like permission to post replies to comments on behalf of your channel.",
+        capabilities: ["comments_reply"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "YouTube has no private direct-message API. Comments are public.",
       "Uploading needs youtube.upload, which Flas does not request.",
@@ -1054,6 +1120,65 @@ export function resolveCapability(
 
 export function resolveAllCapabilities(connector: ConnectorDefinition): ResolvedCapability[] {
   return CAPABILITY_KEYS.map((k) => resolveCapability(connector, k));
+}
+
+/**
+ * Connectors that use the Batch 2A authorization/channel model: one stored
+ * authorization, channels discovered from it and chosen by the user. Others
+ * still use the one-account-per-platform flow until their batch migrates them.
+ */
+export const CHANNEL_MODEL_CONNECTORS: readonly string[] = ["youtube"];
+
+export function usesChannelModel(connectorId: string): boolean {
+  return CHANNEL_MODEL_CONNECTORS.includes(connectorId);
+}
+
+/** A tier can be offered only if every capability in it works in Flas today. */
+export function tierAvailability(
+  connector: ConnectorDefinition,
+  tier: AuthorizationTier,
+): { offerable: boolean; reason: string | null } {
+  for (const key of tier.capabilities) {
+    const facts = connector.capabilities[key];
+    if (!facts.providerSupports) return { offerable: false, reason: facts.note ?? "Not offered by this provider." };
+    if (!facts.flasImplements) return { offerable: false, reason: "Not available in Flas yet." };
+  }
+  return { offerable: true, reason: null };
+}
+
+/** The scopes one tier needs, derived from its capabilities. */
+export function tierScopes(connector: ConnectorDefinition, tier: AuthorizationTier): string[] {
+  const out = new Set<string>();
+  for (const key of tier.capabilities) {
+    for (const scope of connector.capabilities[key].requiredScopes) out.add(scope);
+  }
+  return [...out];
+}
+
+/**
+ * The exact scope list for an authorization asking for these tiers. Identity
+ * scopes are always included; unofferable tiers are refused, not quietly
+ * dropped, so a caller cannot request a permission for code that does not exist.
+ */
+export function scopesForTiers(connector: ConnectorDefinition, tierIds: readonly string[]): string[] {
+  const tiers = connector.authorizationTiers ?? [];
+  const out = new Set<string>(connector.identityScopes ?? []);
+  for (const id of tierIds) {
+    const tier = tiers.find((t) => t.id === id);
+    if (!tier) throw new Error(`Unknown authorization tier "${id}" for ${connector.id}.`);
+    if (!tierAvailability(connector, tier).offerable) {
+      throw new Error(`Tier "${id}" for ${connector.id} cannot be requested: it is not available.`);
+    }
+    for (const scope of tierScopes(connector, tier)) out.add(scope);
+  }
+  return [...out];
+}
+
+/** Tier ids a first connection asks for. */
+export function initialTierIds(connector: ConnectorDefinition): string[] {
+  return (connector.authorizationTiers ?? [])
+    .filter((t) => t.initial && tierAvailability(connector, t).offerable)
+    .map((t) => t.id);
 }
 
 /**

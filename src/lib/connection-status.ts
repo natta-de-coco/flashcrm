@@ -39,6 +39,10 @@ export type AccountLike = {
   /** Last live provider call that proved the token works. */
   last_validation_success_at?: string | null;
   legacy_manual_connection?: boolean | null;
+  /** Batch 2A: set for channels on a shared authorization. */
+  authorization_id?: string | null;
+  /** Batch 2A: scopes the authorization asked for and was not granted. */
+  missing_scopes?: string[] | null;
 };
 
 const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatus["tone"] }> = {
@@ -107,7 +111,11 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   // capabilities Flas has actually implemented, so a customer is never asked
   // to re-authorize for a permission that unlocks nothing.
   {
-    const missing = missingScopesFor(account.platform, account.granted_scopes ?? []);
+    // Channels on an authorization are judged against what was asked for; an
+    // optional tier nobody turned on is an upgrade, not a missing permission.
+    const missing = account.authorization_id
+      ? (account.missing_scopes ?? [])
+      : missingScopesFor(account.platform, account.granted_scopes ?? []);
     if (missing.length > 0) {
       return build(
         "needs_verification",

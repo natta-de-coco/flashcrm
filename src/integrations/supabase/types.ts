@@ -2365,9 +2365,12 @@ export type Database = {
           id: string
           platform: string
           provider: string | null
+          purpose: string
           redirect_uri: string
+          requested_scopes: string[] | null
           state: string | null
           state_hash: string | null
+          target_account_id: string | null
           tenant_id: string
           used_at: string | null
           user_id: string
@@ -2381,9 +2384,12 @@ export type Database = {
           id?: string
           platform: string
           provider?: string | null
+          purpose?: string
           redirect_uri: string
+          requested_scopes?: string[] | null
           state?: string | null
           state_hash?: string | null
+          target_account_id?: string | null
           tenant_id?: string
           used_at?: string | null
           user_id?: string
@@ -2397,9 +2403,12 @@ export type Database = {
           id?: string
           platform?: string
           provider?: string | null
+          purpose?: string
           redirect_uri?: string
+          requested_scopes?: string[] | null
           state?: string | null
           state_hash?: string | null
+          target_account_id?: string | null
           tenant_id?: string
           used_at?: string | null
           user_id?: string
@@ -3478,7 +3487,9 @@ export type Database = {
         Row: {
           access_token: string | null
           access_token_enc: string | null
+          account_type: string | null
           active: boolean
+          authorization_id: string | null
           connect_method: string
           connection_state: string
           created_at: string
@@ -3523,7 +3534,9 @@ export type Database = {
         Insert: {
           access_token?: string | null
           access_token_enc?: string | null
+          account_type?: string | null
           active?: boolean
+          authorization_id?: string | null
           connect_method?: string
           connection_state?: string
           created_at?: string
@@ -3568,7 +3581,9 @@ export type Database = {
         Update: {
           access_token?: string | null
           access_token_enc?: string | null
+          account_type?: string | null
           active?: boolean
+          authorization_id?: string | null
           connect_method?: string
           connection_state?: string
           created_at?: string
@@ -3609,6 +3624,84 @@ export type Database = {
           tenant_id?: string
           token_expires_at?: string | null
           token_key_id?: string | null
+        }
+        Relationships: []
+      }
+      social_authorizations: {
+        Row: {
+          access_token_enc: string | null
+          authorization_state: string
+          authorized_by: string | null
+          created_at: string
+          discovered_assets: Json
+          discovered_at: string | null
+          expires_at: string | null
+          granted_scopes: string[]
+          id: string
+          last_refreshed_at: string | null
+          last_validation_success_at: string | null
+          platform: string
+          provider: string
+          provider_email_hint: string | null
+          provider_user_id: string | null
+          refresh_lease_id: string | null
+          refresh_leased_until: string | null
+          refresh_token_enc: string | null
+          requested_scopes: string[]
+          state_reason: string | null
+          tenant_id: string
+          token_key_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token_enc?: string | null
+          authorization_state?: string
+          authorized_by?: string | null
+          created_at?: string
+          discovered_assets?: Json
+          discovered_at?: string | null
+          expires_at?: string | null
+          granted_scopes?: string[]
+          id?: string
+          last_refreshed_at?: string | null
+          last_validation_success_at?: string | null
+          platform: string
+          provider: string
+          provider_email_hint?: string | null
+          provider_user_id?: string | null
+          refresh_lease_id?: string | null
+          refresh_leased_until?: string | null
+          refresh_token_enc?: string | null
+          requested_scopes?: string[]
+          state_reason?: string | null
+          tenant_id: string
+          token_key_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token_enc?: string | null
+          authorization_state?: string
+          authorized_by?: string | null
+          created_at?: string
+          discovered_assets?: Json
+          discovered_at?: string | null
+          expires_at?: string | null
+          granted_scopes?: string[]
+          id?: string
+          last_refreshed_at?: string | null
+          last_validation_success_at?: string | null
+          platform?: string
+          provider?: string
+          provider_email_hint?: string | null
+          provider_user_id?: string | null
+          refresh_lease_id?: string | null
+          refresh_leased_until?: string | null
+          refresh_token_enc?: string | null
+          requested_scopes?: string[]
+          state_reason?: string | null
+          tenant_id?: string
+          token_key_id?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -4866,6 +4959,14 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_authorization_refresh_lease: {
+        Args: { _authorization_id: string; _lease_seconds?: number; _tenant_id: string }
+        Returns: string | null
+      }
+      release_authorization_refresh_lease: {
+        Args: { _authorization_id: string; _lease_id: string; _tenant_id: string }
+        Returns: boolean
+      }
       acquire_connection_refresh_lease: {
         Args: { _account_id: string; _lease_seconds?: number; _tenant_id: string }
         Returns: string | null

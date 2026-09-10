@@ -239,13 +239,18 @@ export async function beginAuthorization(args: {
   tenantId: string;
   platform: string;
   actorId: string | null;
+  /** The specific channel a reconnect is for. A workspace can now hold several
+   *  channels on one platform, so "the" account by platform is ambiguous and is
+   *  used only when no channel is named. */
+  accountId?: string | null;
 }): Promise<void> {
-  const { data: row } = await supabaseAdmin
+  const base = supabaseAdmin
     .from("social_accounts")
     .select("id, connection_state")
-    .eq("tenant_id", args.tenantId)
-    .eq("platform", args.platform)
-    .maybeSingle();
+    .eq("tenant_id", args.tenantId);
+  const { data: row } = args.accountId
+    ? await base.eq("id", args.accountId).maybeSingle()
+    : await base.eq("platform", args.platform).maybeSingle();
   if (!row) return;
   const from = row.connection_state as ConnectionState;
   if (isUsable(from) || from === "provider_unavailable" || from === "authorization_started") return;
