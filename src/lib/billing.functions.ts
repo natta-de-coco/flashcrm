@@ -361,11 +361,15 @@ export const convertQuotationToInvoice = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const supabase = context.supabase;
-    const { loadDocumentBundle, saveDraftDocument } = await import("@/lib/billing.server");
+    const { loadDocumentBundle, requireTenantId, saveDraftDocument, tenantToday } = await import(
+      "@/lib/billing.server"
+    );
     const { doc, items } = await loadDocumentBundle(supabase, data.id);
     if (doc.kind !== "quotation") throw new Error("Only quotations can be converted.");
 
-    const today = new Date().toISOString().slice(0, 10);
+    // The tenant's calendar day. Converting a quotation just after midnight
+    // in Dubai was dating the new invoice the previous day.
+    const today = await tenantToday(supabase, await requireTenantId(supabase));
     const result = await saveDraftDocument(supabase, context.userId, {
       kind: "invoice",
       contact_id: doc.contact_id,

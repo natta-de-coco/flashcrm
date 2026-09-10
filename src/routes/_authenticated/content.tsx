@@ -9,6 +9,7 @@ import { CONNECTORS } from "@/lib/connections-catalog";
 import { capabilityCeiling } from "@/lib/social-connector-definitions";
 
 import { supabase } from "@/integrations/supabase/client";
+import { contentDraftBlocker } from "@/lib/form-validation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarClock, FileText, Trash2 } from "lucide-react";
@@ -269,14 +270,16 @@ function ContentPage() {
               <Button
                 variant="outline"
                 className="flex-1"
-                disabled={savePost.isPending}
+                disabled={savePost.isPending || contentDraftBlocker(form) !== null}
+                title={contentDraftBlocker(form) ?? undefined}
                 onClick={() => savePost.mutate("draft")}
               >
                 Save draft
               </Button>
               <Button
                 className="flex-1 gap-2"
-                disabled={savePost.isPending || !form.scheduled_at}
+                disabled={savePost.isPending || !form.scheduled_at || contentDraftBlocker(form) !== null}
+                title={contentDraftBlocker(form) ?? undefined}
                 onClick={() => savePost.mutate("scheduled")}
               >
                 <CalendarClock className="size-4" />

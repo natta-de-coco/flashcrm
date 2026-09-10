@@ -5,6 +5,7 @@ import { CreditCard, ExternalLink, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { useTenant } from "@/hooks/useTenant";
+import { formatDayUnambiguous } from "@/lib/locale";
 import { useAuth } from "@/hooks/useAuth";
 import { usePaddleCheckout } from "@/hooks/usePaddleCheckout";
 import { createPortalSession } from "@/utils/payments.functions";
@@ -47,7 +48,7 @@ export function BillingCard() {
   if (!tenant) return null;
   const status = STATUS_LABELS[tenant.subscription_status] ?? STATUS_LABELS["trial"];
   const renewsAt = tenant.subscription_renews_at
-    ? new Date(tenant.subscription_renews_at).toLocaleDateString()
+    ? formatDayUnambiguous(tenant.subscription_renews_at)
     : null;
   const hasSubscription =
     tenant.subscription_status === "active" || tenant.subscription_status === "past_due";

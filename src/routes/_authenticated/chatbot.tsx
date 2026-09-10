@@ -131,10 +131,16 @@ function ChatbotPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-base">Auto-reply</CardTitle>
-              <CardDescription>Reply instantly to new incoming messages.</CardDescription>
+              <CardTitle className="text-base" id="auto-reply-title">
+                Auto-reply
+              </CardTitle>
+              <CardDescription id="auto-reply-desc">
+                Reply instantly to new incoming messages.
+              </CardDescription>
             </div>
             <Switch
+              aria-labelledby="auto-reply-title"
+              aria-describedby="auto-reply-desc"
               checked={form.enabled}
               onCheckedChange={(v) => setForm({ ...form, enabled: v })}
             />

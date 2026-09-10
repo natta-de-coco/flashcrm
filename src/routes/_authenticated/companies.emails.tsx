@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { formatMomentUnambiguous } from "@/lib/locale";
 
 /**
  * Super-admin only. Global email delivery log across every tenant.
@@ -169,7 +170,7 @@ function SuperAdminEmailLog() {
                   otps.map((o) => (
                     <TableRow key={o.id}>
                       <TableCell className="whitespace-nowrap text-xs">
-                        {new Date(o.created_at).toLocaleString()}
+                        {formatMomentUnambiguous(o.created_at)}
                       </TableCell>
                       <TableCell className="font-mono text-xs">{o.email}</TableCell>
                       <TableCell>
@@ -229,7 +230,7 @@ function SuperAdminEmailLog() {
                   filtered.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell className="whitespace-nowrap text-xs">
-                        {new Date(r.created_at).toLocaleString()}
+                        {formatMomentUnambiguous(r.created_at)}
                       </TableCell>
                       <TableCell className="font-mono text-xs">
                         {r.tenant_id ? r.tenant_id.slice(0, 8) : "—"}

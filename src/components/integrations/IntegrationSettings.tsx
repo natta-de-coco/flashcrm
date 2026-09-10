@@ -261,7 +261,12 @@ export function IntegrationSettings() {
             <Label>Webhook URL</Label>
             <div className="flex gap-2">
               <Input readOnly value={webhookUrl} aria-label="WhatsApp webhook URL" />
-              <Button variant="outline" onClick={() => copy(webhookUrl)}>
+              <Button
+                variant="outline"
+                aria-label="Copy webhook URL"
+                title="Copy webhook URL"
+                onClick={() => copy(webhookUrl)}
+              >
                 <Copy className="size-4" />
               </Button>
             </div>
@@ -531,7 +536,13 @@ export function IntegrationSettings() {
               value={embedSnippet || "Add a website below to generate your snippet"}
               aria-label="Website widget embed snippet"
             />
-            <Button variant="outline" disabled={!embedSnippet} onClick={() => copy(embedSnippet)}>
+            <Button
+              variant="outline"
+              aria-label="Copy website widget embed snippet"
+              title="Copy website widget embed snippet"
+              disabled={!embedSnippet}
+              onClick={() => copy(embedSnippet)}
+            >
               <Copy className="size-4" />
             </Button>
           </div>

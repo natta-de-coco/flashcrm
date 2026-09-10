@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   ChartContainer,
@@ -251,6 +252,9 @@ function DashboardPage() {
     onSuccess: (data) => {
       qc.setQueryData(["dashboard-daily-brief"], data);
     },
+    // Without this the spinner simply stopped and the stale brief stayed on
+    // screen: brief.isError reflects the query, not this mutation.
+    onError: (e: Error) => toast.error(e.message),
   });
   const briefBusy = brief.isFetching || regenerateBrief.isPending;
 
@@ -688,7 +692,7 @@ function DashboardPage() {
               <>
                 {data?.recentConversations.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No conversations yet. Connect WhatsApp in Settings or embed the website widget.
+                    No conversations yet. Connect WhatsApp in Integrations or embed the website widget.
                   </p>
                 )}
                 {data?.recentConversations.map((c) => (

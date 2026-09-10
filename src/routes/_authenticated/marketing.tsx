@@ -685,7 +685,7 @@ function MarketingPage() {
           <CardContent className="grid gap-4">
             {(waNumbers.data ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Connect a WhatsApp number in Settings first, then create routing rules here.
+                Connect a WhatsApp number in Integrations first, then create routing rules here.
               </p>
             ) : (
               isAdmin && (

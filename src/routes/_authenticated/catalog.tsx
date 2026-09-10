@@ -4,7 +4,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
+import { formatMoney } from "@/lib/billing-math";
+import { productFormError } from "@/lib/form-validation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Package, Plus, Trash2 } from "lucide-react";
@@ -46,6 +49,9 @@ const emptyForm = { title: "", sku: "", price: "", description: "", image: "" };
 
 function CatalogPage() {
   const qc = useQueryClient();
+  // Prices are shown in the workspace currency; a bare number sat next to the
+  // SKU badge and read as one value, e.g. "31390 368".
+  const { tenant } = useTenant();
   const [form, setForm] = useState(emptyForm);
 
   const { data: products = [], isLoading } = useQuery({
@@ -62,6 +68,9 @@ function CatalogPage() {
 
   const createProduct = useMutation({
     mutationFn: async () => {
+      // Checked again here: the button is one guard, not the only one.
+      const invalid = productFormError(form);
+      if (invalid) throw new Error(invalid);
       const { error } = await supabase.from("products").insert({
         title: form.title.trim(),
         sku: form.sku.trim() || null,
@@ -160,12 +169,15 @@ function CatalogPage() {
             </div>
             <Button
               className="w-full gap-2"
-              disabled={!form.title.trim() || createProduct.isPending}
+              disabled={productFormError(form) !== null || createProduct.isPending}
               onClick={() => createProduct.mutate()}
             >
               <Plus className="size-4" />
               Add product
             </Button>
+            {productFormError(form) ? (
+              <p className="text-xs text-destructive">{productFormError(form)}</p>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -203,7 +215,9 @@ function CatalogPage() {
                     <p className="font-medium">{product.title}</p>
                     {product.sku && <Badge variant="outline">{product.sku}</Badge>}
                     {product.price !== null && (
-                      <Badge variant="secondary">{product.price.toString()}</Badge>
+                      <Badge variant="secondary">
+                        {formatMoney(product.price, tenant?.currency ?? "AED")}
+                      </Badge>
                     )}
                   </div>
                   {product.description && (

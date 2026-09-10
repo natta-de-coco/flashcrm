@@ -84,3 +84,50 @@ await build({
     },
   ],
 });
+
+// QA pass: the tenant-timezone date helper and the single navigation source
+// that global search is built from. Both are pure and dependency-free.
+await build({
+  entryPoints: ["src/lib/locale.ts"],
+  outfile: "node_modules/.cache/flas-locale.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+await build({
+  entryPoints: ["src/lib/navigation.ts"],
+  outfile: "node_modules/.cache/flas-navigation.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+// The manual social-connect input schema. A live QA pass found the endpoint
+// accepted an empty access token even after the form was fixed, so the schema
+// itself is asserted here.
+await build({
+  entryPoints: ["src/lib/social-schema.ts"],
+  outfile: "node_modules/.cache/flas-social-schema.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+// The form validators. Extracted from the route files so the rules that decide
+// whether bad input can be saved are asserted directly rather than by clicking.
+await build({
+  entryPoints: ["src/lib/form-validation.ts"],
+  outfile: "node_modules/.cache/flas-form-validation.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});

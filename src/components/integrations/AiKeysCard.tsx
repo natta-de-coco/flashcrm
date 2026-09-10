@@ -138,7 +138,9 @@ export function AiKeysCard() {
                 type="password"
                 autoComplete="off"
                 spellCheck={false}
-                placeholder={provider === "openai" ? "sk-…" : "sk-ant-…"}
+                placeholder={
+                provider === "openai" ? "sk-…" : provider === "google" ? "AIza…" : "sk-ant-…"
+              }
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
               />

@@ -18,6 +18,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Building2, CalendarClock, Circle, Download, Stethoscope, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { formatDayUnambiguous, formatMomentUnambiguous, isoDayLocal } from "@/lib/locale";
 
 export const Route = createFileRoute("/_authenticated/companies")({
   head: () => ({
@@ -183,7 +184,7 @@ function CompaniesPage() {
                 <span className="font-medium">{org?.name ?? t.tenantId.slice(0, 8)}</span>
                 <span className="text-xs text-muted-foreground">
                   {t.online > 0 ? `${t.online} online now` : "offline"} · {t.users} team members
-                  {t.lastSeenAt ? ` · last seen ${new Date(t.lastSeenAt).toLocaleString()}` : ""}
+                  {t.lastSeenAt ? ` · last seen ${formatMomentUnambiguous(t.lastSeenAt)}` : ""}
                 </span>
                 {t.lastActions[0] && (
                   <span className="text-xs text-muted-foreground">
@@ -304,7 +305,7 @@ function CompaniesPage() {
                 </span>
                 <span>{org.leads} leads</span>
                 <span>{org.conversations} chats</span>
-                <span>joined {new Date(org.created_at).toLocaleDateString()}</span>
+                <span>joined {formatDayUnambiguous(org.created_at)}</span>
                 {(billingFor(org.id)?.members_suspended ?? 0) > 0 && (
                   <span className="font-medium text-destructive">
                     {billingFor(org.id)!.members_suspended} suspended
@@ -323,14 +324,14 @@ function CompaniesPage() {
                   className="h-7 w-36 px-2 text-xs"
                   defaultValue={
                     org.subscription_renews_at
-                      ? new Date(org.subscription_renews_at).toISOString().slice(0, 10)
+                      ? isoDayLocal(org.subscription_renews_at)
                       : ""
                   }
                   onBlur={(e) => {
                     const v = e.target.value;
                     if (!v) return;
                     const current = org.subscription_renews_at
-                      ? new Date(org.subscription_renews_at).toISOString().slice(0, 10)
+                      ? isoDayLocal(org.subscription_renews_at)
                       : "";
                     if (v !== current) {
                       statusMutation.mutate({ organizationId: org.id, paidUntil: v });

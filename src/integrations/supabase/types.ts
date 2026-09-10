@@ -939,6 +939,85 @@ export type Database = {
           },
         ]
       }
+      contact_branches: {
+        Row: {
+          address: string | null
+          city: string | null
+          contact_id: string
+          country: string | null
+          created_at: string
+          id: string
+          is_primary: boolean
+          name: string
+          notes: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          contact_id: string
+          country?: string | null
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          name: string
+          notes?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          contact_id?: string
+          country?: string | null
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          name?: string
+          notes?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contact_identities: {
+        Row: {
+          branch_id: string | null
+          contact_id: string
+          created_at: string
+          id: string
+          is_primary: boolean
+          kind: string
+          label: string | null
+          normalized: string | null
+          tenant_id: string
+          value: string
+        }
+        Insert: {
+          branch_id?: string | null
+          contact_id: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          kind: string
+          label?: string | null
+          tenant_id: string
+          value: string
+        }
+        Update: {
+          branch_id?: string | null
+          contact_id?: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          kind?: string
+          label?: string | null
+          tenant_id?: string
+          value?: string
+        }
+        Relationships: []
+      }
       contacts: {
         Row: {
           company: string | null
@@ -4973,6 +5052,10 @@ export type Database = {
         Returns: string
       }
       purge_expired_oauth_states: { Args: never; Returns: number }
+      resolve_contact_by_identity: {
+        Args: { _kind: string; _tenant_id: string; _value: string }
+        Returns: { branch_id: string; contact_id: string }[]
+      }
       record_ai_usage: {
         Args: {
           _duration_ms: number

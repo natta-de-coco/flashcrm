@@ -5,6 +5,14 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export const FLASH_MODEL = "openai/gpt-5.6-sol";
 
+/**
+ * The Gemini model a workspace's own Google key is spent on.
+ *
+ * Named here rather than inline because it is in the request URL, so a wrong
+ * value fails as a 404 from Google rather than as anything self-explanatory.
+ */
+const GEMINI_MODEL = "gemini-2.5-pro";
+
 type RlsClient = {
   from: (table: string) => never;
 };
@@ -85,6 +93,16 @@ async function resolveProvider(tenantId: string | null | undefined): Promise<Res
             headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
           };
         }
+        if (provider === "google") {
+          // Gemini takes the key as a header rather than a bearer token, and
+          // the model is part of the path.
+          return {
+            provider,
+            apiKey,
+            url: `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+            headers: { "x-goog-api-key": apiKey },
+          };
+        }
         // Unknown provider string — fall through to the platform key rather
         // than guessing an endpoint and failing in a confusing way.
       }
@@ -150,7 +168,14 @@ export async function callFlashAi(
             system,
             messages: [{ role: "user", content: user }],
           }
-        : {
+        : chosen.provider === "google"
+          ? {
+              // Gemini has no system role; the instruction is a separate field,
+              // and the model is already in the URL.
+              systemInstruction: { parts: [{ text: system }] },
+              contents: [{ role: "user", parts: [{ text: user }] }],
+            }
+          : {
             model: FLASH_MODEL,
             input: [
               { role: "system", content: system },
@@ -220,6 +245,8 @@ export async function callFlashAi(
     choices?: Array<{ message?: { content?: string } }>;
     // Anthropic messages
     content?: Array<{ type?: string; text?: string }>;
+    // Gemini generateContent
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
 
   let text = "";
@@ -229,6 +256,11 @@ export async function callFlashAi(
     text = (json.content ?? [])
       .filter((part) => part.type === "text" && part.text)
       .map((part) => part.text)
+      .join("")
+      .trim();
+  } else if (chosen.provider === "google") {
+    text = (json.candidates?.[0]?.content?.parts ?? [])
+      .map((part) => part.text ?? "")
       .join("")
       .trim();
   } else {

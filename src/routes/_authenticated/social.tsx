@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { manualSocialFormError } from "@/lib/form-validation";
 import {
   composeSocialPost,
   connectSocialAccount,
@@ -194,27 +195,6 @@ const PLATFORMS: {
 
 function platformMeta(id: string) {
   return PLATFORMS.find((p) => p.id === id) ?? PLATFORMS[0]!;
-}
-
-/**
- * Why the form cannot be submitted yet, or null when it can.
- *
- * Save was previously gated on the display name alone, so an empty token
- * saved an account that could never authenticate -- it appeared in the list
- * looking connected and failed on first sync, with nothing on screen
- * explaining why.
- */
-function manualFormError(form: {
-  platform: string;
-  label: string;
-  externalId: string;
-  accessToken: string;
-}): string | null {
-  const meta = platformMeta(form.platform);
-  if (form.label.trim().length < 2) return "Give this account a display name.";
-  if (!form.accessToken.trim()) return `${meta.tokenLabel} is required.`;
-  if (!meta.idOptional && !form.externalId.trim()) return `${meta.idLabel} is required.`;
-  return null;
 }
 
 /** First useful audience number from a sync, if any. */
@@ -493,14 +473,14 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
             <div className="sm:col-span-2">
               <Button
                 size="sm"
-                disabled={manualFormError(form) !== null || connectMutation.isPending}
+                disabled={manualSocialFormError(form, platformMeta(form.platform)) !== null || connectMutation.isPending}
                 onClick={() => connectMutation.mutate()}
               >
                 {connectMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
                 Save account
               </Button>
-              {manualFormError(form) ? (
-                <p className="mt-1.5 text-xs text-destructive">{manualFormError(form)}</p>
+              {manualSocialFormError(form, platformMeta(form.platform)) ? (
+                <p className="mt-1.5 text-xs text-destructive">{manualSocialFormError(form, platformMeta(form.platform))}</p>
               ) : null}
               <p className="mt-1.5 text-xs text-muted-foreground">
                 Tokens are stored server-side and are never shown back in the app.

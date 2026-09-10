@@ -16,6 +16,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, Building2, PauseCircle, PlayCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { formatDayUnambiguous, formatMomentUnambiguous } from "@/lib/locale";
 
 /**
  * Super-admin only.  The single dashboard where the platform owner manages
@@ -239,7 +240,7 @@ function SubscribersPage() {
                       <TableCell>{statusBadge(r)}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs">
                         {r.subscription_renews_at
-                          ? new Date(r.subscription_renews_at).toLocaleDateString()
+                          ? formatDayUnambiguous(r.subscription_renews_at)
                           : "—"}
                       </TableCell>
                       <TableCell className="text-xs">{r.staff_count}</TableCell>
@@ -248,7 +249,7 @@ function SubscribersPage() {
                       <TableCell className="text-xs">{r.contacts_count}</TableCell>
                       <TableCell className="text-xs">{r.messages_count}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                        {r.last_message_at ? new Date(r.last_message_at).toLocaleString() : "never"}
+                        {r.last_message_at ? formatMomentUnambiguous(r.last_message_at) : "never"}
                       </TableCell>
                       <TableCell>
                         {r.suspended ? (

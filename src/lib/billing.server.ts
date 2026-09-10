@@ -7,6 +7,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeDocumentTotals, round2 } from "./billing-math";
+import { todayInTimeZone } from "./locale";
 import { buildDocumentPdf, type InvoicePdfInput, type PdfItem } from "./invoice-pdf.server";
 
 export type DocKind = "invoice" | "quotation" | "credit_note" | "proforma";
@@ -588,11 +589,7 @@ export function storagePath(tenantId: string, doc: any) {
  * invoice to "overdue" several hours early or late for every tenant not
  * also in UTC.
  */
-async function isPastInTenantTimezone(
-  supabase: AnyClient,
-  tenantId: string,
-  dateStr: string,
-): Promise<boolean> {
+export async function tenantToday(supabase: AnyClient, tenantId: string): Promise<string> {
   let timeZone = "UTC";
   try {
     const { data: org } = await supabase
@@ -602,21 +599,19 @@ async function isPastInTenantTimezone(
       .maybeSingle();
     if (org?.timezone) timeZone = org.timezone;
   } catch {
-    // fall back to UTC
+    // A workspace whose timezone cannot be read still has to be able to raise
+    // a document; UTC is the documented fallback.
   }
-  let todayInTz: string;
-  try {
-    todayInTz = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-  } catch {
-    todayInTz = new Date().toISOString().slice(0, 10);
-  }
+  return todayInTimeZone(timeZone);
+}
+
+async function isPastInTenantTimezone(
+  supabase: AnyClient,
+  tenantId: string,
+  dateStr: string,
+): Promise<boolean> {
   // Both are YYYY-MM-DD — lexicographic comparison is correct for ISO dates.
-  return dateStr.slice(0, 10) < todayInTz;
+  return dateStr.slice(0, 10) < (await tenantToday(supabase, tenantId));
 }
 
 /** Recomputes paid/balance/status from the payment ledger — never overwritten blindly. */

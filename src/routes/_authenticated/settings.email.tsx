@@ -64,12 +64,40 @@ function EmailSettingsPage() {
   const [testTo, setTestTo] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // A failure here used to leave `config` null forever, so the page sat on
+  // "Loading email settings…" with no error, no toast and no way to retry.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      const c = await load({ data: undefined });
-      setConfig(c as Config);
+      try {
+        setLoadError(null);
+        const c = await load({ data: undefined });
+        if (!cancelled) setConfig(c as Config);
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Could not load settings.");
+      }
     })();
-  }, [load]);
+    return () => {
+      cancelled = true;
+    };
+  }, [load, reloadKey]);
+
+  if (loadError) {
+    return (
+      <main className="grid gap-3 p-6">
+        <p className="text-sm font-medium">Email settings could not be loaded.</p>
+        <p className="text-sm text-muted-foreground">{loadError}</p>
+        <div>
+          <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+            Try again
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
   if (!config) {
     return <main className="p-6 text-sm text-muted-foreground">Loading email settings…</main>;

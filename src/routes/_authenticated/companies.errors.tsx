@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { formatMomentUnambiguous } from "@/lib/locale";
 
 export const Route = createFileRoute("/_authenticated/companies/errors")({
   head: () => ({
@@ -224,7 +225,7 @@ function ErrorsPage() {
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
                         {g.companies.length > 0 ? g.companies.join(", ") : "no workspace"} · last{" "}
-                        {new Date(g.lastSeen).toLocaleString()}
+                        {formatMomentUnambiguous(g.lastSeen)}
                       </span>
                     </span>
                     <ChevronDown
@@ -239,7 +240,7 @@ function ErrorsPage() {
                       <Field label="Releases" value={g.releases.join(", ") || "—"} />
                       <Field
                         label="First seen"
-                        value={new Date(g.firstSeen).toLocaleString()}
+                        value={formatMomentUnambiguous(g.firstSeen)}
                       />
                       {g.sampleStack && (
                         <div>
@@ -309,7 +310,7 @@ function ErrorsPage() {
                         {e.friendly_title}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {e.company} · last {new Date(e.last_seen).toLocaleString()}
+                        {e.company} · last {formatMomentUnambiguous(e.last_seen)}
                       </span>
                     </span>
                     <ChevronDown
