@@ -19,7 +19,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   composeSocialPost,
-  connectSocialAccount,
   deleteSocialAccount,
   deleteSocialPost,
   getSocialHub,
@@ -29,6 +28,7 @@ import {
   syncSocialAccountFn,
   updateInteractionStatus,
 } from "@/lib/social.functions";
+import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -60,13 +60,13 @@ export const Route = createFileRoute("/_authenticated/social")({
       {
         name: "description",
         content:
-          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flas CRM.",
+          "Manage social comments, reviews, content reach and audience from Flas CRM.",
       },
       { property: "og:title", content: "Social Hub — Flas CRM" },
       {
         property: "og:description",
         content:
-          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flas CRM.",
+          "Manage social comments, reviews, content reach and audience from Flas CRM.",
       },
     ],
   }),
@@ -82,6 +82,7 @@ export const Route = createFileRoute("/_authenticated/social")({
       ? { connect_reason: search["connect_reason"] }
       : {}),
     ...(typeof search["connect_error"] === "string" ? { connect_error: search["connect_error"] } : {}),
+    ...(typeof search["platform"] === "string" ? { platform: search["platform"] } : {}),
     ...(typeof search["connect_detail"] === "string"
       ? { connect_detail: search["connect_detail"] }
       : {}),
@@ -104,117 +105,57 @@ type Account = {
   active: boolean;
   last_synced_at: string | null;
   stats: Record<string, number> | null;
+  /** "manual" = added with a pasted token before Batch 1; never verified. */
+  connect_method?: string | null;
 };
 
-/** Per-platform connect form metadata: what the ID and token fields mean. */
-const PLATFORMS: {
-  id: PlatformId;
-  label: string;
-  icon: LucideIcon;
-  idLabel: string;
-  idPlaceholder: string;
-  tokenLabel: string;
-  tokenPlaceholder: string;
-  hint: string;
-  /** TikTok resolves the account from the token, so its id really is optional. */
-  idOptional?: boolean;
-}[] = [
-  {
-    id: "instagram",
-    label: "Instagram",
-    icon: Instagram,
-    idLabel: "IG user ID",
-    idPlaceholder: "Instagram professional account ID",
-    tokenLabel: "Meta access token",
-    tokenPlaceholder: "Long-lived Meta token",
-    hint: "Meta for Developers → your app → Instagram Graph API. Needs instagram_manage_comments.",
-  },
-  {
-    id: "facebook",
-    label: "Facebook Page",
-    icon: Facebook,
-    idLabel: "Page ID",
-    idPlaceholder: "Facebook Page ID",
-    tokenLabel: "Meta access token",
-    tokenPlaceholder: "Page access token",
-    hint: "Page token with pages_read_engagement (and pages_messaging for DMs).",
-  },
-  {
-    id: "youtube",
-    label: "YouTube channel",
-    icon: Youtube,
-    idLabel: "Channel ID",
-    idPlaceholder: "UC…",
-    tokenLabel: "YouTube Data API key",
-    tokenPlaceholder: "AIza…",
-    hint: "Google Cloud Console → enable YouTube Data API v3 → Credentials → API key.",
-  },
-  {
-    id: "twitter",
-    label: "X (Twitter)",
-    icon: Twitter,
-    idLabel: "Numeric user ID",
-    idPlaceholder: "e.g. 1234567890",
-    tokenLabel: "Bearer token",
-    tokenPlaceholder: "AAA…",
-    hint: "developer.x.com → your project app → Keys and Tokens → Bearer Token.",
-  },
-  {
-    id: "linkedin",
-    label: "LinkedIn Page",
-    icon: Linkedin,
-    idLabel: "Organization ID",
-    idPlaceholder: "Numbers only, e.g. 12345678",
-    tokenLabel: "OAuth access token",
-    tokenPlaceholder: "AQV…",
-    hint: "LinkedIn Developer app with w_organization_social scope.",
-  },
-  {
-    id: "tiktok",
-    label: "TikTok Business",
-    icon: Music2,
-    idLabel: "Open ID (optional)",
-    idPlaceholder: "Leave blank to use the token's account",
-    idOptional: true,
-    tokenLabel: "Access token",
-    tokenPlaceholder: "act.…",
-    hint: "TikTok for Developers → your app → video.list and user.info.basic scopes.",
-  },
-  {
-    id: "google_business",
-    label: "Google Business",
-    icon: Store,
-    idLabel: "Location path",
-    idPlaceholder: "accounts/123/locations/456",
-    tokenLabel: "Google OAuth token",
-    tokenPlaceholder: "ya29.…",
-    hint: "Pulls your latest Google reviews so Flas AI can draft responses.",
-  },
+/**
+ * Whether Flas has built this capability for the platform. The provider may
+ * still gate it behind app review, which is per-app state, not code -- so
+ * requires_provider_review counts as supported here. The registry is the only
+ * source for this answer; nothing on this page hard-codes a platform list.
+ */
+function flasSupports(
+  platform: string,
+  key:
+    | "direct_messages_read"
+    | "direct_messages_send"
+    | "reviews_read"
+    | "comments_read"
+    | "comments_reply",
+): boolean {
+  const def = connectorDefinition(platform as never);
+  if (!def) return false;
+  const status = resolveCapability(def, key).status;
+  return (
+    status === "implemented" ||
+    status === "requires_provider_review" ||
+    status === "limited_by_account_type"
+  );
+}
+
+/** The inbox tab names only what the connected platforms can actually fill. */
+function inboxLabel(accounts: Account[]): string {
+  const dm = accounts.some((a) => flasSupports(a.platform, "direct_messages_read"));
+  const reviews = accounts.some((a) => flasSupports(a.platform, "reviews_read"));
+  if (dm) return "Comments & DMs";
+  if (reviews) return "Comments & Reviews";
+  return "Comments";
+}
+
+/** Display metadata per platform. Connecting happens on Connect & setup. */
+const PLATFORMS: { id: PlatformId; label: string; icon: LucideIcon }[] = [
+  { id: "instagram", label: "Instagram", icon: Instagram },
+  { id: "facebook", label: "Facebook Page", icon: Facebook },
+  { id: "youtube", label: "YouTube channel", icon: Youtube },
+  { id: "twitter", label: "X (Twitter)", icon: Twitter },
+  { id: "linkedin", label: "LinkedIn Page", icon: Linkedin },
+  { id: "tiktok", label: "TikTok Business", icon: Music2 },
+  { id: "google_business", label: "Google Business", icon: Store },
 ];
 
 function platformMeta(id: string) {
   return PLATFORMS.find((p) => p.id === id) ?? PLATFORMS[0]!;
-}
-
-/**
- * Why the form cannot be submitted yet, or null when it can.
- *
- * Save was previously gated on the display name alone, so an empty token
- * saved an account that could never authenticate -- it appeared in the list
- * looking connected and failed on first sync, with nothing on screen
- * explaining why.
- */
-function manualFormError(form: {
-  platform: string;
-  label: string;
-  externalId: string;
-  accessToken: string;
-}): string | null {
-  const meta = platformMeta(form.platform);
-  if (form.label.trim().length < 2) return "Give this account a display name.";
-  if (!form.accessToken.trim()) return `${meta.tokenLabel} is required.`;
-  if (!meta.idOptional && !form.externalId.trim()) return `${meta.idLabel} is required.`;
-  return null;
 }
 
 /** First useful audience number from a sync, if any. */
@@ -292,7 +233,7 @@ function SocialHubPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <PageHeader
         title="Social Hub"
-        description="Run your client's whole social presence from here: reply to comments & DMs with Flas AI, write posts, and watch reach and audience grow."
+        description="Reply to the comments, reviews and messages your connected platforms support, draft posts with Flas AI, and watch reach and audience."
       />
 
       <ConnectionOutcome
@@ -307,7 +248,7 @@ function SocialHubPage() {
       <Tabs defaultValue="inbox" className="mt-6">
         <TabsList>
           <TabsTrigger value="inbox" className="gap-1.5">
-            <MessageCircle className="size-3.5" /> Comments & DMs
+            <MessageCircle className="size-3.5" /> {inboxLabel(accounts)}
             {interactions.filter((i) => i.status === "open").length > 0 && (
               <Badge variant="secondary" className="ml-1 text-[10px]">
                 {interactions.filter((i) => i.status === "open").length}
@@ -344,35 +285,16 @@ function SocialHubPage() {
 /* ---------------- Accounts ---------------- */
 
 function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged: () => void }) {
-  const connect = useServerFn(connectSocialAccount);
   const remove = useServerFn(deleteSocialAccount);
   const sync = useServerFn(syncSocialAccountFn);
-  const [form, setForm] = useState({
-    platform: "instagram" as PlatformId,
-    label: "",
-    externalId: "",
-    accessToken: "",
-  });
-  const [showForm, setShowForm] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
-
-  const connectMutation = useMutation({
-    mutationFn: () => connect({ data: form }),
-    onSuccess: () => {
-      toast.success("Account connected — press Sync to pull comments & DMs");
-      setForm({ platform: "instagram", label: "", externalId: "", accessToken: "" });
-      setShowForm(false);
-      onChanged();
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   async function runSync(id: string) {
     setSyncingId(id);
     try {
       const result = await sync({ data: { id } });
       if (result.ok) {
-        toast.success(`Synced ${result.posts} posts and ${result.interactions} comments/DMs`);
+        toast.success(`Synced ${result.posts} posts and ${result.interactions} interactions`);
       } else {
         toast.error(result.error ?? "Sync failed");
       }
@@ -390,128 +312,21 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
         <div>
           <CardTitle className="text-base">Connected accounts</CardTitle>
           <CardDescription>
-            Link Instagram, Facebook, YouTube, X, LinkedIn, TikTok and Google Business — then sync
-            to pull in comments, DMs, reviews, posts and audience stats.
+            Accounts connected through Connect &amp; setup. Sync pulls what each platform&apos;s
+            connector supports — posts, comments, reviews and audience stats vary by platform.
           </CardDescription>
         </div>
-        {/* Connecting has one front door -- the guided flow on Connect & setup,
-            which runs the platform's real login. This card used to offer a
-            competing "Connect account" button that only took a hand-pasted
-            token, so the same job had two different answers depending on which
-            page you happened to be on. The manual path still exists for
-            long-lived tokens, but it is now clearly the fallback. */}
-        <div className="flex items-center gap-2">
-          <Button asChild size="sm">
-            <Link to="/connect">Connect an account</Link>
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? "Close" : "Paste a token"}
-          </Button>
-        </div>
+        {/* One front door: Connect & setup runs the platform's own login. The
+            "Paste a token" fallback was removed in Batch 1 -- social tokens
+            now originate only from the OAuth callback, never a browser form. */}
+        <Button asChild size="sm">
+          <Link to="/connect">Connect an account</Link>
+        </Button>
       </CardHeader>
       <CardContent className="grid gap-3">
-        {showForm && (
-          <div className="grid gap-3 rounded-lg border border-dashed p-4 sm:grid-cols-2">
-            <p className="text-xs text-muted-foreground sm:col-span-2">
-              Advanced. Most accounts should be connected from{" "}
-              <Link to="/connect" className="underline underline-offset-2">
-                Connect &amp; setup
-              </Link>
-              , which runs the platform&apos;s own login and requests the right permissions. Use
-              this only when you already hold a long-lived token.
-            </p>
-            <div className="grid gap-1.5">
-              <Label>Platform</Label>
-              <Select
-                value={form.platform}
-                onValueChange={(v) => setForm((f) => ({ ...f, platform: v as PlatformId }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PLATFORMS.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      <span className="flex items-center gap-2">
-                        <p.icon className="size-3.5" /> {p.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="social-label">Display name</Label>
-              <Input
-                id="social-label"
-                name="social-account-label"
-                autoComplete="off"
-                placeholder="e.g. Client's bakery IG"
-                value={form.label}
-                onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="social-external-id">{platformMeta(form.platform).idLabel}</Label>
-              <Input
-                id="social-external-id"
-                // Unnamed, this looked like a generic text field and the browser
-                // filled it with the saved CRM login email.
-                name="social-account-external-id"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                placeholder={platformMeta(form.platform).idPlaceholder}
-                value={form.externalId}
-                onChange={(e) => setForm((f) => ({ ...f, externalId: e.target.value }))}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="social-access-token">{platformMeta(form.platform).tokenLabel}</Label>
-              <Input
-                id="social-access-token"
-                name="social-account-token"
-                type="password"
-                // A pasted API credential, not a password to remember.
-                // new-password is what stops a manager offering the saved login;
-                // the vendor opt-outs stop 1Password and LastPass overlaying it.
-                autoComplete="new-password"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                data-1p-ignore
-                data-lpignore="true"
-                placeholder={platformMeta(form.platform).tokenPlaceholder}
-                value={form.accessToken}
-                onChange={(e) => setForm((f) => ({ ...f, accessToken: e.target.value }))}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground sm:col-span-2">
-              {platformMeta(form.platform).hint}
-            </p>
-            <div className="sm:col-span-2">
-              <Button
-                size="sm"
-                disabled={manualFormError(form) !== null || connectMutation.isPending}
-                onClick={() => connectMutation.mutate()}
-              >
-                {connectMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
-                Save account
-              </Button>
-              {manualFormError(form) ? (
-                <p className="mt-1.5 text-xs text-destructive">{manualFormError(form)}</p>
-              ) : null}
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Tokens are stored server-side and are never shown back in the app.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {accounts.length === 0 && !showForm && (
+        {accounts.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No social accounts yet. Connect one to start managing comments, DMs and reach.
+            No social accounts yet. Connect one from Connect &amp; setup.
           </p>
         )}
 
@@ -525,6 +340,15 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                 <p className="flex items-center gap-1.5 text-sm font-semibold">
                   <PlatformIcon platform={a.platform} />
                   <span className="truncate">{a.label}</span>
+                  {a.connect_method === "manual" && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px]"
+                      title="Added with a pasted token before Batch 1. Not verified until a live check succeeds — reconnect it through Connect & setup."
+                    >
+                      Legacy — not verified
+                    </Badge>
+                  )}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {audienceStat(a.stats) ? `${audienceStat(a.stats)} · ` : ""}
@@ -552,7 +376,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                   onClick={() => {
                     void remove({ data: { id: a.id } })
                       .then(() => {
-                        toast.success("Account removed");
+                        toast.success("Account disconnected — its history is kept");
                         onChanged();
                       })
                       .catch((e: Error) => toast.error(e.message));
@@ -631,7 +455,10 @@ function InboxTab({
   return (
     <div className="grid max-w-4xl gap-3">
       <div className="flex gap-1.5">
-        {(["all", "comment", "dm"] as const).map((f) => (
+        {(accounts.some((a) => flasSupports(a.platform, "direct_messages_read"))
+          ? (["all", "comment", "dm"] as const)
+          : (["all", "comment"] as const)
+        ).map((f) => (
           <Button
             key={f}
             size="sm"
@@ -646,8 +473,8 @@ function InboxTab({
       {visible.length === 0 && (
         <Card>
           <CardContent className="pt-6 text-sm text-muted-foreground">
-            Nothing here yet. Connect an account above and press Sync — new comments and DMs will
-            appear here with AI-suggested replies.
+            Nothing here yet. Connect an account and press Sync — whatever that platform&apos;s
+            connector supports will appear here with AI-suggested replies.
           </CardContent>
         </Card>
       )}
@@ -706,13 +533,30 @@ function InboxTab({
                     {i.ai_suggestion || drafts[i.id] ? "Redraft with Flas AI" : "Suggest reply"}
                   </Button>
                   {(drafts[i.id] ?? i.ai_suggestion) && (
+                    // "Send reply" only where Flas can actually post it. Elsewhere
+                    // the reply is recorded in Flas and the label says so, rather
+                    // than a Send button that delivers nothing.
                     <Button
                       size="sm"
                       className="gap-1.5"
                       disabled={busyId === i.id}
                       onClick={() => void handleSend(i)}
+                      title={
+                        flasSupports(
+                          accountPlatform(i.account_id),
+                          i.kind === "dm" ? "direct_messages_send" : "comments_reply",
+                        )
+                          ? undefined
+                          : "Flas cannot post this reply to the platform. It is saved here; post it on the platform itself."
+                      }
                     >
-                      <Send className="size-3.5" /> Send reply
+                      <Send className="size-3.5" />{" "}
+                      {flasSupports(
+                        accountPlatform(i.account_id),
+                        i.kind === "dm" ? "direct_messages_send" : "comments_reply",
+                      )
+                        ? "Send reply"
+                        : "Record reply"}
                     </Button>
                   )}
                   <Button

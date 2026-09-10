@@ -84,3 +84,13 @@ await build({
     },
   ],
 });
+
+// Batch 1 / Phase 6: token encryption. No imports, so no stubs needed.
+await build({
+  entryPoints: ["src/lib/social-secrets.server.ts"],
+  outfile: "node_modules/.cache/flas-secrets.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+});

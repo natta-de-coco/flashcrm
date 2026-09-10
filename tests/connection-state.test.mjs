@@ -114,15 +114,19 @@ describe("transitions", () => {
   test("a provider outage can never lead to a state that discards the token", () => {
     // The whole point of provider_unavailable: an hour of Meta 5xx must not
     // sign every customer out.
+    // refresh_failed is allowed: it keeps the token and schedules a retry.
+    // Forbidding it (as this test once did) meant a health check that found a
+    // real refresh failure after an outage was rejected by the trigger, and the
+    // whole update -- error, retry count, backoff -- was lost.
     for (const to of allowedNextStates("provider_unavailable")) {
       assert.notEqual(to, "revoked", "an outage must not be a route to revoked");
-      assert.notEqual(to, "refresh_failed", "an outage must not be a route to refresh_failed");
     }
   });
 
-  test("every authorized state can reach disconnected", () => {
-    // A customer must always be able to unplug an integration.
-    for (const s of ["connected", "scope_incomplete", "token_expiring", "refresh_failed", "revoked"]) {
+  test("every state can reach disconnected", () => {
+    // A customer must always be able to unplug an integration, whatever state
+    // it is in -- including mid-authorization.
+    for (const s of CONNECTION_STATES) {
       assert.ok(legal(s, "disconnected"), `${s} should be able to reach disconnected`);
     }
   });
@@ -273,5 +277,144 @@ describe("abandoned attempts", () => {
         `${s} should not be overwritten by the expiry derivation`,
       );
     }
+  });
+});
+
+import { resolveHealthState } from "../node_modules/.cache/flas-connection-state.mjs";
+
+describe("Batch 1 state model", () => {
+  test("exactly the thirteen required states", () => {
+    const required = [
+      "not_configured", "missing_app_credentials", "ready_to_authorize",
+      "authorization_started", "authorization_cancelled", "callback_error",
+      "scope_incomplete", "connected", "token_expiring", "refresh_failed",
+      "revoked", "disconnected", "provider_unavailable",
+    ];
+    assert.deepEqual([...CONNECTION_STATES].sort(), [...required].sort());
+  });
+
+  test("the brief's example transitions are all legal", () => {
+    const edges = [
+      ["not_configured", "missing_app_credentials"],
+      ["missing_app_credentials", "ready_to_authorize"],
+      ["ready_to_authorize", "authorization_started"],
+      ["authorization_started", "connected"],
+      ["authorization_started", "authorization_cancelled"],
+      ["authorization_started", "callback_error"],
+      ["authorization_started", "scope_incomplete"],
+      ["connected", "token_expiring"],
+      ["token_expiring", "connected"],
+      ["token_expiring", "refresh_failed"],
+      ["connected", "revoked"],
+      ["connected", "disconnected"],
+      ["connected", "provider_unavailable"],
+      ["scope_incomplete", "authorization_started"],
+      ["provider_unavailable", "connected"],
+      ["refresh_failed", "authorization_started"],
+      ["revoked", "authorization_started"],
+      ["disconnected", "ready_to_authorize"],
+    ];
+    for (const [from, to] of edges) {
+      assert.ok(legal(from, to), `${from} -> ${to} should be legal`);
+    }
+  });
+
+  test("returning to connected needs a fresh authorization", () => {
+    assert.equal(legal("disconnected", "connected"), false, "disconnected -> connected");
+    assert.equal(legal("revoked", "connected"), false, "revoked -> connected");
+    assert.ok(legal("authorization_started", "connected"));
+  });
+
+  test("a health check can record a refresh failure on a connected account", () => {
+    // The edge whose absence made the trigger reject the whole health update.
+    assert.ok(legal("connected", "refresh_failed"));
+  });
+
+  test("resolveHealthState keeps a legal observation as-is", () => {
+    assert.equal(resolveHealthState("connected", "refresh_failed"), "refresh_failed");
+    assert.equal(resolveHealthState("token_expiring", "connected"), "connected");
+  });
+
+  test("resolveHealthState never lands on revoked from an outage", () => {
+    assert.equal(resolveHealthState("provider_unavailable", "revoked"), "refresh_failed");
+  });
+
+  test("resolveHealthState cannot reconnect a disconnected account", () => {
+    assert.equal(resolveHealthState("disconnected", "connected"), "disconnected");
+    assert.equal(resolveHealthState("revoked", "connected"), "revoked");
+  });
+
+  test("resolveHealthState always returns a state reachable from the current one", () => {
+    for (const from of CONNECTION_STATES) {
+      for (const to of CONNECTION_STATES) {
+        const got = resolveHealthState(from, to);
+        assert.ok(legal(from, got), `${from} + ${to} -> ${got} is not reachable`);
+      }
+    }
+  });
+});
+
+import { classifyHealthObservation } from "../node_modules/.cache/flas-connection-state.mjs";
+
+describe("health-check classification (phases 35-40)", () => {
+  const classify = (from, validated, reason, missingScopes = 0) =>
+    classifyHealthObservation({ from, validated, reason, missingScopes });
+
+  test("a validated token with every scope is connected", () => {
+    const r = classify("token_expiring", true, "ok");
+    assert.equal(r.state, "connected");
+    assert.equal(r.code, "healthy");
+  });
+
+  test("partial scopes are never reported fully healthy", () => {
+    const r = classify("connected", true, "ok", 2);
+    assert.equal(r.state, "scope_incomplete");
+    assert.notEqual(r.code, "healthy");
+  });
+
+  test("a 429 leaves the connection logically connected", () => {
+    const r = classify("connected", false, "Meta API returned HTTP 429 (rate limit)");
+    assert.equal(r.code, "rate_limited");
+    assert.equal(r.state, "connected");
+    assert.equal(r.active, true);
+  });
+
+  test("a 5xx is an outage, not a revocation", () => {
+    const r = classify("connected", false, "Meta API returned HTTP 503");
+    assert.equal(r.state, "provider_unavailable");
+    assert.equal(r.active, true, "credentials must not be switched off during an outage");
+  });
+
+  test("a timeout is an outage", () => {
+    assert.equal(classify("connected", false, "request timed out").state, "provider_unavailable");
+  });
+
+  test("a revoked grant is revoked and switched off", () => {
+    const r = classify("connected", false, "invalid_grant: token has been revoked");
+    assert.equal(r.state, "revoked");
+    assert.equal(r.active, false);
+  });
+
+  test("a 401 during an outage cannot become revoked", () => {
+    const r = classify("provider_unavailable", false, "HTTP 401");
+    assert.notEqual(r.state, "revoked");
+    assert.equal(r.code, "refresh_failed");
+    assert.equal(r.active, true);
+  });
+
+  test("a 403 is a missing permission, not a revocation", () => {
+    assert.notEqual(classify("connected", false, "HTTP 403 forbidden").state, "revoked");
+  });
+
+  test("an unknown failure keeps the token and retries", () => {
+    const r = classify("connected", false, "something odd");
+    assert.equal(r.state, "refresh_failed");
+    assert.equal(r.active, true);
+  });
+
+  test("a health check never reconnects a disconnected account", () => {
+    const r = classify("disconnected", true, "ok");
+    assert.equal(r.state, "disconnected");
+    assert.equal(r.active, false);
   });
 });

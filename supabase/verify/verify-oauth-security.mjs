@@ -145,7 +145,13 @@ console.log("\n=== consumption records that the callback arrived ===");
   check(rows[0]?.used_at !== null, "used_at is stamped");
 }
 
-// ── 6. Refresh lock ─────────────────────────────────────────────────────────
+// ── 6. Refresh lease ────────────────────────────────────────────────────────
+// This section used to test try_lock_connection_refresh(), a transaction-
+// scoped advisory lock -- inside an explicit BEGIN, which the application
+// never issues. Called through PostgREST each RPC is its own transaction, so
+// the lock was released before the refresh it guarded. 20260910100000 replaced
+// it with a row lease; supabase/verify/verify-social-batch1.mjs covers the
+// lease in depth, and this keeps the OAuth suite's own guarantee honest.
 console.log("\n=== only one refresh per account runs at a time ===");
 {
   const account = (await c.query(
@@ -155,27 +161,30 @@ console.log("\n=== only one refresh per account runs at a time ===");
 
   const other = new pg.Client({ host: "localhost", port: PORT, user: "postgres", password: "postgres", database: "postgres" });
   await other.connect();
+  const acquire = async (cl, id) =>
+    (await cl.query("select acquire_connection_refresh_lease($1,$2,60) as id", [id, org])).rows[0].id;
 
-  await c.query("begin");
-  const mine = (await c.query("select try_lock_connection_refresh($1) as got", [account])).rows[0].got;
-  check(mine === true, "the first caller takes the lock");
+  // No surrounding transaction: this is how the application calls it.
+  const mine = await acquire(c, account);
+  check(Boolean(mine), "the first caller takes the lease");
 
-  const theirs = (await other.query("select try_lock_connection_refresh($1) as got", [account])).rows[0].got;
-  check(theirs === false, "a concurrent caller is refused rather than queued");
+  const theirs = await acquire(other, account);
+  check(theirs === null, "a concurrent caller is refused rather than queued", `got ${theirs}`);
 
-  // A different account must not be blocked by this one.
   const account2 = (await c.query(
     `insert into social_accounts (tenant_id, platform, label, connect_method)
      values ($1,'instagram','IG','oauth') returning id`, [org],
   )).rows[0].id;
-  const unrelated = (await other.query("select try_lock_connection_refresh($1) as got", [account2])).rows[0].got;
-  check(unrelated === true, "a different account is unaffected");
+  check(Boolean(await acquire(other, account2)), "a different account is unaffected");
 
-  await c.query("commit");
+  // The property the old lock lacked: it is still held after the call returns.
+  check((await acquire(other, account)) === null, "the lease is still held after the acquiring call has returned");
 
-  // Transaction scope: the lock must be gone now, not held until the session ends.
-  const afterCommit = (await other.query("select try_lock_connection_refresh($1) as got", [account])).rows[0].got;
-  check(afterCommit === true, "the lock is released by the transaction ending");
+  const released = (await c.query(
+    "select release_connection_refresh_lease($1,$2,$3) as ok", [account, org, mine],
+  )).rows[0].ok;
+  check(released === true, "the holder releases it");
+  check(Boolean(await acquire(other, account)), "and another caller can then take it");
   await other.end();
 }
 

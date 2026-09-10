@@ -21,19 +21,23 @@ export const testSocialConnection = createServerFn({ method: "POST" })
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { TOKEN_READ_COLUMNS, readStoredTokens } = await import(
+      "@/lib/social-token-store.server"
+    );
     const { data: account } = await supabaseAdmin
       .from("social_accounts")
       .select(
-        "id, tenant_id, platform, label, external_id, access_token, token_expires_at, granted_scopes",
+        `id, tenant_id, platform, label, external_id, token_expires_at, granted_scopes, ${TOKEN_READ_COLUMNS}`,
       )
       .eq("id", data.accountId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!account) throw new Error("Account not found in this workspace.");
+    const tokens = await readStoredTokens(account);
 
     const { runConnectionTest } = await import("@/lib/social-doctor.server");
     const report = await runConnectionTest({
-      account,
+      account: { ...account, access_token: tokens.access },
       triggeredBy: context.userId,
       trigger: "manual",
     });
@@ -62,20 +66,24 @@ export const getMetaTargets = createServerFn({ method: "POST" })
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { TOKEN_READ_COLUMNS, readStoredTokens } = await import(
+      "@/lib/social-token-store.server"
+    );
     const { data: account } = await supabaseAdmin
       .from("social_accounts")
-      .select("id, platform, access_token, external_id")
+      .select(`id, tenant_id, platform, external_id, ${TOKEN_READ_COLUMNS}`)
       .eq("id", data.accountId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
-    if (!account?.access_token) throw new Error("This account has no stored authorization.");
+    const token = account ? (await readStoredTokens(account)).access : null;
+    if (!account || !token) throw new Error("This account has no stored authorization.");
     if (account.platform !== "facebook" && account.platform !== "instagram") {
       throw new Error("Page selection only applies to Facebook and Instagram.");
     }
 
     const { discoverMetaTargets, diagnoseMetaConnection } =
       await import("@/lib/meta-discovery.server");
-    const discovery = await discoverMetaTargets(account.access_token);
+    const discovery = await discoverMetaTargets(token);
     const platform = account.platform as "facebook" | "instagram";
     const diagnosis = diagnoseMetaConnection(discovery, platform);
     const relevant = platform === "instagram" ? discovery.pagesWithInstagram : discovery.pages;
@@ -123,19 +131,24 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { TOKEN_READ_COLUMNS, encryptTokensForStorage, readStoredTokens } = await import(
+      "@/lib/social-token-store.server"
+    );
     const { data: account } = await supabaseAdmin
       .from("social_accounts")
       .select(
-        "id, tenant_id, platform, label, access_token, token_expires_at, granted_scopes, external_id",
+        `id, tenant_id, platform, label, token_expires_at, granted_scopes, external_id, ${TOKEN_READ_COLUMNS}`,
       )
       .eq("id", data.accountId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
-    if (!account?.access_token) throw new Error("This account has no stored authorization.");
+    const stored = account ? await readStoredTokens(account) : null;
+    if (!account || !stored?.access) throw new Error("This account has no stored authorization.");
+    const userToken = stored.access;
 
     const platform = account.platform as "facebook" | "instagram";
     const { discoverMetaTargets } = await import("@/lib/meta-discovery.server");
-    const discovery = await discoverMetaTargets(account.access_token);
+    const discovery = await discoverMetaTargets(userToken);
     const page = discovery.pages.find((p) => p.id === data.pageId);
     if (!page) throw new Error("That Page is no longer available to this login.");
 
@@ -150,18 +163,28 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
       followers: platform === "instagram" ? page.instagram?.followers : page.followers,
     };
 
-    await supabaseAdmin
+    // A Page-scoped token outranks the user token for Page operations. It is
+    // stored encrypted like every other token; the refresh token is kept.
+    const usePageToken = Boolean(page.pageAccessToken && platform === "facebook");
+    const tokenColumns = usePageToken
+      ? await encryptTokensForStorage({
+          tenantId: account.tenant_id,
+          platform: account.platform,
+          accessToken: page.pageAccessToken ?? null,
+          refreshToken: stored.refresh,
+        })
+      : {};
+    const { error: updateError } = await supabaseAdmin
       .from("social_accounts")
       .update({
         external_id: targetId,
         label: profile.name ?? account.label,
         profile: profile as never,
-        // A Page-scoped token outranks the user token for Page operations.
-        ...(page.pageAccessToken && platform === "facebook"
-          ? { access_token: page.pageAccessToken }
-          : {}),
+        ...tokenColumns,
       })
-      .eq("id", account.id);
+      .eq("id", account.id)
+      .eq("tenant_id", account.tenant_id);
+    if (updateError) throw new Error("Could not save the selected Page. Try again.");
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -179,10 +202,7 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
       account: {
         ...account,
         external_id: targetId,
-        access_token:
-          page.pageAccessToken && platform === "facebook"
-            ? page.pageAccessToken
-            : account.access_token,
+        access_token: usePageToken ? (page.pageAccessToken ?? userToken) : userToken,
       },
       triggeredBy: context.userId,
       trigger: "post_oauth",

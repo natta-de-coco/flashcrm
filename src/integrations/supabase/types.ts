@@ -2364,6 +2364,7 @@ export type Database = {
           expires_at: string
           id: string
           platform: string
+          provider: string | null
           redirect_uri: string
           state: string | null
           state_hash: string | null
@@ -2379,6 +2380,7 @@ export type Database = {
           expires_at?: string
           id?: string
           platform: string
+          provider?: string | null
           redirect_uri: string
           state?: string | null
           state_hash?: string | null
@@ -2394,6 +2396,7 @@ export type Database = {
           expires_at?: string
           id?: string
           platform?: string
+          provider?: string | null
           redirect_uri?: string
           state?: string | null
           state_hash?: string | null
@@ -3474,6 +3477,7 @@ export type Database = {
       social_accounts: {
         Row: {
           access_token: string | null
+          access_token_enc: string | null
           active: boolean
           connect_method: string
           connection_state: string
@@ -3487,14 +3491,26 @@ export type Database = {
           last_error: string | null
           last_error_at: string | null
           last_post_at: string | null
+          last_refresh_attempt_at: string | null
+          last_refresh_success_at: string | null
           last_retry_at: string | null
+          last_sync_attempt_at: string | null
+          last_sync_success_at: string | null
           last_synced_at: string | null
+          last_validation_attempt_at: string | null
+          last_validation_success_at: string | null
+          legacy_manual_connection: boolean
+          missing_scopes: string[] | null
           next_retry_at: string | null
           permissions: Json
           platform: string
           profile: Json
           profile_url: string | null
+          refresh_failure_reason: string | null
+          refresh_lease_id: string | null
+          refresh_leased_until: string | null
           refresh_token: string | null
+          refresh_token_enc: string | null
           retry_count: number
           state_changed_at: string
           state_reason: string | null
@@ -3502,9 +3518,11 @@ export type Database = {
           status_reason: string | null
           tenant_id: string
           token_expires_at: string | null
+          token_key_id: string | null
         }
         Insert: {
           access_token?: string | null
+          access_token_enc?: string | null
           active?: boolean
           connect_method?: string
           connection_state?: string
@@ -3518,14 +3536,26 @@ export type Database = {
           last_error?: string | null
           last_error_at?: string | null
           last_post_at?: string | null
+          last_refresh_attempt_at?: string | null
+          last_refresh_success_at?: string | null
           last_retry_at?: string | null
+          last_sync_attempt_at?: string | null
+          last_sync_success_at?: string | null
           last_synced_at?: string | null
+          last_validation_attempt_at?: string | null
+          last_validation_success_at?: string | null
+          legacy_manual_connection?: boolean
+          missing_scopes?: string[] | null
           next_retry_at?: string | null
           permissions?: Json
           platform: string
           profile?: Json
           profile_url?: string | null
+          refresh_failure_reason?: string | null
+          refresh_lease_id?: string | null
+          refresh_leased_until?: string | null
           refresh_token?: string | null
+          refresh_token_enc?: string | null
           retry_count?: number
           state_changed_at?: string
           state_reason?: string | null
@@ -3533,9 +3563,11 @@ export type Database = {
           status_reason?: string | null
           tenant_id?: string
           token_expires_at?: string | null
+          token_key_id?: string | null
         }
         Update: {
           access_token?: string | null
+          access_token_enc?: string | null
           active?: boolean
           connect_method?: string
           connection_state?: string
@@ -3549,14 +3581,26 @@ export type Database = {
           last_error?: string | null
           last_error_at?: string | null
           last_post_at?: string | null
+          last_refresh_attempt_at?: string | null
+          last_refresh_success_at?: string | null
           last_retry_at?: string | null
+          last_sync_attempt_at?: string | null
+          last_sync_success_at?: string | null
           last_synced_at?: string | null
+          last_validation_attempt_at?: string | null
+          last_validation_success_at?: string | null
+          legacy_manual_connection?: boolean
+          missing_scopes?: string[] | null
           next_retry_at?: string | null
           permissions?: Json
           platform?: string
           profile?: Json
           profile_url?: string | null
+          refresh_failure_reason?: string | null
+          refresh_lease_id?: string | null
+          refresh_leased_until?: string | null
           refresh_token?: string | null
+          refresh_token_enc?: string | null
           retry_count?: number
           state_changed_at?: string
           state_reason?: string | null
@@ -3564,6 +3608,7 @@ export type Database = {
           status_reason?: string | null
           tenant_id?: string
           token_expires_at?: string | null
+          token_key_id?: string | null
         }
         Relationships: []
       }
@@ -4821,6 +4866,14 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_connection_refresh_lease: {
+        Args: { _account_id: string; _lease_seconds?: number; _tenant_id: string }
+        Returns: string | null
+      }
+      release_connection_refresh_lease: {
+        Args: { _account_id: string; _lease_id: string; _tenant_id: string }
+        Returns: boolean
+      }
       _is_locked_super_admin_email: {
         Args: { _email: string }
         Returns: boolean
@@ -4885,6 +4938,7 @@ export type Database = {
       expire_abandoned_oauth_attempts: {
         Args: never
         Returns: {
+          cancelled_count: number
           deleted_count: number
           expired_count: number
         }[]
@@ -5032,10 +5086,6 @@ export type Database = {
       set_tenant_smtp_api_key: {
         Args: { _api_key: string }
         Returns: undefined
-      }
-      try_lock_connection_refresh: {
-        Args: { _account_id: string }
-        Returns: boolean
       }
       update_email_delivery: {
         Args: {

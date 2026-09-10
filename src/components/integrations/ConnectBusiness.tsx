@@ -578,6 +578,18 @@ function ConnectorCard({
                 Set up in Flas <ArrowUpRight className="size-3" />
               </Link>
             </Button>
+          ) : connector.unavailableReason ? (
+            // A connector with no working integration gets a disabled button
+            // that says so, never a Connect that cannot succeed.
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs"
+              disabled
+              title={connector.unavailableReason}
+            >
+              Not available
+            </Button>
           ) : connector.oauth ? (
             // Readiness is known before the click. When the keys are missing,
             // the button that does something useful is "Add app keys" -- not a

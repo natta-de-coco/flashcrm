@@ -78,6 +78,11 @@ export async function ensureBillingSettings(supabase: AnyClient, tenantId: strin
   return created;
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- untyped billing row shapes
+   (settings, documents, bank, templates). Typing them properly means changing
+   the invoice PDF pipeline, which is outside the social Batch 1 scope. Same
+   convention as social.server.ts. */
+
 /** Company snapshot frozen onto every document at finalization time. */
 export function companySnapshot(
   settings: any,

@@ -6,7 +6,13 @@ import { missingScopesFor } from "./connection-state";
 import type { ConnectorId } from "./connections-catalog";
 
 export type ConnectionState =
-  "connected" | "needs_verification" | "pending_review" | "expired" | "failing" | "not_connected";
+  | "connected"
+  | "unverified"
+  | "needs_verification"
+  | "pending_review"
+  | "expired"
+  | "failing"
+  | "not_connected";
 
 export type ConnectionStatus = {
   state: ConnectionState;
@@ -30,10 +36,14 @@ export type AccountLike = {
   external_id?: string | null;
   connect_method?: string | null;
   label?: string | null;
+  /** Last live provider call that proved the token works. */
+  last_validation_success_at?: string | null;
+  legacy_manual_connection?: boolean | null;
 };
 
 const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatus["tone"] }> = {
   connected: { label: "Connected", tone: "good" },
+  unverified: { label: "Not yet verified", tone: "warn" },
   needs_verification: { label: "Needs verification", tone: "warn" },
   pending_review: { label: "Pending platform review", tone: "warn" },
   expired: { label: "Token expired", tone: "bad" },
@@ -107,6 +117,24 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
     }
   }
 
+  // Batch 1, Phase 20: "Healthy" needs a live provider check that succeeded.
+  // A recent sync proves the database was written, not that the token works,
+  // and a pasted token was never checked by anyone.
+  if (account.legacy_manual_connection || account.connect_method === "manual") {
+    return build(
+      "unverified",
+      "Added with a pasted token before Batch 1, and never verified against the platform.",
+      "Reconnect it through Connect & setup so Flas can verify it.",
+    );
+  }
+  if (!account.last_validation_success_at) {
+    return build(
+      "unverified",
+      "Authorized, but no live check against the platform has succeeded yet.",
+      "Open the Health report and press Retry, or wait for the next automatic check.",
+    );
+  }
+
   if (!account.last_synced_at) {
     return build(
       "pending_review",
@@ -126,7 +154,7 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
 
   return build(
     "connected",
-    `Healthy — last synced ${new Date(account.last_synced_at).toLocaleString()}.`,
+    `Healthy — verified ${new Date(account.last_validation_success_at).toLocaleString()}, last synced ${new Date(account.last_synced_at).toLocaleString()}.`,
     "Nothing to do. Run a Flas Account Scan any time for growth suggestions.",
   );
 }

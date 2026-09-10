@@ -6,6 +6,12 @@ import { deriveConnectionState } from "@/lib/connection-state.server";
 import type { AccountPlatform } from "./connections-catalog";
 import { connector } from "./connections-catalog";
 import { callFlashAi } from "./flash-ai.server";
+import {
+  TOKEN_READ_COLUMNS,
+  encryptTokensForStorage,
+  readStoredTokens,
+} from "@/lib/social-token-store.server";
+import { missingScopesFor } from "@/lib/connection-state";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -34,7 +40,8 @@ export async function discoverProfile(
     if (meta?.provider === "meta") {
       if (platform === "facebook" || platform === "instagram") {
         const res = await fetch(
-          `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,username,link,category,picture{url},fan_count,instagram_business_account{id,username,name,profile_picture_url,biography,website,followers_count}&access_token=${encodeURIComponent(token)}`,
+          `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,username,link,category,picture{url},fan_count,instagram_business_account{id,username,name,profile_picture_url,biography,website,followers_count}`,
+          { headers: { Authorization: `Bearer ${token}` } },
         );
         const json: any = await res.json();
         const page = json?.data?.[0];
@@ -65,9 +72,9 @@ export async function discoverProfile(
         };
       }
       if (platform === "meta_ads") {
-        const res = await fetch(
-          `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name&access_token=${encodeURIComponent(token)}`,
-        );
+        const res = await fetch("https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         const json: any = await res.json();
         const list: string[] = (json?.data ?? []).map((a: any) => `${a.name} (${a.id})`);
         return { name: list[0] ?? "Meta Ads", ad_accounts: list, external_id: json?.data?.[0]?.id };
@@ -142,61 +149,84 @@ export async function saveAuthorizedConnection(args: {
   const label = args.profile.name ?? meta?.name ?? args.platform;
   const { data: existing } = await supabaseAdmin
     .from("social_accounts")
-    .select("id, refresh_token")
+    .select(`id, tenant_id, platform, ${TOKEN_READ_COLUMNS}`)
     .eq("tenant_id", args.tenantId)
     .eq("platform", args.platform)
     .maybeSingle();
+
+  // Providers omit the refresh token on re-consent -- keep the one we hold.
+  let keptRefresh: string | null = null;
+  if (!args.refreshToken && existing) {
+    try {
+      keptRefresh = (await readStoredTokens(existing)).refresh;
+    } catch {
+      keptRefresh = null;
+    }
+  }
+
+  // Encrypted before anything is written. Throws when the key ring is not
+  // configured, so a token is never stored in plaintext as a fallback.
+  const tokenColumns = await encryptTokensForStorage({
+    tenantId: args.tenantId,
+    platform: args.platform,
+    accessToken: args.token,
+    refreshToken: args.refreshToken ?? keptRefresh,
+  });
+
+  // Derived rather than assumed "connected": a consent screen where the
+  // customer unticked a permission lands in scope_incomplete.
+  const derived = deriveConnectionState({
+    active: true,
+    access_token: args.token,
+    token_expires_at: args.expiresAt,
+    granted_scopes: args.grantedScopes ?? null,
+    platform: args.platform,
+  });
 
   const payload = {
     tenant_id: args.tenantId,
     platform: args.platform,
     label,
     external_id: args.profile.external_id ?? null,
-    access_token: args.token,
-    // Providers omit the refresh token on re-consent — keep the one we hold.
-    refresh_token: args.refreshToken ?? existing?.refresh_token ?? null,
+    ...tokenColumns,
     token_expires_at: args.expiresAt,
     granted_scopes: args.grantedScopes?.length ? args.grantedScopes : null,
+    missing_scopes: missingScopesFor(args.platform, args.grantedScopes ?? []),
     active: true,
     health: "connected",
-    // The state model is authoritative; `health` is retained for one release
-    // so existing readers keep working through the deploy. Derived rather than
-    // assumed "connected": a consent screen where the customer unticked a
-    // permission lands in scope_incomplete, which the old code could not say.
-    connection_state: deriveConnectionState({
-      active: true,
-      access_token: args.token,
-      token_expires_at: args.expiresAt,
-      granted_scopes: args.grantedScopes ?? null,
-      platform: args.platform,
-    }).state,
-    state_reason: deriveConnectionState({
-      active: true,
-      access_token: args.token,
-      token_expires_at: args.expiresAt,
-      granted_scopes: args.grantedScopes ?? null,
-      platform: args.platform,
-    }).reason,
+    connection_state: derived.state,
+    state_reason: derived.reason,
     status_reason: null,
     last_error: null,
     last_error_at: null,
     retry_count: 0,
     next_retry_at: null,
+    refresh_failure_reason: null,
     connect_method: "oauth",
+    legacy_manual_connection: false,
     profile: args.profile as unknown as never,
     permissions: { granted: args.permissions } as unknown as never,
     profile_url: args.profile.profile_url ?? meta?.manageUrl ?? null,
   };
 
+  // Both writes are checked. They used to be fire-and-forget, so a save the
+  // database refused -- an illegal state transition, say -- still reported a
+  // connected account to the customer.
   if (existing) {
-    await supabaseAdmin.from("social_accounts").update(payload).eq("id", existing.id);
+    const { error } = await supabaseAdmin
+      .from("social_accounts")
+      .update(payload)
+      .eq("id", existing.id)
+      .eq("tenant_id", args.tenantId);
+    if (error) throw new Error(`Could not save the connection: ${error.message}`);
     return existing.id;
   }
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("social_accounts")
     .insert(payload)
     .select("id")
     .single();
+  if (error) throw new Error(`Could not save the connection: ${error.message}`);
   return data?.id ?? null;
 }
 

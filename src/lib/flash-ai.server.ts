@@ -498,11 +498,11 @@ export async function gatherMessagingAnalytics(
     const local = perNumberLocal.get(n.id) ?? { conversations: 0, unread: 0 };
     const meta: NumberAnalytics["meta"] = { ok: false, sent: 0, delivered: 0 };
     try {
+      // Token in the header, not the URL (URLs land in access logs).
       const url =
         `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
-        `?fields=analytics.start(${start}).end(${end}).granularity(DAY)` +
-        `&access_token=${encodeURIComponent(n.access_token)}`;
-      const res = await fetch(url);
+        `?fields=analytics.start(${start}).end(${end}).granularity(DAY)`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${n.access_token}` } });
       const json = (await res.json()) as {
         analytics?: { data_points?: Array<{ sent?: number; delivered?: number }> };
         error?: { message?: string };

@@ -855,11 +855,11 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     displayName: "TikTok Ads",
     category: "ads",
     accountTypes: ["TikTok for Business advertiser account"],
-    authMethod: "oauth2_pkce",
-    requestedScopes: ["user.info.basic"],
-    // TikTok's Marketing API uses its own advertiser scopes, none of which are
-    // requested today -- which is why every ads capability below is
-    // unreachable rather than merely unbuilt.
+    // TikTok for Business / Marketing API: a separate product from the consumer
+    // Login Kit, with its own advertiser authorization. It must not reuse the
+    // TikTok Login Kit flow, and requests nothing until an adapter exists.
+    authMethod: "oauth2",
+    requestedScopes: [],
     optionalScopes: ["advertiser.read", "advertiser.write"],
     providerReviewRequired: true,
     sandboxAvailable: true,
@@ -867,15 +867,10 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     docs: ["https://business-api.tiktok.com/portal/docs"],
     lastVerified: "2026-09-08",
     knownLimitations: [
-      "Only user.info.basic is requested — no advertising scope at all, so no ads data can be read.",
+      "Not implemented. Connect is disabled until a TikTok for Business Marketing API adapter exists.",
     ],
     capabilities: caps({
-      profile: {
-        providerSupports: true,
-        flasImplements: true,
-        requiredScopes: ["user.info.basic"],
-        reviewRequired: false,
-      },
+      profile: notBuilt(["advertiser.read"], "Advertiser identity needs the Marketing API; not built."),
       ads_read: notBuilt(
         ["advertiser.read"],
         "No advertising scope is requested, so no ads data is reachable.",

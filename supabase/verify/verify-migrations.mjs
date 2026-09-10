@@ -113,7 +113,15 @@ await pgsql.stop();
 // applied once by its pipeline and never replayed, so they are held to the
 // fresh-database bar only.
 const isLovableGenerated = (f) => /_[0-9a-f]{8}-[0-9a-f]{4}-/.test(f);
-const isPending = (f) => /^2026(0830|090[1-9])/.test(f) && !isLovableGenerated(f);
+// Everything up to and including this file is live on the production project:
+// 20260907230000, 20260908100000 and 20260909100000 were applied and verified
+// on 2026-09-09, and the 0830/0901-0904 set was confirmed present on
+// 2026-09-10 (their RPCs answer 42501, not PGRST202). Only later files are
+// pending, and only those must survive being pasted twice. A date-pattern
+// regex used to decide this; it kept treating applied files as pending and
+// silently skipped 20260910100000.
+const LAST_APPLIED = "20260909100000";
+const isPending = (f) => f.slice(0, 14) > LAST_APPLIED && !isLovableGenerated(f);
 const pendingRerun = pass2.filter((x) => isPending(x.f));
 console.log('');
 console.log('fresh-database failures : ' + pass1.length);

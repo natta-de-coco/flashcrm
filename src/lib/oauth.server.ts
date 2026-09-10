@@ -256,8 +256,24 @@ export async function startAuthorization(args: {
     };
   }
 
-  // crypto.randomUUID is CSPRNG-backed; two of them give ~244 bits.
-  const state = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  // Tokens are stored encrypted or not at all. Checked before the consent
+  // screen, so a customer never approves access Flas then cannot keep.
+  const { encryptionConfigured } = await import("@/lib/social-secrets.server");
+  if (!encryptionConfigured()) {
+    return {
+      ready: false,
+      reason:
+        "Flas cannot store this connection securely yet: token encryption is not configured on this deployment.",
+      missing: ["SOCIAL_TOKEN_ENCRYPTION_KEYS", "SOCIAL_TOKEN_ACTIVE_KEY_ID"],
+    };
+  }
+
+  // 32 bytes from the CSPRNG = 256 bits, base64url-encoded (43 characters).
+  // The previous two UUIDv4s gave ~244: six bits of each are fixed
+  // version/variant markers, not randomness.
+  const stateBytes = new Uint8Array(32);
+  crypto.getRandomValues(stateBytes);
+  const state = base64UrlEncode(stateBytes.buffer);
   // Only the digest is stored. The state itself lives in the provider's
   // redirect URL and nowhere we control, so reading oauth_states yields
   // nothing that can be replayed against a live authorization.
@@ -268,15 +284,41 @@ export async function startAuthorization(args: {
   const usePkce = PKCE_PROVIDERS.includes(meta.provider);
   const pkce = usePkce ? await generatePkce() : null;
 
+  // The PKCE verifier is encrypted like a token. A verifier plus an
+  // intercepted authorization code is a completed authorization, so it must
+  // not sit readable in a table.
+  let verifierEnc: string | null = null;
+  if (pkce) {
+    const { encryptSecret, tokenAad } = await import("@/lib/social-secrets.server");
+    verifierEnc = await encryptSecret(
+      pkce.verifier,
+      tokenAad(args.tenantId, `oauth:${stateHash}`, "code_verifier"),
+    );
+  }
+
   const { error } = await supabaseAdmin.from("oauth_states").insert({
     tenant_id: args.tenantId,
     user_id: args.userId,
     platform: args.platform,
+    provider: meta.provider,
     state_hash: stateHash,
     redirect_uri: redirectUri,
-    code_verifier: pkce?.verifier ?? null,
+    code_verifier: verifierEnc,
   });
   if (error) return { ready: false, reason: error.message, missing: [] };
+
+  // State bookkeeping and housekeeping. Both best-effort: neither may block a
+  // connection. The sweep runs here because nothing else ever called it --
+  // abandoned attempts were only ever *read* as expired, never retired.
+  try {
+    const { beginAuthorization, sweepAbandonedAttempts } = await import(
+      "@/lib/connection-state.server"
+    );
+    await beginAuthorization({ tenantId: args.tenantId, platform: args.platform, actorId: args.userId });
+    await sweepAbandonedAttempts().catch(() => undefined);
+  } catch {
+    /* bookkeeping only */
+  }
 
   // Scopes come from the connector registry, not from a list kept here.
   // There were three copies of this data -- here, connection-setup.ts and

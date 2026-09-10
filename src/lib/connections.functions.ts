@@ -28,7 +28,7 @@ export const getConnections = createServerFn({ method: "GET" })
       supabase
         .from("social_accounts")
         .select(
-          "id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method",
+          "id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, missing_scopes",
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -46,11 +46,25 @@ export const getConnections = createServerFn({ method: "GET" })
     const providerReady = await providerReadiness(tenantId);
 
     const { computeHealth } = await import("@/lib/connections.server");
+    // Whether each account actually holds a token, reduced to a boolean on the
+    // server. The token itself never leaves this function. The previous
+    // version passed the literal "set" from both branches of a ternary, so
+    // every account was scored as holding a token whether it did or not.
+    const withToken = new Set<string>();
+    if (tenantId) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { hasStoredToken } = await import("@/lib/social-token-store.server");
+      const { data: tokenRows } = await supabaseAdmin
+        .from("social_accounts")
+        .select("id, tenant_id, platform, access_token_enc, access_token")
+        .eq("tenant_id", tenantId);
+      for (const r of tokenRows ?? []) if (hasStoredToken(r)) withToken.add(r.id);
+    }
     const enriched = (accounts.data ?? []).map((a) => ({
       ...a,
       health: computeHealth({
         active: a.active,
-        access_token: a.connect_method === "oauth" || a.external_id ? "set" : "set",
+        access_token: withToken.has(a.id) ? "present" : null,
         token_expires_at: a.token_expires_at,
         last_synced_at: a.last_synced_at,
       }),
@@ -242,33 +256,24 @@ export const disconnectConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase
+    // Membership is proven through RLS: the row is visible only to its own
+    // workspace. Everything after this uses the service role, scoped to the
+    // tenant this read returned -- never to one taken from the request.
+    const { data: visible } = await context.supabase
       .from("social_accounts")
-      .update({ active: false, health: "disconnected" })
-      .eq("id", data.id);
-    if (error) throw error;
+      .select("id, tenant_id")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!visible) throw new Error("Connection not found in this workspace.");
 
-    // Recorded as a deliberate disconnect rather than lumped in with expiry,
-    // revocation and failed refresh, which all used to read "disconnected".
-    const tenantId = await callerTenantId(context.supabase, context.userId);
-    if (tenantId) {
-      const { transitionConnection } = await import("@/lib/connection-state.server");
-      await transitionConnection({
-        accountId: data.id,
-        tenantId,
-        to: "disconnected",
-        reason: "Disconnected by a user in this workspace",
-        actorId: context.userId,
-      });
-    }
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit({
-      action: "connection.disconnected",
+    const { disconnectSocialAccount } = await import("@/lib/social-disconnect.server");
+    const result = await disconnectSocialAccount({
+      accountId: visible.id,
+      tenantId: visible.tenant_id,
       actorId: context.userId,
-      entityType: "social_account",
-      entityId: data.id,
     });
-    return { ok: true };
+    if (!result.ok) throw new Error("The connection could not be disconnected. Try again.");
+    return { ok: true, providerRevoke: result.providerRevoke };
   });
 
 /** Exportable Integration Health Report for the signed-in workspace. */

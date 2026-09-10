@@ -33,3 +33,6 @@ dist-ssr
 
 # Production error dumps: contain customer emails and stack traces.
 .errors/
+
+# Throwaway Postgres data directories written by the supabase/verify suites
+supabase/verify/.pgdata*/

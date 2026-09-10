@@ -49,6 +49,8 @@ export type Connector = {
   manageUrl: string;
   /** Handled by another Flas module instead of social_accounts. */
   internalHref?: string;
+  /** Set when the connector cannot be connected at all yet. Connect is disabled. */
+  unavailableReason?: string;
   /** Builds the public profile URL from the stored handle when possible. */
   profilePattern?: (handle: string) => string;
 };
@@ -68,7 +70,9 @@ export const CONNECTORS: Connector[] = [
     id: "instagram",
     name: "Instagram",
     group: "social",
-    blurb: "Feed, Reels, comments, DMs and account insights.",
+    // No DMs: Flas has no Instagram messaging implementation (registry:
+    // direct_messages_read/send not_implemented). Comment sync is not DM sync.
+    blurb: "Feed, Reels, comments and account insights.",
     oauth: true,
     provider: "meta",
     manageUrl: "https://business.facebook.com/latest/instagram_content",
@@ -194,8 +198,14 @@ export const CONNECTORS: Connector[] = [
     name: "TikTok Ads",
     group: "ads",
     blurb: "Campaign spend and creative performance.",
-    oauth: true,
-    provider: "tiktok",
+    // TikTok Ads is TikTok for Business / the Marketing API -- a separate
+    // product with its own advertiser authorization. It previously reused the
+    // consumer Login Kit flow and requested only user.info.basic, which can
+    // read no ads data at all. Disabled until a real Marketing API adapter
+    // exists; the registry marks it not implemented.
+    oauth: false,
+    unavailableReason:
+      "Not implemented. TikTok Ads uses the TikTok for Business Marketing API, which Flas does not integrate yet.",
     manageUrl: "https://ads.tiktok.com",
   },
   {

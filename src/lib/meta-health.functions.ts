@@ -57,9 +57,10 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
 
       if (n.active && n.access_token && n.phone_number_id) {
         try {
+          // Token in the header, not the URL (URLs land in access logs).
           const res = await fetch(
-            `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
-              `?fields=verified_name,quality_rating&access_token=${encodeURIComponent(n.access_token)}`,
+            `https://graph.facebook.com/v21.0/${n.phone_number_id}?fields=verified_name,quality_rating`,
+            { headers: { Authorization: `Bearer ${n.access_token}` } },
           );
           const json = (await res.json()) as {
             quality_rating?: string;
@@ -79,8 +80,8 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
           try {
             const res = await fetch(
               `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
-                `?fields=analytics.start(${start}).end(${end}).granularity(DAY)` +
-                `&access_token=${encodeURIComponent(n.access_token)}`,
+                `?fields=analytics.start(${start}).end(${end}).granularity(DAY)`,
+              { headers: { Authorization: `Bearer ${n.access_token}` } },
             );
             const json = (await res.json()) as {
               analytics?: { data_points?: Array<{ sent?: number }> };

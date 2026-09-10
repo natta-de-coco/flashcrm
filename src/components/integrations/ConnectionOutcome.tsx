@@ -32,7 +32,45 @@ export type ConnectionOutcomeSearch = {
   connect_detail?: string;
   connect_help?: string;
   select_target?: string;
+  /** Which platform a connect_error refers to, when the callback knew it. */
+  platform?: string;
 };
+
+/**
+ * The callback redirects with a fixed code, never provider text (Batch 1,
+ * Phase 28). Every sentence the user reads is written here. An unknown code
+ * gets the generic line rather than being echoed, so a crafted link cannot
+ * put arbitrary words on this screen.
+ */
+const CONNECT_ERROR_COPY: Record<string, string> = {
+  callback_invalid:
+    "The platform's response was incomplete, so nothing was saved. Start the connection again.",
+  oauth_state_expired:
+    "This sign-in link expired or was already used. Links last 15 minutes and work once — start the connection again.",
+  authorization_cancelled:
+    "Authorization was not completed on the platform's screen, so nothing was saved.",
+  unsupported_platform: "This platform does not offer a sign-in flow in Flas.",
+  platform_app_missing:
+    "This platform needs its app keys first. Open Connect & setup → Platform app keys.",
+  token_exchange_failed:
+    "The platform refused to issue a token. The usual causes are a wrong app secret, a callback URL the platform does not have registered, or an app still in development mode. The Health report names the exact cause.",
+  provider_unavailable:
+    "The platform is not responding right now. Nothing is wrong with your setup — try again shortly.",
+  scope_incomplete:
+    "Some permissions were not granted, so the features that need them stay off. Reconnect and leave every permission switched on.",
+  callback_error: "The connection could not be completed. The Health report names the exact cause.",
+  token_storage_unavailable:
+    "Flas cannot store this connection securely yet: token encryption is not configured on this deployment. Nothing was saved.",
+};
+
+function connectErrorCopy(code: string, platform?: string): string {
+  const copy =
+    CONNECT_ERROR_COPY[code] ??
+    "The connection did not complete. The Health report names the exact cause.";
+  // Shown only when it looks like a platform id; anything else is dropped.
+  const name = platform && /^[a-z_]{1,32}$/.test(platform) ? platform.replace(/_/g, " ") : null;
+  return name ? `${name}: ${copy}` : copy;
+}
 
 type Account = { id: string; platform: string; label: string | null };
 
@@ -97,7 +135,7 @@ export function ConnectionOutcome({
         <XCircle className="size-4" />
         <AlertTitle>Connection failed</AlertTitle>
         <AlertDescription className="space-y-3">
-          <p>{errored}</p>
+          <p>{connectErrorCopy(errored, search.platform)}</p>
           <Button size="sm" variant="outline" onClick={onDismiss}>
             Dismiss
           </Button>

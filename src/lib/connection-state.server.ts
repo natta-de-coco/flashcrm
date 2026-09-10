@@ -14,6 +14,7 @@ import {
   type ConnectionState,
   effectiveAttemptState,
   isLegalTransition,
+  isUsable,
   missingScopesFor,
 } from "@/lib/connection-state";
 
@@ -155,6 +156,7 @@ export function deriveConnectionState(row: {
 export async function sweepAbandonedAttempts(): Promise<{
   expired: number;
   deleted: number;
+  cancelled: number;
 }> {
   // Record what is about to be retired, so the audit log gains a terminal
   // event for attempts whose callback never arrived.
@@ -171,15 +173,12 @@ export async function sweepAbandonedAttempts(): Promise<{
     for (const row of stale) {
       try {
         await logAudit({
-          action: "connection.authorize_abandoned",
+          action: "oauth.authorization_expired",
           tenantId: row.tenant_id,
           actorId: row.user_id,
           entityType: "platform",
           entityId: row.platform,
-          details: {
-            reason: "The consent screen was never completed before the request expired",
-            startedAt: row.expires_at,
-          },
+          details: { reason: "oauth_state_expired", expiredAt: row.expires_at },
         });
       } catch {
         /* keep sweeping; one missing audit row must not stall the rest */
@@ -193,6 +192,7 @@ export async function sweepAbandonedAttempts(): Promise<{
   return {
     expired: Number((result as { expired_count?: number })?.expired_count ?? 0),
     deleted: Number((result as { deleted_count?: number })?.deleted_count ?? 0),
+    cancelled: Number((result as { cancelled_count?: number })?.cancelled_count ?? 0),
   };
 }
 
@@ -226,3 +226,70 @@ export async function markAttempt(
 
 /** Re-exported so server callers need only one import. */
 export { effectiveAttemptState, missingScopesFor };
+
+/**
+ * Moves an existing connection that is not working into
+ * `authorization_started` when the customer starts a (re)authorization.
+ *
+ * A working connection keeps its state: a cancelled reconnect must not knock a
+ * healthy integration offline. A first connection has no row yet, and its
+ * oauth_states attempt row is what tracks it.
+ */
+export async function beginAuthorization(args: {
+  tenantId: string;
+  platform: string;
+  actorId: string | null;
+}): Promise<void> {
+  const { data: row } = await supabaseAdmin
+    .from("social_accounts")
+    .select("id, connection_state")
+    .eq("tenant_id", args.tenantId)
+    .eq("platform", args.platform)
+    .maybeSingle();
+  if (!row) return;
+  const from = row.connection_state as ConnectionState;
+  if (isUsable(from) || from === "provider_unavailable" || from === "authorization_started") return;
+
+  // disconnected and missing_app_credentials reach authorization_started only
+  // through ready_to_authorize.
+  if (!isLegalTransition(from, "authorization_started") && isLegalTransition(from, "ready_to_authorize")) {
+    await transitionConnection({
+      accountId: row.id,
+      tenantId: args.tenantId,
+      to: "ready_to_authorize",
+      reason: "reauthorization_requested",
+      actorId: args.actorId,
+    });
+  }
+  await transitionConnection({
+    accountId: row.id,
+    tenantId: args.tenantId,
+    to: "authorization_started",
+    reason: "authorization_started",
+    actorId: args.actorId,
+  });
+}
+
+/** Records how an authorization ended, if the connection is waiting on one. */
+export async function endAuthorization(args: {
+  tenantId: string;
+  platform: string;
+  to: "authorization_cancelled" | "callback_error";
+  reason: string;
+  actorId: string | null;
+}): Promise<void> {
+  const { data: row } = await supabaseAdmin
+    .from("social_accounts")
+    .select("id, connection_state")
+    .eq("tenant_id", args.tenantId)
+    .eq("platform", args.platform)
+    .maybeSingle();
+  if (!row || row.connection_state !== "authorization_started") return;
+  await transitionConnection({
+    accountId: row.id,
+    tenantId: args.tenantId,
+    to: args.to,
+    reason: args.reason,
+    actorId: args.actorId,
+  });
+}

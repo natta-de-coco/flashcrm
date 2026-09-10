@@ -82,9 +82,10 @@ export async function discoverMetaTargets(token: string): Promise<MetaDiscovery>
   let httpStatus: number | null = null;
 
   try {
-    const res = await fetch(
-      `${GRAPH}/me/accounts?fields=${fields}&limit=100&access_token=${encodeURIComponent(token)}`,
-    );
+    // Header, not query string: see graphGet() in social.server.ts.
+    const res = await fetch(`${GRAPH}/me/accounts?fields=${fields}&limit=100`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     httpStatus = res.status;
     json = (await res.json()) as AccountsResponse;
   } catch (thrown) {

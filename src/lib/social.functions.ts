@@ -12,13 +12,6 @@ const PLATFORMS = [
   "google_business",
 ] as const;
 
-const ConnectSchema = z.object({
-  platform: z.enum(PLATFORMS),
-  label: z.string().min(2).max(80),
-  externalId: z.string().max(200).optional(),
-  accessToken: z.string().max(2000).optional(),
-});
-
 const IdSchema = z.object({ id: z.string().uuid() });
 
 const ReplySchema = z.object({ id: z.string().uuid(), reply: z.string().min(1).max(2000) });
@@ -50,7 +43,7 @@ export const getSocialHub = createServerFn({ method: "GET" })
       supabase
         .from("social_accounts")
         .select(
-          "id, tenant_id, platform, label, external_id, active, last_synced_at, created_at, stats",
+          "id, tenant_id, platform, label, external_id, active, last_synced_at, created_at, stats, connect_method",
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -70,43 +63,32 @@ export const getSocialHub = createServerFn({ method: "GET" })
     return { accounts: accounts.data, interactions: interactions.data, posts: posts.data };
   });
 
-/** Connect an Instagram professional account or Facebook Page (admin only via RLS). */
-export const connectSocialAccount = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => ConnectSchema.parse(input))
-  .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("social_accounts").insert({
-      platform: data.platform,
-      label: data.label.trim(),
-      external_id: data.externalId?.trim() || null,
-      access_token: data.accessToken?.trim() || null,
-    });
-    if (error) throw error;
-
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit({
-      action: "social.account_connected",
-      actorId: context.userId,
-      entityType: "social_account",
-      details: { platform: data.platform, label: data.label },
-    });
-    return { ok: true };
-  });
+// connectSocialAccount (a pasted access token, typed into a browser form) was
+// removed in Batch 1. Social tokens now originate only from the OAuth callback
+// -> server-side token store. A token in a browser form is a token in client
+// JSON, the network tab, and anything that records either.
 
 export const deleteSocialAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase.from("social_accounts").delete().eq("id", data.id);
-    if (error) throw error;
+    // Was a hard DELETE through the client, which took the account's posts,
+    // comments and analytics with it and left no revoke attempt. It is now the
+    // same safe disconnect as the Connect screen: tokens removed, history kept.
+    const { data: visible } = await context.supabase
+      .from("social_accounts")
+      .select("id, tenant_id")
+      .eq("id", data.id)
+      .maybeSingle();
+    if (!visible) throw new Error("Account not found in this workspace.");
 
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit({
-      action: "social.account_deleted",
+    const { disconnectSocialAccount } = await import("@/lib/social-disconnect.server");
+    const result = await disconnectSocialAccount({
+      accountId: visible.id,
+      tenantId: visible.tenant_id,
       actorId: context.userId,
-      entityType: "social_account",
-      entityId: data.id,
     });
+    if (!result.ok) throw new Error("The account could not be disconnected. Try again.");
     return { ok: true };
   });
 
@@ -125,12 +107,16 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     type SocialPlatform = import("@/lib/social.server").SocialPlatform;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { TOKEN_READ_COLUMNS, readStoredTokens } = await import(
+      "@/lib/social-token-store.server"
+    );
     const { data: secret } = await supabaseAdmin
       .from("social_accounts")
-      .select("access_token")
+      .select(`tenant_id, platform, connect_method, ${TOKEN_READ_COLUMNS}`)
       .eq("id", account.id)
       .eq("tenant_id", account.tenant_id)
       .single();
+    const tokens = secret ? await readStoredTokens(secret) : null;
 
     const { syncSocialAccount } = await import("@/lib/social.server");
     const result = await syncSocialAccount({
@@ -138,7 +124,8 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
       tenant_id: account.tenant_id,
       platform: account.platform as SocialPlatform,
       external_id: account.external_id,
-      access_token: secret?.access_token ?? null,
+      access_token: tokens?.access ?? null,
+      connect_method: secret?.connect_method ?? null,
     });
 
     const { logAudit } = await import("@/lib/audit.server");
@@ -201,15 +188,32 @@ export const sendSocialReply = createServerFn({ method: "POST" })
     let metaDelivered = false;
     if (row.kind === "comment" && row.external_id) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { TOKEN_READ_COLUMNS, readStoredTokens } = await import(
+        "@/lib/social-token-store.server"
+      );
       const { data: secret } = await supabaseAdmin
         .from("social_accounts")
-        .select("access_token")
+        .select(`tenant_id, platform, ${TOKEN_READ_COLUMNS}`)
         .eq("id", row.account_id)
         .eq("tenant_id", row.tenant_id)
         .single();
-      if (secret?.access_token) {
+      // replyToComment() calls Meta's Graph API. It must only ever receive a
+      // Meta token: sending a YouTube comment's reply through it would have
+      // handed the account's Google token to Meta.
+      const { connectorDefinition, resolveCapability } = await import(
+        "@/lib/social-connector-definitions"
+      );
+      const def = secret ? connectorDefinition(secret.platform as never) : undefined;
+      const canReply =
+        !!def &&
+        (secret?.platform === "facebook" || secret?.platform === "instagram") &&
+        ["implemented", "requires_provider_review"].includes(
+          resolveCapability(def, "comments_reply").status,
+        );
+      const token = canReply && secret ? (await readStoredTokens(secret)).access : null;
+      if (token) {
         const { replyToComment } = await import("@/lib/social.server");
-        metaDelivered = await replyToComment(row.external_id, data.reply, secret.access_token);
+        metaDelivered = await replyToComment(row.external_id, data.reply, token);
       }
     }
 

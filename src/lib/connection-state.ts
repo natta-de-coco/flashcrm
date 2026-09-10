@@ -58,6 +58,9 @@ export const CONNECTION_STATES = [
   "not_configured",
   "missing_app_credentials",
   "ready_to_authorize",
+  "authorization_started",
+  "authorization_cancelled",
+  "callback_error",
   "connected",
   "scope_incomplete",
   "token_expiring",
@@ -82,51 +85,192 @@ export type AttemptState = (typeof ATTEMPT_STATES)[number];
 
 /**
  * Legal transitions, mirroring is_legal_connection_transition() in
- * 20260908100000. Both exist on purpose: this one produces the message a person
+ * 20260910100000. Both exist on purpose: this one produces the message a person
  * reads, and the database one holds when something writes around the
- * application — a support script, a migration, a future server function that
- * forgets to call through here.
+ * application. A test asserts the two sets are identical.
  *
  * Re-asserting the same state is always allowed; that is how a refresh which
  * changes nothing else records a heartbeat.
+ *
+ * Returning to `connected` from `disconnected` or `revoked` requires a fresh
+ * authorization: those states lead only to `authorization_started` (via
+ * `ready_to_authorize` for a deliberate disconnect).
  */
 const TRANSITIONS: Readonly<Record<ConnectionState, readonly ConnectionState[]>> = {
-  // "Unknown", not a stage. It is the column default, so any row created by a
-  // path that does not set a state explicitly sits here — and the first real
-  // observation of that connection must be able to replace it. Restricting it
-  // to two successors meant saveAuthorizedConnection() updating such a row to
-  // "connected" was refused by the trigger, which the database suite caught.
+  // "Unknown", not a stage: the column default. The first real observation of a
+  // connection must be able to replace it.
   not_configured: [
     "missing_app_credentials",
     "ready_to_authorize",
+    "authorization_started",
     "connected",
     "scope_incomplete",
     "token_expiring",
     "disconnected",
   ],
-  missing_app_credentials: ["ready_to_authorize", "not_configured"],
-  ready_to_authorize: ["connected", "scope_incomplete", "missing_app_credentials"],
+  missing_app_credentials: ["ready_to_authorize", "not_configured", "disconnected"],
+  ready_to_authorize: [
+    "authorization_started",
+    "missing_app_credentials",
+    "connected",
+    "scope_incomplete",
+    "token_expiring",
+    "disconnected",
+  ],
+  authorization_started: [
+    "authorization_cancelled",
+    "callback_error",
+    "scope_incomplete",
+    "connected",
+    "token_expiring",
+    "disconnected",
+  ],
+  authorization_cancelled: ["authorization_started", "ready_to_authorize", "disconnected"],
+  callback_error: ["authorization_started", "ready_to_authorize", "disconnected"],
+  // refresh_failed is reachable from connected: a health check that fails to
+  // refresh a connected account must be able to say so. Without this edge the
+  // database refused the whole update and the failure was lost.
   connected: [
     "scope_incomplete",
     "token_expiring",
+    "refresh_failed",
     "revoked",
     "disconnected",
     "provider_unavailable",
   ],
-  scope_incomplete: ["connected", "revoked", "disconnected", "token_expiring"],
-  token_expiring: ["connected", "refresh_failed", "revoked", "disconnected", "provider_unavailable"],
-  refresh_failed: ["connected", "revoked", "disconnected", "token_expiring"],
+  scope_incomplete: [
+    "connected",
+    "token_expiring",
+    "refresh_failed",
+    "revoked",
+    "disconnected",
+    "provider_unavailable",
+    "authorization_started",
+  ],
+  token_expiring: [
+    "connected",
+    "scope_incomplete",
+    "refresh_failed",
+    "revoked",
+    "disconnected",
+    "provider_unavailable",
+  ],
+  refresh_failed: [
+    "connected",
+    "token_expiring",
+    "revoked",
+    "disconnected",
+    "provider_unavailable",
+    "authorization_started",
+  ],
   // A provider outage must resolve back to whatever it interrupted, and must
   // never be a route to a state that discards a token — otherwise an hour of
   // Meta 5xx would sign every customer out.
-  provider_unavailable: ["connected", "token_expiring", "disconnected"],
-  revoked: ["ready_to_authorize", "connected", "disconnected"],
-  disconnected: ["ready_to_authorize", "connected"],
+  provider_unavailable: [
+    "connected",
+    "token_expiring",
+    "scope_incomplete",
+    "refresh_failed",
+    "disconnected",
+  ],
+  revoked: ["authorization_started", "ready_to_authorize", "disconnected"],
+  disconnected: ["ready_to_authorize"],
 };
+
+/** Every legal edge, flattened -- for the test that compares this with SQL. */
+export function allTransitions(): ReadonlyArray<readonly [ConnectionState, ConnectionState]> {
+  return (Object.keys(TRANSITIONS) as ConnectionState[]).flatMap((from) =>
+    TRANSITIONS[from].map((to) => [from, to] as const),
+  );
+}
 
 export function isLegalTransition(from: ConnectionState, to: ConnectionState): boolean {
   if (from === to) return true;
   return TRANSITIONS[from].includes(to);
+}
+
+/**
+ * The state a health check should write, given where the connection is now.
+ *
+ * A health check makes one observation. If that observation's natural state is
+ * not reachable from the current one -- a 401 while the row is marked
+ * provider_unavailable, say -- writing it is rejected by the database trigger,
+ * and the whole update goes with it: the error, the retry count and the
+ * backoff are all lost. This picks the closest legal state instead, and never
+ * moves a connection to `connected` by any route but a legal one, so a health
+ * check cannot silently reconnect something a customer disconnected.
+ */
+export function resolveHealthState(
+  from: ConnectionState,
+  proposed: ConnectionState,
+): ConnectionState {
+  if (isLegalTransition(from, proposed)) return proposed;
+  if (proposed !== "connected") {
+    for (const fallback of ["refresh_failed", "token_expiring"] as const) {
+      if (isLegalTransition(from, fallback)) return fallback;
+    }
+  }
+  return from;
+}
+
+/** What one health check concluded, as a fixed code. */
+export type HealthCode =
+  | "healthy"
+  | "scope_incomplete"
+  | "rate_limited"
+  | "provider_unavailable"
+  | "revoked"
+  | "refresh_failed";
+
+/**
+ * Turns one health-check observation into the state to write.
+ *
+ * Pure, so every rule below is tested without a provider or a database:
+ *   - validated, all scopes     -> connected
+ *   - validated, scopes missing -> scope_incomplete, never fully healthy
+ *   - 429 / rate limit          -> stays logically connected, retry later
+ *   - 5xx / timeout             -> provider_unavailable; never revoked
+ *   - 401 / invalid_grant / 190 -> revoked, switched off, no refresh loop
+ *   - anything else             -> refresh_failed, token kept, retry later
+ * and the result always goes through resolveHealthState(), so it is a state
+ * the database will accept from where the connection is now.
+ *
+ * 403 is not treated as revoked: it usually means one permission is missing,
+ * not that the whole grant is gone.
+ */
+export function classifyHealthObservation(o: {
+  from: ConnectionState;
+  validated: boolean;
+  missingScopes: number;
+  reason: string;
+}): { code: HealthCode; state: ConnectionState; active: boolean } {
+  let code: HealthCode;
+  let proposed: ConnectionState;
+  if (o.validated && o.missingScopes > 0) {
+    code = "scope_incomplete";
+    proposed = "scope_incomplete";
+  } else if (o.validated) {
+    code = "healthy";
+    proposed = "connected";
+  } else if (/\b429\b|rate[ -]?limit|too many requests/i.test(o.reason)) {
+    code = "rate_limited";
+    proposed = isUsable(o.from) ? o.from : "provider_unavailable";
+  } else if (/\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(o.reason)) {
+    code = "provider_unavailable";
+    proposed = "provider_unavailable";
+  } else if (/revok|invalid[_ ]grant|reauthori|\b190\b|\b401\b/i.test(o.reason)) {
+    code = "revoked";
+    proposed = "revoked";
+  } else {
+    code = "refresh_failed";
+    proposed = "refresh_failed";
+  }
+  const state = resolveHealthState(o.from, proposed);
+  // An observation that could not legally become revoked (an outage in
+  // progress) is reported as a refresh failure, and the connection stays on.
+  if (code === "revoked" && state !== "revoked") code = "refresh_failed";
+  const active = state !== "revoked" && state !== "disconnected";
+  return { code, state, active };
 }
 
 /** Every state reachable from here, for tests and for the manager portal. */
@@ -176,6 +320,29 @@ export const CONNECTION_STATE_INFO: Readonly<Record<ConnectionState, StatePresen
     nextAction: "Press Connect and complete the provider's consent screen.",
     actionOwner: "customer",
     tone: "neutral",
+  },
+  authorization_started: {
+    label: "Authorizing",
+    description: "The provider's consent screen was opened and Flas is waiting for it to return.",
+    nextAction: "Finish the consent screen. It expires after 15 minutes.",
+    actionOwner: "customer",
+    tone: "neutral",
+  },
+  authorization_cancelled: {
+    label: "Authorization not completed",
+    description:
+      "The consent screen was closed, declined, or left until it expired. Nothing was saved.",
+    nextAction: "Press Connect to try again.",
+    actionOwner: "customer",
+    tone: "neutral",
+  },
+  callback_error: {
+    label: "Authorization failed",
+    description:
+      "The provider returned to Flas but the token exchange failed — usually a wrong app secret or an unregistered callback URL.",
+    nextAction: "Check the app keys and callback URL, then press Connect again.",
+    actionOwner: "customer",
+    tone: "bad",
   },
   connected: {
     label: "Connected",
