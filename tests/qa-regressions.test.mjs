@@ -5,7 +5,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { todayInTimeZone } from "../node_modules/.cache/flas-locale.mjs";
+import {
+  formatDayUnambiguous,
+  formatMomentUnambiguous,
+  isoDayLocal,
+  todayInTimeZone,
+} from "../node_modules/.cache/flas-locale.mjs";
 import { NAV_SECTIONS } from "../node_modules/.cache/flas-navigation.mjs";
 import { ConnectSchema } from "../node_modules/.cache/flas-social-schema.mjs";
 
@@ -153,5 +158,54 @@ describe("the manual social-connect endpoint refuses a credential-less account",
 
   it("rejects an unknown platform", () => {
     assert.throws(() => ConnectSchema.parse({ ...valid, platform: "myspace" }));
+  });
+});
+
+describe("dates that carry money or access are unambiguous", () => {
+  // "10/8/2027" is 10 August to one reader and 8 October to another, and the
+  // two cannot be told apart. Reported against the trial date in Settings.
+  const aug10 = "2027-08-10T09:00:00Z";
+
+  it("names the month instead of numbering it", () => {
+    const out = formatDayUnambiguous(aug10);
+    assert.match(out, /Aug/);
+    assert.match(out, /2027/);
+    assert.doesNotMatch(out, /^\d+\/\d+\/\d+$/);
+  });
+
+  it("is stable rather than following the reader's locale", () => {
+    assert.equal(formatDayUnambiguous(aug10), formatDayUnambiguous(new Date(aug10)));
+  });
+
+  it("shows a placeholder rather than 'Invalid Date'", () => {
+    for (const bad of [null, undefined, "", "not-a-date"]) {
+      assert.equal(formatDayUnambiguous(bad), "—", `bad input rendered: ${String(bad)}`);
+      assert.equal(formatMomentUnambiguous(bad), "—");
+    }
+  });
+
+  it("renders a time in 24-hour form, so 3 PM is never read as 3 AM", () => {
+    const out = formatMomentUnambiguous("2027-08-10T15:04:00Z");
+    assert.match(out, /Aug/);
+    assert.match(out, /\d{2}:\d{2}/);
+  });
+});
+
+describe("a date input is filled with the viewer's calendar day", () => {
+  it("returns YYYY-MM-DD, which is what <input type=\"date\"> requires", () => {
+    assert.match(isoDayLocal("2027-08-10T09:00:00Z"), /^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("returns an empty string for nothing, leaving the field blank", () => {
+    // Not "—": that is not a valid date-input value and would be rejected.
+    for (const bad of [null, undefined, "", "not-a-date"]) {
+      assert.equal(isoDayLocal(bad), "");
+    }
+  });
+
+  it("does not shift a midday timestamp to another day", () => {
+    // Midday UTC is the same calendar day in every zone from -11 to +12, so
+    // this holds wherever the test runs.
+    assert.equal(isoDayLocal("2027-08-10T12:00:00Z"), "2027-08-10");
   });
 });

@@ -11,6 +11,7 @@ import { Link } from "@tanstack/react-router";
 import { Download, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { formatDayUnambiguous } from "@/lib/locale";
 
 const EXPORT_TABLES = [
   "contacts",
@@ -206,7 +207,7 @@ export function DataPrivacyCard() {
                 className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
               >
                 <span className="capitalize">
-                  {r.scope} deletion · {new Date(r.created_at).toLocaleDateString()}
+                  {r.scope} deletion · {formatDayUnambiguous(r.created_at)}
                 </span>
                 <span className="capitalize text-muted-foreground">{r.status}</span>
               </div>

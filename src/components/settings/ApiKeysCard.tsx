@@ -10,6 +10,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { formatDayUnambiguous } from "@/lib/locale";
 
 /** Admin UI for tenant-scoped API keys with per-key permissions. */
 export function ApiKeysCard({ origin }: { origin: string }) {
@@ -131,7 +132,7 @@ export function ApiKeysCard({ origin }: { origin: string }) {
                 <p className="text-xs text-muted-foreground">
                   {(k.scopes ?? []).join(", ")}
                   {k.last_used_at
-                    ? ` · last used ${new Date(k.last_used_at).toLocaleDateString()}`
+                    ? ` · last used ${formatDayUnambiguous(k.last_used_at)}`
                     : " · never used"}
                 </p>
               </div>

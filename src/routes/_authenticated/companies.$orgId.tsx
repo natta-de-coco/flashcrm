@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { ArrowLeft, Eye, MailCheck } from "lucide-react";
+import { formatDayUnambiguous, formatMomentUnambiguous } from "@/lib/locale";
 
 export const Route = createFileRoute("/_authenticated/companies/$orgId")({
   head: () => ({
@@ -87,9 +88,9 @@ function CompanyWorkspacePage() {
                 {d.org.suspended && <Badge variant="destructive">suspended</Badge>}
               </p>
               <p className="text-xs text-muted-foreground">
-                {d.org.slug} · joined {new Date(d.org.created_at).toLocaleDateString()}
+                {d.org.slug} · joined {formatDayUnambiguous(d.org.created_at)}
                 {d.org.subscription_renews_at
-                  ? ` · renews ${new Date(d.org.subscription_renews_at).toLocaleDateString()}`
+                  ? ` · renews ${formatDayUnambiguous(d.org.subscription_renews_at)}`
                   : ""}
               </p>
             </CardContent>
@@ -118,7 +119,7 @@ function CompanyWorkspacePage() {
                     <Badge variant={email.status === "accepted" ? "secondary" : "destructive"} className="capitalize">
                       {email.status}
                     </Badge>
-                    <p className="mt-1 text-[10px] text-muted-foreground">{new Date(email.requested_at).toLocaleString()}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">{formatMomentUnambiguous(email.requested_at)}</p>
                   </div>
                 </div>
               ))}
@@ -249,7 +250,7 @@ function CompanyWorkspacePage() {
                 <p key={a.id} className="flex items-center justify-between gap-2 text-xs">
                   <span className="truncate font-medium">{a.action}</span>
                   <span className="shrink-0 text-muted-foreground">
-                    {a.actor_label ?? "system"} · {new Date(a.created_at).toLocaleString()}
+                    {a.actor_label ?? "system"} · {formatMomentUnambiguous(a.created_at)}
                   </span>
                 </p>
               ))}

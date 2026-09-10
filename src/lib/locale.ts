@@ -397,6 +397,74 @@ export function todayInTimeZone(timeZone: string | null | undefined): string {
   }
 }
 
+/**
+ * A calendar date nobody can misread: "10 Aug 2027".
+ *
+ * toLocaleDateString() renders 10 August 2027 as "10/8/2027" for one reader
+ * and "August 10 2027" for another, and the two are indistinguishable. That
+ * matters most where the date carries money or access -- a paid-until date in
+ * the manager portal, a renewal date on a billing card.
+ *
+ * Deliberately not locale-driven: the whole point is that every reader sees
+ * the same unambiguous string.
+ */
+export function formatDayUnambiguous(value: string | number | Date | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+/** The same, with a time: "10 Aug 2027, 15:04". */
+export function formatMomentUnambiguous(value: string | number | Date | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(date);
+  } catch {
+    return date.toISOString().replace("T", " ").slice(0, 16);
+  }
+}
+
+/**
+ * A timestamp as a YYYY-MM-DD calendar day in the *viewer's* zone, for
+ * <input type="date">.
+ *
+ * toISOString().slice(0, 10) is the UTC day, so a renewal stored at
+ * 2027-08-10T20:00Z showed as the 10th to a manager in Dubai for whom it is
+ * already the 11th -- the same off-by-a-day that dated quotations wrongly.
+ */
+export function isoDayLocal(value: string | number | Date | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
 export function formatDate(value: string | Date, locale: TenantLocale): string {
   const date = typeof value === "string" ? new Date(value) : value;
   try {
