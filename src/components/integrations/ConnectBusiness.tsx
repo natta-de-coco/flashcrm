@@ -10,6 +10,7 @@ import {
   STATUS_LABELS,
   advertisableCapabilities,
   connectorDefinition,
+  implementsAnything,
   resolveAllCapabilities,
 } from "@/lib/social-connector-definitions";
 import { ConnectionWizard } from "@/components/integrations/ConnectionWizard";
@@ -496,6 +497,23 @@ function ConnectorCard({
             else is shown with its real status rather than hidden, so the card
             distinguishes "we have not built it" from "the provider has no
             such API" -- and never shows either as available. */}
+        {/* A connector Flas has built nothing for renders no badges at all,
+            and an empty row reads as "no information" rather than "this does
+            nothing". Threads, Google Ads, LinkedIn Ads and GA4 are all in that
+            state: they authorise, store a token, and deliver no feature. Say
+            so before someone spends an afternoon on the OAuth setup.
+
+            Deliberately not keyed on advertisableCapabilities being empty:
+            that requires the status "implemented", which WhatsApp, Instagram
+            and YouTube do not reach until the provider approves the app, and
+            flagging those would be plainly wrong. */}
+        {definition && !implementsAnything(definition) && (
+          <p className="min-w-0 rounded-md border border-dashed p-2 text-[11px] leading-snug text-muted-foreground">
+            <span className="font-medium text-foreground">Nothing to use yet.</span> Flas can
+            authorise {connector.name}, but no feature reads from it. Connecting it now only
+            stores the permission.
+          </p>
+        )}
         <div className="flex flex-wrap gap-1">
           {definition &&
             advertisableCapabilities(definition).map((cap) => (

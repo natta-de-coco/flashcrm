@@ -1085,6 +1085,24 @@ export function capabilityCeiling(connectorId: string): Set<CapabilityKey> {
   );
 }
 
+/**
+ * Whether Flas has written any code at all for this connector.
+ *
+ * Distinct from advertisableCapabilities(), which requires the status
+ * "implemented" and therefore reads zero for WhatsApp, Instagram and YouTube —
+ * their capabilities are built but resolve to "requires_provider_review" until
+ * the provider approves the app. Using that as a proxy for "does nothing"
+ * would label the product's own core channel as useless.
+ *
+ * False here means something narrower and genuinely true: no capability is
+ * implemented, so connecting only stores a token.
+ */
+export function implementsAnything(connector: ConnectorDefinition): boolean {
+  return CAPABILITY_KEYS.some(
+    (k) => connector.capabilities[k].providerSupports && connector.capabilities[k].flasImplements,
+  );
+}
+
 /** Connectors that authenticate through OAuth — the ones a health report can check. */
 export const OAUTH_CONNECTORS = CONNECTOR_DEFINITIONS.filter(
   (c) => c.authMethod === "oauth2" || c.authMethod === "oauth2_pkce",

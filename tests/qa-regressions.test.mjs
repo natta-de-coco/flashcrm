@@ -13,6 +13,12 @@ import {
 } from "../node_modules/.cache/flas-locale.mjs";
 import { NAV_SECTIONS } from "../node_modules/.cache/flas-navigation.mjs";
 import { ConnectSchema } from "../node_modules/.cache/flas-social-schema.mjs";
+import {
+  CONNECTOR_DEFINITIONS,
+  advertisableCapabilities,
+  capabilityCeiling,
+  implementsAnything,
+} from "../node_modules/.cache/flas-registry.mjs";
 
 describe("issue dates use the workspace timezone, not UTC", () => {
   // The reported case: 2026-09-10 01:00 in Dubai is still 2026-09-09 in UTC,
@@ -207,5 +213,66 @@ describe("a date input is filled with the viewer's calendar day", () => {
     // Midday UTC is the same calendar day in every zone from -11 to +12, so
     // this holds wherever the test runs.
     assert.equal(isoDayLocal("2027-08-10T12:00:00Z"), "2027-08-10");
+  });
+});
+
+describe("the app does not offer what it cannot do", () => {
+  // These assertions are deliberately exact. They are not describing a bug --
+  // they pin what Flas genuinely implements today, so that building a feature
+  // (or shipping a connector that does nothing) has to update this list and
+  // cannot pass unnoticed.
+
+  it("can only publish to WordPress", () => {
+    // Every social connector's `publish` is notBuilt: the scopes are requested
+    // but no posting code exists for any of them. The composer filters on this,
+    // so it must stay true or the composer starts offering dead targets.
+    const canPublish = CONNECTOR_DEFINITIONS.filter((c) =>
+      capabilityCeiling(c.platform ?? c.id).has("publish"),
+    ).map((c) => c.displayName);
+    assert.deepEqual(canPublish, ["WordPress"]);
+  });
+
+  it("knows exactly which connectors deliver nothing", () => {
+    // A connector with no usable capability authorises, stores a token and
+    // gives the customer no feature. The card now says so out loud; this keeps
+    // the list honest.
+    // Keyed on implementsAnything, not on advertisableCapabilities being
+    // empty: the latter requires status "implemented", which WhatsApp,
+    // Instagram and YouTube never reach while awaiting provider review, so it
+    // would wrongly call the product's core channel dead.
+    const dead = CONNECTOR_DEFINITIONS.filter((c) => !implementsAnything(c)).map(
+      (c) => c.displayName,
+    );
+    assert.deepEqual(dead.sort(), [
+      "Google Ads",
+      "Google Analytics 4",
+      "LinkedIn Ads",
+      "Threads",
+    ]);
+  });
+
+  it("never advertises a capability it has not implemented", () => {
+    // The invariant behind both of the above: an advertised badge must be
+    // backed by real code, never by a requested scope alone.
+    for (const connector of CONNECTOR_DEFINITIONS) {
+      for (const cap of advertisableCapabilities(connector)) {
+        const facts = connector.capabilities[cap.key];
+        assert.ok(
+          facts.providerSupports && facts.flasImplements,
+          `${connector.displayName} advertises ${cap.key} without implementing it`,
+        );
+      }
+    }
+  });
+
+  it("WhatsApp remains the most complete channel", () => {
+    // It is the product's core; a regression that quietly narrowed it would
+    // otherwise be invisible until customers noticed.
+    const wa = CONNECTOR_DEFINITIONS.find((c) => (c.platform ?? c.id) === "whatsapp");
+    assert.ok(implementsAnything(wa), "WhatsApp implements nothing — that cannot be right");
+    for (const expected of ["direct_messages_read", "direct_messages_send", "webhooks"]) {
+      const facts = wa.capabilities[expected];
+      assert.ok(facts.flasImplements, `WhatsApp lost ${expected}`);
+    }
   });
 });
