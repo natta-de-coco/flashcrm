@@ -1,5 +1,4 @@
 import { MarketingShell } from "@/components/marketing/MarketingShell";
-import { POSTS_BY_DATE } from "@/content/blog";
 import { useReveal } from "@/hooks/useReveal";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
@@ -10,7 +9,26 @@ const DESCRIPTION =
   "Practical guides to the WhatsApp Business Platform: choosing between the app and the API, passing Meta verification, getting templates approved and capturing leads that reply.";
 
 export const Route = createFileRoute("/blog/")({
-  head: () => ({
+  // Posts load here rather than at the top of the file. A route's loader and
+  // head() stay in the app's main bundle, so a top-level import shipped all 59
+  // posts -- full HTML -- in the JavaScript of every page, including the
+  // signed-in CRM. The server renders this page, so the browser does not
+  // download the blog on first load; only the listing fields are returned.
+  loader: async () => {
+    const { POSTS_BY_DATE } = await import("@/content/blog");
+    return {
+      posts: POSTS_BY_DATE.map((p) => ({
+        slug: p.slug,
+        title: p.title,
+        excerpt: p.excerpt,
+        category: p.category,
+        readingMinutes: p.readingMinutes,
+        published: p.published,
+        updated: p.updated ?? null,
+      })),
+    };
+  },
+  head: ({ loaderData }) => ({
     meta: [
       { title: TITLE },
       { name: "description", content: DESCRIPTION },
@@ -35,7 +53,7 @@ export const Route = createFileRoute("/blog/")({
             name: "Mobi Digital Solutions",
             url: "https://mobidigisol.com",
           },
-          blogPost: POSTS_BY_DATE.map((p) => ({
+          blogPost: (loaderData?.posts ?? []).map((p) => ({
             "@type": "BlogPosting",
             headline: p.title,
             description: p.excerpt,
@@ -53,7 +71,8 @@ export const Route = createFileRoute("/blog/")({
 function BlogIndex() {
   useReveal();
 
-  const [lead, ...rest] = POSTS_BY_DATE;
+  const { posts } = Route.useLoaderData();
+  const [lead, ...rest] = posts;
 
   return (
     <MarketingShell>

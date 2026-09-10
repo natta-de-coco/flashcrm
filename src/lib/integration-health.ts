@@ -3,7 +3,6 @@
 // the exact next retry step, so a company can hand the report to whoever owns
 // the platform account.
 
-import { jsPDF } from "jspdf";
 import { connector, CONNECTORS } from "./connections-catalog";
 import type { ConnectionState } from "./connection-status";
 
@@ -120,7 +119,10 @@ function triggerDownload(blob: Blob, filename: string) {
 const MARGIN = 40;
 const BRAND: [number, number, number] = [16, 94, 62];
 
-export function downloadHealthReportPdf(report: HealthReport) {
+export async function downloadHealthReportPdf(report: HealthReport): Promise<void> {
+  // Loaded on click, not with the page: jsPDF and its html2canvas dependency
+  // are ~600 kB, and almost every visit never exports a PDF.
+  const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

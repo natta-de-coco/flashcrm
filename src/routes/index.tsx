@@ -6,7 +6,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useReveal } from "@/hooks/useReveal";
 import { InboxPreview } from "@/components/marketing/InboxPreview";
 import { StickyCta } from "@/components/marketing/StickyCta";
-import { POSTS } from "@/content/blog";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -31,6 +30,20 @@ import {
 import { useState } from "react";
 
 export const Route = createFileRoute("/")({
+  // Only the three cards' fields. A top-level import of the blog module put
+  // every post's full HTML into the landing page's JavaScript.
+  loader: async () => {
+    const { POSTS } = await import("@/content/blog");
+    return {
+      latest: POSTS.slice(0, 3).map((p) => ({
+        slug: p.slug,
+        title: p.title,
+        excerpt: p.excerpt,
+        category: p.category,
+        readingMinutes: p.readingMinutes,
+      })),
+    };
+  },
   head: () => ({
     meta: [
       { title: "Flas CRM by Mobi Digital Solutions — WhatsApp CRM & AI Growth" },
@@ -299,7 +312,7 @@ function Landing() {
   // To put a real one back, create a site under Integrations and embed
   // widget.js with that key.
 
-  const latest = POSTS.slice(0, 3);
+  const { latest } = Route.useLoaderData();
 
   return (
     <div className="min-h-screen bg-background">
