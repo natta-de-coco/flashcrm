@@ -122,48 +122,51 @@ describe("global search can reach every page in the sidebar", () => {
   });
 });
 
-describe("the manual social-connect endpoint refuses a credential-less account", () => {
-  const valid = {
+describe("social accounts cannot be connected by pasting a token", () => {
+  // Manual token onboarding was switched off (3b529c9): channels connect
+  // through Connect & setup, where the provider handles consent, scopes and
+  // the choice of Page or account. The schema stays so old imports compile,
+  // and must refuse every submission -- complete or not -- with a message
+  // that says where to go instead.
+  const complete = {
     platform: "instagram",
     label: "Client bakery IG",
     externalId: "17841400000000000",
     accessToken: "IGQVJYtest-token-value",
   };
 
-  it("accepts a complete submission", () => {
-    assert.equal(ConnectSchema.parse(valid).accessToken, valid.accessToken);
+  it("refuses a complete submission and points to Connect & setup", () => {
+    const result = ConnectSchema.safeParse(complete);
+    assert.equal(result.success, false);
+    const message = result.error.issues.map((i) => i.message).join(" ");
+    assert.match(message, /Manual social-token connections are disabled/);
+    assert.match(message, /Connect & setup/);
   });
 
-  it("rejects a missing access token", () => {
-    // The form fix alone did not close this: the endpoint is callable directly.
-    const { accessToken: _omitted, ...withoutToken } = valid;
+  it("refuses every platform, including TikTok with no account id", () => {
+    const { externalId: _omitted, ...noId } = complete;
+    for (const platform of [
+      "instagram",
+      "facebook",
+      "youtube",
+      "twitter",
+      "linkedin",
+      "tiktok",
+      "google_business",
+    ]) {
+      assert.equal(ConnectSchema.safeParse({ ...noId, platform }).success, false, platform);
+    }
+  });
+
+  it("still refuses a missing, empty or whitespace-only token", () => {
+    const { accessToken: _omitted, ...withoutToken } = complete;
     assert.throws(() => ConnectSchema.parse(withoutToken));
-  });
-
-  it("rejects an empty access token", () => {
-    // `.optional()` with no minimum let "" through, storing an account that
-    // looked connected and failed on first sync.
-    assert.throws(() => ConnectSchema.parse({ ...valid, accessToken: "" }));
-  });
-
-  it("rejects a whitespace-only access token", () => {
-    assert.throws(() => ConnectSchema.parse({ ...valid, accessToken: "   " }));
-  });
-
-  it("trims a surrounding-whitespace token rather than storing it padded", () => {
-    // Pasted credentials routinely carry a trailing newline.
-    const parsed = ConnectSchema.parse({ ...valid, accessToken: "  tok-en  " });
-    assert.equal(parsed.accessToken, "tok-en");
-  });
-
-  it("still allows TikTok to omit the account id", () => {
-    // TikTok resolves the account from the token; requiring an id would break it.
-    const { externalId: _omitted, ...noId } = valid;
-    assert.doesNotThrow(() => ConnectSchema.parse({ ...noId, platform: "tiktok" }));
+    assert.throws(() => ConnectSchema.parse({ ...complete, accessToken: "" }));
+    assert.throws(() => ConnectSchema.parse({ ...complete, accessToken: "   " }));
   });
 
   it("rejects an unknown platform", () => {
-    assert.throws(() => ConnectSchema.parse({ ...valid, platform: "myspace" }));
+    assert.throws(() => ConnectSchema.parse({ ...complete, platform: "myspace" }));
   });
 });
 
