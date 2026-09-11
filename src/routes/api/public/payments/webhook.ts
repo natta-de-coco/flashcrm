@@ -8,6 +8,8 @@ import { verifyWebhook, EventName, type PaddleEnv } from "@/lib/paddle.server";
 type OrgSync = {
   tenantId?: string | undefined;
   status: string;
+  /** The plan bought, as its price id: flash_monthly or flash_yearly. */
+  plan?: string | undefined;
   periodEnd?: string | null;
   customerId?: string;
   subscriptionId?: string;
@@ -23,9 +25,13 @@ async function syncOrganization(sync: OrgSync) {
     subscription_status?: string;
     suspended?: boolean;
     subscription_renews_at?: string;
+    plan?: string;
   } = {};
   if (sync.customerId) patch.paddle_customer_id = sync.customerId;
   if (sync.subscriptionId) patch.paddle_subscription_id = sync.subscriptionId;
+  // The plan was never written here, so a company that bought a year still
+  // showed the monthly plan it was created with.
+  if (sync.plan) patch.plan = sync.plan;
   if (sync.status === "active" || sync.status === "trialing") {
     patch.subscription_status = sync.status === "trialing" ? "trial" : "active";
     patch.suspended = false;
@@ -102,11 +108,12 @@ async function handleSubscriptionCreated(data: any, env: PaddleEnv) {
     periodEnd: currentBillingPeriod?.endsAt ?? null,
     customerId,
     subscriptionId: id,
+    plan: priceId,
   });
 }
 
 async function handleSubscriptionUpdated(data: any, env: PaddleEnv) {
-  const { id, status, currentBillingPeriod, scheduledChange } = data;
+  const { id, status, currentBillingPeriod, scheduledChange, items } = data;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const { data: row } = await supabaseAdmin
@@ -135,6 +142,7 @@ async function handleSubscriptionUpdated(data: any, env: PaddleEnv) {
       status,
       periodEnd: currentBillingPeriod?.endsAt ?? null,
       subscriptionId: id,
+      plan: items?.[0]?.price?.importMeta?.externalId ?? undefined,
     });
   }
 }
