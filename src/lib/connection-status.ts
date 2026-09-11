@@ -30,6 +30,12 @@ export type AccountLike = {
   external_id?: string | null;
   connect_method?: string | null;
   label?: string | null;
+  /**
+   * True when a refresh token is stored, so the access token renews itself.
+   * Computed on the server: the refresh token is unreadable from a browser
+   * session, and only this yes/no is sent.
+   */
+  renews?: boolean | null | undefined;
 };
 
 const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatus["tone"] }> = {
@@ -67,7 +73,14 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
     );
   }
 
-  const expiry = account.token_expires_at ? new Date(account.token_expires_at).getTime() : null;
+  // A token that renews itself expires by design -- a Google access token
+  // lasts an hour. Its date is not a problem to show: every such connection
+  // read "expires in less than three days" or "Token expired" from the moment
+  // it was made. A refresh that actually fails marks the connection failing.
+  const expiry =
+    !account.renews && account.token_expires_at
+      ? new Date(account.token_expires_at).getTime()
+      : null;
   if (expiry && expiry < Date.now()) {
     return build(
       "expired",

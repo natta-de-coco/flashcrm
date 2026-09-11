@@ -2,6 +2,8 @@
 // YouTube, X, LinkedIn, TikTok, Google Business), AI reply drafting and AI
 // content composing. Tenant data flows through the caller's RLS-scoped
 // client; only social account tokens are read via the admin client.
+import { openSecret } from "@/lib/secret-box.server";
+import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
 
@@ -18,6 +20,8 @@ export type SocialAccountSecret = {
   platform: SocialPlatform;
   external_id: string | null;
   access_token: string | null;
+  /** "oauth" for a connection made through the provider login; otherwise pasted. */
+  connect_method: string | null;
 };
 
 export type SyncResult = { ok: boolean; posts: number; interactions: number; error?: string };
@@ -238,16 +242,35 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
 /* ---------- YouTube (Data API v3 — API key + channel ID) ---------- */
 
 async function syncYouTube(account: SocialAccountSecret): Promise<SyncResult> {
-  const key = account.access_token?.trim();
+  const credential = account.access_token?.trim();
   const channelId = account.external_id?.trim();
-  if (!key || !channelId) {
-    return missingCreds("Add the channel ID (starts with UC…) and a YouTube Data API key first.");
+  // Two kinds of credential share this column. A connection made through
+  // Google's login holds an OAuth access token, which is a credential for a
+  // person and belongs in the Authorization header. A pasted connection holds
+  // a YouTube Data API key, which is what `key=` is for. Sending an OAuth
+  // token as `key=` is rejected by Google, so OAuth-connected channels could
+  // connect but never sync.
+  // Pasted connections store a YouTube Data API key, and Google API keys always
+  // begin "AIza". Anything else -- an OAuth access token ("ya29...") -- goes in
+  // the Authorization header, even for a caller that did not say how the
+  // account was connected.
+  const oauth = account.connect_method === "oauth" || !credential?.startsWith("AIza");
+  if (!credential || !channelId) {
+    return missingCreds(
+      oauth
+        ? "Reconnect YouTube: this connection has no usable token or channel."
+        : "Add the channel ID (starts with UC…) and a YouTube Data API key first.",
+    );
   }
   const yt = async (path: string): Promise<any> => {
     const sep = path.includes("?") ? "&" : "?";
-    const res = await fetch(
-      `https://www.googleapis.com/youtube/v3${path}${sep}key=${encodeURIComponent(key)}`,
-    );
+    const res = oauth
+      ? await fetch(`https://www.googleapis.com/youtube/v3${path}`, {
+          headers: { Authorization: `Bearer ${credential}` },
+        })
+      : await fetch(
+          `https://www.googleapis.com/youtube/v3${path}${sep}key=${encodeURIComponent(credential)}`,
+        );
     const json: any = await res.json().catch(() => ({}));
     if (json?.error) throw new Error(json.error.message ?? "YouTube API error");
     if (!res.ok) throw new Error(`YouTube API returned HTTP ${res.status}`);
@@ -339,7 +362,7 @@ async function syncTwitter(account: SocialAccountSecret): Promise<SyncResult> {
     return missingCreds("Add your numeric X user ID and a Bearer token first.");
   }
   const tw = async (path: string): Promise<any> => {
-    const res = await fetch(`https://api.twitter.com/2${path}`, {
+    const res = await fetch(`https://api.x.com/2${path}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const json: any = await res.json().catch(() => ({}));
@@ -422,7 +445,7 @@ async function syncLinkedIn(account: SocialAccountSecret): Promise<SyncResult> {
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
-        "LinkedIn-Version": "202405",
+        "LinkedIn-Version": LINKEDIN_API_VERSION,
         "X-Restli-Protocol-Version": "2.0.0",
       },
     });
@@ -542,15 +565,14 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
       "Add the location path (accounts/123/locations/456) and a Google OAuth token first.",
     );
   }
-  // The legacy "Google My Business API v4" (mybusiness.googleapis.com) is
-  // deprecated and Google actively sunsets it — this will hard-fail with no
-  // warning once it's fully shut down. Reviews now live on the split-out
-  // Business Profile Reviews API; the review object shape (reviewId,
-  // reviewer, starRating, comment, createTime) is documented as unchanged,
-  // only the host/path/version moved. Not verified against a live account —
-  // check the first real sync against this.
+  // Reviews are served by the v4 Google My Business API:
+  // GET mybusiness.googleapis.com/v4/{accounts/*/locations/*}/reviews. An
+  // earlier change moved this to "mybusinessreviews.googleapis.com/v1" on the
+  // belief that v4 was being retired. That host does not exist -- it answers
+  // 404 and Google's API directory lists no such API -- so every review sync
+  // failed. The v4 reviews method is current and not marked deprecated.
   const res = await fetch(
-    `https://mybusinessreviews.googleapis.com/v1/${location.replace(/^\/+|\/+$/g, "")}/reviews?pageSize=20`,
+    `https://mybusiness.googleapis.com/v4/${location.replace(/^\/+|\/+$/g, "")}/reviews?pageSize=50`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   const json: any = await res.json().catch(() => ({}));
@@ -587,8 +609,12 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
 /* ---------- entry point ---------- */
 
 /** Pulls recent posts, comments/DMs/reviews and audience stats for one account. */
-export async function syncSocialAccount(account: SocialAccountSecret): Promise<SyncResult> {
+export async function syncSocialAccount(stored: SocialAccountSecret): Promise<SyncResult> {
   try {
+    // Opened here as well as by the callers, so one that passes the stored
+    // column straight through cannot hand a provider ciphertext. Plaintext is
+    // returned unchanged, so opening twice is harmless.
+    const account = { ...stored, access_token: await openSecret(stored.access_token) };
     switch (account.platform) {
       case "instagram":
       case "facebook":
@@ -603,6 +629,17 @@ export async function syncSocialAccount(account: SocialAccountSecret): Promise<S
         return await syncTikTok(account);
       case "google_business":
         return await syncGoogleBusiness(account);
+      default:
+        // Every connector reaches this from the same Sync button. Falling off
+        // the switch returned undefined, which the caller then read `.ok`
+        // from and crashed with a TypeError.
+        return {
+          ok: false,
+          posts: 0,
+          interactions: 0,
+          error:
+            "Flas does not sync this platform yet. The connection is saved, but nothing is pulled from it.",
+        };
     }
   } catch (e) {
     return {
@@ -616,15 +653,24 @@ export async function syncSocialAccount(account: SocialAccountSecret): Promise<S
 
 /** Posts a reply to a Facebook/Instagram comment. Returns true when Meta accepts it. */
 export async function replyToComment(
+  platform: "facebook" | "instagram",
   commentExternalId: string,
   message: string,
   token: string,
 ): Promise<boolean> {
   try {
-    const res = await fetch(`${GRAPH}/${commentExternalId}/replies`, {
+    // Opened here too: a caller passing the stored column must not send Meta
+    // ciphertext. Plaintext passes through unchanged.
+    token = (await openSecret(token)) ?? "";
+    // Facebook and Instagram reply on different edges: /{comment}/comments
+    // for a Facebook comment, /{comment}/replies for an Instagram one. Every
+    // Facebook reply was sent to /replies, which is Instagram's, so none was
+    // ever delivered.
+    const edge = platform === "facebook" ? "comments" : "replies";
+    const res = await fetch(`${GRAPH}/${commentExternalId}/${edge}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, access_token: token }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ message }),
     });
     const json: any = await res.json().catch(() => ({}));
     return Boolean(res.ok && !json?.error);

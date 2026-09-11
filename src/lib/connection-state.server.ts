@@ -112,6 +112,8 @@ export function deriveConnectionState(row: {
   token_expires_at: string | null;
   granted_scopes: string[] | null;
   platform: string;
+  /** A stored refresh token means an expiring access token renews itself. */
+  refresh_token?: string | null | undefined;
 }): { state: ConnectionState; reason: string } {
   if (!row.active) {
     return { state: "disconnected", reason: "Disconnected in this workspace" };
@@ -122,7 +124,11 @@ export function deriveConnectionState(row: {
 
   const expiresAt = row.token_expires_at ? new Date(row.token_expires_at).getTime() : null;
   const REFRESH_WINDOW_MS = 72 * 60 * 60 * 1000;
-  if (expiresAt !== null && expiresAt - Date.now() < REFRESH_WINDOW_MS) {
+  // An access token that renews itself is not a problem to show. Google and X
+  // issue one- and two-hour access tokens alongside a refresh token; flagging
+  // them "expiring" marked every such connection as needing attention the
+  // moment it was made, and hid a declined permission behind that state.
+  if (expiresAt !== null && !row.refresh_token && expiresAt - Date.now() < REFRESH_WINDOW_MS) {
     return {
       state: "token_expiring",
       reason:
@@ -142,7 +148,6 @@ export function deriveConnectionState(row: {
 
   return { state: "connected", reason: "Authorized and in date" };
 }
-
 
 /**
  * Retires authorization attempts nobody ever finished.

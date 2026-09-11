@@ -35,6 +35,8 @@ export type HealthReport = {
   needs_attention: number;
   not_connected: number;
   rows: HealthRow[];
+  /** Encryption at rest for this workspace's stored credentials. Counts only. */
+  credentials: { configured: boolean; plaintext: number; sealed: number };
   retries: {
     id: string;
     platform: string;

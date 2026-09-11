@@ -3,7 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  getConnectionTargets,
   getMetaTargets,
+  selectConnectionTarget,
   selectMetaTarget,
   testSocialConnection,
 } from "@/lib/social-doctor.functions";
@@ -34,7 +36,33 @@ export type ConnectionOutcomeSearch = {
   select_target?: string;
 };
 
-type Account = { id: string; platform: string; label: string | null };
+/**
+ * Connectors whose login can manage several channels and is served by
+ * connection-targets.server (TARGET_PLATFORMS there). Meta Pages keep their own
+ * picker because Page tokens come with them.
+ */
+const CHANNEL_PICKER_PLATFORMS: ReadonlySet<string> = new Set([
+  "linkedin",
+  "google_business",
+  "google_analytics",
+  "search_console",
+  "meta_ads",
+]);
+
+const PICKER_NOUN: Record<string, string> = {
+  linkedin: "Company Page",
+  google_business: "location",
+  google_analytics: "GA4 property",
+  search_console: "Search Console site",
+  meta_ads: "ad account",
+};
+
+type Account = {
+  id: string;
+  platform: string;
+  label: string | null;
+  external_id?: string | null;
+};
 
 export function ConnectionOutcome({
   search,
@@ -50,13 +78,22 @@ export function ConnectionOutcome({
   const blocked = search.connect_blocked;
   const errored = search.connect_error;
   const connected = search.connected;
-  const needsTarget = search.select_target === "1";
+  // The callback sends the pending row's id; "1" is what older links carried.
+  const needsTarget = Boolean(search.select_target);
+  const pendingId =
+    search.select_target && search.select_target !== "1" ? search.select_target : null;
 
   if (!blocked && !errored && !connected) return null;
 
-  // The account the callback just created, so the picker knows what to act on.
+  // The account the callback just created, so the picker knows what to act
+  // on. By id first: once several channels per platform can be connected, the
+  // first row for the platform is often a different, already-pinned one --
+  // opening the picker on it listed nothing and failed.
   const account = connected
-    ? (accounts.find((a) => a.platform === connected) ?? null)
+    ? (accounts.find((a) => a.id === pendingId) ??
+      accounts.find((a) => a.platform === connected && !a.external_id) ??
+      accounts.find((a) => a.platform === connected) ??
+      null)
     : null;
 
   if (blocked) {
@@ -107,7 +144,11 @@ export function ConnectionOutcome({
   }
 
   if (needsTarget && account) {
-    return <TargetPicker account={account} onChanged={onChanged} onDismiss={onDismiss} />;
+    return CHANNEL_PICKER_PLATFORMS.has(account.platform) ? (
+      <ChannelPicker account={account} onChanged={onChanged} onDismiss={onDismiss} />
+    ) : (
+      <TargetPicker account={account} onChanged={onChanged} onDismiss={onDismiss} />
+    );
   }
 
   return (
@@ -224,12 +265,17 @@ function TargetPicker({
               <p className="truncate text-xs text-muted-foreground">
                 {t.instagramUsername ? `@${t.instagramUsername} · ` : ""}
                 {t.category ?? "Page"}
-                {typeof t.followers === "number" ? ` · ${t.followers.toLocaleString()} followers` : ""}
+                {typeof t.followers === "number"
+                  ? ` · ${t.followers.toLocaleString()} followers`
+                  : ""}
               </p>
             </div>
             {/* Says up front whether posting will work, rather than letting the
                 user find out at the moment they try to publish. */}
-            <Badge variant={t.canPublish ? "secondary" : "outline"} className="shrink-0 text-[10px]">
+            <Badge
+              variant={t.canPublish ? "secondary" : "outline"}
+              className="shrink-0 text-[10px]"
+            >
               {t.canPublish ? "Can post" : "Read only"}
             </Badge>
           </button>
@@ -311,7 +357,12 @@ function ConnectedBanner({
 
         <div className="flex gap-2">
           {account && (
-            <Button size="sm" variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={test.isPending}
+              onClick={() => test.mutate()}
+            >
               {test.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
               {report ? "Check again" : "Check what works"}
             </Button>
@@ -322,5 +373,114 @@ function ConnectedBanner({
         </div>
       </AlertDescription>
     </Alert>
+  );
+}
+
+/**
+ * The "which Page / which location?" step for LinkedIn and Business Profile.
+ * The list comes from the provider via the server; the choice is checked
+ * against it again on the server before anything is saved.
+ */
+function ChannelPicker({
+  account,
+  onChanged,
+  onDismiss,
+}: {
+  account: Account;
+  onChanged: () => void;
+  onDismiss: () => void;
+}) {
+  const listFn = useServerFn(getConnectionTargets);
+  const chooseFn = useServerFn(selectConnectionTarget);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const noun = PICKER_NOUN[account.platform] ?? "account";
+
+  const targets = useQuery({
+    queryKey: ["connection-targets", account.id],
+    queryFn: () => listFn({ data: { accountId: account.id } }),
+  });
+
+  const choose = useMutation({
+    mutationFn: (targetId: string) => chooseFn({ data: { accountId: account.id, targetId } }),
+    onSuccess: () => {
+      toast.success(`Connected — Flas is now pinned to that ${noun}.`);
+      onChanged();
+      onDismiss();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card className="mt-4 border-primary/40">
+      <CardHeader>
+        <CardTitle className="text-base">Choose which {noun} Flas should manage</CardTitle>
+        <CardDescription>
+          This login manages more than one. Flas will not guess — pick the one this workspace should
+          use. To add another later, connect again and choose it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {targets.isPending && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Asking the platform what this login can
+            manage…
+          </p>
+        )}
+
+        {targets.isError && (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Couldn&apos;t list the available accounts</AlertTitle>
+            <AlertDescription>{(targets.error as Error).message}</AlertDescription>
+          </Alert>
+        )}
+
+        {targets.data && !targets.data.ok && targets.data.reason && (
+          <Alert>
+            <AlertTriangle className="size-4" />
+            <AlertTitle>The platform did not list any accounts</AlertTitle>
+            <AlertDescription>{targets.data.reason}</AlertDescription>
+          </Alert>
+        )}
+
+        {(targets.data?.targets ?? []).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setChosen(t.id)}
+            className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition ${
+              chosen === t.id ? "border-primary bg-primary/5" : "hover:bg-muted/50"
+            }`}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{t.name}</p>
+              {t.detail ? (
+                <p className="truncate text-xs text-muted-foreground">{t.detail}</p>
+              ) : null}
+            </div>
+          </button>
+        ))}
+
+        {targets.data?.ok && targets.data.targets.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            This login does not manage any {noun} Flas can connect.
+          </p>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <Button
+            size="sm"
+            disabled={!chosen || choose.isPending}
+            onClick={() => chosen && choose.mutate(chosen)}
+          >
+            {choose.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+            Use this {noun}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDismiss}>
+            Later
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

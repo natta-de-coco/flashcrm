@@ -14,12 +14,16 @@
     "test:capabilities": "node scripts/build-registry-bundle.mjs && node --test tests/capability-registry.test.mjs",
     "docs:capabilities": "node scripts/generate-capability-matrix.mjs",
     "test:connection-state": "node scripts/build-state-bundle.mjs && node --test tests/connection-state.test.mjs",
-    "test": "npm run test:capabilities && npm run test:connection-state && npm run test:oauth-security && npm run test:authorize-params && npm run test:qa && npm run test:forms && npm run test:contacts",
+    "test": "npm run test:capabilities && npm run test:connection-state && npm run test:oauth-security && npm run test:authorize-params && npm run test:qa && npm run test:forms && npm run test:contacts && npm run test:providers && npm run test:secrets && npm run test:targets && npm run test:reports",
     "test:oauth-security": "node scripts/build-state-bundle.mjs && node --test tests/oauth-security.test.mjs",
     "test:authorize-params": "node scripts/build-state-bundle.mjs && node --test tests/oauth-authorize-params.test.mjs",
     "test:qa": "node scripts/build-state-bundle.mjs && node --test tests/qa-regressions.test.mjs",
     "test:forms": "node scripts/build-state-bundle.mjs && node --test tests/form-validation.test.mjs",
-    "test:contacts": "node --test tests/contact-identities.test.mjs"
+    "test:contacts": "node --test tests/contact-identities.test.mjs",
+    "test:providers": "node scripts/build-state-bundle.mjs && node scripts/build-registry-bundle.mjs && node --test tests/provider-protocol.test.mjs",
+    "test:secrets": "node scripts/build-state-bundle.mjs && node --test tests/secret-box.test.mjs",
+    "test:targets": "node scripts/build-state-bundle.mjs && node --test tests/connection-targets.test.mjs",
+    "test:reports": "node scripts/build-state-bundle.mjs && node --test tests/reports.test.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

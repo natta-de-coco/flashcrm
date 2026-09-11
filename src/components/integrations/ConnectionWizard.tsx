@@ -17,6 +17,7 @@ import { troubleshooting, type ConnectionStatus } from "@/lib/connection-status"
 import { CredentialsStep } from "@/components/integrations/CredentialsStep";
 import { credentialSpec, OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
 import { CONNECTORS } from "@/lib/connections-catalog";
+import { providerSetup } from "@/lib/provider-setup-links";
 import {
   CAPABILITY_LABELS,
   advertisableCapabilities,
@@ -29,6 +30,8 @@ import {
   Clock,
   ExternalLink,
   ShieldCheck,
+  UserRoundCog,
+  UsersRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -70,6 +73,7 @@ export function ConnectionWizard({
   const guide = setupGuide(platformId);
   const definition = connectorDefinition(platformId);
   const trouble = troubleshooting(platformId);
+  const provider = providerSetup(meta?.provider);
   const [step, setStep] = useState<Step>(openAt ?? "prepare");
   useEffect(() => {
     if (open) setStep(openAt ?? "prepare");
@@ -131,6 +135,23 @@ export function ConnectionWizard({
           <DialogDescription>{status.reason}</DialogDescription>
         </DialogHeader>
 
+        {provider ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                <UserRoundCog className="size-3.5" /> Owner/admin · one time
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{provider.ownerTask}</p>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                <UsersRound className="size-3.5" /> SMM team · per client/channel
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{provider.connectionTask}</p>
+            </div>
+          </div>
+        ) : null}
+
         <Progress value={progress} className="h-1.5" />
 
         <div className="flex flex-wrap gap-1.5">
@@ -161,6 +182,25 @@ export function ConnectionWizard({
                   </li>
                 ))}
               </ul>
+
+              {provider ? (
+                <div className="rounded-md border p-3">
+                  <p className="font-medium">Official setup shortcuts</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    No treasure hunt. These open the provider's own pages for apps, keys, permissions and review.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {provider.links.map((link) => (
+                      <Button key={link.id} asChild size="sm" variant="outline" className="h-8 gap-1 text-xs">
+                        <a href={link.url} target="_blank" rel="noreferrer noopener" title={link.description}>
+                          {link.label} <ExternalLink className="size-3" />
+                        </a>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               {guide?.steps ? (
                 <div className="rounded-md border bg-muted/40 p-3">
                   <p className="mb-1 font-medium">What happens, in order</p>
@@ -202,12 +242,33 @@ export function ConnectionWizard({
           )}
 
           {step === "credentials" && spec && (
-            <CredentialsStep
-              spec={spec}
-              platformName={meta?.name ?? platformId}
-              redirectUri={origin ? `${origin}${OAUTH_REDIRECT_PATH}` : ""}
-              onSaved={next}
-            />
+            <section className="space-y-3">
+              {provider ? (
+                <div className="rounded-md border bg-muted/40 p-3 text-xs">
+                  <p className="font-medium">Where are the keys?</p>
+                  <p className="mt-1 text-muted-foreground">
+                    Open the official provider page below. Copy only the App/Client ID and Secret requested by Flas — never paste user access tokens here.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {provider.links
+                      .filter((link) => link.id === "apps" || link.id === "credentials")
+                      .map((link) => (
+                        <Button key={link.id} asChild size="sm" variant="outline" className="h-8 gap-1 text-xs">
+                          <a href={link.url} target="_blank" rel="noreferrer noopener">
+                            {link.label} <ExternalLink className="size-3" />
+                          </a>
+                        </Button>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
+              <CredentialsStep
+                spec={spec}
+                platformName={meta?.name ?? platformId}
+                redirectUri={origin ? `${origin}${OAUTH_REDIRECT_PATH}` : ""}
+                onSaved={next}
+              />
+            </section>
           )}
 
           {step === "permissions" && (
@@ -215,10 +276,7 @@ export function ConnectionWizard({
               <div>
                 <p className="mb-1 font-medium">Permissions Flas will request</p>
                 {/* Straight from the registry, which is the same list
-                    oauth.server.ts puts in the authorization URL. The wizard
-                    used to keep its own copy and it had drifted -- it promised
-                    instagram_manage_messages and tiktok video.publish, neither
-                    of which was ever requested. */}
+                    oauth.server.ts puts in the authorization URL. */}
                 {definition && definition.requestedScopes.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {definition.requestedScopes.map((scope) => (
@@ -232,19 +290,37 @@ export function ConnectionWizard({
                     This platform is configured manually inside Flas — no OAuth permissions needed.
                   </p>
                 )}
-                {/* Provider-specific, never generic. The previous copy warned
-                    every connector that "DMs stop arriving", including the
-                    nine that have no direct-message API at all. */}
                 {definition && definition.requestedScopes.length > 0 && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Keep every toggle on. Declining one disables exactly the feature it covers:{" "}
-                    {advertisableCapabilities(definition)
-                      .map((cap) => CAPABILITY_LABELS[cap.key].toLowerCase())
-                      .join(", ") || "profile access"}
-                    .
-                  </p>
+                  <div className="mt-2 rounded-md border bg-muted/40 p-3 text-xs">
+                    <p className="font-medium">Grant the full Flas permission set shown on the provider screen</p>
+                    <p className="mt-1 text-muted-foreground">
+                      Approve every permission Flas requests for this connector. Do not grant unrelated permissions that Flas did not request. If the provider lets you decline individual scopes, Flas will verify the result and mark only the affected capability unavailable instead of pretending the connection is healthy.
+                    </p>
+                    <p className="mt-2 text-muted-foreground">
+                      These permissions power:{" "}
+                      {advertisableCapabilities(definition)
+                        .map((cap) => CAPABILITY_LABELS[cap.key].toLowerCase())
+                        .join(", ") || "profile access"}
+                      .
+                    </p>
+                  </div>
                 )}
               </div>
+
+              {provider ? (
+                <div className="flex flex-wrap gap-2">
+                  {provider.links
+                    .filter((link) => link.id === "permissions" || link.id === "review" || link.id === "api")
+                    .map((link) => (
+                      <Button key={link.id} asChild size="sm" variant="outline" className="h-8 gap-1 text-xs">
+                        <a href={link.url} target="_blank" rel="noreferrer noopener" title={link.description}>
+                          {link.label} <ExternalLink className="size-3" />
+                        </a>
+                      </Button>
+                    ))}
+                </div>
+              ) : null}
+
               {trouble?.reviewTimeline ? (
                 <div className="flex gap-2 rounded-md border bg-muted/40 p-3">
                   <Clock className="mt-0.5 size-4 shrink-0" />
@@ -257,7 +333,7 @@ export function ConnectionWizard({
               <p className="text-xs text-muted-foreground">
                 Redirect URI to whitelist in your provider app:{" "}
                 <span className="break-all font-mono">
-                  https://flas.mobidigisol.com{OAUTH_REDIRECT_PATH}
+                  {origin ? `${origin}${OAUTH_REDIRECT_PATH}` : `https://flas.mobidigisol.com${OAUTH_REDIRECT_PATH}`}
                 </span>
               </p>
             </section>
@@ -266,13 +342,13 @@ export function ConnectionWizard({
           {step === "connect" && (
             <section className="space-y-3">
               <p className="text-muted-foreground">
-                Flas opens the platform's official login in a new browser tab — providers such as
-                Meta and Google refuse to load inside embedded frames, so this is expected.
+                Flas opens the platform's official login in a new browser tab. Your password stays with the provider; Flas receives only the OAuth authorization result.
               </p>
               <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
-                <li>Press Connect below; approve everything on the platform screen.</li>
-                <li>Return to this tab — the card flips to Connected within a few seconds.</li>
-                <li>If it still says Not connected, open “Common errors” for the exact cause.</li>
+                <li>Press Connect below and sign in on the provider's own page.</li>
+                <li>Approve every permission Flas shows. If you manage several assets, choose the right client Page/channel/account.</li>
+                <li>Return to Flas. The connection is verified before it is shown as healthy.</li>
+                <li>If something is missing, Flas should name the exact scope/review/account-type blocker — not the timeless classic “Something went wrong.”</li>
               </ol>
               <div className="flex flex-wrap gap-2">
                 {meta?.oauth ? (

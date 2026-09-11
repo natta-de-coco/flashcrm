@@ -1,6 +1,7 @@
 // Server-only OAuth plumbing for platform connections. Flas never asks the
 // user for a platform password: we redirect to the platform's own consent
 // screen and exchange the returned code for a token server-side.
+import { openSecret } from "@/lib/secret-box.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connectorDefinition } from "@/lib/social-connector-definitions";
 import type { AccountPlatform, Connector } from "./connections-catalog";
@@ -54,8 +55,8 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     secretEnv: "TIKTOK_CLIENT_SECRET",
   },
   twitter: {
-    authorizeUrl: "https://twitter.com/i/oauth2/authorize",
-    tokenUrl: "https://api.twitter.com/2/oauth2/token",
+    authorizeUrl: "https://x.com/i/oauth2/authorize",
+    tokenUrl: "https://api.x.com/2/oauth2/token",
     idEnv: "X_CLIENT_ID",
     secretEnv: "X_CLIENT_SECRET",
     // Real PKCE is generated per-authorization below.  The hardcoded challenge
@@ -75,11 +76,14 @@ export type StartResult =
   { ready: true; url: string } | { ready: false; reason: string; missing: string[] };
 
 /** Providers that require PKCE (send code_challenge on auth, code_verifier on exchange). */
-// TikTok requires PKCE; Google and X support S256 and reject nothing by
-// sending it. Meta's classic dialog and Pinterest are left out deliberately —
+// X requires PKCE; Google supports S256 and rejects nothing by sending it.
+// TikTok is left out: its docs describe PKCE for desktop and mobile apps only,
+// with a HEX-encoded SHA-256 challenge rather than the RFC 7636 base64url one
+// generated here, so a web flow that honoured the challenge would fail the
+// exchange. Meta's classic dialog and Pinterest are left out deliberately —
 // an unsupported code_challenge is an unknown parameter, and providers differ
 // in whether they ignore or reject those. Widen only with a verified source.
-const PKCE_PROVIDERS: Provider[] = ["twitter", "tiktok", "google"];
+const PKCE_PROVIDERS: Provider[] = ["twitter", "google"];
 
 function base64UrlEncode(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -124,7 +128,11 @@ export async function resolveCredentials(
       .eq("provider", provider)
       .maybeSingle();
     if (data?.client_id && data.client_secret) {
-      return { id: data.client_id, secret: data.client_secret, source: "workspace" };
+      return {
+        id: data.client_id,
+        secret: (await openSecret(data.client_secret)) ?? undefined,
+        source: "workspace",
+      };
     }
   }
   const env = providerCredentials(provider);
@@ -141,7 +149,9 @@ export function providerEnvNames(provider: Provider): string[] {
  * workspace, and where the keys come from. Drives the "Add app keys" state in
  * the Integrations screen so a company always sees the exact blocker.
  */
-export async function providerReadiness(tenantId?: string | null): Promise<
+export async function providerReadiness(
+  tenantId?: string | null,
+): Promise<
   Record<Provider, { ready: boolean; source: "workspace" | "shared" | "none"; envNames: string[] }>
 > {
   const providers = Object.keys(PROVIDERS) as Provider[];
@@ -186,7 +196,11 @@ export function resolveAllowedOrigin(candidate: string): string | null {
   } catch {
     return null;
   }
-  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+  if (
+    parsed.protocol !== "https:" &&
+    parsed.hostname !== "localhost" &&
+    parsed.hostname !== "127.0.0.1"
+  ) {
     return null;
   }
 
@@ -224,6 +238,11 @@ export async function startAuthorization(args: {
       missing: [],
     };
   }
+  // A connector that cannot work yet refuses here, before any credentials
+  // or state are touched, with the reason the card shows.
+  if (meta.unavailableReason) {
+    return { ready: false, reason: meta.unavailableReason, missing: [] };
+  }
   const cfg = PROVIDERS[meta.provider];
   const creds = await resolveCredentials(meta.provider, args.tenantId);
   if (!creds.id || !creds.secret) {
@@ -256,8 +275,12 @@ export async function startAuthorization(args: {
     };
   }
 
-  // crypto.randomUUID is CSPRNG-backed; two of them give ~244 bits.
-  const state = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+  // 32 bytes from the CSPRNG: 256 bits, hex-encoded to the same 64 characters
+  // as before. Two concatenated randomUUID()s were used previously, which is
+  // 244 bits -- a v4 UUID fixes 6 of its 128 bits.
+  const stateBytes = new Uint8Array(32);
+  crypto.getRandomValues(stateBytes);
+  const state = [...stateBytes].map((b) => b.toString(16).padStart(2, "0")).join("");
   // Only the digest is stored. The state itself lives in the provider's
   // redirect URL and nowhere we control, so reading oauth_states yields
   // nothing that can be replayed against a live authorization.
@@ -316,7 +339,10 @@ export function buildAuthorizeParams(args: {
   // A configuration supersedes the scope list. Sending both invites the two to
   // disagree, and the configuration is the one the business granted.
   const useConfigId = Boolean(args.configId);
-  const scopeSeparator = args.provider === "meta" ? "," : " ";
+  // Meta and TikTok take comma-separated scopes (TikTok's docs: "A comma (,)
+  // separated string"); everyone else uses the RFC 6749 space. TikTok was
+  // sent spaces, which its authorize endpoint does not accept.
+  const scopeSeparator = args.provider === "meta" || args.provider === "tiktok" ? "," : " ";
 
   const params = new URLSearchParams({
     client_id: args.clientId,
@@ -324,9 +350,7 @@ export function buildAuthorizeParams(args: {
     response_type: "code",
     state: args.state,
     ...(useConfigId ? { config_id: args.configId as string } : {}),
-    ...(!useConfigId && args.scopes.length
-      ? { scope: args.scopes.join(scopeSeparator) }
-      : {}),
+    ...(!useConfigId && args.scopes.length ? { scope: args.scopes.join(scopeSeparator) } : {}),
     ...(args.extraAuthParams ?? {}),
   });
 
@@ -408,7 +432,16 @@ function readTokenSet(json: TokenResponse): TokenSet | null {
   };
 }
 
-function applyClientCredentials(
+/**
+ * Providers whose token endpoint requires the client to authenticate with an
+ * HTTP Basic header rather than body parameters. X confidential clients get
+ * `unauthorized_client` ("Missing valid authorization header") without it, and
+ * Pinterest documents the header as required. Both were sent the secret in the
+ * body, so no X or Pinterest connection could ever complete.
+ */
+const BASIC_AUTH_PROVIDERS: Provider[] = ["twitter", "pinterest"];
+
+export function applyClientCredentials(
   body: URLSearchParams,
   provider: Provider,
   id: string,
@@ -419,8 +452,30 @@ function applyClientCredentials(
     body.set("client_secret", secret);
     return;
   }
+  if (BASIC_AUTH_PROVIDERS.includes(provider)) {
+    // The secret travels only in the Authorization header. X still expects
+    // client_id in the body; Pinterest does not use it.
+    if (provider === "twitter") body.set("client_id", id);
+    return;
+  }
   body.set("client_id", id);
   body.set("client_secret", secret);
+}
+
+/** Headers for a token-endpoint request, including Basic auth where required. */
+export function tokenEndpointHeaders(
+  provider: Provider,
+  id: string,
+  secret: string,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    Accept: "application/json",
+  };
+  if (BASIC_AUTH_PROVIDERS.includes(provider)) {
+    headers["Authorization"] = `Basic ${btoa(`${id}:${secret}`)}`;
+  }
+  return headers;
 }
 
 /** Exchanges an authorization code for an access token (and refresh token). */
@@ -451,7 +506,7 @@ export async function exchangeCode(args: {
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    headers: tokenEndpointHeaders(args.provider, creds.id, creds.secret),
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
@@ -502,7 +557,7 @@ export async function refreshAccessToken(args: {
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    headers: tokenEndpointHeaders(args.provider, creds.id, creds.secret),
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
@@ -540,4 +595,42 @@ export async function consumeState(state: string): Promise<{
     redirect_uri: row.redirect_uri,
     code_verifier: row.code_verifier ?? null,
   };
+}
+
+/**
+ * Upgrades a Meta login token to a long-lived one (about 60 days).
+ *
+ * The code exchange returns a short-lived user token that lasts one to two
+ * hours. It was saved as-is, so every Meta connection died within hours, and a
+ * Page token taken from it expires with it -- whereas one taken from a
+ * long-lived user token does not expire. Meta's documented flow is to exchange
+ * the code and then immediately exchange the result for a long-lived token.
+ */
+export async function upgradeMetaToken(token: string, tenantId: string | null): Promise<TokenSet> {
+  return refreshAccessToken({
+    provider: "meta",
+    refreshToken: null,
+    currentToken: token,
+    tenantId,
+  });
+}
+
+/**
+ * The permissions Meta actually granted. Meta's code exchange response carries
+ * no scope list, so without this a permission the customer unticked on the
+ * consent screen could never be detected.
+ */
+export async function metaGrantedScopes(token: string): Promise<string[] | null> {
+  try {
+    const res = await fetch("https://graph.facebook.com/v21.0/me/permissions", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json: any = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(json?.data)) return null;
+    return json.data
+      .filter((p: any) => p?.status === "granted")
+      .map((p: any) => String(p.permission));
+  } catch {
+    return null;
+  }
 }

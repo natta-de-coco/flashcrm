@@ -59,11 +59,12 @@ export const connectSocialAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => ConnectSchema.parse(input))
   .handler(async ({ data, context }) => {
+    const { sealSecret } = await import("@/lib/secret-box.server");
     const { error } = await context.supabase.from("social_accounts").insert({
       platform: data.platform,
       label: data.label.trim(),
       external_id: data.externalId?.trim() || null,
-      access_token: data.accessToken?.trim() || null,
+      access_token: await sealSecret(data.accessToken?.trim() || null),
     });
     if (error) throw error;
 
@@ -102,19 +103,39 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     // Tenant membership is proven by reading the account through RLS first.
     const { data: account, error } = await context.supabase
       .from("social_accounts")
-      .select("id, tenant_id, platform, external_id")
+      .select("id, tenant_id, platform, external_id, connect_method")
       .eq("id", data.id)
       .single();
     if (error || !account) throw new Error("Account not found");
     type SocialPlatform = import("@/lib/social.server").SocialPlatform;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: secret } = await supabaseAdmin
-      .from("social_accounts")
-      .select("access_token")
-      .eq("id", account.id)
-      .eq("tenant_id", account.tenant_id)
-      .single();
+    const { openSecret } = await import("@/lib/secret-box.server");
+    const readSecret = async () => {
+      const { data: stored } = await supabaseAdmin
+        .from("social_accounts")
+        .select("access_token, refresh_token, token_expires_at")
+        .eq("id", account.id)
+        .eq("tenant_id", account.tenant_id)
+        .single();
+      return stored ? { ...stored, access_token: await openSecret(stored.access_token) } : stored;
+    };
+    let secret = await readSecret();
+
+    // Google access tokens last an hour and X ones two. Sync never renewed
+    // them, so a connection worked for an hour and then failed until someone
+    // pressed Retry. Renew first when the token has expired or is about to.
+    const expiresAt = secret?.token_expires_at ? new Date(secret.token_expires_at).getTime() : null;
+    if (secret?.refresh_token && expiresAt !== null && expiresAt - Date.now() < 2 * 60_000) {
+      const { retryConnection } = await import("@/lib/integration-health.server");
+      await retryConnection({
+        accountId: account.id,
+        tenantId: account.tenant_id,
+        trigger: "auto",
+        actorId: context.userId,
+      });
+      secret = await readSecret();
+    }
 
     const { syncSocialAccount } = await import("@/lib/social.server");
     const result = await syncSocialAccount({
@@ -123,6 +144,7 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
       platform: account.platform as SocialPlatform,
       external_id: account.external_id,
       access_token: secret?.access_token ?? null,
+      connect_method: account.connect_method ?? null,
     });
 
     const { logAudit } = await import("@/lib/audit.server");
@@ -187,13 +209,31 @@ export const sendSocialReply = createServerFn({ method: "POST" })
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: secret } = await supabaseAdmin
         .from("social_accounts")
-        .select("access_token")
+        .select("access_token, platform")
         .eq("id", row.account_id)
         .eq("tenant_id", row.tenant_id)
         .single();
-      if (secret?.access_token) {
+      if (secret) {
+        const { openSecret } = await import("@/lib/secret-box.server");
+        secret.access_token = await openSecret(secret.access_token);
+      }
+      const replyPlatform = secret?.platform;
+      if (secret?.access_token && (replyPlatform === "facebook" || replyPlatform === "instagram")) {
         const { replyToComment } = await import("@/lib/social.server");
-        metaDelivered = await replyToComment(row.external_id, data.reply, secret.access_token);
+        metaDelivered = await replyToComment(
+          replyPlatform,
+          row.external_id,
+          data.reply,
+          secret.access_token,
+        );
+        // A reply the platform refused must not be recorded as sent. It was
+        // marked "replied" regardless, so a customer's comment looked handled
+        // while nobody had answered it.
+        if (!metaDelivered) {
+          throw new Error(
+            `${replyPlatform === "facebook" ? "Facebook" : "Instagram"} did not accept the reply, so it was not sent. Check the connection's permissions and try again.`,
+          );
+        }
       }
     }
 

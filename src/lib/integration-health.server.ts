@@ -2,6 +2,8 @@
 // retry workflow. The retry pass re-checks the live permissions, refreshes the
 // token when the platform allows it, and always writes back the newest reason
 // so the customer-facing status is never stale.
+import { openSecret, sealSecret, sealTenantSecrets } from "@/lib/secret-box.server";
+import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connector, CONNECTORS } from "./connections-catalog";
 import type { AccountPlatform } from "./connections-catalog";
@@ -115,6 +117,7 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
             external_id: row.external_id,
             connect_method: row.connect_method,
             label: row.label,
+            renews: Boolean(row.refresh_token),
           }
         : undefined,
     );
@@ -140,6 +143,9 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
     };
   });
 
+  // A dry run: it only counts, so opening the report never rewrites anything.
+  const sealing = await sealTenantSecrets(tenantId, { dryRun: true });
+
   return {
     organization: org?.name ?? "Your workspace",
     generated_at: new Date().toISOString(),
@@ -149,13 +155,18 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
       totals.needs_verification + totals.pending_review + totals.expired + totals.failing,
     not_connected: totals.not_connected,
     rows,
+    credentials: {
+      configured: sealing.configured,
+      plaintext: sealing.plaintext,
+      sealed: sealing.alreadySealed,
+    },
     retries: retries ?? [],
   };
 }
 
 export type RetryOutcome = {
   platform: string;
-  outcome: "recovered" | "refreshed" | "healthy" | "failed" | "needs_reconnect";
+  outcome: "recovered" | "refreshed" | "healthy" | "failed" | "needs_reconnect" | "in_progress";
   reason: string;
 };
 
@@ -174,23 +185,35 @@ async function probeToken(
   const provider = connector(platform)?.provider;
   try {
     if (provider === "meta") {
-      const res = await fetch(
-        `https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(token)}`,
-      );
-      const json: any = await res.json();
-      if (!res.ok || json?.error) {
+      // Validity is asked of /me, which answers for user and Page tokens
+      // alike. /me/permissions is a user-token edge; making it the test meant
+      // a connected Facebook Page, which holds a Page token, could fail the
+      // check and be marked broken while working. Permissions are read only
+      // when that edge answers.
+      const who = await fetch("https://graph.facebook.com/v21.0/me?fields=id", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const whoJson: any = await who.json().catch(() => ({}));
+      if (!who.ok || whoJson?.error) {
         return {
           ok: false,
-          reason: json?.error?.message ?? `Meta rejected the token (HTTP ${res.status}).`,
+          reason: whoJson?.error?.message ?? `Meta rejected the token (HTTP ${who.status}).`,
         };
       }
-      const scopes = (json?.data ?? [])
-        .filter((p: any) => p.status === "granted")
-        .map((p: any) => String(p.permission));
+      const res = await fetch("https://graph.facebook.com/v21.0/me/permissions", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json: any = await res.json().catch(() => ({}));
+      const scopes: string[] | undefined =
+        res.ok && Array.isArray(json?.data)
+          ? json.data
+              .filter((p: any) => p.status === "granted")
+              .map((p: any) => String(p.permission))
+          : undefined;
       return {
         ok: true,
-        reason: "Meta confirmed the token and returned live permissions.",
-        scopes,
+        reason: "Meta confirmed the token is valid.",
+        ...(scopes ? { scopes } : {}),
       };
     }
     if (provider === "google") {
@@ -209,9 +232,19 @@ async function probeToken(
       };
     }
     if (provider === "linkedin") {
-      const res = await fetch("https://api.linkedin.com/v2/userinfo", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // /v2/userinfo needs the openid/profile scopes, which Flas never
+      // requests, so it answered 403 -- and the retry logic then marked a
+      // working connection "revoked". Ask something the granted scopes cover.
+      const res = await fetch(
+        "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=1",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "LinkedIn-Version": LINKEDIN_API_VERSION,
+            "X-Restli-Protocol-Version": "2.0.0",
+          },
+        },
+      );
       return res.ok
         ? { ok: true, reason: "LinkedIn confirmed the token is valid." }
         : { ok: false, reason: `LinkedIn rejected the token (HTTP ${res.status}).` };
@@ -225,7 +258,7 @@ async function probeToken(
         : { ok: false, reason: `TikTok rejected the token (HTTP ${res.status}).` };
     }
     if (provider === "twitter") {
-      const res = await fetch("https://api.twitter.com/2/users/me", {
+      const res = await fetch("https://api.x.com/2/users/me", {
         headers: { Authorization: `Bearer ${token}` },
       });
       return res.ok
@@ -268,6 +301,21 @@ export async function retryConnection(args: {
   const row = data as AccountRow | null;
   if (!row) return { platform: "unknown", outcome: "failed", reason: "Connection not found." };
 
+  // Tokens are stored sealed. Everything below works on plaintext and the
+  // write at the end seals again. A failed open stops here WITHOUT writing:
+  // with a missing or mistyped key, carrying on would overwrite every stored
+  // credential with nothing.
+  try {
+    row.access_token = await openSecret(row.access_token);
+    row.refresh_token = await openSecret(row.refresh_token);
+  } catch (error) {
+    return {
+      platform: row.platform,
+      outcome: "failed",
+      reason: error instanceof Error ? error.message : "Stored credentials could not be read.",
+    };
+  }
+
   const provider = connector(row.platform)?.provider;
   const now = new Date().toISOString();
   let outcome: RetryOutcome["outcome"] = "failed";
@@ -298,17 +346,22 @@ export async function retryConnection(args: {
     // on use — Google and X do — the losing token is already invalidated, so
     // the connection breaks precisely because we tried twice to fix it.
     //
-    // The lock is transaction-scoped and non-blocking: a caller that loses the
-    // race skips the refresh rather than queueing behind it and then making a
-    // second redundant call.
+    // The lock is a lease on the row (see 20260911100000): it holds after the
+    // RPC's own transaction ends, unlike the advisory lock it replaced, which
+    // PostgREST released before the refresh began. It is non-blocking -- a
+    // caller that loses the race skips the refresh rather than queueing behind
+    // it and then making a second redundant call.
     const { data: gotLock } = await supabaseAdmin.rpc("try_lock_connection_refresh", {
       _account_id: row.id,
     });
     if (gotLock === false) {
+      // Not "healthy": nothing was validated. Reporting a skipped check as
+      // healthy is how a broken connection got a green badge.
       return {
         platform: row.platform,
-        outcome: "healthy",
-        reason: "A refresh for this connection is already running; skipped this one.",
+        outcome: "in_progress",
+        reason:
+          "A refresh for this connection is already running; this check was skipped rather than refreshing twice.",
       };
     }
 
@@ -336,6 +389,13 @@ export async function retryConnection(args: {
       reason = `${probe.reason} Automatic refresh failed: ${
         error instanceof Error ? error.message : "unknown error"
       }`;
+    } finally {
+      // Release early so the next check need not wait out the lease. A
+      // failure here is harmless: the lease expires on its own.
+      await supabaseAdmin.rpc("release_connection_refresh", { _account_id: row.id }).then(
+        () => undefined,
+        () => undefined,
+      );
     }
   } else {
     outcome = "needs_reconnect";
@@ -348,14 +408,17 @@ export async function retryConnection(args: {
   // the customer's authorization being wrong. Distinguishing them decides both
   // the message shown and whether the token is kept.
   const providerDown =
-    !recovered && /\b5\d\d\b|rate limit|too many requests|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable/i.test(reason);
+    !recovered &&
+    /\b5\d\d\b|rate limit|too many requests|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable/i.test(
+      reason,
+    );
   const retryCount = recovered ? 0 : row.retry_count + 1;
 
   await supabaseAdmin
     .from("social_accounts")
     .update({
-      access_token: token,
-      refresh_token: refreshToken,
+      access_token: await sealSecret(token),
+      refresh_token: await sealSecret(refreshToken),
       token_expires_at: expiresAt,
       ...(scopes?.length ? { granted_scopes: scopes } : {}),
       // `active` is deliberately NOT cleared on a provider outage. Setting it

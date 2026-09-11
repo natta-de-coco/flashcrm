@@ -57,7 +57,8 @@ const GROUPS: {
   {
     id: "social",
     title: "Social profiles",
-    blurb: "Publish posts, pull reach and answer DMs and comments inside Flas.",
+    blurb:
+      "Pull posts, reach and comments into Flas and reply where the platform allows. Each card shows what works today.",
     icon: Megaphone,
   },
   {
@@ -69,13 +70,14 @@ const GROUPS: {
   {
     id: "ads",
     title: "Ads accounts",
-    blurb: "Read spend and results so Flas can advise on what to scale.",
+    blurb:
+      "Meta Ads spend and results for the last 28 days. Other ad platforms are not available yet.",
     icon: BarChart3,
   },
   {
     id: "analytics",
     title: "Analytics & search",
-    blurb: "Traffic and search data feed the Business Advisor and SEO Studio.",
+    blurb: "GA4 traffic and Search Console search performance for the last 28 days.",
     icon: BarChart3,
   },
   {
@@ -510,8 +512,8 @@ function ConnectorCard({
         {definition && !implementsAnything(definition) && (
           <p className="min-w-0 rounded-md border border-dashed p-2 text-[11px] leading-snug text-muted-foreground">
             <span className="font-medium text-foreground">Nothing to use yet.</span> Flas can
-            authorise {connector.name}, but no feature reads from it. Connecting it now only
-            stores the permission.
+            authorise {connector.name}, but no feature reads from it. Connecting it now only stores
+            the permission.
           </p>
         )}
         <div className="flex flex-wrap gap-1">
@@ -523,7 +525,11 @@ function ConnectorCard({
             ))}
           {definition &&
             resolveAllCapabilities(definition)
-              .filter((cap) => cap.status === "requires_provider_review" || cap.status === "limited_by_account_type")
+              .filter(
+                (cap) =>
+                  cap.status === "requires_provider_review" ||
+                  cap.status === "limited_by_account_type",
+              )
               .map((cap) => (
                 <Badge
                   key={cap.key}
@@ -588,6 +594,11 @@ function ConnectorCard({
             {guide.requires[0]}
           </p>
         ) : null}
+        {connector.unavailableReason ? (
+          <p className="line-clamp-3 min-w-0 break-words text-[11px] text-muted-foreground">
+            {connector.unavailableReason}
+          </p>
+        ) : null}
 
         <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2">
           {connector.internalHref ? (
@@ -596,6 +607,10 @@ function ConnectorCard({
                 Set up in Flas <ArrowUpRight className="size-3" />
               </Link>
             </Button>
+          ) : connector.unavailableReason ? (
+            <Badge variant="outline" className="text-[10px]">
+              Not available yet
+            </Badge>
           ) : connector.oauth ? (
             // Readiness is known before the click. When the keys are missing,
             // the button that does something useful is "Add app keys" -- not a
