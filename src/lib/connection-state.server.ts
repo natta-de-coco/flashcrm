@@ -214,18 +214,81 @@ export async function markAttempt(
   attemptState: AttemptState,
   reason: string,
 ): Promise<void> {
+  await markAttemptOutcome({ state, attemptState, reason });
+}
+
+/**
+ * Records how an attempt ended AND hands back the row's id.
+ *
+ * Two things the callback needs at once. The id is what the browser is
+ * redirected with, so the waiting tab can ask the server what happened —
+ * and it is not otherwise obtainable there, because consume_oauth_state_hash()
+ * declares a column named `id` but returns `s.state_hash` in that position, so
+ * consumeState() never sees the primary key at all.
+ *
+ * The outcome markers (which account was created, which sanitized failure
+ * code) ride in attempt_reason under documented `key=value;` prefixes rather
+ * than in new columns — see encodeAttemptReason. No schema change.
+ *
+ * Never throws: an attempt already retired by the sweep is not worth failing a
+ * callback over, and the redirect still has to happen.
+ */
+export async function markAttemptOutcome(args: {
+  state: string;
+  attemptState: AttemptState;
+  reason: string;
+  /** The connection this attempt saved outright. */
+  accountId?: string | null | undefined;
+  /** A connection saved pending the customer choosing which Page/account. */
+  targetAccountId?: string | null | undefined;
+  /** The sanitized failure code, so the outcome maps to one ConnectionProblem. */
+  code?: string | null | undefined;
+}): Promise<string | null> {
   try {
     // Keyed on the digest. The plaintext state column is NULL for every row
     // written since the security hardening, so matching on it would update
     // nothing at all and every attempt would stay "started" -- silently, which
     // is the failure mode this whole area keeps producing.
     const { sha256Hex } = await import("@/lib/oauth.server");
-    await supabaseAdmin
+    const { encodeAttemptReason } = await import("@/lib/oauth-return");
+    const { data } = await supabaseAdmin
       .from("oauth_states")
-      .update({ attempt_state: attemptState, attempt_reason: reason.slice(0, 300) })
-      .eq("state_hash", await sha256Hex(state));
+      .update({
+        attempt_state: args.attemptState,
+        attempt_reason: encodeAttemptReason({
+          ...(args.accountId ? { accountId: args.accountId } : {}),
+          ...(args.targetAccountId ? { targetAccountId: args.targetAccountId } : {}),
+          ...(args.code ? { code: args.code } : {}),
+          reason: args.reason,
+        }),
+      })
+      .eq("state_hash", await sha256Hex(args.state))
+      .select("id");
+    return data?.[0]?.id ?? null;
   } catch (e) {
     console.error("[connection-state] could not mark attempt", e);
+    return null;
+  }
+}
+
+/**
+ * The attempt row's id, for a callback that has nothing to record against it.
+ *
+ * Used on the paths that stop before any outcome is written — an unsupported
+ * platform, a state that was already consumed — so the browser can still be
+ * sent back with something the waiting tab can look up.
+ */
+export async function attemptIdForState(state: string): Promise<string | null> {
+  try {
+    const { sha256Hex } = await import("@/lib/oauth.server");
+    const { data } = await supabaseAdmin
+      .from("oauth_states")
+      .select("id")
+      .eq("state_hash", await sha256Hex(state))
+      .maybeSingle();
+    return data?.id ?? null;
+  } catch {
+    return null;
   }
 }
 
