@@ -2,6 +2,7 @@
 // retry workflow. The retry pass re-checks the live permissions, refreshes the
 // token when the platform allows it, and always writes back the newest reason
 // so the customer-facing status is never stale.
+import { openSecret, sealSecret, sealTenantSecrets } from "@/lib/secret-box.server";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connector, CONNECTORS } from "./connections-catalog";
@@ -142,6 +143,9 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
     };
   });
 
+  // A dry run: it only counts, so opening the report never rewrites anything.
+  const sealing = await sealTenantSecrets(tenantId, { dryRun: true });
+
   return {
     organization: org?.name ?? "Your workspace",
     generated_at: new Date().toISOString(),
@@ -151,6 +155,11 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
       totals.needs_verification + totals.pending_review + totals.expired + totals.failing,
     not_connected: totals.not_connected,
     rows,
+    credentials: {
+      configured: sealing.configured,
+      plaintext: sealing.plaintext,
+      sealed: sealing.alreadySealed,
+    },
     retries: retries ?? [],
   };
 }
@@ -292,6 +301,21 @@ export async function retryConnection(args: {
   const row = data as AccountRow | null;
   if (!row) return { platform: "unknown", outcome: "failed", reason: "Connection not found." };
 
+  // Tokens are stored sealed. Everything below works on plaintext and the
+  // write at the end seals again. A failed open stops here WITHOUT writing:
+  // with a missing or mistyped key, carrying on would overwrite every stored
+  // credential with nothing.
+  try {
+    row.access_token = await openSecret(row.access_token);
+    row.refresh_token = await openSecret(row.refresh_token);
+  } catch (error) {
+    return {
+      platform: row.platform,
+      outcome: "failed",
+      reason: error instanceof Error ? error.message : "Stored credentials could not be read.",
+    };
+  }
+
   const provider = connector(row.platform)?.provider;
   const now = new Date().toISOString();
   let outcome: RetryOutcome["outcome"] = "failed";
@@ -393,8 +417,8 @@ export async function retryConnection(args: {
   await supabaseAdmin
     .from("social_accounts")
     .update({
-      access_token: token,
-      refresh_token: refreshToken,
+      access_token: await sealSecret(token),
+      refresh_token: await sealSecret(refreshToken),
       token_expires_at: expiresAt,
       ...(scopes?.length ? { granted_scopes: scopes } : {}),
       // `active` is deliberately NOT cleared on a provider outage. Setting it

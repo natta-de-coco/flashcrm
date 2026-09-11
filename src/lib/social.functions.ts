@@ -59,11 +59,12 @@ export const connectSocialAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => ConnectSchema.parse(input))
   .handler(async ({ data, context }) => {
+    const { sealSecret } = await import("@/lib/secret-box.server");
     const { error } = await context.supabase.from("social_accounts").insert({
       platform: data.platform,
       label: data.label.trim(),
       external_id: data.externalId?.trim() || null,
-      access_token: data.accessToken?.trim() || null,
+      access_token: await sealSecret(data.accessToken?.trim() || null),
     });
     if (error) throw error;
 
@@ -109,15 +110,16 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     type SocialPlatform = import("@/lib/social.server").SocialPlatform;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const readSecret = async () =>
-      (
-        await supabaseAdmin
-          .from("social_accounts")
-          .select("access_token, refresh_token, token_expires_at")
-          .eq("id", account.id)
-          .eq("tenant_id", account.tenant_id)
-          .single()
-      ).data;
+    const { openSecret } = await import("@/lib/secret-box.server");
+    const readSecret = async () => {
+      const { data: stored } = await supabaseAdmin
+        .from("social_accounts")
+        .select("access_token, refresh_token, token_expires_at")
+        .eq("id", account.id)
+        .eq("tenant_id", account.tenant_id)
+        .single();
+      return stored ? { ...stored, access_token: await openSecret(stored.access_token) } : stored;
+    };
     let secret = await readSecret();
 
     // Google access tokens last an hour and X ones two. Sync never renewed
@@ -211,6 +213,10 @@ export const sendSocialReply = createServerFn({ method: "POST" })
         .eq("id", row.account_id)
         .eq("tenant_id", row.tenant_id)
         .single();
+      if (secret) {
+        const { openSecret } = await import("@/lib/secret-box.server");
+        secret.access_token = await openSecret(secret.access_token);
+      }
       const replyPlatform = secret?.platform;
       if (secret?.access_token && (replyPlatform === "facebook" || replyPlatform === "instagram")) {
         const { replyToComment } = await import("@/lib/social.server");

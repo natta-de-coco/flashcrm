@@ -166,3 +166,15 @@ await build({
   alias: { "@": "./src" },
   plugins: [stubSupabase],
 });
+
+// Credential encryption at rest.
+await build({
+  entryPoints: ["src/lib/secret-box.server.ts"],
+  outfile: "node_modules/.cache/flas-secret-box.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [stubSupabase],
+});

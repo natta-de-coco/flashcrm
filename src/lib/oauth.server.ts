@@ -1,6 +1,7 @@
 // Server-only OAuth plumbing for platform connections. Flas never asks the
 // user for a platform password: we redirect to the platform's own consent
 // screen and exchange the returned code for a token server-side.
+import { openSecret } from "@/lib/secret-box.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connectorDefinition } from "@/lib/social-connector-definitions";
 import type { AccountPlatform, Connector } from "./connections-catalog";
@@ -127,7 +128,11 @@ export async function resolveCredentials(
       .eq("provider", provider)
       .maybeSingle();
     if (data?.client_id && data.client_secret) {
-      return { id: data.client_id, secret: data.client_secret, source: "workspace" };
+      return {
+        id: data.client_id,
+        secret: (await openSecret(data.client_secret)) ?? undefined,
+        source: "workspace",
+      };
     }
   }
   const env = providerCredentials(provider);

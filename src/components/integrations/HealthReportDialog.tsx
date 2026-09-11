@@ -14,11 +14,12 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getIntegrationHealthReport, retryConnections } from "@/lib/connections.functions";
 import {
-  CONNECTOR_COUNTS,
-  NON_OAUTH_CONNECTORS,
-} from "@/lib/social-connector-definitions";
+  encryptStoredCredentials,
+  getIntegrationHealthReport,
+  retryConnections,
+} from "@/lib/connections.functions";
+import { CONNECTOR_COUNTS, NON_OAUTH_CONNECTORS } from "@/lib/social-connector-definitions";
 import { downloadHealthReportCsv, downloadHealthReportPdf } from "@/lib/integration-health";
 import type { HealthRow } from "@/lib/integration-health";
 
@@ -52,6 +53,20 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
     queryKey: ["integration-health"],
     queryFn: () => getIntegrationHealthReport(),
     enabled: open,
+  });
+
+  const encrypt = useServerFn(encryptStoredCredentials);
+  const sealing = useMutation({
+    mutationFn: () => encrypt(),
+    onSuccess: (result) => {
+      toast.success(
+        result.sealedNow
+          ? `Encrypted ${result.sealedNow} stored credential(s).`
+          : "Nothing needed encrypting.",
+      );
+      void qc.invalidateQueries({ queryKey: ["integration-health"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const runRetry = useMutation({
@@ -96,10 +111,10 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
                 now, so they cannot drift apart again. */}
             Status, last error, missing permissions and the next retry step for the{" "}
             {CONNECTOR_COUNTS.oauthPlatforms} API platform connectors that sign in with OAuth. The
-            other{" "}
-            {CONNECTOR_COUNTS.keyedOrPlugin} — {KEYED_CONNECTORS.map((c) => c.displayName).join(", ")} — connect
-            with keys or a plugin rather than a login, so they are checked on their own cards
-            instead. Export this and share it with whoever owns the account.
+            other {CONNECTOR_COUNTS.keyedOrPlugin} —{" "}
+            {KEYED_CONNECTORS.map((c) => c.displayName).join(", ")} — connect with keys or a plugin
+            rather than a login, so they are checked on their own cards instead. Export this and
+            share it with whoever owns the account.
           </DialogDescription>
         </DialogHeader>
 
@@ -118,6 +133,27 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
               <Badge className={TONE["failing"]}>{data.needs_attention} need attention</Badge>
               <Badge className={TONE["not_connected"]}>{data.not_connected} not connected</Badge>
             </div>
+
+            {data.credentials ? (
+              <p className="text-xs text-muted-foreground">
+                {!data.credentials.configured
+                  ? "Stored credentials are not encrypted: add TOKEN_ENCRYPTION_KEYS to the server's secrets."
+                  : data.credentials.plaintext > 0
+                    ? `${data.credentials.plaintext} stored credential(s) are not encrypted yet.`
+                    : "Stored credentials are encrypted."}
+                {data.credentials.configured && data.credentials.plaintext > 0 ? (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto px-1 text-xs"
+                    disabled={sealing.isPending}
+                    onClick={() => sealing.mutate()}
+                  >
+                    {sealing.isPending ? "Encrypting…" : "Encrypt now"}
+                  </Button>
+                ) : null}
+              </p>
+            ) : null}
 
             <ScrollArea className="max-h-[52vh] pr-3">
               <div className="grid gap-2">

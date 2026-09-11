@@ -337,6 +337,46 @@ export const getIntegrationHealthReport = createServerFn({ method: "GET" })
     return buildHealthReport(tenantId);
   });
 
+/**
+ * Encrypts this workspace's stored credentials that are still in plaintext.
+ *
+ * Admins only, because it rewrites every stored token. Idempotent: running it
+ * again changes nothing. Values written from now on are sealed anyway; this
+ * catches the ones stored before the key was configured.
+ */
+export const encryptStoredCredentials = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile?.tenant_id) {
+      throw new Error("Your workspace is still being set up — try again in a moment.");
+    }
+    if (!["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""))) {
+      throw new Error("Only company admins can encrypt stored credentials.");
+    }
+    const { sealTenantSecrets } = await import("@/lib/secret-box.server");
+    const report = await sealTenantSecrets(profile.tenant_id);
+    if (!report.configured) {
+      throw new Error(
+        "No encryption key is configured. Add TOKEN_ENCRYPTION_KEYS to the server's secrets first.",
+      );
+    }
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "credentials.sealed",
+      tenantId: profile.tenant_id,
+      actorId: context.userId,
+      entityType: "workspace",
+      entityId: profile.tenant_id,
+      details: { sealed: report.sealedNow },
+    });
+    return report;
+  });
+
 /** Re-checks permissions and refreshes tokens for one or all connections. */
 export const retryConnections = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

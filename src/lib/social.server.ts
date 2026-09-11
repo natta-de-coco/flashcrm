@@ -2,6 +2,7 @@
 // YouTube, X, LinkedIn, TikTok, Google Business), AI reply drafting and AI
 // content composing. Tenant data flows through the caller's RLS-scoped
 // client; only social account tokens are read via the admin client.
+import { openSecret } from "@/lib/secret-box.server";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
@@ -608,8 +609,12 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
 /* ---------- entry point ---------- */
 
 /** Pulls recent posts, comments/DMs/reviews and audience stats for one account. */
-export async function syncSocialAccount(account: SocialAccountSecret): Promise<SyncResult> {
+export async function syncSocialAccount(stored: SocialAccountSecret): Promise<SyncResult> {
   try {
+    // Opened here as well as by the callers, so one that passes the stored
+    // column straight through cannot hand a provider ciphertext. Plaintext is
+    // returned unchanged, so opening twice is harmless.
+    const account = { ...stored, access_token: await openSecret(stored.access_token) };
     switch (account.platform) {
       case "instagram":
       case "facebook":
@@ -654,6 +659,9 @@ export async function replyToComment(
   token: string,
 ): Promise<boolean> {
   try {
+    // Opened here too: a caller passing the stored column must not send Meta
+    // ciphertext. Plaintext passes through unchanged.
+    token = (await openSecret(token)) ?? "";
     // Facebook and Instagram reply on different edges: /{comment}/comments
     // for a Facebook comment, /{comment}/replies for an Instagram one. Every
     // Facebook reply was sent to /replies, which is Instagram's, so none was

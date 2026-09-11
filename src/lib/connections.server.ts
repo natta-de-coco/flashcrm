@@ -1,6 +1,7 @@
 // Server-only helpers for the Connect Your Business screen: profile discovery
 // after authorization, connection health, Flas account scans and the AI
 // profile optimizer. Tokens are only ever touched with the admin client.
+import { openSecret, sealSecret } from "@/lib/secret-box.server";
 import { isLegalTransition } from "@/lib/connection-state";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -275,14 +276,21 @@ export async function saveAuthorizedConnection(args: {
   };
   const existing = await findExisting();
 
+  // Credentials are sealed before they reach the database (secret-box.server).
+  // A refresh token kept from an earlier consent is stored exactly as it is.
+  const sealedToken = await sealSecret(args.token);
+  const sealedRefresh = args.refreshToken
+    ? await sealSecret(args.refreshToken)
+    : (existing?.refresh_token ?? null);
+
   const payload = {
     tenant_id: args.tenantId,
     platform: args.platform,
     label,
     external_id: args.profile.external_id ?? null,
-    access_token: args.token,
+    access_token: sealedToken,
     // Providers omit the refresh token on re-consent — keep the one we hold.
-    refresh_token: args.refreshToken ?? existing?.refresh_token ?? null,
+    refresh_token: sealedRefresh,
     token_expires_at: args.expiresAt,
     granted_scopes: args.grantedScopes?.length ? args.grantedScopes : null,
     active: true,
@@ -359,7 +367,10 @@ export async function saveAuthorizedConnection(args: {
     if (winner) {
       await supabaseAdmin
         .from("social_accounts")
-        .update({ ...payload, refresh_token: args.refreshToken ?? winner.refresh_token ?? null })
+        .update({
+          ...payload,
+          refresh_token: args.refreshToken ? sealedRefresh : (winner.refresh_token ?? null),
+        })
         .eq("id", winner.id)
         .eq("tenant_id", args.tenantId);
       return winner.id;
@@ -553,12 +564,17 @@ export async function revokeAndClearTokens(args: {
     .eq("tenant_id", args.tenantId)
     .maybeSingle();
 
+  // Revocation needs the real token. A value that will not open is still
+  // removed below; it just cannot be revoked at the provider.
+  const plainRefresh = await openSecret(row?.refresh_token).catch(() => null);
+  const plainAccess = await openSecret(row?.access_token).catch(() => null);
+
   const provider = connector(args.platform)?.provider ?? null;
   let revoked: boolean | "skipped" | "unsupported" = "unsupported";
   let reason =
     "Flas removed its copy of the credentials. This platform is not asked to revoke them.";
 
-  const token = row?.refresh_token || row?.access_token || null;
+  const token = plainRefresh || plainAccess || null;
   if (provider === "google" && token) {
     const { data: siblings } = await supabaseAdmin
       .from("social_accounts")

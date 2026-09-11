@@ -28,6 +28,8 @@ export const testSocialConnection = createServerFn({ method: "POST" })
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!account) throw new Error("Account not found in this workspace.");
+    const { openSecret } = await import("@/lib/secret-box.server");
+    account.access_token = await openSecret(account.access_token);
 
     const { runConnectionTest } = await import("@/lib/social-doctor.server");
     const report = await runConnectionTest({
@@ -64,6 +66,10 @@ export const getMetaTargets = createServerFn({ method: "POST" })
       .eq("id", data.accountId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
+    if (account) {
+      const { openSecret } = await import("@/lib/secret-box.server");
+      account.access_token = await openSecret(account.access_token);
+    }
     if (!account?.access_token) throw new Error("This account has no stored authorization.");
     if (account.platform !== "facebook" && account.platform !== "instagram") {
       throw new Error("Page selection only applies to Facebook and Instagram.");
@@ -126,6 +132,11 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!account?.access_token) throw new Error("This account has no stored authorization.");
+    const { openSecret, sealSecret } = await import("@/lib/secret-box.server");
+    account.access_token = await openSecret(account.access_token);
+    // Checked again after opening: a stored value can open to nothing, and that
+    // is "no authorization", not a null handed to discovery.
+    if (!account.access_token) throw new Error("This account has no stored authorization.");
 
     const platform = account.platform as "facebook" | "instagram";
     // Checked before discovery so the customer gets the real reason. Once a
@@ -198,10 +209,11 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
         label: profile.name ?? account.label,
         profile: profile as never,
         // A Page-scoped token outranks the user token for Page operations.
-        access_token:
+        access_token: await sealSecret(
           page.pageAccessToken && platform === "facebook"
             ? page.pageAccessToken
             : account.access_token,
+        ),
         // A Page token taken from a long-lived user token does not expire;
         // the stored user token is long-lived when it has more than a day
         // left. Keeping its date would schedule a pointless, failing refresh.
