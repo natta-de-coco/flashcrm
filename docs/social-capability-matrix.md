@@ -3,7 +3,7 @@
 **Generated from `src/lib/social-connector-definitions.ts` — do not edit by hand.**
 Regenerate with `npm run docs:capabilities`.
 
-Generated 2026-09-10 · 19 connectors (15 API platform connectors using OAuth, 4 connected with keys or a plugin).
+Generated 2026-09-11 · 19 connectors (15 API platform connectors using OAuth, 4 connected with keys or a plugin).
 
 ## How to read this
 
@@ -55,8 +55,8 @@ only ever be narrower.
 - **ID**: `facebook` · **Category**: social · **Auth**: oauth2
 - **Account types**: Facebook Page (admin access via a Business account)
 - **Provider review required**: yes · **Sandbox**: yes · **Last verified**: 2026-09-08
-- **Requested scopes**: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `pages_messaging`, `read_insights`, `pages_manage_engagement`
-- **Not requested**: `pages_manage_metadata`
+- **Requested scopes**: `pages_show_list`, `pages_read_engagement`, `pages_read_user_content`, `pages_messaging`, `pages_manage_metadata`, `read_insights`, `pages_manage_engagement`
+- **Not requested**: `pages_manage_posts`
 - **Setup**: Meta app with Facebook Login for Business; Business verification for Advanced Access; The connecting user must be an admin of the Page
 - **Docs**: <https://developers.facebook.com/docs/pages-api> · <https://developers.facebook.com/docs/permissions/reference/pages_manage_engagement>
 
@@ -84,8 +84,8 @@ only ever be narrower.
 - **ID**: `instagram` · **Category**: social · **Auth**: oauth2
 - **Account types**: Instagram Business account linked to a Facebook Page; Instagram Creator account linked to a Facebook Page
 - **Provider review required**: yes · **Sandbox**: yes · **Last verified**: 2026-09-08
-- **Requested scopes**: `instagram_basic`, `instagram_manage_comments`, `instagram_manage_insights`, `instagram_content_publish`, `pages_show_list`
-- **Not requested**: `instagram_manage_messages`
+- **Requested scopes**: `instagram_basic`, `instagram_manage_comments`, `instagram_manage_insights`, `pages_show_list`, `pages_read_engagement`
+- **Not requested**: `instagram_manage_messages`, `instagram_content_publish`
 - **Setup**: Instagram account converted to Business or Creator; Linked to a Facebook Page you administer; Meta app review for Advanced Access
 - **Docs**: <https://developers.facebook.com/docs/instagram-platform> · <https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login>
 
@@ -113,8 +113,8 @@ only ever be narrower.
 - **ID**: `threads` · **Category**: social · **Auth**: oauth2
 - **Account types**: Threads profile linked to an Instagram Professional account
 - **Provider review required**: yes · **Sandbox**: no · **Last verified**: 2026-09-08
-- **Requested scopes**: `threads_basic`, `threads_content_publish`, `threads_manage_insights`
-- **Not requested**: `threads_manage_replies`, `threads_read_replies`
+- **Requested scopes**: `threads_basic`, `threads_manage_insights`
+- **Not requested**: `threads_manage_replies`, `threads_read_replies`, `threads_content_publish`
 - **Setup**: Threads profile; Linked Instagram Professional account
 - **Docs**: <https://developers.facebook.com/docs/threads>
 
@@ -142,7 +142,8 @@ only ever be narrower.
 - **ID**: `linkedin` · **Category**: social · **Auth**: oauth2
 - **Account types**: LinkedIn Company Page (organization admin)
 - **Provider review required**: yes · **Sandbox**: no · **Last verified**: 2026-09-08
-- **Requested scopes**: `r_organization_social`, `w_organization_social`, `rw_organization_admin`
+- **Requested scopes**: `r_organization_social`, `rw_organization_admin`
+- **Not requested**: `w_organization_social`
 - **Setup**: LinkedIn Developer app; Community Management API product approval; Organization admin role on the Page
 - **Docs**: <https://learn.microsoft.com/en-us/linkedin/marketing/community-management/community-management-overview>
 
@@ -229,8 +230,8 @@ only ever be narrower.
 - **ID**: `twitter` · **Category**: social · **Auth**: oauth2_pkce
 - **Account types**: X account on a plan whose API tier permits the endpoints used
 - **Provider review required**: no · **Sandbox**: no · **Last verified**: 2026-09-08
-- **Requested scopes**: `tweet.read`, `tweet.write`, `users.read`, `offline.access`
-- **Not requested**: `dm.read`, `dm.write`
+- **Requested scopes**: `tweet.read`, `users.read`, `offline.access`
+- **Not requested**: `dm.read`, `dm.write`, `tweet.write`
 - **Setup**: X developer account; Paid API tier for meaningful read volume
 - **Docs**: <https://docs.x.com/x-api/introduction>
 
@@ -286,7 +287,8 @@ only ever be narrower.
 - **ID**: `pinterest` · **Category**: social · **Auth**: oauth2
 - **Account types**: Pinterest business account
 - **Provider review required**: yes · **Sandbox**: yes · **Last verified**: 2026-09-08
-- **Requested scopes**: `boards:read`, `pins:read`, `pins:write`, `user_accounts:read`
+- **Requested scopes**: `boards:read`, `pins:read`, `user_accounts:read`
+- **Not requested**: `pins:write`
 - **Setup**: Pinterest developer app; Standard access approval for production
 - **Docs**: <https://developers.pinterest.com/docs/api/v5/introduction/>
 
@@ -342,7 +344,8 @@ only ever be narrower.
 - **ID**: `meta_ads` · **Category**: ads · **Auth**: oauth2
 - **Account types**: Meta ad account within a Business
 - **Provider review required**: yes · **Sandbox**: yes · **Last verified**: 2026-09-08
-- **Requested scopes**: `ads_read`, `ads_management`, `business_management`
+- **Requested scopes**: `ads_read`, `business_management`
+- **Not requested**: `ads_management`
 - **Setup**: Meta Business account; Advanced Access to ads permissions
 - **Docs**: <https://developers.facebook.com/docs/marketing-apis>
 

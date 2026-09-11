@@ -87,9 +87,13 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           return back(origin, { connect_error: "Authorization response was incomplete." });
         }
 
-        const { consumeState, exchangeCode, ProviderTokenError } = await import(
-          "@/lib/oauth.server"
-        );
+        const {
+          consumeState,
+          exchangeCode,
+          ProviderTokenError,
+          upgradeMetaToken,
+          metaGrantedScopes,
+        } = await import("@/lib/oauth.server");
         const row = await consumeState(state);
         if (!row) {
           await auditOutcome(
@@ -136,13 +140,34 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
         }
 
         try {
-          const tokens = await exchangeCode({
+          let tokens = await exchangeCode({
             provider: meta.provider,
             code,
             redirectUri: row.redirect_uri,
             tenantId: row.tenant_id,
             codeVerifier: row.code_verifier, // real PKCE for twitter/X
           });
+
+          let metaLongLived = false;
+          if (meta.provider === "meta") {
+            // Meta's code exchange yields a short-lived user token (1-2 hours).
+            // Upgrade it now: Page tokens taken from a long-lived user token do
+            // not expire, ones taken from a short-lived token die with it. A
+            // failed upgrade keeps the short-lived token -- the connection
+            // still works and shows as expiring -- rather than turning a good
+            // login into an error.
+            try {
+              const longLived = await upgradeMetaToken(tokens.token, row.tenant_id);
+              tokens = { ...tokens, token: longLived.token, expiresAt: longLived.expiresAt };
+              metaLongLived = true;
+            } catch {
+              console.error(
+                "[oauth-callback] Meta long-lived token exchange failed; keeping the short-lived token",
+              );
+            }
+            const granted = await metaGrantedScopes(tokens.token);
+            if (granted) tokens = { ...tokens, scopes: granted };
+          }
           const { discoverProfile, saveAuthorizedConnection } =
             await import("@/lib/connections.server");
           const platform = row.platform as Parameters<typeof discoverProfile>[0];
@@ -151,9 +176,14 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           // before we call it connected. Saving a Page-less or Instagram-less
           // authorization as "connected" is how an account ends up green in
           // the UI while doing nothing.
+          let metaSole: import("@/lib/meta-discovery.server").MetaPage | null = null;
           if (platform === "facebook" || platform === "instagram") {
-            const { discoverMetaTargets, diagnoseMetaConnection, needsTargetSelection } =
-              await import("@/lib/meta-discovery.server");
+            const {
+              discoverMetaTargets,
+              diagnoseMetaConnection,
+              needsTargetSelection,
+              soleTarget,
+            } = await import("@/lib/meta-discovery.server");
             const discovery = await discoverMetaTargets(tokens.token);
             const diagnosis = diagnoseMetaConnection(discovery, platform);
             if (diagnosis) {
@@ -181,17 +211,66 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                 profile: {},
                 permissions: [...capabilityCeiling(platform)],
               });
+              // The authorization itself finished; only the choice of Page
+              // remains. Without this the attempt later read as "expired".
+              await markAttemptState(
+                "completed",
+                "Authorized; waiting for the customer to choose which Page to connect",
+              );
               return back(origin, { connected: platform, select_target: "1" });
             }
+            metaSole = soleTarget(discovery, platform);
           }
 
-          const profile = await discoverProfile(platform, tokens.token);
+          // For a single Meta target, use what discovery already found rather
+          // than looking again. discoverProfile() takes the first Page Meta
+          // returns, which for Instagram is the wrong one whenever the linked
+          // Instagram account sits on any other Page -- that saved an empty
+          // connection shown as "connected". And a Facebook Page must be
+          // operated with its own Page token: saving the user token made
+          // comment replies and Messenger reads fail silently.
+          let saveToken = tokens.token;
+          let saveExpiresAt = tokens.expiresAt;
+          let profile: Awaited<ReturnType<typeof discoverProfile>>;
+          if (metaSole && platform === "instagram" && metaSole.instagram) {
+            const ig = metaSole.instagram;
+            profile = {
+              external_id: ig.id,
+              name: ig.name ?? ig.username ?? metaSole.name,
+              username: ig.username ?? undefined,
+              picture: ig.picture ?? undefined,
+              followers: ig.followers ?? undefined,
+              bio: ig.biography ?? undefined,
+              website: ig.website ?? undefined,
+              profile_url: ig.username ? `https://instagram.com/${ig.username}` : undefined,
+            };
+          } else if (metaSole && platform === "facebook") {
+            profile = {
+              external_id: metaSole.id,
+              name: metaSole.name,
+              username: metaSole.username ?? undefined,
+              category: metaSole.category ?? undefined,
+              picture: metaSole.picture ?? undefined,
+              followers: metaSole.followers ?? undefined,
+              profile_url: metaSole.profileUrl ?? undefined,
+            };
+            if (metaSole.pageAccessToken) {
+              saveToken = metaSole.pageAccessToken;
+              // A Page token taken from a long-lived user token has no expiry.
+              // Recording the user token's 60-day date would have the health
+              // check "refresh" it with fb_exchange_token -- a user-token
+              // operation -- and mark a working Page as broken.
+              if (metaLongLived) saveExpiresAt = null;
+            }
+          } else {
+            profile = await discoverProfile(platform, tokens.token);
+          }
           await saveAuthorizedConnection({
             tenantId: row.tenant_id,
             platform,
-            token: tokens.token,
+            token: saveToken,
             refreshToken: tokens.refreshToken,
-            expiresAt: tokens.expiresAt,
+            expiresAt: saveExpiresAt,
             grantedScopes: tokens.scopes,
             profile,
             permissions: [...capabilityCeiling(platform)],
@@ -223,9 +302,8 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           // most common support message, and until now the only trace of it
           // was a sanitised code in their address bar.
           try {
-            const { normalizeProviderError, recordIntegrationError } = await import(
-              "@/lib/integration-errors.server"
-            );
+            const { normalizeProviderError, recordIntegrationError } =
+              await import("@/lib/integration-errors.server");
             await recordIntegrationError({
               tenantId: row.tenant_id,
               platform: row.platform,

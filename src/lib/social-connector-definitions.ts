@@ -137,12 +137,7 @@ export type ResolvedCapability = CapabilityFacts & {
 export type ConnectorCategory = "social" | "messaging" | "ads" | "analytics" | "commerce";
 
 export type AuthMethod =
-  | "oauth2"
-  | "oauth2_pkce"
-  | "api_key"
-  | "app_password"
-  | "plugin"
-  | "webhook_shared_secret";
+  "oauth2" | "oauth2_pkce" | "api_key" | "app_password" | "plugin" | "webhook_shared_secret";
 
 export type ConnectorDefinition = {
   /** Stable id. Never change one — it is stored on rows and in URLs. */
@@ -190,7 +185,9 @@ const notBuilt = (requiredScopes: readonly string[], note: string): CapabilityFa
 });
 
 /** Every key defaults to unsupported; a connector overrides what it really has. */
-function caps(overrides: Partial<Record<CapabilityKey, CapabilityFacts>>): Record<CapabilityKey, CapabilityFacts> {
+function caps(
+  overrides: Partial<Record<CapabilityKey, CapabilityFacts>>,
+): Record<CapabilityKey, CapabilityFacts> {
   const base = {} as Record<CapabilityKey, CapabilityFacts>;
   for (const key of CAPABILITY_KEYS) {
     base[key] = unsupported("This provider does not offer an API for this.");
@@ -213,14 +210,20 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     requestedScopes: [
       "pages_show_list",
       "pages_read_engagement",
-      "pages_manage_posts",
+      // Needed to read Page feed posts and other people's comments, and a
+      // prerequisite of pages_manage_engagement.
+      "pages_read_user_content",
       "pages_messaging",
+      // Needed alongside pages_messaging to read Page conversations.
+      "pages_manage_metadata",
       "read_insights",
       // Required to create a comment reply. pages_read_engagement is read-only,
       // so without this replyToComment() was rejected by Meta every time.
       "pages_manage_engagement",
     ],
-    optionalScopes: ["pages_manage_metadata"],
+    // Not requested until Flas can publish: App Review rejects permissions an
+    // app does not demonstrably use.
+    optionalScopes: ["pages_manage_posts"],
     providerReviewRequired: true,
     sandboxAvailable: true,
     setupRequirements: [
@@ -299,10 +302,13 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "instagram_basic",
       "instagram_manage_comments",
       "instagram_manage_insights",
-      "instagram_content_publish",
       "pages_show_list",
+      // Meta requires it for comments, replies and insights on an Instagram
+      // account reached through its Facebook Page.
+      "pages_read_engagement",
     ],
-    optionalScopes: ["instagram_manage_messages"],
+    // instagram_content_publish is not requested until Flas can publish.
+    optionalScopes: ["instagram_manage_messages", "instagram_content_publish"],
     providerReviewRequired: true,
     sandboxAvailable: true,
     setupRequirements: [
@@ -367,8 +373,8 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["Threads profile linked to an Instagram Professional account"],
     authMethod: "oauth2",
-    requestedScopes: ["threads_basic", "threads_content_publish", "threads_manage_insights"],
-    optionalScopes: ["threads_manage_replies", "threads_read_replies"],
+    requestedScopes: ["threads_basic", "threads_manage_insights"],
+    optionalScopes: ["threads_manage_replies", "threads_read_replies", "threads_content_publish"],
     providerReviewRequired: true,
     sandboxAvailable: false,
     setupRequirements: ["Threads profile", "Linked Instagram Professional account"],
@@ -402,8 +408,8 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["LinkedIn Company Page (organization admin)"],
     authMethod: "oauth2",
-    requestedScopes: ["r_organization_social", "w_organization_social", "rw_organization_admin"],
-    optionalScopes: [],
+    requestedScopes: ["r_organization_social", "rw_organization_admin"],
+    optionalScopes: ["w_organization_social"],
     providerReviewRequired: true,
     sandboxAvailable: false,
     setupRequirements: [
@@ -568,8 +574,8 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["X account on a plan whose API tier permits the endpoints used"],
     authMethod: "oauth2_pkce",
-    requestedScopes: ["tweet.read", "tweet.write", "users.read", "offline.access"],
-    optionalScopes: ["dm.read", "dm.write"],
+    requestedScopes: ["tweet.read", "users.read", "offline.access"],
+    optionalScopes: ["dm.read", "dm.write", "tweet.write"],
     providerReviewRequired: false,
     sandboxAvailable: false,
     setupRequirements: ["X developer account", "Paid API tier for meaningful read volume"],
@@ -677,8 +683,8 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["Pinterest business account"],
     authMethod: "oauth2",
-    requestedScopes: ["boards:read", "pins:read", "pins:write", "user_accounts:read"],
-    optionalScopes: [],
+    requestedScopes: ["boards:read", "pins:read", "user_accounts:read"],
+    optionalScopes: ["pins:write"],
     providerReviewRequired: true,
     sandboxAvailable: true,
     setupRequirements: ["Pinterest developer app", "Standard access approval for production"],
@@ -779,8 +785,8 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "ads",
     accountTypes: ["Meta ad account within a Business"],
     authMethod: "oauth2",
-    requestedScopes: ["ads_read", "ads_management", "business_management"],
-    optionalScopes: [],
+    requestedScopes: ["ads_read", "business_management"],
+    optionalScopes: ["ads_management"],
     providerReviewRequired: true,
     sandboxAvailable: true,
     setupRequirements: ["Meta Business account", "Advanced Access to ads permissions"],
@@ -1068,9 +1074,7 @@ export function resolveAllCapabilities(connector: ConnectorDefinition): Resolved
  * is that a badge cannot appear for something that does not work.
  */
 export function advertisableCapabilities(connector: ConnectorDefinition): ResolvedCapability[] {
-  return resolveAllCapabilities(connector).filter((c) =>
-    USABLE_STATUSES.includes(c.status),
-  );
+  return resolveAllCapabilities(connector).filter((c) => USABLE_STATUSES.includes(c.status));
 }
 
 /**
@@ -1084,7 +1088,9 @@ export function capabilityCeiling(connectorId: string): Set<CapabilityKey> {
   const def = connectorDefinition(connectorId);
   if (!def) return new Set();
   return new Set(
-    CAPABILITY_KEYS.filter((k) => def.capabilities[k].providerSupports && def.capabilities[k].flasImplements),
+    CAPABILITY_KEYS.filter(
+      (k) => def.capabilities[k].providerSupports && def.capabilities[k].flasImplements,
+    ),
   );
 }
 

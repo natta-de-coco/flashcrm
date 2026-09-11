@@ -1,3 +1,4 @@
+import { useTenant } from "@/hooks/useTenant";
 import { PageHeader } from "@/components/PageHeader";
 import {
   ConnectionOutcome,
@@ -82,7 +83,9 @@ export const Route = createFileRoute("/_authenticated/social")({
     ...(typeof search["connect_reason"] === "string"
       ? { connect_reason: search["connect_reason"] }
       : {}),
-    ...(typeof search["connect_error"] === "string" ? { connect_error: search["connect_error"] } : {}),
+    ...(typeof search["connect_error"] === "string"
+      ? { connect_error: search["connect_error"] }
+      : {}),
     ...(typeof search["connect_detail"] === "string"
       ? { connect_detail: search["connect_detail"] }
       : {}),
@@ -334,6 +337,11 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
     accessToken: "",
   });
   const [showForm, setShowForm] = useState(false);
+  // Pasting a raw token is a developer fallback, and the RLS policy on
+  // social_accounts only lets admins save one. Everyone else got an error from
+  // a button that should not have been offered to them.
+  const { staffRole } = useTenant();
+  const canPasteToken = staffRole === "company_admin" || staffRole === "super_admin";
   const [syncingId, setSyncingId] = useState<string | null>(null);
 
   const connectMutation = useMutation({
@@ -384,13 +392,15 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
           <Button asChild size="sm">
             <Link to="/connect">Connect an account</Link>
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? "Close" : "Paste a token"}
-          </Button>
+          {canPasteToken ? (
+            <Button size="sm" variant="ghost" onClick={() => setShowForm((v) => !v)}>
+              {showForm ? "Close" : "Paste a token"}
+            </Button>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="grid gap-3">
-        {showForm && (
+        {showForm && canPasteToken && (
           <div className="grid gap-3 rounded-lg border border-dashed p-4 sm:grid-cols-2">
             <p className="text-xs text-muted-foreground sm:col-span-2">
               Advanced. Most accounts should be connected from{" "}
@@ -473,14 +483,19 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
             <div className="sm:col-span-2">
               <Button
                 size="sm"
-                disabled={manualSocialFormError(form, platformMeta(form.platform)) !== null || connectMutation.isPending}
+                disabled={
+                  manualSocialFormError(form, platformMeta(form.platform)) !== null ||
+                  connectMutation.isPending
+                }
                 onClick={() => connectMutation.mutate()}
               >
                 {connectMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
                 Save account
               </Button>
               {manualSocialFormError(form, platformMeta(form.platform)) ? (
-                <p className="mt-1.5 text-xs text-destructive">{manualSocialFormError(form, platformMeta(form.platform))}</p>
+                <p className="mt-1.5 text-xs text-destructive">
+                  {manualSocialFormError(form, platformMeta(form.platform))}
+                </p>
               ) : null}
               <p className="mt-1.5 text-xs text-muted-foreground">
                 Tokens are stored server-side and are never shown back in the app.

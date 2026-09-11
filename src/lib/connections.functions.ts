@@ -45,11 +45,27 @@ export const getConnections = createServerFn({ method: "GET" })
     const tenantId = await callerTenantId(supabase, context.userId);
     const providerReady = await providerReadiness(tenantId);
 
+    // Whether each connection's access token renews itself. Worked out here
+    // because the refresh token is deliberately unreadable from a browser
+    // session; only the yes/no leaves the server.
+    const renewing = new Set<string>();
+    if (tenantId) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: withRefresh } = await supabaseAdmin
+        .from("social_accounts")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .not("refresh_token", "is", null);
+      for (const r of withRefresh ?? []) renewing.add(r.id);
+    }
+
     const { computeHealth } = await import("@/lib/connections.server");
     const enriched = (accounts.data ?? []).map((a) => ({
       ...a,
+      renews: renewing.has(a.id),
       health: computeHealth({
         active: a.active,
+        renews: renewing.has(a.id),
         // Both branches of this were "set", so health could never report a
         // missing credential -- an account saved without a token showed as
         // healthy right up until its first sync failed.
@@ -257,11 +273,31 @@ export const disconnectConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { error } = await context.supabase
+    // The update runs as the caller, so RLS decides who may disconnect. It
+    // returns the row so a refusal is visible: an RLS-blocked UPDATE affects
+    // zero rows without raising, which previously reported success while
+    // changing nothing.
+    const { data: changed, error } = await context.supabase
       .from("social_accounts")
       .update({ active: false, health: "disconnected" })
-      .eq("id", data.id);
+      .eq("id", data.id)
+      .select("id, tenant_id, platform");
     if (error) throw error;
+    const disconnected = changed?.[0];
+    if (!disconnected) {
+      throw new Error(
+        "That connection was not found, or you do not have permission to disconnect it.",
+      );
+    }
+
+    // Disconnecting used to leave the access and refresh tokens stored, so a
+    // "disconnected" account could still act on the customer's behalf.
+    const { revokeAndClearTokens } = await import("@/lib/connections.server");
+    const revocation = await revokeAndClearTokens({
+      accountId: disconnected.id,
+      tenantId: disconnected.tenant_id,
+      platform: disconnected.platform,
+    });
 
     // Recorded as a deliberate disconnect rather than lumped in with expiry,
     // revocation and failed refresh, which all used to read "disconnected".
@@ -282,8 +318,13 @@ export const disconnectConnection = createServerFn({ method: "POST" })
       actorId: context.userId,
       entityType: "social_account",
       entityId: data.id,
+      details: {
+        tokens_cleared: true,
+        provider_revoked: revocation.revoked,
+        note: revocation.reason,
+      },
     });
-    return { ok: true };
+    return { ok: true, providerRevoked: revocation.revoked, note: revocation.reason };
   });
 
 /** Exportable Integration Health Report for the signed-in workspace. */

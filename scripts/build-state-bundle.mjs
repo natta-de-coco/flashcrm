@@ -131,3 +131,38 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
 });
+
+// Status badges: the browser status model and the Connect card's traffic
+// light. Both read a self-renewing access token's expiry as a failure.
+await build({
+  entryPoints: ["src/lib/connection-status.ts"],
+  outfile: "node_modules/.cache/flas-connection-status.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+await build({
+  entryPoints: ["src/lib/connections.server.ts"],
+  outfile: "node_modules/.cache/flas-connections-server.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [stubSupabase],
+});
+
+// YouTube sync: which credential goes where.
+await build({
+  entryPoints: ["src/lib/social.server.ts"],
+  outfile: "node_modules/.cache/flas-social-server.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [stubSupabase],
+});

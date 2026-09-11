@@ -41,6 +41,12 @@ export type Connector = {
   blurb: string;
   /** True when Flas can run the platform's official OAuth authorization flow. */
   oauth: boolean;
+  /**
+   * Set when the connector cannot actually be connected yet, with the reason
+   * shown in place of a Connect button. A Connect that "succeeds" and then
+   * does nothing is worse than an honest "not yet".
+   */
+  unavailableReason?: string;
   /** OAuth provider family used for the token exchange. */
   provider?: "meta" | "google" | "linkedin" | "tiktok" | "twitter" | "pinterest";
   /** Capabilities the official API supports (subject to granted permissions). */
@@ -146,6 +152,8 @@ export const CONNECTORS: Connector[] = [
     group: "social",
     blurb: "Threads posts and post insights.",
     oauth: true,
+    unavailableReason:
+      "Threads uses its own login and its own app keys, separate from Facebook's. Flas does not support that login yet.",
     provider: "meta",
     manageUrl: "https://www.threads.net",
     profilePattern: (h) => `https://www.threads.net/@${h.replace("@", "")}`,
@@ -177,6 +185,8 @@ export const CONNECTORS: Connector[] = [
     group: "ads",
     blurb: "Search spend, conversions and search terms.",
     oauth: true,
+    unavailableReason:
+      "Google Ads needs a Google Ads developer token, and Flas does not read ad data yet.",
     provider: "google",
     manageUrl: "https://ads.google.com",
   },
@@ -186,6 +196,8 @@ export const CONNECTORS: Connector[] = [
     group: "ads",
     blurb: "B2B campaign performance and lead gen forms.",
     oauth: true,
+    unavailableReason:
+      "LinkedIn Ads needs LinkedIn's Advertising API approval, and Flas does not read ad data yet. Connecting it would also sign out your LinkedIn Page connection.",
     provider: "linkedin",
     manageUrl: "https://www.linkedin.com/campaignmanager/",
   },
@@ -195,6 +207,8 @@ export const CONNECTORS: Connector[] = [
     group: "ads",
     blurb: "Campaign spend and creative performance.",
     oauth: true,
+    unavailableReason:
+      "TikTok Ads needs TikTok's advertising API, which has its own login and developer approval. Flas does not support it yet.",
     provider: "tiktok",
     manageUrl: "https://ads.tiktok.com",
   },
