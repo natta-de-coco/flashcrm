@@ -38,7 +38,7 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
       setReasonFor(null);
       setReason("");
       void qc.invalidateQueries({ queryKey: ["manager-members", orgId] });
-      void qc.invalidateQueries({ queryKey: ["manager-billing"] });
+      void qc.invalidateQueries({ queryKey: ["manager-subscriptions"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update the user"),
   });

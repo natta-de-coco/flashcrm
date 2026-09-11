@@ -9,7 +9,7 @@ import { useTenant } from "@/hooks/useTenant";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_authenticated/settings")({
+export const Route = createFileRoute("/_authenticated/settings/")({
   head: () => ({
     meta: [
       { title: "Settings — Flas CRM" },
@@ -57,7 +57,6 @@ function SettingsPage() {
         <DataPrivacyCard />
 
         <TeamCard />
-
       </div>
     </main>
   );

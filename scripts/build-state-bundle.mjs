@@ -131,3 +131,14 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
 });
+
+// The manager portal's subscription rules: dates, access and what a save does.
+await build({
+  entryPoints: ["src/lib/subscription-admin.ts"],
+  outfile: "node_modules/.cache/flas-subscription-admin.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
