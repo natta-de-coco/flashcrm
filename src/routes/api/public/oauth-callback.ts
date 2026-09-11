@@ -201,7 +201,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             if (needsTargetSelection(discovery, platform)) {
               // More than one Page/account qualifies — the user must choose
               // rather than us silently taking whichever came back first.
-              await saveAuthorizedConnection({
+              const pendingId = await saveAuthorizedConnection({
                 tenantId: row.tenant_id,
                 platform,
                 token: tokens.token,
@@ -217,7 +217,10 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                 "completed",
                 "Authorized; waiting for the customer to choose which Page to connect",
               );
-              return back(origin, { connected: platform, select_target: "1" });
+              // The pending row's own id, so the picker opens on the row this
+              // login just created -- not the first row for the platform,
+              // which once several channels can be connected is often another.
+              return back(origin, { connected: platform, select_target: pendingId ?? "1" });
             }
             metaSole = soleTarget(discovery, platform);
           }
@@ -229,6 +232,47 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           // connection shown as "connected". And a Facebook Page must be
           // operated with its own Page token: saving the user token made
           // comment replies and Messenger reads fail silently.
+          // LinkedIn and Business Profile logins can manage several channels.
+          // Ask the provider which, and let the customer choose when there is
+          // more than one. A login that manages none -- or that the provider
+          // will not list yet -- stops here with the reason, rather than saving
+          // a connection that can never sync.
+          let chosenTarget: import("@/lib/connection-targets.server").ConnectionTarget | null =
+            null;
+          if (platform === "linkedin" || platform === "google_business") {
+            const { listConnectionTargets, noTargetReason } =
+              await import("@/lib/connection-targets.server");
+            const listed = await listConnectionTargets(platform, tokens.token);
+            if (!listed.ok || listed.targets.length === 0) {
+              const why = listed.ok ? noTargetReason(platform) : listed.reason;
+              await markAttemptState("callback_error", why.slice(0, 200));
+              await auditOutcome("blocked", row.platform, row.tenant_id, row.user_id ?? null, why);
+              return back(origin, {
+                connect_blocked: platform,
+                connect_reason: listed.ok ? "Nothing to connect" : "Could not list your accounts",
+                connect_detail: why,
+              });
+            }
+            if (listed.targets.length > 1) {
+              const pendingTargetId = await saveAuthorizedConnection({
+                tenantId: row.tenant_id,
+                platform,
+                token: tokens.token,
+                refreshToken: tokens.refreshToken,
+                expiresAt: tokens.expiresAt,
+                grantedScopes: tokens.scopes,
+                profile: {},
+                permissions: [...capabilityCeiling(platform)],
+              });
+              await markAttemptState(
+                "completed",
+                "Authorized; waiting for the customer to choose which account to connect",
+              );
+              return back(origin, { connected: platform, select_target: pendingTargetId ?? "1" });
+            }
+            chosenTarget = listed.targets[0]!;
+          }
+
           let saveToken = tokens.token;
           let saveExpiresAt = tokens.expiresAt;
           let profile: Awaited<ReturnType<typeof discoverProfile>>;
@@ -262,6 +306,9 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
               // operation -- and mark a working Page as broken.
               if (metaLongLived) saveExpiresAt = null;
             }
+          } else if (chosenTarget) {
+            const { targetProfile } = await import("@/lib/connection-targets.server");
+            profile = targetProfile(chosenTarget);
           } else {
             profile = await discoverProfile(platform, tokens.token);
           }

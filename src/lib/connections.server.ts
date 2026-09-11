@@ -145,58 +145,15 @@ export async function discoverProfile(
       if (!u?.open_id) return {};
       return { external_id: String(u.open_id), name: u.display_name, picture: u.avatar_url };
     }
-    if (platform === "linkedin") {
-      // Posting and analytics act on a Company Page, and LinkedIn only allows
-      // them for members with the ADMINISTRATOR role on it -- so the member's
-      // approved admin roles decide what can be connected.
-      const res = await fetch(
-        "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "LinkedIn-Version": LINKEDIN_API_VERSION,
-            "X-Restli-Protocol-Version": "2.0.0",
-          },
-        },
-      );
-      const json: any = await res.json().catch(() => ({}));
-      const orgs: string[] = (json?.elements ?? [])
-        .map((e: any) => String(e?.organization ?? ""))
-        .filter((urn: string) => urn.startsWith("urn:li:organization:"));
-      // Exactly one: connect it. Several: there is no picker yet, so the
-      // connection stays unidentified rather than guessing which Page was meant.
-      if (orgs.length !== 1) return {};
-      const orgId = orgs[0]!.slice("urn:li:organization:".length);
-      return { external_id: orgId, profile_url: `https://www.linkedin.com/company/${orgId}/` };
-    }
-    if (platform === "google_business") {
-      // Reviews are read per location, as accounts/{a}/locations/{l}. With no
-      // discovery the connection was saved without a location, and sync
-      // stopped at "Add the location path" with nowhere to add it.
-      const auth = { headers: { Authorization: `Bearer ${token}` } };
-      const accountsRes = await fetch(
-        "https://mybusinessaccountmanagement.googleapis.com/v1/accounts",
-        auth,
-      );
-      const accountsJson: any = await accountsRes.json().catch(() => ({}));
-      const accounts: string[] = (accountsJson?.accounts ?? [])
-        .map((a: any) => String(a?.name ?? ""))
-        .filter(Boolean);
-      const found: { path: string; title: string | undefined }[] = [];
-      for (const account of accounts.slice(0, 10)) {
-        const locRes = await fetch(
-          `https://mybusinessbusinessinformation.googleapis.com/v1/${account}/locations?readMask=name,title&pageSize=100`,
-          auth,
-        );
-        const locJson: any = await locRes.json().catch(() => ({}));
-        for (const l of locJson?.locations ?? []) {
-          if (l?.name) found.push({ path: `${account}/${l.name}`, title: l.title });
-        }
-      }
-      // One location: connect it. Several: no picker yet, so it stays
-      // unidentified rather than guessing which location was meant.
-      if (found.length !== 1) return {};
-      return { external_id: found[0]!.path, name: found[0]!.title };
+    if (platform === "linkedin" || platform === "google_business") {
+      // A LinkedIn member can administer several Company Pages and a Google
+      // account can manage several locations. Exactly one is connected here;
+      // several go through the picker in the OAuth callback.
+      const { listConnectionTargets, targetProfile } =
+        await import("@/lib/connection-targets.server");
+      const listed = await listConnectionTargets(platform, token);
+      if (listed.ok && listed.targets.length === 1) return targetProfile(listed.targets[0]!);
+      return {};
     }
     if (platform === "search_console") {
       const res = await fetch("https://www.googleapis.com/webmasters/v3/sites", {

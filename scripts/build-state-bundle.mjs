@@ -178,3 +178,14 @@ await build({
   alias: { "@": "./src" },
   plugins: [stubSupabase],
 });
+
+// Channel discovery for LinkedIn Company Pages and Business Profile locations.
+await build({
+  entryPoints: ["src/lib/connection-targets.server.ts"],
+  outfile: "node_modules/.cache/flas-connection-targets.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});

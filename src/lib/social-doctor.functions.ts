@@ -321,3 +321,162 @@ export const getIntegrationErrors = createServerFn({ method: "GET" })
     if (error) throw error;
     return rows ?? [];
   });
+
+const TargetChoiceSchema = z.object({
+  accountId: z.string().uuid(),
+  targetId: z.string().min(1).max(300),
+});
+
+/**
+ * The LinkedIn Company Pages or Business Profile locations a pending
+ * connection can manage, for the picker. Read from the provider with the
+ * stored token, which never leaves the server.
+ */
+export const getConnectionTargets = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => AccountSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
+    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
+    if (!tenantId) throw new Error("Your workspace is still being set up.");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: account } = await supabaseAdmin
+      .from("social_accounts")
+      .select("id, platform, access_token, external_id")
+      .eq("id", data.accountId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!account) throw new Error("Connection not found in this workspace.");
+
+    const { hasTargetDiscovery, listConnectionTargets } =
+      await import("@/lib/connection-targets.server");
+    if (!hasTargetDiscovery(account.platform)) {
+      throw new Error("Choosing an account only applies to LinkedIn and Business Profile.");
+    }
+    const { openSecret } = await import("@/lib/secret-box.server");
+    const token = await openSecret(account.access_token);
+    if (!token) throw new Error("This connection has no stored authorization.");
+
+    const listed = await listConnectionTargets(account.platform, token);
+    return {
+      ok: listed.ok,
+      reason: listed.ok ? null : listed.reason,
+      selectedId: account.external_id,
+      targets: listed.targets,
+    };
+  });
+
+/**
+ * Pins a pending LinkedIn or Business Profile connection to one channel.
+ *
+ * The choice is accepted only if the provider, asked again here with the
+ * stored token, lists it for this login -- an id posted by a browser is never
+ * trusted on its own. A connection already pinned to a channel is not
+ * re-pointed, and choosing a channel that is already connected merges into
+ * that row instead of creating a second one.
+ */
+export const selectConnectionTarget = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => TargetChoiceSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
+    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
+    if (!tenantId) throw new Error("Your workspace is still being set up.");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: account } = await supabaseAdmin
+      .from("social_accounts")
+      .select(
+        "id, platform, access_token, refresh_token, token_expires_at, granted_scopes, external_id",
+      )
+      .eq("id", data.accountId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!account) throw new Error("Connection not found in this workspace.");
+
+    const { hasTargetDiscovery, listConnectionTargets, pickTarget, targetProfile } =
+      await import("@/lib/connection-targets.server");
+    if (!hasTargetDiscovery(account.platform)) {
+      throw new Error("Choosing an account only applies to LinkedIn and Business Profile.");
+    }
+    if (account.external_id && account.external_id !== data.targetId) {
+      throw new Error(
+        "This connection is already linked to a different account. Connect again to add another.",
+      );
+    }
+
+    const { openSecret } = await import("@/lib/secret-box.server");
+    const token = await openSecret(account.access_token);
+    if (!token) throw new Error("This connection has no stored authorization.");
+    const listed = await listConnectionTargets(account.platform, token);
+    if (!listed.ok) throw new Error(listed.reason);
+    const target = pickTarget(listed.targets, data.targetId);
+    if (!target) throw new Error("That account is not available to this login.");
+
+    const { data: already } = await supabaseAdmin
+      .from("social_accounts")
+      .select("id")
+      .eq("tenant_id", tenantId as string)
+      .eq("platform", account.platform)
+      .eq("external_id", target.id)
+      .neq("id", account.id)
+      .limit(1);
+    const keepId = already?.[0]?.id ?? account.id;
+
+    const { deriveConnectionState } = await import("@/lib/connection-state.server");
+    const derived = deriveConnectionState({
+      active: true,
+      access_token: token,
+      token_expires_at: account.token_expires_at,
+      granted_scopes: account.granted_scopes,
+      platform: account.platform,
+      refresh_token: account.refresh_token,
+    });
+    const profile = targetProfile(target);
+
+    const { error: saveError } = await supabaseAdmin
+      .from("social_accounts")
+      .update({
+        external_id: target.id,
+        label: target.name,
+        profile: profile as never,
+        profile_url: profile.profile_url ?? null,
+        // The stored values as they are: already sealed, nothing to re-seal.
+        access_token: account.access_token,
+        refresh_token: account.refresh_token,
+        token_expires_at: account.token_expires_at,
+        granted_scopes: account.granted_scopes,
+        active: true,
+        health: "connected",
+        connection_state: derived.state,
+        state_reason: derived.reason,
+      })
+      .eq("id", keepId)
+      .eq("tenant_id", tenantId as string);
+    if (saveError) throw new Error(`Could not save the chosen account: ${saveError.message}`);
+
+    if (keepId !== account.id) {
+      await supabaseAdmin
+        .from("social_accounts")
+        .delete()
+        .eq("id", account.id)
+        .eq("tenant_id", tenantId as string)
+        .is("external_id", null);
+    }
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "connection.target_selected",
+      tenantId: tenantId as string,
+      actorId: context.userId,
+      entityType: "social_account",
+      entityId: keepId,
+      details: {
+        platform: account.platform,
+        targetId: target.id,
+        mergedIntoExisting: keepId !== account.id,
+      },
+    });
+    return { ok: true, accountId: keepId };
+  });
