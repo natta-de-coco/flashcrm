@@ -2,6 +2,7 @@
 // user for a platform password: we redirect to the platform's own consent
 // screen and exchange the returned code for a token server-side.
 import { openSecret } from "@/lib/secret-box.server";
+import type { ConnectionProblem } from "@/lib/connection-problem";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connectorDefinition } from "@/lib/social-connector-definitions";
 import type { AccountPlatform, Connector } from "./connections-catalog";
@@ -73,7 +74,8 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
 };
 
 export type StartResult =
-  { ready: true; url: string } | { ready: false; reason: string; missing: string[] };
+  | { ready: true; url: string; attemptId: string }
+  | { ready: false; reason: string; missing: string[]; problem: ConnectionProblem };
 
 /** Providers that require PKCE (send code_challenge on auth, code_verifier on exchange). */
 // X requires PKCE; Google supports S256 and rejects nothing by sending it.
@@ -189,6 +191,31 @@ export async function sha256Hex(input: string): Promise<string> {
  * Compared on the parsed origin rather than by string prefix: "https://flas.example"
  * must not match "https://flas.example.attacker.test".
  */
+/**
+ * The return addresses this deployment was configured with, in precedence
+ * order: OAUTH_ALLOWED_ORIGINS, falling back to PUBLIC_APP_URL.
+ *
+ * Empty means nobody ever told the deployment its own address. resolveAllowedOrigin
+ * then falls back to loopback so a developer is not blocked; the readiness engine
+ * reports that emptiness as a blocking configuration problem rather than
+ * pretending the deployment is configured.
+ */
+export function configuredAllowedOrigins(): string[] {
+  return (process.env["OAUTH_ALLOWED_ORIGINS"] ?? process.env["PUBLIC_APP_URL"] ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The one callback address Flas registers with every provider. Built in one
+ * place so the readiness screen tells an administrator to paste exactly what
+ * startAuthorization will send.
+ */
+export function oauthRedirectUri(allowedOrigin: string): string {
+  return `${allowedOrigin}/api/public/oauth-callback`;
+}
+
 export function resolveAllowedOrigin(candidate: string): string | null {
   let parsed: URL;
   try {
@@ -204,10 +231,7 @@ export function resolveAllowedOrigin(candidate: string): string | null {
     return null;
   }
 
-  const configured = (process.env["OAUTH_ALLOWED_ORIGINS"] ?? process.env["PUBLIC_APP_URL"] ?? "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
+  const configured = configuredAllowedOrigins();
 
   const allowed = configured.length
     ? configured
@@ -230,26 +254,41 @@ export async function startAuthorization(args: {
   tenantId: string;
   userId: string;
 }): Promise<StartResult> {
+  // The typed problems live with the readiness engine, so a blocked Connect
+  // click and the diagnosis screen describe the same fault in the same words.
+  // Imported here rather than at the top of the file because that module
+  // imports this one; these are cold paths, so the cost does not matter.
+  const { connectorUnavailableProblem, credentialProblem, originProblem, oauthStateWriteProblem } =
+    await import("@/lib/connection-readiness.server");
+
   const meta = connector(args.platform);
   if (!meta?.oauth || !meta.provider) {
-    return {
-      ready: false,
-      reason: `${meta?.name ?? args.platform} does not offer a public authorization flow.`,
-      missing: [],
-    };
+    const problem = connectorUnavailableProblem(
+      args.platform,
+      meta?.name ?? args.platform,
+      `${meta?.name ?? args.platform} does not offer a public authorization flow.`,
+    );
+    return { ready: false, reason: problem.message, missing: [], problem };
   }
   // A connector that cannot work yet refuses here, before any credentials
   // or state are touched, with the reason the card shows.
   if (meta.unavailableReason) {
-    return { ready: false, reason: meta.unavailableReason, missing: [] };
+    const problem = connectorUnavailableProblem(args.platform, meta.name, meta.unavailableReason);
+    return { ready: false, reason: problem.message, missing: [], problem };
   }
   const cfg = PROVIDERS[meta.provider];
   const creds = await resolveCredentials(meta.provider, args.tenantId);
   if (!creds.id || !creds.secret) {
+    const problem = await credentialProblem({
+      provider: meta.provider,
+      tenantId: args.tenantId,
+      missing: !creds.id ? "id" : "secret",
+    });
     return {
       ready: false,
-      reason: `${meta.name} needs your own ${meta.provider} app keys. Open Connect & setup → Platform app keys, paste the ${meta.provider} App ID and Secret once, and every account on this platform then connects with one click.`,
+      reason: problem.message,
       missing: providerEnvNames(meta.provider),
+      problem,
     };
   }
 
@@ -261,17 +300,14 @@ export async function startAuthorization(args: {
   if (!allowedOrigin) {
     // Almost always a deployment that was never told its own address: with no
     // OAUTH_ALLOWED_ORIGINS or PUBLIC_APP_URL the allowlist is loopback only,
-    // and every provider is refused. Name the setting so the fix is obvious.
-    let attempted = "this address";
-    try {
-      attempted = new URL(args.origin).origin;
-    } catch {
-      /* keep the generic wording for a malformed origin */
-    }
+    // and every provider is refused. The problem names the setting for an
+    // administrator; forAudience() strips that for everyone else.
+    const problem = originProblem(args.origin);
     return {
       ready: false,
-      reason: `${attempted} is not an allowed sign-in return address for this deployment. Add it to OAUTH_ALLOWED_ORIGINS in the host's secrets and redeploy.`,
+      reason: problem.message,
       missing: ["OAUTH_ALLOWED_ORIGINS"],
+      problem,
     };
   }
 
@@ -285,21 +321,32 @@ export async function startAuthorization(args: {
   // redirect URL and nowhere we control, so reading oauth_states yields
   // nothing that can be replayed against a live authorization.
   const stateHash = await sha256Hex(state);
-  const redirectUri = `${allowedOrigin}/api/public/oauth-callback`;
+  const redirectUri = oauthRedirectUri(allowedOrigin);
 
   // Real PKCE for providers that need it — verifier stored per-state row.
   const usePkce = PKCE_PROVIDERS.includes(meta.provider);
   const pkce = usePkce ? await generatePkce() : null;
 
-  const { error } = await supabaseAdmin.from("oauth_states").insert({
-    tenant_id: args.tenantId,
-    user_id: args.userId,
-    platform: args.platform,
-    state_hash: stateHash,
-    redirect_uri: redirectUri,
-    code_verifier: pkce?.verifier ?? null,
-  });
-  if (error) return { ready: false, reason: error.message, missing: [] };
+  // The row's id is the attempt id: the one handle the browser can poll and the
+  // callback can resolve, without ever seeing the state value itself.
+  const { data: attempt, error } = await supabaseAdmin
+    .from("oauth_states")
+    .insert({
+      tenant_id: args.tenantId,
+      user_id: args.userId,
+      platform: args.platform,
+      state_hash: stateHash,
+      redirect_uri: redirectUri,
+      code_verifier: pkce?.verifier ?? null,
+    })
+    .select("id")
+    .single();
+  if (error || !attempt) {
+    // The database's own message went straight to the browser here. It is
+    // administrator detail, so it travels in technical.detail instead.
+    const problem = oauthStateWriteProblem(error?.message ?? null);
+    return { ready: false, reason: problem.message, missing: [], problem };
+  }
 
   // Scopes come from the connector registry, not from a list kept here.
   // There were three copies of this data -- here, connection-setup.ts and
@@ -316,7 +363,7 @@ export async function startAuthorization(args: {
     configId: cfg.configIdEnv ? process.env[cfg.configIdEnv] : undefined,
     pkceChallenge: pkce?.challenge,
   });
-  return { ready: true, url: `${cfg.authorizeUrl}?${params.toString()}` };
+  return { ready: true, url: `${cfg.authorizeUrl}?${params.toString()}`, attemptId: attempt.id };
 }
 
 /**

@@ -19,6 +19,27 @@ async function callerTenantId(supabase: Client, userId: string): Promise<string 
   return data?.tenant_id ?? null;
 }
 
+/**
+ * Who is asking, for deciding how much of a problem they may see. Same profile
+ * row and the same staff_role values as every other admin check in the app.
+ */
+async function callerRole(
+  supabase: Client,
+  userId: string,
+): Promise<{ superAdmin: boolean; workspaceAdmin: boolean; tenantId: string | null }> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("tenant_id, staff_role")
+    .eq("id", userId)
+    .maybeSingle();
+  const staffRole = String(data?.staff_role ?? "");
+  return {
+    superAdmin: staffRole === "super_admin",
+    workspaceAdmin: staffRole === "company_admin" || staffRole === "super_admin",
+    tenantId: data?.tenant_id ?? null,
+  };
+}
+
 /** Everything the Connect Your Business screen renders. */
 export const getConnections = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -92,9 +113,11 @@ export const startConnect = createServerFn({ method: "POST" })
     z.object({ platform: PlatformSchema, origin: z.string().url() }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const tenantId = await callerTenantId(context.supabase, context.userId);
+    const role = await callerRole(context.supabase, context.userId);
+    const tenantId = role.tenantId;
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
     const { startAuthorization } = await import("@/lib/oauth.server");
+    const { startResultForCaller } = await import("@/lib/connection-readiness.server");
     const { logAudit } = await import("@/lib/audit.server");
 
     // Run first, then record what actually happened.
@@ -111,16 +134,25 @@ export const startConnect = createServerFn({ method: "POST" })
       userId: context.userId,
     });
 
+    // What the caller may see. The reason comes from the filtered problem, so
+    // the sentence and the problem can never disagree, and server setting names
+    // reach only a Flas super admin.
+    const shaped = result.ready ? result : startResultForCaller(result, role);
+
     await logAudit({
       action: result.ready ? "connection.authorize_started" : "connection.authorize_blocked",
       tenantId,
       actorId: context.userId,
       entityType: "platform",
       entityId: data.platform,
-      ...(result.ready ? {} : { details: { reason: result.reason } }),
+      // The unfiltered reason used to be stored here, setting names and all.
+      // The stable code says the same thing and carries nothing sensitive.
+      details: result.ready
+        ? { attempt_id: result.attemptId }
+        : { code: result.problem.code, owner: result.problem.owner },
     });
 
-    return result;
+    return shaped;
   });
 
 /**
@@ -138,42 +170,44 @@ export const startConnect = createServerFn({ method: "POST" })
 export const getConnectReadiness = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const tenantId = await callerTenantId(context.supabase, context.userId);
+    const role = await callerRole(context.supabase, context.userId);
     const { CONNECTORS } = await import("@/lib/connections-catalog");
-    const { resolveCredentials, providerEnvNames } = await import("@/lib/oauth.server");
+    const { providerEnvNames } = await import("@/lib/oauth.server");
+    const { evaluateAllProviders, primaryProblem, problemForCaller, visibleMissingSettings } =
+      await import("@/lib/connection-readiness.server");
 
-    // One lookup per provider family, not per connector -- Facebook and
-    // Instagram share the same Meta app.
-    const seen = new Map<string, { ready: boolean; missing: string[]; source: string }>();
+    // One evaluation per provider family, not per connector -- Facebook and
+    // Instagram share the same Meta app. This GET carries no browser origin, so
+    // the deployment's own configured address is what gets diagnosed; it is
+    // validated through the allowlist exactly like a browser's would be.
+    const providers = await evaluateAllProviders({ tenantId: role.tenantId, origin: null });
+    const byProvider = new Map(providers.map((p) => [p.provider as string, p]));
 
     const rows = [];
     for (const c of CONNECTORS) {
       if (!c.oauth || !c.provider) continue;
-      let state = seen.get(c.provider);
-      if (!state) {
-        const missing: string[] = [];
-        let source = "none";
-        if (tenantId) {
-          const creds = await resolveCredentials(c.provider, tenantId);
-          source = creds.source ?? "none";
-          const [idEnv, secretEnv] = providerEnvNames(c.provider);
-          if (!creds.id && idEnv) missing.push(idEnv);
-          if (!creds.secret && secretEnv) missing.push(secretEnv);
-        } else {
-          missing.push(...providerEnvNames(c.provider));
-        }
-        state = { ready: missing.length === 0, missing, source };
-        seen.set(c.provider, state);
-      }
+      const readiness = byProvider.get(c.provider);
+      if (!readiness) continue;
+      const [idEnv, secretEnv] = providerEnvNames(c.provider);
+      const missing = [
+        ...(!readiness.appIdPresent && idEnv ? [idEnv] : []),
+        ...(!readiness.secretPresent && secretEnv ? [secretEnv] : []),
+      ];
+      const problem = primaryProblem(readiness);
       rows.push({
         id: c.id,
         name: c.name,
         provider: c.provider,
-        ready: state.ready,
-        missing: state.missing,
-        // "tenant" when this workspace pasted its own app keys, "shared" when
-        // it is falling back to the platform-wide ones.
-        source: state.source,
+        // Unchanged meaning: whether the app keys are there at all.
+        ready: readiness.configured,
+        // Server setting names are administrator detail, so everyone else gets
+        // the problem's plain English instead of a variable they cannot set.
+        missing: visibleMissingSettings(missing, role),
+        // "workspace" when this workspace pasted its own app keys, "shared"
+        // when it falls back to the platform-wide ones, "none" when neither.
+        source: readiness.credentialSource,
+        state: readiness.state,
+        problem: problem ? problemForCaller(problem, role) : null,
       });
     }
     return rows;
