@@ -46,7 +46,7 @@ BEGIN
 END $$;
 
 -- ── 2. social_accounts grants & RLS policy ────────────────────────────────────
-GRANT SELECT (connection_state, state_reason, state_changed_at, refresh_token, refresh_locked_until, stats)
+GRANT SELECT (connection_state, state_reason, state_changed_at, refresh_locked_until, stats)
   ON public.social_accounts TO authenticated;
 
 GRANT INSERT (tenant_id, connection_state, state_reason, refresh_token, refresh_locked_until, stats)
@@ -97,5 +97,13 @@ SELECT o.id,
   FROM public.organizations o;
 
 GRANT SELECT ON public.company_billing_overview TO authenticated;
+
+-- ── 4. oauth_states credential lockdown ───────────────────────────────────────
+-- Blanket SELECT on oauth_states granted in 20260826163049 allowed browser
+-- sessions to read PKCE code_verifier and plaintext state. The client never
+-- selects from oauth_states directly; all state creation and consumption is
+-- handled server-side through supabaseAdmin and consume_oauth_state_hash().
+-- Revoke all table-level access from anon and authenticated.
+REVOKE ALL ON public.oauth_states FROM anon, authenticated;
 
 COMMIT;
