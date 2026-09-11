@@ -655,7 +655,10 @@ function ConnectorCard({
             size="sm"
             variant="secondary"
             className="h-8 gap-1 text-xs"
-            onClick={() => setWizardOpen(true)}
+            onClick={() => {
+              setWizardStep("prepare");
+              setWizardOpen(true);
+            }}
           >
             <Wand2 className="size-3" /> Setup guide
           </Button>
@@ -666,9 +669,12 @@ function ConnectorCard({
           </Button>
         </div>
 
+        {/* openAt was never passed, so "Add app keys" set the step to
+            "credentials" and the wizard opened on "prepare" anyway. */}
         <ConnectionWizard
           platformId={connector.id}
           status={status}
+          openAt={wizardStep}
           open={wizardOpen}
           onOpenChange={setWizardOpen}
           connecting={connecting}
