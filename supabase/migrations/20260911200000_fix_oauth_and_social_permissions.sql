@@ -28,6 +28,7 @@ BEGIN;
 
 -- ── 1. Helper function permissions ───────────────────────────────────────────
 GRANT EXECUTE ON FUNCTION public.try_lock_connection_refresh(uuid) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.release_connection_refresh(uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.consume_oauth_state_hash(text) TO authenticated, anon, service_role;
 GRANT EXECUTE ON FUNCTION public.expire_abandoned_oauth_attempts() TO authenticated, service_role;
 
@@ -45,13 +46,13 @@ BEGIN
 END $$;
 
 -- ── 2. social_accounts grants & RLS policy ────────────────────────────────────
-GRANT SELECT (connection_state, state_reason, state_changed_at, refresh_token, stats)
+GRANT SELECT (connection_state, state_reason, state_changed_at, refresh_token, refresh_locked_until, stats)
   ON public.social_accounts TO authenticated;
 
-GRANT INSERT (tenant_id, connection_state, state_reason, refresh_token, stats)
+GRANT INSERT (tenant_id, connection_state, state_reason, refresh_token, refresh_locked_until, stats)
   ON public.social_accounts TO authenticated;
 
-GRANT UPDATE (connection_state, state_reason, refresh_token, stats)
+GRANT UPDATE (connection_state, state_reason, refresh_token, refresh_locked_until, stats)
   ON public.social_accounts TO authenticated;
 
 DROP POLICY IF EXISTS "Admins manage social accounts" ON public.social_accounts;

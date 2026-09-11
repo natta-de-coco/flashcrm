@@ -3640,6 +3640,7 @@ export type Database = {
           platform: string
           profile: Json
           profile_url: string | null
+          refresh_locked_until: string | null
           refresh_token: string | null
           retry_count: number
           state_changed_at: string
@@ -3671,6 +3672,7 @@ export type Database = {
           platform: string
           profile?: Json
           profile_url?: string | null
+          refresh_locked_until?: string | null
           refresh_token?: string | null
           retry_count?: number
           state_changed_at?: string
@@ -3702,6 +3704,7 @@ export type Database = {
           platform?: string
           profile?: Json
           profile_url?: string | null
+          refresh_locked_until?: string | null
           refresh_token?: string | null
           retry_count?: number
           state_changed_at?: string
@@ -5191,6 +5194,10 @@ export type Database = {
       }
       set_tenant_smtp_api_key: {
         Args: { _api_key: string }
+        Returns: undefined
+      }
+      release_connection_refresh: {
+        Args: { _account_id: string }
         Returns: undefined
       }
       try_lock_connection_refresh: {
