@@ -68,9 +68,6 @@ await build({
     {
       name: "stub-supabase-admin",
       setup(b) {
-        // The admin client reads environment variables at import time. Nothing
-        // under test touches it, so it is replaced with a proxy that throws if
-        // anything ever does — a silent stub would hide a real dependency.
         b.onResolve({ filter: /client\.server$/ }, () => ({
           path: "stub-supabase-admin",
           namespace: "stub",
@@ -85,8 +82,6 @@ await build({
   ],
 });
 
-// QA pass: the tenant-timezone date helper and the single navigation source
-// that global search is built from. Both are pure and dependency-free.
 await build({
   entryPoints: ["src/lib/locale.ts"],
   outfile: "node_modules/.cache/flas-locale.mjs",
@@ -107,9 +102,6 @@ await build({
   alias: { "@": "./src" },
 });
 
-// The manual social-connect input schema. A live QA pass found the endpoint
-// accepted an empty access token even after the form was fixed, so the schema
-// itself is asserted here.
 await build({
   entryPoints: ["src/lib/social-schema.ts"],
   outfile: "node_modules/.cache/flas-social-schema.mjs",
@@ -120,8 +112,6 @@ await build({
   alias: { "@": "./src" },
 });
 
-// The form validators. Extracted from the route files so the rules that decide
-// whether bad input can be saved are asserted directly rather than by clicking.
 await build({
   entryPoints: ["src/lib/form-validation.ts"],
   outfile: "node_modules/.cache/flas-form-validation.mjs",
@@ -132,8 +122,6 @@ await build({
   alias: { "@": "./src" },
 });
 
-// Status badges: the browser status model and the Connect card's traffic
-// light. Both read a self-renewing access token's expiry as a failure.
 await build({
   entryPoints: ["src/lib/connection-status.ts"],
   outfile: "node_modules/.cache/flas-connection-status.mjs",
@@ -155,7 +143,6 @@ await build({
   plugins: [stubSupabase],
 });
 
-// YouTube sync: which credential goes where.
 await build({
   entryPoints: ["src/lib/social.server.ts"],
   outfile: "node_modules/.cache/flas-social-server.mjs",
@@ -167,7 +154,6 @@ await build({
   plugins: [stubSupabase],
 });
 
-// Credential encryption at rest.
 await build({
   entryPoints: ["src/lib/secret-box.server.ts"],
   outfile: "node_modules/.cache/flas-secret-box.mjs",
@@ -179,7 +165,6 @@ await build({
   plugins: [stubSupabase],
 });
 
-// Channel discovery for LinkedIn Company Pages and Business Profile locations.
 await build({
   entryPoints: ["src/lib/connection-targets.server.ts"],
   outfile: "node_modules/.cache/flas-connection-targets.mjs",
@@ -190,10 +175,20 @@ await build({
   alias: { "@": "./src" },
 });
 
-// Reports for GA4, Search Console and Meta Ads.
 await build({
   entryPoints: ["src/lib/reports.server.ts"],
   outfile: "node_modules/.cache/flas-reports.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+// The manager portal's subscription rules: dates, access and what a save does.
+await build({
+  entryPoints: ["src/lib/subscription-admin.ts"],
+  outfile: "node_modules/.cache/flas-subscription-admin.mjs",
   format: "esm",
   platform: "node",
   bundle: true,

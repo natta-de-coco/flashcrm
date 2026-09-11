@@ -1,12 +1,24 @@
+import { CompanyMembers } from "@/components/manager/CompanyMembers";
+import { ManageSubscriptionDialog } from "@/components/manager/ManageSubscriptionDialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { getCompanyWorkspace } from "@/lib/companies.functions";
-import { useQuery } from "@tanstack/react-query";
+import { formatDayUnambiguous, formatMomentUnambiguous } from "@/lib/locale";
+import { exportCompanyData } from "@/lib/presence.functions";
+import {
+  billedBy,
+  companyAccess,
+  paidUntilText,
+  planLabel,
+  statusLabel,
+} from "@/lib/subscription-admin";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, Eye, MailCheck } from "lucide-react";
-import { formatDayUnambiguous, formatMomentUnambiguous } from "@/lib/locale";
+import { ArrowLeft, Download, Eye, MailCheck } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/companies/$orgId")({
   head: () => ({
@@ -15,16 +27,33 @@ export const Route = createFileRoute("/_authenticated/companies/$orgId")({
   component: CompanyWorkspacePage,
 });
 
-/** Manager portal: read-only view of one company's workspace for troubleshooting. */
+/** Manager portal: one company -- its subscription, team access, and a read-only look inside. */
 function CompanyWorkspacePage() {
   const { orgId } = Route.useParams();
   const { isSuperAdmin } = useAuth();
   const fetchWorkspace = useServerFn(getCompanyWorkspace);
+  const runExport = useServerFn(exportCompanyData);
 
   const ws = useQuery({
     queryKey: ["company-workspace", orgId],
     queryFn: () => fetchWorkspace({ data: { organizationId: orgId } }),
     enabled: isSuperAdmin,
+  });
+
+  const exportMutation = useMutation({
+    mutationFn: () => runExport({ data: { organizationId: orgId } }),
+    onSuccess: (payload) => {
+      const name = ws.data?.org.name ?? "company";
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `flash-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-data.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Company data exported");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Export failed"),
   });
 
   if (!isSuperAdmin) {
@@ -38,27 +67,38 @@ function CompanyWorkspacePage() {
   }
 
   const d = ws.data;
+  const now = new Date();
+  const access = d ? companyAccess(d.org, now) : null;
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Link
           to="/companies"
           className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
         >
           <ArrowLeft className="size-3.5" /> All companies
         </Link>
+        <Button
+          size="sm"
+          variant="outline"
+          className="gap-1"
+          disabled={!d || exportMutation.isPending}
+          onClick={() => exportMutation.mutate()}
+        >
+          <Download className="size-3.5" /> Export all data
+        </Button>
       </div>
 
       <div className="mb-6 flex items-start gap-3 rounded-lg border border-brand/40 bg-brand-soft p-4">
         <Eye className="mt-0.5 size-5 shrink-0 text-brand" />
         <div>
           <p className="text-sm font-semibold">
-            Troubleshooting view — you are viewing {d?.org.name ?? "this company"}&apos;s workspace
+            You are viewing {d?.org.name ?? "this company"}&apos;s workspace
           </p>
           <p className="text-xs text-muted-foreground">
-            Read-only: nothing here changes their data, and every visit is recorded in the audit log
-            for compliance.
+            Their leads, conversations and activity are shown read-only. You can change their
+            subscription and who has access. Every visit is recorded in the audit log.
           </p>
         </div>
       </div>
@@ -70,29 +110,44 @@ function CompanyWorkspacePage() {
         </p>
       )}
 
-      {d && (
+      {d && access && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
               <CardTitle className="text-base">Subscription</CardTitle>
+              <ManageSubscriptionDialog company={d.org} />
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
-              <p className="flex items-center gap-2">
+              <p className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">{d.org.name}</span>
-                <Badge variant="secondary" className="capitalize">
-                  {d.org.plan}
-                </Badge>
-                <Badge variant="outline" className="capitalize">
-                  {d.org.subscription_status}
-                </Badge>
+                <Badge variant="secondary">{planLabel(d.org.plan)}</Badge>
+                <Badge variant="outline">{statusLabel(d.org.subscription_status)}</Badge>
                 {d.org.suspended && <Badge variant="destructive">suspended</Badge>}
               </p>
               <p className="text-xs text-muted-foreground">
-                {d.org.slug} · joined {formatDayUnambiguous(d.org.created_at)}
-                {d.org.subscription_renews_at
-                  ? ` · renews ${formatDayUnambiguous(d.org.subscription_renews_at)}`
-                  : ""}
+                Paid until {paidUntilText(d.org, now)} ·{" "}
+                {billedBy(d.org) === "paddle" ? "pays by card (Paddle)" : "pays manually"}
               </p>
+              <p
+                className={`text-xs ${access.allowed ? "text-muted-foreground" : "font-medium text-destructive"}`}
+              >
+                {access.allowed ? "Has access." : `No access: ${access.reason}`}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {d.org.slug} · joined {formatDayUnambiguous(d.org.created_at)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Team ({d.staff.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">
+                Suspend one person without affecting the rest of the company.
+              </p>
+              <CompanyMembers orgId={orgId} />
             </CardContent>
           </Card>
 
@@ -104,50 +159,44 @@ function CompanyWorkspacePage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {d.authEmails.length === 0 && (
-                <p className="text-sm text-muted-foreground">No verification or recovery emails recorded yet.</p>
+                <p className="text-sm text-muted-foreground">
+                  No verification or recovery emails recorded yet.
+                </p>
               )}
               {d.authEmails.map((email) => (
-                <div key={email.id} className="flex items-start justify-between gap-3 border-b border-border/60 pb-2 last:border-0 last:pb-0">
+                <div
+                  key={email.id}
+                  className="flex items-start justify-between gap-3 border-b border-border/60 pb-2 last:border-0 last:pb-0"
+                >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{email.recipient_email}</p>
                     <p className="text-xs text-muted-foreground">
-                      {email.action_type === "signup" ? "Account verification" : "Password recovery"} · attempt {email.attempt_number}
+                      {email.action_type === "signup"
+                        ? "Account verification"
+                        : "Password recovery"}{" "}
+                      · attempt {email.attempt_number}
                     </p>
-                    {email.provider_error && <p className="mt-1 text-xs text-destructive">{email.provider_error}</p>}
+                    {email.provider_error && (
+                      <p className="mt-1 text-xs text-destructive">{email.provider_error}</p>
+                    )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <Badge variant={email.status === "accepted" ? "secondary" : "destructive"} className="capitalize">
+                    <Badge
+                      variant={email.status === "accepted" ? "secondary" : "destructive"}
+                      className="capitalize"
+                    >
                       {email.status}
                     </Badge>
-                    <p className="mt-1 text-[10px] text-muted-foreground">{formatMomentUnambiguous(email.requested_at)}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {formatMomentUnambiguous(email.requested_at)}
+                    </p>
                   </div>
                 </div>
               ))}
               <p className="pt-1 text-[11px] text-muted-foreground">
-                Accepted means the email service accepted the request. Inbox delivery and opens are not reported.
+                Accepted means the email service accepted the request. Inbox delivery and opens are
+                not reported.
               </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Team ({d.staff.length})</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1.5">
-              {d.staff.length === 0 && (
-                <p className="text-sm text-muted-foreground">No team members yet.</p>
-              )}
-              {d.staff.map((s) => (
-                <p key={s.id} className="flex items-center justify-between text-sm">
-                  <span className="truncate">
-                    {s.full_name ?? s.email ?? "Unnamed"}{" "}
-                    <span className="text-xs text-muted-foreground">{s.email}</span>
-                  </span>
-                  <Badge variant="outline" className="text-[10px] capitalize">
-                    {s.staff_role.replace("_", " ")}
-                  </Badge>
-                </p>
-              ))}
             </CardContent>
           </Card>
 

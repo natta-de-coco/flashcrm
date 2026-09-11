@@ -181,9 +181,10 @@ export const MANAGER_SECTION: NavSection = {
     {
       to: "/companies",
       label: "Companies",
-      desc: "All client workspaces",
+      desc: "Clients, subscriptions and access",
       icon: Building2,
-      keywords: "tenants workspaces clients organizations",
+      keywords:
+        "tenants workspaces clients organizations subscriptions billing payments paid renew suspend plans",
     },
     {
       to: "/companies/errors",
