@@ -189,3 +189,14 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
 });
+
+// Reports for GA4, Search Console and Meta Ads.
+await build({
+  entryPoints: ["src/lib/reports.server.ts"],
+  outfile: "node_modules/.cache/flas-reports.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});

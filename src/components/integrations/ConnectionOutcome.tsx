@@ -36,6 +36,27 @@ export type ConnectionOutcomeSearch = {
   select_target?: string;
 };
 
+/**
+ * Connectors whose login can manage several channels and is served by
+ * connection-targets.server (TARGET_PLATFORMS there). Meta Pages keep their own
+ * picker because Page tokens come with them.
+ */
+const CHANNEL_PICKER_PLATFORMS: ReadonlySet<string> = new Set([
+  "linkedin",
+  "google_business",
+  "google_analytics",
+  "search_console",
+  "meta_ads",
+]);
+
+const PICKER_NOUN: Record<string, string> = {
+  linkedin: "Company Page",
+  google_business: "location",
+  google_analytics: "GA4 property",
+  search_console: "Search Console site",
+  meta_ads: "ad account",
+};
+
 type Account = {
   id: string;
   platform: string;
@@ -123,7 +144,7 @@ export function ConnectionOutcome({
   }
 
   if (needsTarget && account) {
-    return account.platform === "linkedin" || account.platform === "google_business" ? (
+    return CHANNEL_PICKER_PLATFORMS.has(account.platform) ? (
       <ChannelPicker account={account} onChanged={onChanged} onDismiss={onDismiss} />
     ) : (
       <TargetPicker account={account} onChanged={onChanged} onDismiss={onDismiss} />
@@ -372,7 +393,7 @@ function ChannelPicker({
   const listFn = useServerFn(getConnectionTargets);
   const chooseFn = useServerFn(selectConnectionTarget);
   const [chosen, setChosen] = useState<string | null>(null);
-  const noun = account.platform === "linkedin" ? "Company Page" : "location";
+  const noun = PICKER_NOUN[account.platform] ?? "account";
 
   const targets = useQuery({
     queryKey: ["connection-targets", account.id],

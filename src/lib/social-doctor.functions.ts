@@ -352,7 +352,7 @@ export const getConnectionTargets = createServerFn({ method: "POST" })
     const { hasTargetDiscovery, listConnectionTargets } =
       await import("@/lib/connection-targets.server");
     if (!hasTargetDiscovery(account.platform)) {
-      throw new Error("Choosing an account only applies to LinkedIn and Business Profile.");
+      throw new Error("This platform has no account picker.");
     }
     const { openSecret } = await import("@/lib/secret-box.server");
     const token = await openSecret(account.access_token);
@@ -398,7 +398,7 @@ export const selectConnectionTarget = createServerFn({ method: "POST" })
     const { hasTargetDiscovery, listConnectionTargets, pickTarget, targetProfile } =
       await import("@/lib/connection-targets.server");
     if (!hasTargetDiscovery(account.platform)) {
-      throw new Error("Choosing an account only applies to LinkedIn and Business Profile.");
+      throw new Error("This platform has no account picker.");
     }
     if (account.external_id && account.external_id !== data.targetId) {
       throw new Error(
@@ -479,4 +479,72 @@ export const selectConnectionTarget = createServerFn({ method: "POST" })
       },
     });
     return { ok: true, accountId: keepId };
+  });
+
+/**
+ * The last 28 days from a GA4 property, a Search Console site or a Meta ad
+ * account, read from the provider's own reporting API with the stored token.
+ * The headline figures are kept on the connection for the dashboard.
+ */
+export const getChannelReport = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => AccountSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
+    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
+    if (!tenantId) throw new Error("Your workspace is still being set up.");
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const read = async () =>
+      (
+        await supabaseAdmin
+          .from("social_accounts")
+          .select(
+            "id, tenant_id, platform, external_id, access_token, refresh_token, token_expires_at",
+          )
+          .eq("id", data.accountId)
+          .eq("tenant_id", tenantId)
+          .maybeSingle()
+      ).data;
+    let account = await read();
+    if (!account) throw new Error("Connection not found in this workspace.");
+
+    const { fetchChannelReport, hasReports, reportHeadline } = await import("@/lib/reports.server");
+    if (!hasReports(account.platform)) throw new Error("This connection has no report.");
+    const externalId = account.external_id;
+    if (!externalId) {
+      throw new Error(
+        "Choose which account this connection should report on first: connect it again and pick one.",
+      );
+    }
+
+    // Google access tokens last an hour: renew first rather than fail.
+    const expiresAt = account.token_expires_at
+      ? new Date(account.token_expires_at).getTime()
+      : null;
+    if (account.refresh_token && expiresAt !== null && expiresAt - Date.now() < 2 * 60_000) {
+      const { retryConnection } = await import("@/lib/integration-health.server");
+      await retryConnection({
+        accountId: account.id,
+        tenantId: account.tenant_id,
+        trigger: "auto",
+        actorId: context.userId,
+      });
+      account = (await read()) ?? account;
+    }
+
+    const { openSecret } = await import("@/lib/secret-box.server");
+    const token = await openSecret(account.access_token);
+    if (!token) throw new Error("This connection has no stored authorization. Reconnect it.");
+
+    const report = await fetchChannelReport(account.platform, token, externalId);
+    await supabaseAdmin
+      .from("social_accounts")
+      .update({
+        stats: reportHeadline(report) as never,
+        last_analytics_sync_at: new Date().toISOString(),
+      })
+      .eq("id", account.id)
+      .eq("tenant_id", tenantId as string);
+    return report;
   });

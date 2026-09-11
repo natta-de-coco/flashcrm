@@ -24,7 +24,6 @@ export type DiscoveredProfile = {
   followers?: number | undefined;
   profile_url?: string | undefined;
   external_id?: string | undefined;
-  ad_accounts?: string[] | undefined;
 };
 
 /** Best-effort profile discovery straight after authorization. */
@@ -66,14 +65,6 @@ export async function discoverProfile(
           followers: ig.followers_count,
           profile_url: ig.username ? `https://instagram.com/${ig.username}` : undefined,
         };
-      }
-      if (platform === "meta_ads") {
-        const res = await fetch(
-          `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name&access_token=${encodeURIComponent(token)}`,
-        );
-        const json: any = await res.json();
-        const list: string[] = (json?.data ?? []).map((a: any) => `${a.name} (${a.id})`);
-        return { name: list[0] ?? "Meta Ads", ad_accounts: list, external_id: json?.data?.[0]?.id };
       }
     }
     if (platform === "youtube") {
@@ -145,23 +136,17 @@ export async function discoverProfile(
       if (!u?.open_id) return {};
       return { external_id: String(u.open_id), name: u.display_name, picture: u.avatar_url };
     }
-    if (platform === "linkedin" || platform === "google_business") {
-      // A LinkedIn member can administer several Company Pages and a Google
-      // account can manage several locations. Exactly one is connected here;
-      // several go through the picker in the OAuth callback.
-      const { listConnectionTargets, targetProfile } =
-        await import("@/lib/connection-targets.server");
-      const listed = await listConnectionTargets(platform, token);
-      if (listed.ok && listed.targets.length === 1) return targetProfile(listed.targets[0]!);
+    const targets = await import("@/lib/connection-targets.server");
+    if (targets.hasTargetDiscovery(platform)) {
+      // A LinkedIn member can administer several Company Pages, a Google
+      // account can manage several locations, GA4 properties or Search Console
+      // sites, and a Facebook login several ad accounts. Exactly one is
+      // connected here; several go through the picker in the OAuth callback.
+      const listed = await targets.listConnectionTargets(platform, token);
+      if (listed.ok && listed.targets.length === 1) {
+        return targets.targetProfile(listed.targets[0]!);
+      }
       return {};
-    }
-    if (platform === "search_console") {
-      const res = await fetch("https://www.googleapis.com/webmasters/v3/sites", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json: any = await res.json();
-      const site = json?.siteEntry?.[0];
-      return site ? { name: site.siteUrl, external_id: site.siteUrl } : {};
     }
   } catch {
     /* discovery is best-effort — the connection still works */

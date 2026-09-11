@@ -70,13 +70,14 @@ const GROUPS: {
   {
     id: "ads",
     title: "Ads accounts",
-    blurb: "Connect ad accounts now. Spend and results reporting is not built yet.",
+    blurb:
+      "Meta Ads spend and results for the last 28 days. Other ad platforms are not available yet.",
     icon: BarChart3,
   },
   {
     id: "analytics",
     title: "Analytics & search",
-    blurb: "Connect GA4 and Search Console now. Traffic and search reporting is not built yet.",
+    blurb: "GA4 traffic and Search Console search performance for the last 28 days.",
     icon: BarChart3,
   },
   {

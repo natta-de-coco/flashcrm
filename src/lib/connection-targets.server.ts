@@ -26,7 +26,13 @@ export type TargetList =
   { ok: true; targets: ConnectionTarget[] } | { ok: false; targets: []; reason: string };
 
 /** Platforms whose login can manage more than one channel, served by this module. */
-export const TARGET_PLATFORMS = ["linkedin", "google_business"] as const;
+export const TARGET_PLATFORMS = [
+  "linkedin",
+  "google_business",
+  "google_analytics",
+  "search_console",
+  "meta_ads",
+] as const;
 
 export function hasTargetDiscovery(platform: string): boolean {
   return (TARGET_PLATFORMS as readonly string[]).includes(platform);
@@ -36,6 +42,9 @@ export async function listConnectionTargets(platform: string, token: string): Pr
   try {
     if (platform === "linkedin") return await linkedinTargets(token);
     if (platform === "google_business") return await businessProfileTargets(token);
+    if (platform === "google_analytics") return await ga4Targets(token);
+    if (platform === "search_console") return await searchConsoleTargets(token);
+    if (platform === "meta_ads") return await metaAdAccountTargets(token);
   } catch (error) {
     return {
       ok: false,
@@ -66,9 +75,20 @@ export function targetProfile(target: ConnectionTarget): {
 
 /** What to tell the customer when a login manages nothing Flas can connect. */
 export function noTargetReason(platform: string): string {
-  return platform === "linkedin"
-    ? "This LinkedIn account is not an administrator of any Company Page. Ask a Page admin to add you as a Super admin or Content admin, then connect again."
-    : "No Business Profile location was found for this Google account. Check the account manages a verified location, and that Google has approved Business Profile API access for this app.";
+  switch (platform) {
+    case "linkedin":
+      return "This LinkedIn account is not an administrator of any Company Page. Ask a Page admin to add you as a Super admin or Content admin, then connect again.";
+    case "google_business":
+      return "No Business Profile location was found for this Google account. Check the account manages a verified location, and that Google has approved Business Profile API access for this app.";
+    case "google_analytics":
+      return "No GA4 property was found for this Google account. You need at least Viewer access to a GA4 property.";
+    case "search_console":
+      return "No verified Search Console site was found for this Google account. Verify the site in Search Console first.";
+    case "meta_ads":
+      return "No ad account was found for this Facebook login. You need a role on an ad account in Meta Business Manager.";
+    default:
+      return "This login does not manage anything Flas can connect.";
+  }
 }
 
 async function linkedinTargets(token: string): Promise<TargetList> {
@@ -165,5 +185,89 @@ async function businessProfileTargets(token: string): Promise<TargetList> {
       });
     }
   }
+  return { ok: true, targets };
+}
+
+async function ga4Targets(token: string): Promise<TargetList> {
+  const res = await fetch(
+    "https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200",
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      ok: false,
+      targets: [],
+      reason: `Google Analytics refused to list your properties (HTTP ${res.status}). Check that the Google Analytics Admin API is enabled for this app.`,
+    };
+  }
+  const targets: ConnectionTarget[] = [];
+  for (const account of json?.accountSummaries ?? []) {
+    for (const property of account?.propertySummaries ?? []) {
+      if (!property?.property) continue;
+      targets.push({
+        id: String(property.property),
+        name: property.displayName ?? String(property.property),
+        detail: account.displayName ?? null,
+        profileUrl: null,
+      });
+    }
+  }
+  return { ok: true, targets };
+}
+
+async function searchConsoleTargets(token: string): Promise<TargetList> {
+  const res = await fetch("https://www.googleapis.com/webmasters/v3/sites", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      ok: false,
+      targets: [],
+      reason: `Search Console refused to list your sites (HTTP ${res.status}).`,
+    };
+  }
+  const LEVELS: Record<string, string> = {
+    siteOwner: "Owner",
+    siteFullUser: "Full user",
+    siteRestrictedUser: "Restricted user",
+  };
+  const targets = (json?.siteEntry ?? [])
+    // An unverified site returns no data; offering it would connect nothing.
+    .filter((s: any) => s?.siteUrl && s.permissionLevel !== "siteUnverifiedUser")
+    .map((s: any): ConnectionTarget => ({
+      id: String(s.siteUrl),
+      name: String(s.siteUrl).replace(/^sc-domain:/, ""),
+      detail: LEVELS[String(s.permissionLevel)] ?? null,
+      profileUrl: null,
+    }));
+  return { ok: true, targets };
+}
+
+async function metaAdAccountTargets(token: string): Promise<TargetList> {
+  const res = await fetch(
+    "https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,currency,account_status&limit=100",
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok || json?.error) {
+    return {
+      ok: false,
+      targets: [],
+      reason: `Meta refused to list your ad accounts: ${json?.error?.message ?? `HTTP ${res.status}`}`,
+    };
+  }
+  const targets = (json?.data ?? [])
+    .filter((a: any) => a?.id)
+    .map((a: any): ConnectionTarget => ({
+      id: String(a.id),
+      name: a.name ?? String(a.id),
+      detail:
+        [a.currency, a.account_status === 1 ? "active" : "not active"]
+          .filter(Boolean)
+          .join(" · ") || null,
+      profileUrl: null,
+    }));
   return { ok: true, targets };
 }

@@ -239,7 +239,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           // a connection that can never sync.
           let chosenTarget: import("@/lib/connection-targets.server").ConnectionTarget | null =
             null;
-          if (platform === "linkedin" || platform === "google_business") {
+          if ((await import("@/lib/connection-targets.server")).hasTargetDiscovery(platform)) {
             const { listConnectionTargets, noTargetReason } =
               await import("@/lib/connection-targets.server");
             const listed = await listConnectionTargets(platform, tokens.token);

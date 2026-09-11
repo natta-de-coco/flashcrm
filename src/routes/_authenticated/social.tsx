@@ -1,3 +1,4 @@
+import { ChannelReportDialog, REPORT_PLATFORMS } from "@/components/social/ChannelReportDialog";
 import { useTenant } from "@/hooks/useTenant";
 import { PageHeader } from "@/components/PageHeader";
 import {
@@ -527,20 +528,26 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1"
-                  disabled={syncingId === a.id}
-                  onClick={() => void runSync(a.id)}
-                >
-                  {syncingId === a.id ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="size-3.5" />
-                  )}
-                  Sync
-                </Button>
+                {/* Analytics and ads connections report rather than sync:
+                    Sync pulls posts and comments, which they do not have. */}
+                {REPORT_PLATFORMS.has(a.platform) ? (
+                  <ChannelReportDialog accountId={a.id} label={a.label} />
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1"
+                    disabled={syncingId === a.id}
+                    onClick={() => void runSync(a.id)}
+                  >
+                    {syncingId === a.id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="size-3.5" />
+                    )}
+                    Sync
+                  </Button>
+                )}
                 <Button
                   size="icon"
                   variant="ghost"

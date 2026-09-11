@@ -792,16 +792,25 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     setupRequirements: ["Meta Business account", "Advanced Access to ads permissions"],
     docs: ["https://developers.facebook.com/docs/marketing-apis"],
     lastVerified: "2026-09-08",
-    knownLimitations: ["Flas lists ad accounts but does not read spend or performance."],
+    knownLimitations: [
+      "Reports cover the last 28 days: spend, reach, clicks, CTR and CPC, and the top campaigns.",
+      "Flas never creates or edits campaigns.",
+    ],
     capabilities: caps({
       profile: {
         providerSupports: true,
         flasImplements: true,
         requiredScopes: ["business_management"],
         reviewRequired: true,
-        note: "Ad accounts are listed on connect.",
+        note: "The ad account is chosen on connect.",
       },
-      ads_read: notBuilt(["ads_read"], "Scope requested; no campaign or spend reporting is built."),
+      ads_read: {
+        providerSupports: true,
+        flasImplements: true,
+        requiredScopes: ["ads_read"],
+        reviewRequired: true,
+        note: "Spend, reach, clicks, CTR and CPC for the last 28 days, and the top campaigns.",
+      },
       ads_manage: notBuilt(
         ["ads_management"],
         "Scope requested; Flas never creates or edits campaigns.",
@@ -904,16 +913,24 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     setupRequirements: ["GA4 property with at least Viewer access", "Data API enabled"],
     docs: ["https://developers.google.com/analytics/devguides/reporting/data/v1"],
     lastVerified: "2026-09-08",
-    knownLimitations: ["No GA4 reporting is implemented; the connection is stored only."],
+    knownLimitations: [
+      "Reports cover the last 28 days: sessions, users, views and key events, by channel.",
+    ],
     capabilities: caps({
-      profile: notBuilt(
-        ["https://www.googleapis.com/auth/analytics.readonly"],
-        "Property listing is not implemented.",
-      ),
-      analytics: notBuilt(
-        ["https://www.googleapis.com/auth/analytics.readonly"],
-        "Scope requested; no reporting is built.",
-      ),
+      profile: {
+        providerSupports: true,
+        flasImplements: true,
+        requiredScopes: ["https://www.googleapis.com/auth/analytics.readonly"],
+        reviewRequired: true,
+        note: "The GA4 property is chosen on connect.",
+      },
+      analytics: {
+        providerSupports: true,
+        flasImplements: true,
+        requiredScopes: ["https://www.googleapis.com/auth/analytics.readonly"],
+        reviewRequired: true,
+        note: "Sessions, users, views and key events for the last 28 days, by channel.",
+      },
     }),
   },
   {
@@ -929,19 +946,24 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     setupRequirements: ["Verified site ownership"],
     docs: ["https://developers.google.com/webmaster-tools/v1/api_reference_index"],
     lastVerified: "2026-09-08",
-    knownLimitations: ["Sites are listed on connect; no query or impression data is pulled."],
+    knownLimitations: [
+      "Reports end three days ago, because Search Console data arrives two to three days late.",
+    ],
     capabilities: caps({
       profile: {
         providerSupports: true,
         flasImplements: true,
         requiredScopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
         reviewRequired: true,
-        note: "Verified sites are listed on connect.",
+        note: "The verified site is chosen on connect.",
       },
-      analytics: notBuilt(
-        ["https://www.googleapis.com/auth/webmasters.readonly"],
-        "Search performance data is not pulled.",
-      ),
+      analytics: {
+        providerSupports: true,
+        flasImplements: true,
+        requiredScopes: ["https://www.googleapis.com/auth/webmasters.readonly"],
+        reviewRequired: true,
+        note: "Clicks, impressions, CTR and position for 28 days, and the top queries.",
+      },
     }),
   },
 

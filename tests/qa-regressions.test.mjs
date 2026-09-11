@@ -198,7 +198,7 @@ describe("dates that carry money or access are unambiguous", () => {
 });
 
 describe("a date input is filled with the viewer's calendar day", () => {
-  it("returns YYYY-MM-DD, which is what <input type=\"date\"> requires", () => {
+  it('returns YYYY-MM-DD, which is what <input type="date"> requires', () => {
     assert.match(isoDayLocal("2027-08-10T09:00:00Z"), /^\d{4}-\d{2}-\d{2}$/);
   });
 
@@ -243,12 +243,9 @@ describe("the app does not offer what it cannot do", () => {
     const dead = CONNECTOR_DEFINITIONS.filter((c) => !implementsAnything(c)).map(
       (c) => c.displayName,
     );
-    assert.deepEqual(dead.sort(), [
-      "Google Ads",
-      "Google Analytics 4",
-      "LinkedIn Ads",
-      "Threads",
-    ]);
+    // Google Analytics 4 left this list when its property picker and 28-day
+    // traffic report were built.
+    assert.deepEqual(dead.sort(), ["Google Ads", "LinkedIn Ads", "Threads"]);
   });
 
   it("never advertises a capability it has not implemented", () => {
