@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/hooks/useTenant";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Bot, Save } from "lucide-react";
+import { AlertTriangle, Bot, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -87,6 +88,12 @@ function ChatbotPage() {
     });
   }, [settings.data]);
 
+  const instructionsTrimmed = form.instructions.trim();
+  const greetingTrimmed = form.greeting.trim();
+  const instructionsValid = instructionsTrimmed.length >= 20;
+  const greetingValid = greetingTrimmed.length > 0;
+  const isDormant = form.enabled && (!instructionsValid || !greetingValid);
+
   const save = useMutation({
     mutationFn: async () => {
       if (!tenant?.id) throw new Error("Your workspace is still being set up.");
@@ -109,7 +116,13 @@ function ChatbotPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Chatbot updated");
+      if (isDormant) {
+        toast.warning(
+          "Chatbot saved, but auto-reply will remain paused until instructions (min 20 characters) and a greeting are provided.",
+        );
+      } else {
+        toast.success("Chatbot updated");
+      }
       void qc.invalidateQueries({ queryKey: ["tenant_bot_settings", tenant?.id] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -130,10 +143,23 @@ function ChatbotPage() {
       <div className="grid max-w-3xl gap-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-base" id="auto-reply-title">
-                Auto-reply
-              </CardTitle>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base" id="auto-reply-title">
+                  Auto-reply
+                </CardTitle>
+                {form.enabled && (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      isDormant
+                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                        : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                    }`}
+                  >
+                    {isDormant ? "Dormant" : "Active"}
+                  </span>
+                )}
+              </div>
               <CardDescription id="auto-reply-desc">
                 Reply instantly to new incoming messages.
               </CardDescription>
@@ -146,6 +172,30 @@ function ChatbotPage() {
             />
           </CardHeader>
         </Card>
+
+        {isDormant && (
+          <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200">
+            <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+            <AlertTitle className="font-semibold text-amber-800 dark:text-amber-300">
+              Auto-reply is dormant
+            </AlertTitle>
+            <AlertDescription className="text-amber-800/90 dark:text-amber-300/90 text-xs sm:text-sm">
+              Even though the auto-reply switch is turned on, your assistant will not reply to incoming chats until configuration requirements are met:
+              <ul className="mt-1.5 list-disc pl-4 space-y-0.5">
+                {!instructionsValid && (
+                  <li>
+                    Instructions must be at least 20 characters (currently {instructionsTrimmed.length} character{instructionsTrimmed.length === 1 ? "" : "s"}).
+                  </li>
+                )}
+                {!greetingValid && (
+                  <li>
+                    A first greeting message is required.
+                  </li>
+                )}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Card>
           <CardHeader>
@@ -161,22 +211,45 @@ function ChatbotPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="greeting">First greeting</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="greeting">First greeting</Label>
+                {form.enabled && !greetingValid && (
+                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                    Required for auto-reply
+                  </span>
+                )}
+              </div>
               <Textarea
                 id="greeting"
                 rows={2}
                 value={form.greeting}
                 onChange={(e) => setForm({ ...form, greeting: e.target.value })}
+                placeholder="e.g. Hi there! Thanks for contacting us. How can we help you today?"
+                className={form.enabled && !greetingValid ? "border-amber-500/50 focus-visible:ring-amber-500" : ""}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="instructions">Instructions / knowledge</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="instructions">Instructions / knowledge</Label>
+                <span
+                  className={`text-xs font-medium ${
+                    instructionsValid
+                      ? "text-muted-foreground"
+                      : form.enabled
+                        ? "text-amber-600 dark:text-amber-400 font-semibold"
+                        : "text-muted-foreground"
+                  }`}
+                >
+                  {instructionsTrimmed.length} / 20 min chars
+                </span>
+              </div>
               <Textarea
                 id="instructions"
                 rows={8}
                 value={form.instructions}
                 onChange={(e) => setForm({ ...form, instructions: e.target.value })}
                 placeholder="Describe your business, products, pricing, opening hours and tone of voice."
+                className={form.enabled && !instructionsValid ? "border-amber-500/50 focus-visible:ring-amber-500" : ""}
               />
             </div>
             <div className="grid gap-1.5">

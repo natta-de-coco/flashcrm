@@ -4864,6 +4864,7 @@ export type Database = {
           plan: string | null
           slug: string | null
           subscription_status: string | null
+          subscription_renews_at: string | null
           suspended: boolean | null
         }
         Insert: {
@@ -4881,6 +4882,7 @@ export type Database = {
           plan?: string | null
           slug?: string | null
           subscription_status?: string | null
+          subscription_renews_at?: string | null
           suspended?: boolean | null
         }
         Update: {
@@ -4898,6 +4900,7 @@ export type Database = {
           plan?: string | null
           slug?: string | null
           subscription_status?: string | null
+          subscription_renews_at?: string | null
           suspended?: boolean | null
         }
         Relationships: []
