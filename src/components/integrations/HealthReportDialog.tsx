@@ -29,6 +29,7 @@ import type { HealthRow } from "@/lib/integration-health";
  * totals with no explanation of the gap.
  */
 const KEYED_CONNECTORS = NON_OAUTH_CONNECTORS;
+import { useAuth } from "@/hooks/useAuth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CheckCircle2, FileDown, RefreshCw, Stethoscope } from "lucide-react";
@@ -45,6 +46,7 @@ const TONE: Record<string, string> = {
 };
 
 export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
+  const { isSuperAdmin } = useAuth();
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
   const retry = useServerFn(retryConnections);
@@ -137,7 +139,11 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
             {data.credentials ? (
               <p className="text-xs text-muted-foreground">
                 {!data.credentials.configured
-                  ? "Stored credentials are not encrypted: add TOKEN_ENCRYPTION_KEYS to the server's secrets."
+                  ? // A server setting name helps the Flas administrator and means
+                    // nothing to a customer, who cannot act on it.
+                    isSuperAdmin
+                    ? "Stored credentials are not encrypted: add TOKEN_ENCRYPTION_KEYS to the server's secrets."
+                    : "Stored credentials are not encrypted yet. Your Flas administrator needs to finish setup."
                   : data.credentials.plaintext > 0
                     ? `${data.credentials.plaintext} stored credential(s) are not encrypted yet.`
                     : "Stored credentials are encrypted."}

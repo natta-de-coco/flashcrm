@@ -26,6 +26,7 @@ import {
   getConnectReadiness,
   startConnect,
 } from "@/lib/connections.functions";
+import { useAuth } from "@/hooks/useAuth";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -107,6 +108,9 @@ type Account = {
  */
 export function ConnectBusiness() {
   const qc = useQueryClient();
+  // Provider app keys are an administrator task. A normal user pressing
+  // Connect should meet the provider sign-in, never a developer form.
+  const { isAdmin } = useAuth();
   const connections = useQuery({ queryKey: ["connections"], queryFn: () => getConnections() });
   // Which platforms can actually be authorized right now. Without this the
   // only way to find out was to click Connect and read a toast that vanished.
@@ -348,6 +352,7 @@ export function ConnectBusiness() {
                     connector={c}
                     accounts={accountsFor(c.id)}
                     readiness={readyById.get(c.id) ?? null}
+                    canManageKeys={isAdmin}
                     error={connectErrors[c.id] ?? null}
                     connecting={connect.isPending && connect.variables === c.id}
                     onConnect={() => connect.mutate(c.id)}
@@ -395,6 +400,7 @@ export function ConnectBusiness() {
 
 function ConnectorCard({
   connector,
+  canManageKeys,
   accounts,
   readiness,
   error,
@@ -406,6 +412,8 @@ function ConnectorCard({
   onDisconnect,
 }: {
   connector: Connector;
+  /** Whether this viewer may configure provider app keys at all. */
+  canManageKeys: boolean;
   /** null while loading, or for connectors with no OAuth flow. */
   readiness: { ready: boolean; missing: string[]; source: string } | null;
   /** Why the last Connect on THIS card failed, shown in place of the status. */
@@ -616,7 +624,7 @@ function ConnectorCard({
             // the button that does something useful is "Add app keys" -- not a
             // Connect that is guaranteed to fail next to a badge explaining
             // why. It opens the wizard on the key form itself.
-            needsKeys ? (
+            needsKeys && canManageKeys ? (
               <Button
                 size="sm"
                 className="h-8 gap-1 text-xs"
@@ -627,6 +635,10 @@ function ConnectorCard({
               >
                 <KeyRound className="size-3" /> Add app keys
               </Button>
+            ) : needsKeys ? (
+              <Badge variant="outline" className="text-[10px]">
+                Administrator setup needed
+              </Badge>
             ) : (
               <Button
                 size="sm"

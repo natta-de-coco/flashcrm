@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ConnectBusiness } from "@/components/integrations/ConnectBusiness";
 import { AiKeysCard } from "@/components/integrations/AiKeysCard";
 import { IntegrationSettings } from "@/components/integrations/IntegrationSettings";
+import { ProviderSetupCenter } from "@/components/integrations/ProviderSetupCenter";
 import { IntegrationLogs } from "@/components/integrations/IntegrationLogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -181,6 +182,7 @@ function ConnectPage() {
         {[
           { href: "#setup", label: "Guided setup" },
           { href: "#platforms", label: "Platform connections" },
+          ...(isAdmin ? [{ href: "#provider-setup", label: "Provider setup" }] : []),
           { href: "#whatsapp", label: "WhatsApp & website" },
           { href: "#logs", label: "Integration logs" },
         ].map((s) => (
@@ -412,6 +414,12 @@ function ConnectPage() {
 
       <div className="mb-8">
         <ConnectBusiness />
+      </div>
+
+      {/* One-time provider configuration, administrators only: the shared app
+          credentials live in the server settings, never in a customer form. */}
+      <div className="mb-8">
+        <ProviderSetupCenter />
       </div>
 
       {/* Moved here from Settings: the WhatsApp connection, its numbers, the
