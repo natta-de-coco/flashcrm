@@ -37,6 +37,7 @@ import { Route as AuthenticatedSeoBlogRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedSocialRouteImport } from './routes/_authenticated/social'
 import { Route as BlogIndexRouteImport } from './routes/blog.index'
 import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
+import { Route as OauthCompleteRouteImport } from './routes/oauth.complete'
 import { Route as PayTokenRouteImport } from './routes/pay.$token'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as AuthenticatedCompaniesIndexRouteImport } from './routes/_authenticated/companies.index'
@@ -202,6 +203,11 @@ const BlogSlugRoute = BlogSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => BlogRoute,
 } as any)
+const OauthCompleteRoute = OauthCompleteRouteImport.update({
+  id: '/oauth/complete',
+  path: '/oauth/complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PayTokenRoute = PayTokenRouteImport.update({
   id: '/pay/$token',
   path: '/pay/$token',
@@ -362,6 +368,7 @@ export interface FileRoutesByFullPath {
   '/seo-blog': typeof AuthenticatedSeoBlogRouteWithChildren
   '/social': typeof AuthenticatedSocialRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/oauth/complete': typeof OauthCompleteRoute
   '/pay/$token': typeof PayTokenRoute
   '/verify/$token': typeof VerifyTokenRoute
   '/blog/': typeof BlogIndexRoute
@@ -413,6 +420,7 @@ export interface FileRoutesByTo {
   '/sales': typeof AuthenticatedSalesRoute
   '/social': typeof AuthenticatedSocialRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/oauth/complete': typeof OauthCompleteRoute
   '/pay/$token': typeof PayTokenRoute
   '/verify/$token': typeof VerifyTokenRoute
   '/blog': typeof BlogIndexRoute
@@ -468,6 +476,7 @@ export interface FileRoutesById {
   '/_authenticated/seo-blog': typeof AuthenticatedSeoBlogRouteWithChildren
   '/_authenticated/social': typeof AuthenticatedSocialRoute
   '/blog/$slug': typeof BlogSlugRoute
+  '/oauth/complete': typeof OauthCompleteRoute
   '/pay/$token': typeof PayTokenRoute
   '/verify/$token': typeof VerifyTokenRoute
   '/blog/': typeof BlogIndexRoute
@@ -523,6 +532,7 @@ export interface FileRouteTypes {
     | '/seo-blog'
     | '/social'
     | '/blog/$slug'
+    | '/oauth/complete'
     | '/pay/$token'
     | '/verify/$token'
     | '/blog/'
@@ -574,6 +584,7 @@ export interface FileRouteTypes {
     | '/sales'
     | '/social'
     | '/blog/$slug'
+    | '/oauth/complete'
     | '/pay/$token'
     | '/verify/$token'
     | '/blog'
@@ -628,6 +639,7 @@ export interface FileRouteTypes {
     | '/_authenticated/seo-blog'
     | '/_authenticated/social'
     | '/blog/$slug'
+    | '/oauth/complete'
     | '/pay/$token'
     | '/verify/$token'
     | '/blog/'
@@ -668,6 +680,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   WhatsappBusinessApiRoute: typeof WhatsappBusinessApiRoute
   WidgetDemoRoute: typeof WidgetDemoRoute
+  OauthCompleteRoute: typeof OauthCompleteRoute
   PayTokenRoute: typeof PayTokenRoute
   VerifyTokenRoute: typeof VerifyTokenRoute
   ApiPublicOauthCallbackRoute: typeof ApiPublicOauthCallbackRoute
@@ -883,6 +896,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/blog/$slug'
       preLoaderRoute: typeof BlogSlugRouteImport
       parentRoute: typeof BlogRoute
+    }
+    '/oauth/complete': {
+      id: '/oauth/complete'
+      path: '/oauth/complete'
+      fullPath: '/oauth/complete'
+      preLoaderRoute: typeof OauthCompleteRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/pay/$token': {
       id: '/pay/$token'
@@ -1142,6 +1162,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   WhatsappBusinessApiRoute: WhatsappBusinessApiRoute,
   WidgetDemoRoute: WidgetDemoRoute,
+  OauthCompleteRoute: OauthCompleteRoute,
   PayTokenRoute: PayTokenRoute,
   VerifyTokenRoute: VerifyTokenRoute,
   ApiPublicOauthCallbackRoute: ApiPublicOauthCallbackRoute,

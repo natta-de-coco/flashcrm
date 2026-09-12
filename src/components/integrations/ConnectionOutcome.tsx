@@ -9,10 +9,10 @@ import {
   selectMetaTarget,
   testSocialConnection,
 } from "@/lib/social-doctor.functions";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertTriangle, CheckCircle2, Loader2, XCircle } from "lucide-react";
-import { useState } from "react";
+import { AlertTriangle, CheckCircle2, Loader2, Slash, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -34,7 +34,69 @@ export type ConnectionOutcomeSearch = {
   connect_detail?: string;
   connect_help?: string;
   select_target?: string;
+  /**
+   * Written by the popup completion page's full-page fallback. A cancellation
+   * and an expiry used to arrive as connect_error, which read as "something
+   * broke" when in fact nothing had: the person pressed Cancel, or took longer
+   * than fifteen minutes.
+   */
+  connect_cancelled?: string;
+  connect_expired?: string;
+  /** The attempt id, so a page that wants the full record can look it up. */
+  connect_attempt?: string;
+  platform?: string;
 };
+
+/** Every parameter this component understands, for reading and for clearing. */
+const OUTCOME_PARAMS = [
+  "connected",
+  "connect_blocked",
+  "connect_reason",
+  "connect_error",
+  "connect_detail",
+  "connect_help",
+  "select_target",
+  "connect_cancelled",
+  "connect_expired",
+  "connect_attempt",
+  "platform",
+] as const;
+
+/**
+ * The outcome as it appears in the address bar.
+ *
+ * The Social Hub hands this component its route's validated search. The
+ * Connection Center declares no search schema at all, so for the full-page
+ * fallback -- a browser that blocked the popup, or a provider that replaced
+ * the whole tab -- the parameters are read directly instead. That is what lets
+ * the result be shown on the page where Connect was actually pressed, without
+ * that page needing to know this flow exists.
+ */
+function readOutcomeFromLocation(): ConnectionOutcomeSearch {
+  if (typeof window === "undefined") return {};
+  const params = new URLSearchParams(window.location.search);
+  const out: Record<string, string> = {};
+  for (const key of OUTCOME_PARAMS) {
+    const value = params.get(key);
+    if (value) out[key] = value;
+  }
+  return out as ConnectionOutcomeSearch;
+}
+
+/** Clears the outcome from the URL without a navigation or a reload. */
+function stripOutcomeParams() {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  let changed = false;
+  for (const key of OUTCOME_PARAMS) {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 /**
  * Connectors whose login can manage several channels and is served by
@@ -66,35 +128,97 @@ type Account = {
 
 export function ConnectionOutcome({
   search,
-  accounts,
+  accounts = [],
   onChanged,
   onDismiss,
 }: {
-  search: ConnectionOutcomeSearch;
-  accounts: Account[];
-  onChanged: () => void;
-  onDismiss: () => void;
+  /** Omit on a page with no search schema; the address bar is read instead. */
+  search?: ConnectionOutcomeSearch | undefined;
+  accounts?: Account[] | undefined;
+  onChanged?: (() => void) | undefined;
+  onDismiss?: (() => void) | undefined;
 }) {
-  const blocked = search.connect_blocked;
-  const errored = search.connect_error;
-  const connected = search.connected;
-  // The callback sends the pending row's id; "1" is what older links carried.
-  const needsTarget = Boolean(search.select_target);
-  const pendingId =
-    search.select_target && search.select_target !== "1" ? search.select_target : null;
+  const qc = useQueryClient();
+  const [fromUrl, setFromUrl] = useState<ConnectionOutcomeSearch | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
-  if (!blocked && !errored && !connected) return null;
+  // Read after mount, never during render: the server has no address bar, and
+  // producing markup on the client that the server did not produce is a
+  // hydration mismatch.
+  useEffect(() => {
+    if (!search) setFromUrl(readOutcomeFromLocation());
+  }, [search]);
+
+  const active: ConnectionOutcomeSearch = search ?? fromUrl ?? {};
+
+  // Defaults so the component can be dropped onto a page that knows nothing
+  // about this flow: refresh what the connection screens read, and clear the
+  // outcome out of the URL on dismissal.
+  const handleChanged =
+    onChanged ??
+    (() => {
+      for (const key of ["connections", "social-hub", "connect-social-accounts"]) {
+        void qc.invalidateQueries({ queryKey: [key] });
+      }
+    });
+  const handleDismiss =
+    onDismiss ??
+    (() => {
+      setDismissed(true);
+      stripOutcomeParams();
+    });
+
+  const blocked = active.connect_blocked;
+  const errored = active.connect_error;
+  const connected = active.connected;
+  const cancelled = active.connect_cancelled;
+  const expired = active.connect_expired;
+  // The callback sends the pending row's id; "1" is what older links carried.
+  const needsTarget = Boolean(active.select_target);
+  const pendingId =
+    active.select_target && active.select_target !== "1" ? active.select_target : null;
+
+  if (dismissed) return null;
+  if (!blocked && !errored && !connected && !cancelled && !expired) return null;
 
   // The account the callback just created, so the picker knows what to act
   // on. By id first: once several channels per platform can be connected, the
   // first row for the platform is often a different, already-pinned one --
   // opening the picker on it listed nothing and failed.
+  //
+  // The last fallback builds one from the id in the URL. On the Connection
+  // Center there is no account list to search, and without this the picker
+  // never opened there at all.
   const account = connected
     ? (accounts.find((a) => a.id === pendingId) ??
       accounts.find((a) => a.platform === connected && !a.external_id) ??
       accounts.find((a) => a.platform === connected) ??
-      null)
+      (pendingId ? { id: pendingId, platform: connected, label: null } : null))
     : null;
+
+  if (cancelled || expired) {
+    // Deliberately not destructive styling. Nothing failed and nothing was
+    // saved -- someone pressed Cancel, or left the consent screen open too
+    // long -- and dressing that as an error sends people looking for a fault.
+    return (
+      <Alert className="mt-4">
+        <Slash className="size-4" />
+        <AlertTitle>
+          {cancelled ? "Sign-in cancelled" : "That sign-in expired before it finished"}
+        </AlertTitle>
+        <AlertDescription className="space-y-3">
+          <p>
+            {cancelled
+              ? "Nothing was connected and nothing was saved. Press Connect again whenever you are ready."
+              : "Flas holds a connection request open for about fifteen minutes. Press Connect again to start a fresh one."}
+          </p>
+          <Button size="sm" variant="outline" onClick={handleDismiss}>
+            Dismiss
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   if (blocked) {
     return (
@@ -103,13 +227,13 @@ export function ConnectionOutcome({
         <AlertTitle>Couldn&apos;t finish connecting {blocked}</AlertTitle>
         <AlertDescription className="space-y-3">
           <p className="font-medium">
-            {search.connect_reason ?? "The platform did not return a usable authorization."}
+            {active.connect_reason ?? "The platform did not return a usable authorization."}
           </p>
-          {search.connect_detail && <p>{search.connect_detail}</p>}
-          {search.connect_help && (
+          {active.connect_detail && <p>{active.connect_detail}</p>}
+          {active.connect_help && (
             <a
               className="inline-block text-xs underline underline-offset-2"
-              href={search.connect_help}
+              href={active.connect_help}
               target="_blank"
               rel="noreferrer noopener"
             >
@@ -120,7 +244,7 @@ export function ConnectionOutcome({
             Nothing was saved, so there is no half-connected account to clean up. Fix the cause
             above and press Connect again.
           </p>
-          <Button size="sm" variant="outline" onClick={onDismiss}>
+          <Button size="sm" variant="outline" onClick={handleDismiss}>
             Dismiss
           </Button>
         </AlertDescription>
@@ -134,8 +258,8 @@ export function ConnectionOutcome({
         <XCircle className="size-4" />
         <AlertTitle>Connection failed</AlertTitle>
         <AlertDescription className="space-y-3">
-          <p>{errored}</p>
-          <Button size="sm" variant="outline" onClick={onDismiss}>
+          <p>{FAILURE_COPY[errored] ?? errored}</p>
+          <Button size="sm" variant="outline" onClick={handleDismiss}>
             Dismiss
           </Button>
         </AlertDescription>
@@ -145,9 +269,9 @@ export function ConnectionOutcome({
 
   if (needsTarget && account) {
     return CHANNEL_PICKER_PLATFORMS.has(account.platform) ? (
-      <ChannelPicker account={account} onChanged={onChanged} onDismiss={onDismiss} />
+      <ChannelPicker account={account} onChanged={handleChanged} onDismiss={handleDismiss} />
     ) : (
-      <TargetPicker account={account} onChanged={onChanged} onDismiss={onDismiss} />
+      <TargetPicker account={account} onChanged={handleChanged} onDismiss={handleDismiss} />
     );
   }
 
@@ -155,11 +279,38 @@ export function ConnectionOutcome({
     <ConnectedBanner
       platform={connected as string}
       account={account}
-      onChanged={onChanged}
-      onDismiss={onDismiss}
+      onChanged={handleChanged}
+      onDismiss={handleDismiss}
     />
   );
 }
+
+/**
+ * The sanitized failure codes, in English.
+ *
+ * The callback deliberately puts only a code in the URL so a provider's error
+ * text -- which routinely quotes the request, and the request carried the token
+ * -- never reaches the address bar. Without this table the customer read
+ * "token_exchange_failed" and had nothing to do about it. The full problem,
+ * with the fix and the link, comes from getConnectAttempt; this is the floor.
+ */
+const FAILURE_COPY: Record<string, string> = {
+  platform_app_missing:
+    "This workspace has no app keys for that platform yet. Add them in Connect & setup, then press Connect again.",
+  redirect_uri_mismatch:
+    "The platform does not recognise Flas's return address. An administrator needs to register it on the platform's app settings.",
+  token_exchange_failed:
+    "The platform accepted the login but refused to issue an access token. That is usually a wrong app secret, or an app still in development mode.",
+  pkce_error:
+    "The security check on this sign-in did not match. Press Connect again and finish in the window that opens.",
+  scope_rejected:
+    "Some of the permissions Flas needs were not granted. Press Connect again and leave every permission switched on.",
+  grant_expired: "That sign-in expired before it finished. Press Connect again.",
+  state_invalid:
+    "Flas could not match that sign-in to a Connect click. Press Connect again and finish in the window that opens.",
+  connect_failed:
+    "The platform returned an answer Flas could not complete. Nothing was saved — press Connect again.",
+};
 
 /**
  * The "which Page?" step. Picking the wrong one — or letting Flas silently take
