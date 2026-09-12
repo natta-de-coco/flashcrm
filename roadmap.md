@@ -7,3 +7,5 @@
 - Do not claim delivered/opened status because the email provider does not expose those outcomes.
 - [x] Keep the Flas owner accounts separate from all client-company workspaces.
 # Flas CRM Roadmap
+## Open tasks
+- Resubmit add_secret form for platform credentials (user: "dont skip please submit")
