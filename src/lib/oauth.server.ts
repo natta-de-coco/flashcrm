@@ -190,6 +190,25 @@ export async function sha256Hex(input: string): Promise<string> {
  * Compared on the parsed origin rather than by string prefix: "https://flas.example"
  * must not match "https://flas.example.attacker.test".
  */
+/**
+ * One configured allow-list entry, as an origin.
+ *
+ * A bare host is accepted. Every social connection on the deployment was
+ * refused because OAUTH_ALLOWED_ORIGINS held "flas.mobidigisol.com" while
+ * this code compared it against "https://flas.mobidigisol.com": new URL() on
+ * a bare host throws, the entry was skipped, and nothing could ever match --
+ * with no message saying the configuration was the problem.
+ *
+ * Only the host shorthand is inferred, and only as https. A scheme that is
+ * present is still honoured exactly (so http://localhost keeps working), and
+ * an entry with a path, credentials or anything else unparseable still throws
+ * to the caller, which refuses it.
+ */
+function originOfEntry(entry: string): string {
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(entry) ? entry : `https://${entry}`;
+  return new URL(withScheme).origin;
+}
+
 export function resolveAllowedOrigin(candidate: string): string | null {
   let parsed: URL;
   try {
@@ -216,7 +235,7 @@ export function resolveAllowedOrigin(candidate: string): string | null {
 
   for (const entry of allowed) {
     try {
-      if (new URL(entry).origin === parsed.origin) return parsed.origin;
+      if (originOfEntry(entry) === parsed.origin) return parsed.origin;
     } catch {
       /* a malformed entry in configuration must not allow everything */
     }

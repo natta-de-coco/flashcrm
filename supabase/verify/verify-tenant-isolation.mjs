@@ -78,6 +78,34 @@ for (const [who, uid] of [["Acme admin", adminA], ["Acme staff", staffA]]) {
 const roles = await q(adminA, `select p.email from user_roles ur join profiles p on p.id=ur.user_id`);
 check("Acme admin reads user_roles", !roles.some((r) => r.email.includes("globex")));
 
+// The organizations table itself. Added 12 Sep 2026 after a production audit
+// found any signed-in company admin could list every company on the platform:
+// orgs_read_own was USING (id = current_tenant_id() OR has_role(uid,'admin')),
+// and onboarding grants that legacy 'admin' role to whoever creates a
+// workspace. This suite already built the very user that exposes it -- it
+// simply never asked the question.
+const orgsSeen = (await q(adminA, "select name from organizations order by name")).map((r) => r.name);
+check(
+  "Acme admin lists only its own company",
+  orgsSeen.length === 1 && orgsSeen[0] === "Acme",
+  orgsSeen.join(", ") || "(none)",
+);
+let paddle = "readable";
+try {
+  await q(adminA, "select paddle_customer_id, paddle_subscription_id from organizations");
+} catch {
+  paddle = "denied";
+}
+check("billing identifiers are not readable by customers", paddle === "denied", paddle);
+
+// ...and the fix must not lock out platform staff, who legitimately see every
+// company (orgs_super_admin_all). Without this check, "isolate organizations"
+// could be satisfied by breaking the manager portal.
+const superUid = await mk("owner@flas.test", orgA, true);
+await c.query("update profiles set staff_role='super_admin' where id=$1", [superUid]);
+const superSees = (await q(superUid, "select name from organizations order by name")).map((r) => r.name);
+check("super admin still sees every company", superSees.length === 2, superSees.join(", "));
+
 console.log("");
 console.log("=== can one company modify another? ===");
 await c.query("begin");
