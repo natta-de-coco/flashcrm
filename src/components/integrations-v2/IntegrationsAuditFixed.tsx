@@ -33,11 +33,10 @@ import {
   RefreshCw,
   Search,
   Settings2,
-  ShieldCheck,
   Unplug,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type Account = {
@@ -61,23 +60,43 @@ const GROUP_LABELS: Record<ConnectorGroup, string> = {
   commerce: "Website & Commerce",
 };
 
-const POPULAR = new Set(["facebook", "instagram", "youtube", "whatsapp", "linkedin", "google_business"]);
+const POPULAR = new Set([
+  "facebook",
+  "instagram",
+  "youtube",
+  "whatsapp",
+  "linkedin",
+  "google_business",
+]);
 
 function friendlyCapability(platform: string): string[] {
   switch (platform) {
-    case "facebook": return ["Page profile", "Posts", "Analytics"];
-    case "instagram": return ["Profile", "Posts & Reels", "Insights"];
-    case "youtube": return ["Channel", "Videos", "Analytics"];
-    case "linkedin": return ["Company Page", "Posts", "Analytics"];
-    case "google_business": return ["Business profile", "Reviews", "Performance"];
-    case "meta_ads": return ["Campaigns", "Spend", "Performance"];
-    case "google_analytics": return ["Traffic", "Sources", "Conversions"];
-    case "search_console": return ["Clicks", "Impressions", "Queries"];
-    case "whatsapp": return ["Conversations", "Templates", "Inbox"];
-    case "wordpress": return ["Lead capture", "Website chat", "Publishing"];
-    case "shopify": return ["Store leads", "Website chat", "Commerce"];
-    case "woocommerce": return ["Store leads", "Products", "Commerce"];
-    default: return ["Profile access"];
+    case "facebook":
+      return ["Page profile", "Posts", "Analytics"];
+    case "instagram":
+      return ["Profile", "Posts & Reels", "Insights"];
+    case "youtube":
+      return ["Channel", "Videos", "Analytics"];
+    case "linkedin":
+      return ["Company Page", "Posts", "Analytics"];
+    case "google_business":
+      return ["Business profile", "Reviews", "Performance"];
+    case "meta_ads":
+      return ["Campaigns", "Spend", "Performance"];
+    case "google_analytics":
+      return ["Traffic", "Sources", "Conversions"];
+    case "search_console":
+      return ["Clicks", "Impressions", "Queries"];
+    case "whatsapp":
+      return ["Conversations", "Templates", "Inbox"];
+    case "wordpress":
+      return ["Lead capture", "Website chat", "Publishing"];
+    case "shopify":
+      return ["Store leads", "Website chat", "Commerce"];
+    case "woocommerce":
+      return ["Store leads", "Products", "Commerce"];
+    default:
+      return ["Profile access"];
   }
 }
 
@@ -90,10 +109,13 @@ function humanTime(value: string | null) {
 export function IntegrationsAuditFixed() {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
-  const [origin, setOrigin] = useState(() => (typeof window === "undefined" ? "https://flas.mobidigisol.com" : window.location.origin));
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+
   const connections = useQuery({ queryKey: ["connections"], queryFn: () => getConnections() });
   const readiness = useQuery({
     queryKey: ["integration-readiness", origin],
+    enabled: Boolean(origin),
     queryFn: () => getIntegrationReadiness({ data: { origin } }),
   });
   const start = useServerFn(startConnect);
@@ -105,8 +127,6 @@ export function IntegrationsAuditFixed() {
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
   const [connecting, setConnecting] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<{ platform: string; message: string } | null>(null);
-
-  if (typeof window !== "undefined" && origin !== window.location.origin) setOrigin(window.location.origin);
 
   const accounts = ((connections.data?.accounts ?? []) as Account[]).filter((a) => a.active);
   const rows = readiness.data?.rows ?? [];
@@ -138,16 +158,24 @@ export function IntegrationsAuditFixed() {
       if (!result.ready) {
         setBlocked({
           platform,
-          message: isAdmin ? result.reason : "This connection is temporarily unavailable while administrator setup is completed.",
+          message: isAdmin
+            ? result.reason
+            : "This connection is temporarily unavailable while administrator setup is completed.",
         });
         return;
       }
       const opened = window.open(result.url, "_blank", "noopener,noreferrer");
       if (!opened) {
-        setBlocked({ platform, message: "Your browser blocked the secure sign-in window. Allow pop-ups for FLAS and try again." });
+        setBlocked({
+          platform,
+          message:
+            "Your browser blocked the secure sign-in window. Allow pop-ups for FLAS and try again.",
+        });
         return;
       }
-      toast.info("Finish sign-in with the provider. FLAS will refresh this page after the callback completes.");
+      toast.info(
+        "Finish sign-in with the provider. FLAS will refresh this page after the callback completes.",
+      );
       window.setTimeout(() => {
         void qc.invalidateQueries({ queryKey: ["connections"] });
         void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
@@ -155,7 +183,12 @@ export function IntegrationsAuditFixed() {
     },
     onError: (e: Error, platform) => {
       setConnecting(null);
-      setBlocked({ platform, message: isAdmin ? e.message : "The connection could not start. Please try again or ask an administrator." });
+      setBlocked({
+        platform,
+        message: isAdmin
+          ? e.message
+          : "The connection could not start. Please try again or ask an administrator.",
+      });
     },
   });
 
@@ -181,7 +214,10 @@ export function IntegrationsAuditFixed() {
       if (isAdmin && (connector.oauth || connector.id === "whatsapp")) {
         setCredentialsFor(connector.id);
       } else {
-        setBlocked({ platform: connector.id, message: "This integration needs administrator setup before it can connect." });
+        setBlocked({
+          platform: connector.id,
+          message: "This integration needs administrator setup before it can connect.",
+        });
       }
       return;
     }
@@ -197,108 +233,458 @@ export function IntegrationsAuditFixed() {
     toast.info(`${connector.name} setup is managed from this Integrations page.`);
   }
 
-  const credentialConnector = credentialsFor ? CONNECTORS.find((c) => c.id === credentialsFor) : undefined;
+  const credentialConnector = credentialsFor
+    ? CONNECTORS.find((c) => c.id === credentialsFor)
+    : undefined;
   const credentialSiblings = credentialConnector?.provider
-    ? CONNECTORS.filter((c) => c.provider === credentialConnector.provider && c.id !== credentialConnector.id).map((c) => c.name)
+    ? CONNECTORS.filter(
+        (c) => c.provider === credentialConnector.provider && c.id !== credentialConnector.id,
+      ).map((c) => c.name)
     : [];
   const spec = credentialConnector
-    ? credentialSpec(credentialConnector.id, { provider: credentialConnector.provider ?? null, siblings: credentialSiblings })
+    ? credentialSpec(credentialConnector.id, {
+        provider: credentialConnector.provider ?? null,
+        siblings: credentialSiblings,
+      })
     : undefined;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <PageHeader title="Integrations" description="Connect the tools your team uses and manage every account from one clear place." />
+          <PageHeader
+            title="Integrations"
+            description="Connect the tools your team uses and manage every account from one clear place."
+          />
           <div className="flex flex-wrap gap-2">
-            {isAdmin && <Button variant="outline" onClick={() => { setBlocked(null); setProviderSetupOpen(true); }}><Settings2 className="mr-2 size-4" /> Provider setup</Button>}
-            <Button onClick={() => { setBlocked(null); setMarketplaceOpen(true); }}><Plus className="mr-2 size-4" /> Add Integration</Button>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setBlocked(null);
+                  setProviderSetupOpen(true);
+                }}
+              >
+                <Settings2 className="mr-2 size-4" /> Provider setup
+              </Button>
+            )}
+            <Button
+              onClick={() => {
+                setBlocked(null);
+                setMarketplaceOpen(true);
+              }}
+            >
+              <Plus className="mr-2 size-4" /> Add Integration
+            </Button>
           </div>
         </div>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Connected" value={accounts.length} tone="good" />
-          <StatCard label="Needs attention" value={attention.length} tone={attention.length ? "warn" : "muted"} />
+          <StatCard
+            label="Needs attention"
+            value={attention.length}
+            tone={attention.length ? "warn" : "muted"}
+          />
           <StatCard label="Ready to connect" value={available} tone="muted" />
           <StatCard label="Coming soon" value={comingSoon} tone="muted" />
         </section>
 
-        {attention.length > 0 && <section className="space-y-3">
-          <SectionHeading title="Needs attention" description="Fix these first so your automations and reporting keep working." />
-          {attention.map((account) => {
-            const state = connectionStatus(account);
-            const meta = CONNECTORS.find((c) => c.id === account.platform);
-            const { icon: Icon, tint } = connectorIcon(account.platform);
-            return <Card key={account.id} className="border-amber-300/60"><CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex min-w-0 items-start gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl border"><Icon className={`size-5 ${tint}`} /></span><div><p className="font-semibold">{account.label || meta?.name}</p><p className="text-sm text-muted-foreground">{meta?.name}</p><p className="mt-1 text-sm">{state.reason}</p></div></div>{meta?.oauth && <Button size="sm" onClick={() => openConnector(meta)}><RefreshCw className="mr-2 size-4" /> Reconnect</Button>}</CardContent></Card>;
-          })}
-        </section>}
+        {attention.length > 0 && (
+          <section className="space-y-3">
+            <SectionHeading
+              title="Needs attention"
+              description="Fix these first so your automations and reporting keep working."
+            />
+            {attention.map((account) => {
+              const state = connectionStatus(account);
+              const meta = CONNECTORS.find((c) => c.id === account.platform);
+              const { icon: Icon, tint } = connectorIcon(account.platform);
+              return (
+                <Card key={account.id} className="border-amber-300/60">
+                  <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border">
+                        <Icon className={`size-5 ${tint}`} />
+                      </span>
+                      <div>
+                        <p className="font-semibold">{account.label || meta?.name}</p>
+                        <p className="text-sm text-muted-foreground">{meta?.name}</p>
+                        <p className="mt-1 text-sm">{state.reason}</p>
+                      </div>
+                    </div>
+                    {meta?.oauth && (
+                      <Button size="sm" onClick={() => openConnector(meta)}>
+                        <RefreshCw className="mr-2 size-4" /> Reconnect
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </section>
+        )}
 
         <section className="space-y-3">
-          <SectionHeading title="Connected integrations" description="Accounts and channels currently linked to this workspace." />
-          {connections.isLoading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-52" />)}</div> : accounts.length === 0 ? <Card className="border-dashed"><CardContent className="flex flex-col items-center gap-3 py-12 text-center"><Link2 className="size-6" /><div><p className="font-semibold">Connect your first integration</p><p className="text-sm text-muted-foreground">Facebook, Instagram, YouTube, WhatsApp and more can live in FLAS.</p></div><Button onClick={() => setMarketplaceOpen(true)}><Plus className="mr-2 size-4" /> Add Integration</Button></CardContent></Card> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{accounts.map((account) => <ConnectedCard key={account.id} account={account} disconnecting={remove.isPending} onReconnect={() => { const c = CONNECTORS.find((x) => x.id === account.platform); if (c) openConnector(c); }} onDisconnect={() => remove.mutate(account.id)} />)}</div>}
+          <SectionHeading
+            title="Connected integrations"
+            description="Accounts and channels currently linked to this workspace."
+          />
+          {connections.isLoading ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-52" />
+              ))}
+            </div>
+          ) : accounts.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+                <Link2 className="size-6" />
+                <div>
+                  <p className="font-semibold">Connect your first integration</p>
+                  <p className="text-sm text-muted-foreground">
+                    Facebook, Instagram, YouTube, WhatsApp and more can live in FLAS.
+                  </p>
+                </div>
+                <Button onClick={() => setMarketplaceOpen(true)}>
+                  <Plus className="mr-2 size-4" /> Add Integration
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {accounts.map((account) => (
+                <ConnectedCard
+                  key={account.id}
+                  account={account}
+                  disconnecting={remove.isPending}
+                  onReconnect={() => {
+                    const c = CONNECTORS.find((x) => x.id === account.platform);
+                    if (c) openConnector(c);
+                  }}
+                  onDisconnect={() => remove.mutate(account.id)}
+                />
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="space-y-3">
-          <div className="flex items-end justify-between gap-3"><SectionHeading title="Explore integrations" description="Add another channel without touching developer settings." /><Button variant="ghost" size="sm" onClick={() => setMarketplaceOpen(true)}>View all <ArrowRight className="ml-1 size-4" /></Button></div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{CONNECTORS.filter((c) => POPULAR.has(c.id)).slice(0, 6).map((c) => <MarketplacePreview key={c.id} connector={c} onClick={() => { setBlocked(null); setCategory("popular"); setQuery(c.name); setMarketplaceOpen(true); }} />)}</div>
+          <div className="flex items-end justify-between gap-3">
+            <SectionHeading
+              title="Explore integrations"
+              description="Add another channel without touching developer settings."
+            />
+            <Button variant="ghost" size="sm" onClick={() => setMarketplaceOpen(true)}>
+              View all <ArrowRight className="ml-1 size-4" />
+            </Button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {CONNECTORS.filter((c) => POPULAR.has(c.id))
+              .slice(0, 6)
+              .map((c) => (
+                <MarketplacePreview
+                  key={c.id}
+                  connector={c}
+                  onClick={() => {
+                    setBlocked(null);
+                    setCategory("popular");
+                    setQuery(c.name);
+                    setMarketplaceOpen(true);
+                  }}
+                />
+              ))}
+          </div>
         </section>
 
         <section id="ai-keys" className="scroll-mt-20 space-y-3">
-          <SectionHeading title="Your own AI keys" description="Optional: use your own AI provider account for the chatbot." />
+          <SectionHeading
+            title="Your own AI keys"
+            description="Optional: use your own AI provider account for the chatbot."
+          />
           <AiKeysCard />
         </section>
       </div>
 
-      <Dialog open={marketplaceOpen} onOpenChange={(open) => { setMarketplaceOpen(open); setBlocked(null); if (!open) setQuery(""); }}>
+      <Dialog
+        open={marketplaceOpen}
+        onOpenChange={(open) => {
+          setMarketplaceOpen(open);
+          setBlocked(null);
+          if (!open) setQuery("");
+        }}
+      >
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
-          <DialogHeader><DialogTitle>Add Integration</DialogTitle><DialogDescription>Choose a platform. FLAS checks every prerequisite before enabling Connect.</DialogDescription></DialogHeader>
-          <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search integrations..." value={query} onChange={(e) => { setQuery(e.target.value); setBlocked(null); }} /></div>
-          <div className="flex flex-wrap gap-2">{[{ id: "popular", label: "Popular" }, ...Object.entries(GROUP_LABELS).map(([id, label]) => ({ id, label }))].map((item) => <Button key={item.id} size="sm" variant={category === item.id ? "default" : "outline"} onClick={() => chooseCategory(item.id as "popular" | ConnectorGroup)}>{item.label}</Button>)}</div>
-          {blocked && <Problem message={blocked.message} onAdmin={isAdmin ? () => setProviderSetupOpen(true) : undefined} />}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{marketplaceItems.map((connector) => <MarketplaceCard key={connector.id} connector={connector} readiness={readinessMap.get(connector.id) ?? null} connecting={connecting === connector.id} isAdmin={isAdmin} onConnect={() => openConnector(connector)} />)}</div>
+          <DialogHeader>
+            <DialogTitle>Add Integration</DialogTitle>
+            <DialogDescription>
+              Choose a platform. FLAS checks every prerequisite before enabling Connect.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Search integrations..."
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setBlocked(null);
+              }}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "popular", label: "Popular" },
+              ...Object.entries(GROUP_LABELS).map(([id, label]) => ({ id, label })),
+            ].map((item) => (
+              <Button
+                key={item.id}
+                size="sm"
+                variant={category === item.id ? "default" : "outline"}
+                onClick={() => chooseCategory(item.id as "popular" | ConnectorGroup)}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
+          {blocked && (
+            <Problem
+              message={blocked.message}
+              onAdmin={isAdmin ? () => setProviderSetupOpen(true) : undefined}
+            />
+          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {marketplaceItems.map((connector) => (
+              <MarketplaceCard
+                key={connector.id}
+                connector={connector}
+                readiness={readinessMap.get(connector.id) ?? null}
+                connecting={connecting === connector.id}
+                isAdmin={isAdmin}
+                onConnect={() => openConnector(connector)}
+              />
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={providerSetupOpen} onOpenChange={setProviderSetupOpen}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-          <DialogHeader><DialogTitle>Provider Setup</DialogTitle><DialogDescription>Admin-only readiness. A provider is Ready only when credentials, origin and secure token storage all pass.</DialogDescription></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Provider Setup</DialogTitle>
+            <DialogDescription>
+              Admin-only readiness. A provider is Ready only when credentials, origin and secure
+              token storage all pass.
+            </DialogDescription>
+          </DialogHeader>
           <ProviderReadiness rows={rows} onConfigure={(id) => setCredentialsFor(id)} />
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(credentialsFor)} onOpenChange={(open) => { if (!open) setCredentialsFor(null); }}>
+      <Dialog
+        open={Boolean(credentialsFor)}
+        onOpenChange={(open) => {
+          if (!open) setCredentialsFor(null);
+        }}
+      >
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{credentialConnector ? `Configure ${credentialConnector.name}` : "Configure provider"}</DialogTitle><DialogDescription>Secrets are sent to a server function and are never displayed again.</DialogDescription></DialogHeader>
-          {spec && credentialConnector ? <CredentialsStep spec={spec} platformName={credentialConnector.name} redirectUri={`${origin}${OAUTH_REDIRECT_PATH}`} onSaved={() => { void qc.invalidateQueries({ queryKey: ["integration-readiness"] }); setCredentialsFor(null); }} /> : <p className="text-sm text-muted-foreground">This integration does not require app credentials here.</p>}
+          <DialogHeader>
+            <DialogTitle>
+              {credentialConnector ? `Configure ${credentialConnector.name}` : "Configure provider"}
+            </DialogTitle>
+            <DialogDescription>
+              Secrets are sent to a server function and are never displayed again.
+            </DialogDescription>
+          </DialogHeader>
+          {spec && credentialConnector ? (
+            <CredentialsStep
+              spec={spec}
+              platformName={credentialConnector.name}
+              redirectUri={`${origin}${OAUTH_REDIRECT_PATH}`}
+              onSaved={() => {
+                void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
+                setCredentialsFor(null);
+              }}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              This integration does not require app credentials here.
+            </p>
+          )}
         </DialogContent>
       </Dialog>
     </div>
   );
 }
 
-function Problem({ message, onAdmin }: { message: string; onAdmin?: () => void }) {
-  return <div className="rounded-xl border border-amber-300/60 bg-amber-50/60 p-4 dark:bg-amber-950/10"><div className="flex gap-3"><AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" /><div><p className="font-medium">This connection needs setup before it can continue</p><p className="mt-1 text-sm text-muted-foreground">{message}</p>{onAdmin && <Button className="mt-3" size="sm" variant="outline" onClick={onAdmin}>Open Provider Setup</Button>}</div></div></div>;
+function Problem({
+  message,
+  onAdmin,
+}: {
+  message: string;
+  onAdmin: (() => void) | undefined;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-300/60 bg-amber-50/60 p-4 dark:bg-amber-950/10">
+      <div className="flex gap-3">
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+        <div>
+          <p className="font-medium">This connection needs setup before it can continue</p>
+          <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+          {onAdmin && (
+            <Button className="mt-3" size="sm" variant="outline" onClick={onAdmin}>
+              Open Provider Setup
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function ProviderReadiness({ rows, onConfigure }: { rows: IntegrationReadinessRow[]; onConfigure: (id: string) => void }) {
-  const oauthFamilies = Array.from(new Map(rows.filter((r) => r.oauth && r.provider).map((r) => [r.provider, r])).values());
-  const utility = rows.filter((r) => ["whatsapp", "wordpress", "shopify", "woocommerce"].includes(r.id));
-  return <div className="space-y-5"><div><h3 className="mb-2 text-sm font-semibold">OAuth providers</h3><div className="grid gap-3 sm:grid-cols-2">{oauthFamilies.map((row) => <ReadinessCard key={row.provider} row={row} onConfigure={() => onConfigure(row.id)} />)}</div></div><div><h3 className="mb-2 text-sm font-semibold">Messaging & website</h3><div className="grid gap-3 sm:grid-cols-2">{utility.map((row) => <ReadinessCard key={row.id} row={row} onConfigure={() => onConfigure(row.id)} />)}</div></div></div>;
+function ProviderReadiness({
+  rows,
+  onConfigure,
+}: {
+  rows: IntegrationReadinessRow[];
+  onConfigure: (id: string) => void;
+}) {
+  const oauthFamilies = Array.from(
+    new Map(
+      rows.filter((r) => r.oauth && r.provider).map((r) => [r.provider, r]),
+    ).values(),
+  );
+  const utility = rows.filter((r) =>
+    ["whatsapp", "wordpress", "shopify", "woocommerce"].includes(r.id),
+  );
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">OAuth providers</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {oauthFamilies.map((row) => (
+            <ReadinessCard key={row.provider} row={row} onConfigure={() => onConfigure(row.id)} />
+          ))}
+        </div>
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">Messaging & website</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {utility.map((row) => (
+            <ReadinessCard key={row.id} row={row} onConfigure={() => onConfigure(row.id)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function ReadinessCard({ row, onConfigure }: { row: IntegrationReadinessRow; onConfigure: () => void }) {
+function ReadinessCard({
+  row,
+  onConfigure,
+}: {
+  row: IntegrationReadinessRow;
+  onConfigure: () => void;
+}) {
   const setup = providerSetup(row.provider);
   const label = row.providerName ?? row.name;
-  return <Card><CardHeader className="pb-3"><div className="flex items-center justify-between gap-2"><CardTitle className="text-base">{label}</CardTitle><StatusBadge row={row} /></div><CardDescription>{row.source === "workspace" ? "Workspace credentials" : row.source === "shared" ? "Shared FLAS credentials" : row.oauth ? "Credentials not configured" : row.name}</CardDescription></CardHeader><CardContent className="space-y-3 text-sm"><CheckLine ok={row.checks.credentials} label={row.credentials.idLabel && row.credentials.secretLabel ? `${row.credentials.idLabel} + ${row.credentials.secretLabel}` : "Credentials"} /><CheckLine ok={row.checks.allowedOrigin} label="OAuth return address" /><CheckLine ok={row.checks.publicAppUrl} label="Public app URL" /><CheckLine ok={row.checks.encryption} label="Token encryption" />{row.callbackUri && <CopyRow label="Callback" value={row.callbackUri} />}{row.blockers.filter((b) => b.severity === "BLOCKING").map((b) => <div key={b.code} className="rounded-md border border-amber-300/50 p-2"><p className="font-medium">{b.title}</p>{b.technical && <p className="mt-1 break-words text-xs text-muted-foreground">{b.technical}</p>}</div>)}<div className="flex flex-wrap gap-2">{row.status === "ADMIN_SETUP_REQUIRED" && (row.oauth || row.id === "whatsapp") && <Button size="sm" onClick={onConfigure}><KeyRound className="mr-1.5 size-3.5" /> Configure</Button>}{setup?.links?.[0] && <Button asChild size="sm" variant="outline"><a href={setup.links[0].url} target="_blank" rel="noreferrer noopener">Open {setup.displayName} setup <ExternalLink className="ml-1 size-3.5" /></a></Button>}</div></CardContent></Card>;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-base">{label}</CardTitle>
+          <StatusBadge row={row} />
+        </div>
+        <CardDescription>
+          {row.source === "workspace"
+            ? "Workspace credentials"
+            : row.source === "shared"
+              ? "Shared FLAS credentials"
+              : row.oauth
+                ? "Credentials not configured"
+                : row.name}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <CheckLine
+          ok={row.checks.credentials}
+          label={
+            row.credentials.idLabel && row.credentials.secretLabel
+              ? `${row.credentials.idLabel} + ${row.credentials.secretLabel}`
+              : "Credentials"
+          }
+        />
+        <CheckLine ok={row.checks.allowedOrigin} label="OAuth return address" />
+        <CheckLine ok={row.checks.publicAppUrl} label="Public app URL" />
+        <CheckLine ok={row.checks.encryption} label="Token encryption" />
+        {row.callbackUri && <CopyRow label="Callback" value={row.callbackUri} />}
+        {row.blockers
+          .filter((b) => b.severity === "BLOCKING")
+          .map((b) => (
+            <div key={b.code} className="rounded-md border border-amber-300/50 p-2">
+              <p className="font-medium">{b.title}</p>
+              {b.technical && (
+                <p className="mt-1 break-words text-xs text-muted-foreground">{b.technical}</p>
+              )}
+            </div>
+          ))}
+        <div className="flex flex-wrap gap-2">
+          {row.status === "ADMIN_SETUP_REQUIRED" && (row.oauth || row.id === "whatsapp") && (
+            <Button size="sm" onClick={onConfigure}>
+              <KeyRound className="mr-1.5 size-3.5" /> Configure
+            </Button>
+          )}
+          {setup?.links?.[0] && (
+            <Button asChild size="sm" variant="outline">
+              <a href={setup.links[0].url} target="_blank" rel="noreferrer noopener">
+                Open {setup.displayName} setup <ExternalLink className="ml-1 size-3.5" />
+              </a>
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function CheckLine({ ok, label }: { ok: boolean; label: string }) {
-  return <div className="flex items-center gap-2">{ok ? <CheckCircle2 className="size-4 text-emerald-600" /> : <XCircle className="size-4 text-amber-600" />}<span>{label}: {ok ? "Ready" : "Missing"}</span></div>;
+  return (
+    <div className="flex items-center gap-2">
+      {ok ? (
+        <CheckCircle2 className="size-4 text-emerald-600" />
+      ) : (
+        <XCircle className="size-4 text-amber-600" />
+      )}
+      <span>
+        {label}: {ok ? "Ready" : "Missing"}
+      </span>
+    </div>
+  );
 }
 
 function CopyRow({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
-  return <div className="rounded-md bg-muted/40 p-2"><p className="mb-1 text-xs font-medium">{label}</p><div className="flex items-center gap-2"><code className="min-w-0 flex-1 truncate text-[11px]">{value}</code><Button size="sm" variant="ghost" className="h-7" onClick={() => { void navigator.clipboard.writeText(value); setCopied(true); setTimeout(() => setCopied(false), 1200); }}>{copied ? <Check className="size-3" /> : <Copy className="size-3" />}</Button></div></div>;
+  return (
+    <div className="rounded-md bg-muted/40 p-2">
+      <p className="mb-1 text-xs font-medium">{label}</p>
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate text-[11px]">{value}</code>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7"
+          onClick={() => {
+            void navigator.clipboard.writeText(value);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          }}
+        >
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function StatusBadge({ row }: { row: IntegrationReadinessRow }) {
@@ -308,25 +694,214 @@ function StatusBadge({ row }: { row: IntegrationReadinessRow }) {
   return <Badge variant="secondary">Setup needed</Badge>;
 }
 
-function MarketplaceCard({ connector, readiness, connecting, isAdmin, onConnect }: { connector: Connector; readiness: IntegrationReadinessRow | null; connecting: boolean; isAdmin: boolean; onConnect: () => void }) {
+function MarketplaceCard({
+  connector,
+  readiness,
+  connecting,
+  isAdmin,
+  onConnect,
+}: {
+  connector: Connector;
+  readiness: IntegrationReadinessRow | null;
+  connecting: boolean;
+  isAdmin: boolean;
+  onConnect: () => void;
+}) {
   const { icon: Icon, tint } = connectorIcon(connector.id);
-  const status = readiness?.status ?? (connector.unavailableReason ? "COMING_SOON" : "ADMIN_SETUP_REQUIRED");
-  const disabled = connecting || status === "COMING_SOON" || (status === "ADMIN_SETUP_REQUIRED" && !isAdmin);
-  const action = status === "COMING_SOON" ? "Coming soon" : status === "ADMIN_SETUP_REQUIRED" ? (isAdmin ? "Fix setup" : "Temporarily unavailable") : `Connect ${connector.name}`;
-  return <Card className="flex h-full flex-col"><CardHeader className="pb-3"><div className="flex items-start justify-between gap-2"><span className="flex size-11 items-center justify-center rounded-xl border"><Icon className={`size-5 ${tint}`} /></span>{readiness ? <StatusBadge row={readiness} /> : <Badge variant="secondary">Checking</Badge>}</div><CardTitle className="pt-2 text-base">{connector.name}</CardTitle><CardDescription>{connector.blurb}</CardDescription></CardHeader><CardContent className="flex flex-1 flex-col gap-3"><div className="space-y-1 text-xs text-muted-foreground">{friendlyCapability(connector.id).slice(0, 3).map((cap) => <div key={cap} className="flex items-center gap-1.5"><CheckCircle2 className="size-3.5 text-emerald-600" /> {cap}</div>)}</div>{readiness?.blockers.some((b) => b.severity === "BLOCKING") && <p className="text-xs text-muted-foreground">{readiness.blockers.find((b) => b.severity === "BLOCKING")?.userMessage}</p>}<div className="mt-auto pt-2"><Button className="w-full" variant={status === "ADMIN_SETUP_REQUIRED" ? "outline" : "default"} onClick={onConnect} disabled={disabled}>{connecting ? "Opening secure sign-in…" : action}</Button></div></CardContent></Card>;
+  const status =
+    readiness?.status ?? (connector.unavailableReason ? "COMING_SOON" : "ADMIN_SETUP_REQUIRED");
+  const disabled =
+    connecting || status === "COMING_SOON" || (status === "ADMIN_SETUP_REQUIRED" && !isAdmin);
+  const action =
+    status === "COMING_SOON"
+      ? "Coming soon"
+      : status === "ADMIN_SETUP_REQUIRED"
+        ? isAdmin
+          ? "Fix setup"
+          : "Temporarily unavailable"
+        : `Connect ${connector.name}`;
+  return (
+    <Card className="flex h-full flex-col">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <span className="flex size-11 items-center justify-center rounded-xl border">
+            <Icon className={`size-5 ${tint}`} />
+          </span>
+          {readiness ? (
+            <StatusBadge row={readiness} />
+          ) : (
+            <Badge variant="secondary">Checking</Badge>
+          )}
+        </div>
+        <CardTitle className="pt-2 text-base">{connector.name}</CardTitle>
+        <CardDescription>{connector.blurb}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col gap-3">
+        <div className="space-y-1 text-xs text-muted-foreground">
+          {friendlyCapability(connector.id)
+            .slice(0, 3)
+            .map((cap) => (
+              <div key={cap} className="flex items-center gap-1.5">
+                <CheckCircle2 className="size-3.5 text-emerald-600" /> {cap}
+              </div>
+            ))}
+        </div>
+        {readiness?.blockers.some((b) => b.severity === "BLOCKING") && (
+          <p className="text-xs text-muted-foreground">
+            {readiness.blockers.find((b) => b.severity === "BLOCKING")?.userMessage}
+          </p>
+        )}
+        <div className="mt-auto pt-2">
+          <Button
+            className="w-full"
+            variant={status === "ADMIN_SETUP_REQUIRED" ? "outline" : "default"}
+            onClick={onConnect}
+            disabled={disabled}
+          >
+            {connecting ? "Opening secure sign-in…" : action}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
-function ConnectedCard({ account, disconnecting, onReconnect, onDisconnect }: { account: Account; disconnecting: boolean; onReconnect: () => void; onDisconnect: () => void }) {
+function ConnectedCard({
+  account,
+  disconnecting,
+  onReconnect,
+  onDisconnect,
+}: {
+  account: Account;
+  disconnecting: boolean;
+  onReconnect: () => void;
+  onDisconnect: () => void;
+}) {
   const meta = CONNECTORS.find((c) => c.id === account.platform);
   const state = connectionStatus(account);
   const { icon: Icon, tint } = connectorIcon(account.platform);
-  return <Card className="flex h-full flex-col"><CardHeader><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl border"><Icon className={`size-5 ${tint}`} /></span><div className="min-w-0"><CardTitle className="truncate text-base">{account.label || meta?.name}</CardTitle><CardDescription>{meta?.name}</CardDescription></div></div><Badge variant={state.tone === "good" ? "default" : state.tone === "bad" ? "destructive" : "secondary"}>{state.label}</Badge></div></CardHeader><CardContent className="flex flex-1 flex-col gap-4"><div className="grid grid-cols-2 gap-3 text-xs"><div><p className="text-muted-foreground">Last verified</p><p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p></div><div><p className="text-muted-foreground">Last sync</p><p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p></div></div><div className="flex flex-wrap gap-1.5">{friendlyCapability(account.platform).map((cap) => <Badge key={cap} variant="secondary" className="font-normal">{cap}</Badge>)}</div><div className="mt-auto flex flex-wrap gap-2 pt-1">{account.profile_url && <Button asChild size="sm" variant="outline"><a href={account.profile_url} target="_blank" rel="noreferrer noopener">Open <ExternalLink className="ml-1 size-3.5" /></a></Button>}{meta?.oauth && <Button size="sm" variant="outline" onClick={onReconnect}><RefreshCw className="mr-1 size-3.5" /> Reconnect</Button>}<Button size="sm" variant="ghost" className="text-destructive" disabled={disconnecting} onClick={onDisconnect}><Unplug className="mr-1 size-3.5" /> Disconnect</Button></div></CardContent></Card>;
+  return (
+    <Card className="flex h-full flex-col">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border">
+              <Icon className={`size-5 ${tint}`} />
+            </span>
+            <div className="min-w-0">
+              <CardTitle className="truncate text-base">{account.label || meta?.name}</CardTitle>
+              <CardDescription>{meta?.name}</CardDescription>
+            </div>
+          </div>
+          <Badge
+            variant={
+              state.tone === "good" ? "default" : state.tone === "bad" ? "destructive" : "secondary"
+            }
+          >
+            {state.label}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <p className="text-muted-foreground">Last verified</p>
+            <p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Last sync</p>
+            <p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {friendlyCapability(account.platform).map((cap) => (
+            <Badge key={cap} variant="secondary" className="font-normal">
+              {cap}
+            </Badge>
+          ))}
+        </div>
+        <div className="mt-auto flex flex-wrap gap-2 pt-1">
+          {account.profile_url && (
+            <Button asChild size="sm" variant="outline">
+              <a href={account.profile_url} target="_blank" rel="noreferrer noopener">
+                Open <ExternalLink className="ml-1 size-3.5" />
+              </a>
+            </Button>
+          )}
+          {meta?.oauth && (
+            <Button size="sm" variant="outline" onClick={onReconnect}>
+              <RefreshCw className="mr-1 size-3.5" /> Reconnect
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-destructive"
+            disabled={disconnecting}
+            onClick={onDisconnect}
+          >
+            <Unplug className="mr-1 size-3.5" /> Disconnect
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function MarketplacePreview({ connector, onClick }: { connector: Connector; onClick: () => void }) {
   const { icon: Icon, tint } = connectorIcon(connector.id);
-  return <button type="button" onClick={onClick} className="flex items-center gap-3 rounded-xl border p-4 text-left transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="flex size-10 items-center justify-center rounded-xl border"><Icon className={`size-5 ${tint}`} /></span><span><span className="block font-medium">{connector.name}</span><span className="line-clamp-1 text-xs text-muted-foreground">{connector.blurb}</span></span></button>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-xl border p-4 text-left transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="flex size-10 items-center justify-center rounded-xl border">
+        <Icon className={`size-5 ${tint}`} />
+      </span>
+      <span>
+        <span className="block font-medium">{connector.name}</span>
+        <span className="line-clamp-1 text-xs text-muted-foreground">{connector.blurb}</span>
+      </span>
+    </button>
+  );
 }
 
-function SectionHeading({ title, description }: { title: string; description: string }) { return <div><h2 className="text-lg font-semibold tracking-tight">{title}</h2><p className="text-sm text-muted-foreground">{description}</p></div>; }
-function StatCard({ label, value, tone }: { label: string; value: number; tone: "good" | "warn" | "muted" }) { return <Card><CardContent className="flex items-center justify-between p-4"><div><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p></div><span className={`size-2.5 rounded-full ${tone === "good" ? "bg-emerald-500" : tone === "warn" ? "bg-amber-500" : "bg-muted-foreground/30"}`} /></CardContent></Card>; }
+function SectionHeading({ title, description }: { title: string; description: string }) {
+  return (
+    <div>
+      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      <p className="text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "good" | "warn" | "muted";
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-center justify-between p-4">
+        <div>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+        </div>
+        <span
+          className={`size-2.5 rounded-full ${
+            tone === "good"
+              ? "bg-emerald-500"
+              : tone === "warn"
+                ? "bg-amber-500"
+                : "bg-muted-foreground/30"
+          }`}
+        />
+      </CardContent>
+    </Card>
+  );
+}
