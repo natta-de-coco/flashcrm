@@ -34,7 +34,10 @@ describe("integration readiness", () => {
     assert.match(source, /PUBLIC_APP_URL/);
     assert.match(source, /resolveAllowedOrigin/);
     assert.match(source, /encryptionConfigured/);
-    assert.doesNotMatch(source, /startAuthorization\s*\(/);
+    // A documentation comment may mention startAuthorization(), but readiness
+    // must never actually call it with an argument object (that would write
+    // oauth_states/audit side effects just by rendering the page).
+    assert.doesNotMatch(source, /\bstartAuthorization\s*\(\s*\{/);
   });
 
   test("normal-user readiness does not return raw environment key names", async () => {
