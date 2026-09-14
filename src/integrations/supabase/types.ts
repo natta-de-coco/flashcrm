@@ -3640,6 +3640,7 @@ export type Database = {
           platform: string
           profile: Json
           profile_url: string | null
+          refresh_locked_until: string | null
           refresh_token: string | null
           retry_count: number
           state_changed_at: string
@@ -3671,6 +3672,7 @@ export type Database = {
           platform: string
           profile?: Json
           profile_url?: string | null
+          refresh_locked_until?: string | null
           refresh_token?: string | null
           retry_count?: number
           state_changed_at?: string
@@ -3702,6 +3704,7 @@ export type Database = {
           platform?: string
           profile?: Json
           profile_url?: string | null
+          refresh_locked_until?: string | null
           refresh_token?: string | null
           retry_count?: number
           state_changed_at?: string
@@ -4863,6 +4866,7 @@ export type Database = {
           paid_until: string | null
           plan: string | null
           slug: string | null
+          subscription_renews_at: string | null
           subscription_status: string | null
           suspended: boolean | null
         }
@@ -4880,6 +4884,7 @@ export type Database = {
           paid_until?: string | null
           plan?: string | null
           slug?: string | null
+          subscription_renews_at?: string | null
           subscription_status?: string | null
           suspended?: boolean | null
         }
@@ -4897,6 +4902,7 @@ export type Database = {
           paid_until?: string | null
           plan?: string | null
           slug?: string | null
+          subscription_renews_at?: string | null
           subscription_status?: string | null
           suspended?: boolean | null
         }
@@ -5166,6 +5172,10 @@ export type Database = {
           _status: string
         }
         Returns: string
+      }
+      release_connection_refresh: {
+        Args: { _account_id: string }
+        Returns: undefined
       }
       replace_sales_document_items: {
         Args: { _document_id: string; _items: Json; _tenant_id: string }
