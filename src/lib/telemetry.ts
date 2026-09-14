@@ -43,6 +43,23 @@ function describe(error: unknown): { message: string; stack?: string } {
   }
 }
 
+/** Navigation commonly aborts in-flight route/server-function fetches. These
+ * are control flow, not incidents, and should not drown real failures. */
+export function isAbortLikeError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  if (error instanceof Error) {
+    const text = `${error.name} ${error.message}`.toLowerCase();
+    return (
+      text.includes("aborterror") ||
+      text.includes("the operation was aborted") ||
+      text.includes("signal is aborted") ||
+      text.includes("request was aborted") ||
+      text.includes("navigation aborted")
+    );
+  }
+  return false;
+}
+
 /** Reports one incident. Never throws and never blocks the UI. */
 export function captureError(
   error: unknown,
@@ -52,7 +69,7 @@ export function captureError(
     context?: Record<string, unknown>;
   } = {},
 ) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || isAbortLikeError(error)) return;
   const { message, stack } = describe(error);
   if (!message) return;
 
@@ -94,6 +111,10 @@ export function installTelemetry() {
 
   window.addEventListener("error", (event) => {
     const err = (event as ErrorEvent).error ?? (event as ErrorEvent).message;
+    if (isAbortLikeError(err)) {
+      event.preventDefault();
+      return;
+    }
     captureError(err, {
       kind: "frontend",
       context: {
@@ -104,7 +125,12 @@ export function installTelemetry() {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    captureError((event as PromiseRejectionEvent).reason, { kind: "frontend" });
+    const reason = (event as PromiseRejectionEvent).reason;
+    if (isAbortLikeError(reason)) {
+      event.preventDefault();
+      return;
+    }
+    captureError(reason, { kind: "frontend" });
   });
 
   installServerActionWatcher();
@@ -121,13 +147,16 @@ function installServerActionWatcher() {
       if (!response.ok && isServerAction(url)) {
         captureError(`Server action failed with HTTP ${response.status}`, {
           kind: "server_action",
-          context: { url: shortUrl(url), status: response.status },
+          context: { operation: "server_fetch", url: shortUrl(url), status: response.status },
         });
       }
       return response;
     } catch (error) {
-      if (isServerAction(url)) {
-        captureError(error, { kind: "network", context: { url: shortUrl(url) } });
+      if (!isAbortLikeError(error) && isServerAction(url)) {
+        captureError(error, {
+          kind: "network",
+          context: { operation: "server_fetch", url: shortUrl(url) },
+        });
       }
       throw error;
     }
