@@ -58,12 +58,11 @@ const EMPTY = {
   company: "",
   value: "0",
   notes: "",
-  // Without this, a manually-added contact can never be messaged: a normal
-  // send needs an inbound message in the last 24h (there is none), and a
-  // template send needs recorded consent. Contacts added here had no way to
-  // get either, so they were permanently unreachable.
   consent: false,
 };
+
+const E164 = /^\+[1-9][0-9]{7,14}$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function ContactsPage() {
   const qc = useQueryClient();
@@ -71,14 +70,12 @@ function ContactsPage() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
-  // Which contact's numbers and branches are open, if any.
   const [detailFor, setDetailFor] = useState<{ id: string; name: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importConsent, setImportConsent] = useState(false);
   const auditEvent = useServerFn(recordAuditEvent);
 
-  // Live validation: every parsed row carries its own error list.
   const previewRows = useMemo(
     () => (importText.trim() ? parseContactImport(importText) : []),
     [importText],
@@ -97,18 +94,15 @@ function ContactsPage() {
     },
   });
 
-  // Save used to be enabled with every field empty, storing a row called
-  // "Unnamed contact" with no phone and no email -- a record nobody can act on
-  // and nobody can find again. A contact needs a name and at least one way to
-  // reach them.
   const contactProblem: string | null = (() => {
     if (form.name.trim().length < 2) return "Enter a name.";
-    const digits = form.phone.replace(/[^0-9]/g, "");
-    const hasPhone = digits.length >= 6;
-    const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
-    if (!hasPhone && !hasEmail) return "Add a WhatsApp number or an email.";
-    if (form.phone.trim() && !hasPhone) return "That number looks too short.";
-    if (form.email.trim() && !hasEmail) return "That email does not look right.";
+    const phone = form.phone.trim();
+    const email = form.email.trim();
+    if (!phone && !email) return "Add a WhatsApp number or an email.";
+    if (phone && !E164.test(phone)) {
+      return "Use international E.164 format, for example +971501234567.";
+    }
+    if (email && !EMAIL.test(email)) return "That email does not look right.";
     if (form.value.trim() && !(Number(form.value) >= 0)) {
       return "Deal value must be a positive number.";
     }
@@ -147,10 +141,6 @@ function ContactsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  /** Records opt-in for a contact that has none, which is what unblocks
-   *  messaging them. Confirmed first: this is a compliance record, not a
-   *  cosmetic flag, and ticking it for someone who never agreed is exactly
-   *  what consent rules exist to prevent. */
   const grantConsent = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -225,9 +215,6 @@ function ContactsPage() {
         fresh.map((r) => ({
           ...r,
           tags: ["imported"],
-          // Imported contacts are unmessageable without this, so the
-          // importer asks once for the whole batch rather than leaving the
-          // user to discover it one failed send at a time.
           consent_given: importConsent,
           consent_at: consentAt,
         })),
@@ -408,10 +395,6 @@ function ContactsPage() {
                 <DialogTitle>New contact</DialogTitle>
               </DialogHeader>
               <div className="grid gap-3">
-                {/* Deal value is money and was accepting any text, so "call
-                    back next week" saved as 0 with no complaint. Each field
-                    now declares its own type, which also gives phones and
-                    emails the right mobile keyboard. */}
                 {(
                   [
                     ["name", "Name", "text", true],
@@ -430,10 +413,23 @@ function ContactsPage() {
                       id={key}
                       type={type}
                       {...(type === "number" ? { min: 0, step: "0.01" } : {})}
+                      {...(key === "phone"
+                        ? {
+                            placeholder: "+971501234567",
+                            pattern: "^\\+[1-9][0-9]{7,14}$",
+                            inputMode: "tel" as const,
+                            "aria-describedby": "phone-hint",
+                          }
+                        : {})}
                       {...(required ? { required: true, "aria-required": true } : {})}
                       value={form[key]}
                       onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                     />
+                    {key === "phone" && (
+                      <p id="phone-hint" className="text-xs text-muted-foreground">
+                        Use international E.164 format with country code, for example +971501234567.
+                      </p>
+                    )}
                   </div>
                 ))}
                 <div className="grid gap-1.5">
@@ -510,10 +506,6 @@ function ContactsPage() {
                           {c.phone ?? c.email ?? "No contact details"}
                           {c.company ? ` · ${c.company}` : ""}
                         </p>
-                        {/* One customer often has several numbers and more than
-                            one branch. This is where they are kept together, so
-                            a message from the second number joins this thread
-                            instead of starting a new contact. */}
                         <button
                           type="button"
                           onClick={() => setDetailFor({ id: c.id, name: c.name })}
@@ -529,9 +521,6 @@ function ContactsPage() {
                               : ""}
                           </Badge>
                         ) : (
-                          // Without consent this contact cannot be messaged at
-                          // all — say so here rather than letting the send fail
-                          // later with an error that looks like a bug.
                           <button
                             type="button"
                             onClick={() => grantConsent.mutate(c.id)}

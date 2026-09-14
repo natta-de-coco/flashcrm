@@ -1,4 +1,4 @@
-import { IntegrationsV2 } from "@/components/integrations-v2/IntegrationsV2";
+import { IntegrationsAuditFixed } from "@/components/integrations-v2/IntegrationsAuditFixed";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/connect")({
@@ -16,5 +16,5 @@ export const Route = createFileRoute("/_authenticated/connect")({
       },
     ],
   }),
-  component: IntegrationsV2,
+  component: IntegrationsAuditFixed,
 });

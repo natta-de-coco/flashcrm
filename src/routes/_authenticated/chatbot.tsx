@@ -39,9 +39,9 @@ export const Route = createFileRoute("/_authenticated/chatbot")({
 });
 
 const MODELS = [
-  { id: "google/gemini-3.7-flash", label: "Fast (Gemini 3.7 Flas)" },
-  { id: "google/gemini-3.1-pro-preview", label: "Smartest (Gemini 3.1 Pro)" },
-  { id: "google/gemini-3.1-flash-lite", label: "Cheapest (Gemini 3.1 Flas Lite)" },
+  { id: "google/gemini-3.7-flash", label: "Fast (google/gemini-3.7-flash)" },
+  { id: "google/gemini-3.1-pro-preview", label: "Smartest (google/gemini-3.1-pro-preview)" },
+  { id: "google/gemini-3.1-flash-lite", label: "Cheapest (google/gemini-3.1-flash-lite)" },
 ];
 
 function ChatbotPage() {
@@ -57,9 +57,6 @@ function ChatbotPage() {
     handoff_keywords: "",
   });
 
-  // Per-tenant bot settings — each company configures its own assistant.
-  // Previously this read/wrote a single platform-wide row shared by every
-  // tenant on the CRM.
   const settings = useQuery({
     queryKey: ["tenant_bot_settings", tenant?.id],
     enabled: !!tenant?.id,
@@ -188,9 +185,7 @@ function ChatbotPage() {
                   </li>
                 )}
                 {!greetingValid && (
-                  <li>
-                    A first greeting message is required.
-                  </li>
+                  <li>A first greeting message is required.</li>
                 )}
               </ul>
             </AlertDescription>
@@ -198,86 +193,36 @@ function ChatbotPage() {
         )}
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Personality</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-base">Personality</CardTitle></CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="bot_name">Bot name</Label>
-              <Input
-                id="bot_name"
-                value={form.bot_name}
-                onChange={(e) => setForm({ ...form, bot_name: e.target.value })}
-              />
+              <Input id="bot_name" value={form.bot_name} onChange={(e) => setForm({ ...form, bot_name: e.target.value })} />
             </div>
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="greeting">First greeting</Label>
-                {form.enabled && !greetingValid && (
-                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                    Required for auto-reply
-                  </span>
-                )}
+                {form.enabled && !greetingValid && <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Required for auto-reply</span>}
               </div>
-              <Textarea
-                id="greeting"
-                rows={2}
-                value={form.greeting}
-                onChange={(e) => setForm({ ...form, greeting: e.target.value })}
-                placeholder="e.g. Hi there! Thanks for contacting us. How can we help you today?"
-                className={form.enabled && !greetingValid ? "border-amber-500/50 focus-visible:ring-amber-500" : ""}
-              />
+              <Textarea id="greeting" rows={2} value={form.greeting} onChange={(e) => setForm({ ...form, greeting: e.target.value })} placeholder="e.g. Hi there! Thanks for contacting us. How can we help you today?" className={form.enabled && !greetingValid ? "border-amber-500/50 focus-visible:ring-amber-500" : ""} />
             </div>
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="instructions">Instructions / knowledge</Label>
-                <span
-                  className={`text-xs font-medium ${
-                    instructionsValid
-                      ? "text-muted-foreground"
-                      : form.enabled
-                        ? "text-amber-600 dark:text-amber-400 font-semibold"
-                        : "text-muted-foreground"
-                  }`}
-                >
-                  {instructionsTrimmed.length} / 20 min chars
-                </span>
+                <span className={`text-xs font-medium ${instructionsValid ? "text-muted-foreground" : form.enabled ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-muted-foreground"}`}>{instructionsTrimmed.length} / 20 min chars</span>
               </div>
-              <Textarea
-                id="instructions"
-                rows={8}
-                value={form.instructions}
-                onChange={(e) => setForm({ ...form, instructions: e.target.value })}
-                placeholder="Describe your business, products, pricing, opening hours and tone of voice."
-                className={form.enabled && !instructionsValid ? "border-amber-500/50 focus-visible:ring-amber-500" : ""}
-              />
+              <Textarea id="instructions" rows={8} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} placeholder="Describe your business, products, pricing, opening hours and tone of voice." className={form.enabled && !instructionsValid ? "border-amber-500/50 focus-visible:ring-amber-500" : ""} />
             </div>
             <div className="grid gap-1.5">
               <Label>Model</Label>
-              {/* These are the shared Flas AI models. A workspace that has
-                  added its own OpenAI or Anthropic key uses that provider's
-                  model instead, and this picker does not apply to it -- which
-                  the page previously did not say, so the list looked like the
-                  only option there was. */}
               <Select value={form.model} onValueChange={(v) => setForm({ ...form, model: v })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MODELS.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{MODELS.map((m) => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                These run on the shared Flas AI key. To use your own account instead, add an OpenAI
-                or Anthropic key under{" "}
-                <Link to="/connect" hash="ai-keys" className="text-brand underline underline-offset-2">
-                  Integrations → Your own AI keys
-                </Link>
-                . Your provider&apos;s model is used then, and this setting no longer applies.
+                These run on the shared Flas AI key. To use your own account instead, add an OpenAI or Anthropic key under{" "}
+                <Link to="/connect" hash="ai-keys" className="text-brand underline underline-offset-2">Integrations → Your own AI keys</Link>.
+                Your provider&apos;s model is used then, and this setting no longer applies.
               </p>
             </div>
           </CardContent>
@@ -286,35 +231,21 @@ function ChatbotPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Human handoff</CardTitle>
-            <CardDescription>
-              When a contact uses one of these words, the bot stops and an agent takes over.
-            </CardDescription>
+            <CardDescription>When a contact uses one of these words, the bot stops and an agent takes over.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="handoff">Handoff keywords (comma separated)</Label>
-              <Input
-                id="handoff"
-                value={form.handoff_keywords}
-                onChange={(e) => setForm({ ...form, handoff_keywords: e.target.value })}
-                placeholder="human, agent, complaint, refund"
-              />
+              <Input id="handoff" value={form.handoff_keywords} onChange={(e) => setForm({ ...form, handoff_keywords: e.target.value })} placeholder="human, agent, complaint, refund" />
             </div>
             <label className="flex items-center gap-3 text-sm">
-              <Switch
-                checked={form.business_hours_only}
-                onCheckedChange={(v) => setForm({ ...form, business_hours_only: v })}
-              />
+              <Switch checked={form.business_hours_only} onCheckedChange={(v) => setForm({ ...form, business_hours_only: v })} />
               Only auto-reply outside of agent availability
             </label>
           </CardContent>
         </Card>
 
-        <div>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
-            <Save className="size-4" /> Save chatbot
-          </Button>
-        </div>
+        <div><Button onClick={() => save.mutate()} disabled={save.isPending}><Save className="size-4" /> Save chatbot</Button></div>
       </div>
     </main>
   );

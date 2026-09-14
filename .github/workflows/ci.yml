@@ -1,0 +1,41 @@
+name: FLAS CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: TypeScript
+        run: bun x tsc --noEmit
+
+      - name: Audit punch-list regressions
+        run: bun run test:audit-punchlist
+
+      - name: Full unit/integration test suite
+        run: bun run test
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Production build
+        run: bun run build

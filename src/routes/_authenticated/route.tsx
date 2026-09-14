@@ -44,11 +44,6 @@ export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
 });
 
-/**
- * The palette binds Cmd *or* Ctrl, but the hint always said the Mac one, which
- * is wrong for the Windows users this was tested on. Evaluated at render rather
- * than at module load so it is not baked into a server-rendered payload.
- */
 function shortcutHint(): string {
   if (typeof navigator === "undefined") return "Ctrl K";
   const platform =
@@ -62,15 +57,6 @@ const SIDEBAR_MIN = 224;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_KEY = "flash.sidebar.width";
 
-/**
- * Shared grouped nav — used by the desktop sidebar and the mobile drawer.
- *
- * Filters by the signed-in user's staff role. The Manager section is passed in
- * already gated by isSuperAdmin and carries no route the permission table
- * knows about, so it is left alone; everything else is deny-by-default. A
- * section whose every item is filtered out drops its heading too, rather than
- * leaving an empty "Business" label behind.
- */
 function NavMenu({
   sections,
   onNavigate,
@@ -88,8 +74,6 @@ function NavMenu({
     }))
     .filter((section) => section.items.length > 0);
 
-  // While the profile is still loading, show nothing rather than the full menu
-  // followed by a visible collapse.
   if (loading) return null;
 
   return (
@@ -106,18 +90,12 @@ function NavMenu({
                 to={item.to}
                 onClick={onNavigate}
                 className="flex items-start gap-3 rounded-lg px-3 py-1.5 text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                activeProps={{
-                  className: cn("bg-sidebar-accent text-sidebar-accent-foreground"),
-                }}
+                activeProps={{ className: cn("bg-sidebar-accent text-sidebar-accent-foreground") }}
               >
                 <item.icon className="mt-0.5 size-4 shrink-0" />
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium leading-tight">
-                    {item.label}
-                  </span>
-                  <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">
-                    {item.desc}
-                  </span>
+                  <span className="block truncate text-sm font-medium leading-tight">{item.label}</span>
+                  <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">{item.desc}</span>
                 </span>
               </Link>
             ))}
@@ -142,18 +120,14 @@ function AuthenticatedLayout() {
     if (!loading && !session) navigate({ to: "/auth" });
   }, [loading, session, navigate]);
 
-  // Auto-close the mobile drawer on any route change (nav links, back button, redirects).
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Presence heartbeat so the platform manager can see who is online.
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
     const beat = async () => {
-      // Only send the heartbeat when a valid token exists, otherwise the
-      // authenticated server fn rejects the call with "No authorization header".
       let { data } = await supabase.auth.getSession();
       if (!data.session) {
         const refreshed = await supabase.auth.refreshSession();
@@ -176,7 +150,6 @@ function AuthenticatedLayout() {
     };
   }, [session]);
 
-  // Restore the user's preferred sidebar width (client-only, after hydration).
   useEffect(() => {
     const saved = Number(window.localStorage.getItem(SIDEBAR_KEY));
     if (saved >= SIDEBAR_MIN && saved <= SIDEBAR_MAX) setSidebarW(saved);
@@ -199,11 +172,9 @@ function AuthenticatedLayout() {
     window.addEventListener("pointerup", up);
   }
 
-  // Cold builds can take a moment to hydrate the session. Show the real shell
-  // as a calm skeleton instead of a jarring full-screen text flash.
   if (loading || !session) {
     return (
-      <div className="flex min-h-screen bg-background">
+      <div className="flex min-h-screen bg-background" data-app-shell>
         <aside
           className="sticky top-0 hidden h-screen shrink-0 flex-col gap-3 bg-sidebar p-4 lg:flex"
           style={{ width: sidebarW }}
@@ -217,7 +188,6 @@ function AuthenticatedLayout() {
           ))}
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Mirrors the real mobile/tablet header so nothing jumps on hydration. */}
           <div className="flex h-14 items-center gap-3 border-b border-sidebar-border bg-sidebar px-3 lg:hidden">
             <Skeleton className="size-9 rounded-md bg-sidebar-accent/60" />
             <Skeleton className="size-8 rounded-full bg-sidebar-accent/60" />
@@ -239,11 +209,15 @@ function AuthenticatedLayout() {
     );
   }
 
+  // Inbox and Sales still render legacy top-level divs. Give those routes one
+  // main landmark from the shell. Routes that already render <main> keep their
+  // own landmark so we never create nested/duplicate main elements.
+  const shellOwnsMain = pathname === "/inbox" || pathname === "/sales";
+
   return (
     <TenantProvider>
       <OnboardingModal />
-      <div className="flex min-h-screen bg-background">
-        {/* Fixed sidebar — pinned, fits without scrolling, desktop (lg+) only */}
+      <div className="flex min-h-screen bg-background" data-app-shell>
         <aside
           className="sticky top-0 hidden h-screen shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground lg:flex"
           style={{ width: sidebarW }}
@@ -262,16 +236,12 @@ function AuthenticatedLayout() {
             <Button
               variant="ghost"
               className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onClick={() => {
-                void signOut();
-              }}
+              onClick={() => void signOut()}
             >
-              <LogOut className="size-4" />
-              Sign out
+              <LogOut className="size-4" /> Sign out
             </Button>
           </div>
 
-          {/* Drag handle — pull the sidebar wider or narrower */}
           <div
             role="separator"
             aria-orientation="vertical"
@@ -282,7 +252,6 @@ function AuthenticatedLayout() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Mobile/tablet header — sidebar hides below lg; hamburger opens the nav drawer */}
           <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-sidebar-border bg-sidebar px-3 text-sidebar-foreground lg:hidden">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
@@ -301,17 +270,14 @@ function AuthenticatedLayout() {
               >
                 <SheetHeader className="mb-4">
                   <SheetTitle className="flex items-center gap-2 text-sidebar-foreground">
-                    <FlashLogoBadge className="size-8" />
-                     Flas CRM
+                    <FlashLogoBadge className="size-8" /> Flas CRM
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="flex flex-col gap-4">
                   <NavMenu sections={sections} onNavigate={() => setMobileOpen(false)} />
                 </nav>
                 <div className="mt-4 border-t border-sidebar-border pt-3">
-                  <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">
-                    {user?.email}
-                  </p>
+                  <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">{user?.email}</p>
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -320,8 +286,7 @@ function AuthenticatedLayout() {
                       void signOut();
                     }}
                   >
-                    <LogOut className="size-4" />
-                    Sign out
+                    <LogOut className="size-4" /> Sign out
                   </Button>
                 </div>
               </SheetContent>
@@ -342,7 +307,6 @@ function AuthenticatedLayout() {
             <QuickCreate compact />
           </header>
 
-          {/* Desktop top bar — universal search and the Create shortcut */}
           <header className="sticky top-0 z-30 hidden h-14 items-center gap-3 border-b bg-background/95 px-6 backdrop-blur lg:flex">
             <button
               type="button"
@@ -351,16 +315,20 @@ function AuthenticatedLayout() {
             >
               <Search className="size-4" />
               Search Flas…
-              <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
-                {shortcutHint()}
-              </kbd>
+              <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">{shortcutHint()}</kbd>
             </button>
-            <div className="ml-auto">
-              <QuickCreate />
-            </div>
+            <div className="ml-auto"><QuickCreate /></div>
           </header>
 
-          <Outlet />
+          {shellOwnsMain ? (
+            <main id="content" className="min-h-0 flex-1 overflow-y-auto p-6">
+              <Outlet />
+            </main>
+          ) : (
+            <div id="content" className="contents">
+              <Outlet />
+            </div>
+          )}
           <MobileBottomNav onMore={() => setMobileOpen(true)} />
         </div>
       </div>
