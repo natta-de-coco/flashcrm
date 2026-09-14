@@ -392,7 +392,7 @@ export async function retryConnection(args: {
     } finally {
       // Release early so the next check need not wait out the lease. A
       // failure here is harmless: the lease expires on its own.
-      await supabaseAdmin.rpc("release_connection_refresh", { _account_id: row.id }).then(
+      await supabaseAdmin.rpc("release_connection_refresh" as never, { _account_id: row.id }).then(
         () => undefined,
         () => undefined,
       );
