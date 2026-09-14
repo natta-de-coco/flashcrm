@@ -360,7 +360,7 @@ export function IntegrationsV2() {
             providerReady={Object.fromEntries(
               readyRows.map((r) => [
                 r.provider,
-                { ready: r.ready, source: r.source, envNames: [] },
+                { ready: r.ready, source: r.source as "none" | "shared" | "workspace", envNames: [] },
               ]),
             )}
           />
@@ -368,7 +368,13 @@ export function IntegrationsV2() {
       </Dialog>
 
       {/* Quick-add keys from any connector card that needs admin setup. */}
-      <PlatformAppKeysDialogPlaceholder provider={keysDialogProvider} onOpenChange={setKeysDialogProvider} />
+      <PlatformAppKeysDialog
+        provider={keysDialogProvider}
+        open={keysDialogProvider !== null}
+        onOpenChange={(v) => {
+          if (!v) setKeysDialogProvider(null);
+        }}
+      />
     </main>
   );
 }
