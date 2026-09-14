@@ -558,8 +558,8 @@ export async function revokeAndClearTokens(args: {
       access_token: null,
       refresh_token: null,
       token_expires_at: null,
-      refresh_locked_until: null,
-    })
+      refresh_locked_until: null as never,
+    } as never)
     .eq("id", args.accountId)
     .eq("tenant_id", args.tenantId);
 
