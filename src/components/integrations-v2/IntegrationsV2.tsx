@@ -319,31 +319,56 @@ export function IntegrationsV2() {
       </Dialog>
 
       <Dialog open={providerSetupOpen} onOpenChange={setProviderSetupOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Provider Setup</DialogTitle>
-            <DialogDescription>Admin-only readiness for shared OAuth providers. Secrets are never shown here.</DialogDescription>
+            <DialogTitle>Provider setup</DialogTitle>
+            <DialogDescription>
+              Paste your own developer-app keys once per platform family. Every channel under that
+              family then connects in one click. If you do not have a developer app yet, open the
+              console link on each card first.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {Array.from(new Map(readyRows.map((r) => [r.provider, r])).values()).map((row) => (
-              <Card key={row.provider}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="capitalize">{row.provider}</CardTitle>
-                    <Badge variant={row.ready ? "default" : "secondary"}>{row.ready ? "Configured" : "Setup needed"}</Badge>
-                  </div>
-                  <CardDescription>{row.source === "workspace" ? "Workspace credentials" : row.source === "shared" ? "Shared FLAS credentials" : "No credentials configured"}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <div className="flex items-center gap-2"><ShieldCheck className="size-4" /><span>Client secret: {row.ready ? "Configured" : "Missing"}</span></div>
-                  {!row.ready && <p className="text-muted-foreground">Add this provider's App/Client ID and Secret in the secure provider settings, then retry the connection.</p>}
-                  <Button variant="outline" size="sm" onClick={() => setMarketplaceOpen(true)}>View integrations</Button>
-                </CardContent>
-              </Card>
-            ))}
+
+          <div className="grid gap-3 rounded-xl border bg-muted/30 p-3">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Redirect URL to whitelist</p>
+                <p className="text-xs text-muted-foreground">
+                  Add this exact URL as an allowed OAuth redirect URI in every provider app you
+                  create.
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Input readOnly value={redirectUri()} className="h-8 text-xs" />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="h-8 gap-1 text-xs"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(redirectUri());
+                      toast.success("Redirect URL copied");
+                    }}
+                  >
+                    <Copy className="size-3" /> Copy
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
+
+          <PlatformAppsCard
+            providerReady={Object.fromEntries(
+              readyRows.map((r) => [
+                r.provider,
+                { ready: r.ready, source: r.source, envNames: [] },
+              ]),
+            )}
+          />
         </DialogContent>
       </Dialog>
+
+      {/* Quick-add keys from any connector card that needs admin setup. */}
+      <PlatformAppKeysDialogPlaceholder provider={keysDialogProvider} onOpenChange={setKeysDialogProvider} />
     </main>
   );
 }
