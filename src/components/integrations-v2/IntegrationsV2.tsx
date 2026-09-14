@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { connectorIcon } from "@/components/integrations/connector-icons";
+import { PlatformAppsCard, ProviderKey, redirectUri } from "@/components/integrations/PlatformAppsCard";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { connectionStatus } from "@/lib/connection-status";
 import { disconnectConnection, getConnections, getConnectReadiness, startConnect } from "@/lib/connections.functions";
@@ -16,7 +17,9 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Copy,
   ExternalLink,
+  KeyRound,
   Link2,
   Plus,
   RefreshCw,
