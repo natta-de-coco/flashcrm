@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { WordPressSitesCard } from "@/components/WordPressSitesCard";
 import DOMPurify from "isomorphic-dompurify";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
@@ -379,12 +380,35 @@ function SeoStudioPage() {
           <Button
             size="sm"
             disabled={!pubSite || !contentHtml || publishMutation.isPending}
+            title={
+              !pubSite
+                ? "Choose a WordPress site first"
+                : !contentHtml
+                  ? "Write or generate the article first"
+                  : undefined
+            }
             onClick={() => publishMutation.mutate()}
           >
             {publishMutation.isPending ? "Publishing…" : "Sync & publish"}
           </Button>
         </div>
       </div>
+
+      {/* Publishing needs a connected WordPress site, and nothing said so: the
+          site list was empty, "Sync & publish" stayed disabled, and the only
+          screen that could add a site (WordPressSitesCard) was no longer shown
+          on any page after the Integrations redesign. Offer it right here. */}
+      {sites.isSuccess && (sites.data ?? []).length === 0 && (
+        <div className="grid gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+          <p>
+            <span className="font-semibold">Connect a WordPress site to publish.</span> Articles
+            from this studio are published to your WordPress website. You can write, generate
+            and save drafts now; <span className="font-medium">Sync &amp; publish</span> turns
+            on once a site is connected below.
+          </p>
+          <WordPressSitesCard />
+        </div>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_300px]">
         {/* Left: vision intake */}

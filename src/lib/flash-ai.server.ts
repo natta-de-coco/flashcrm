@@ -121,6 +121,9 @@ async function resolveProvider(tenantId: string | null | undefined): Promise<Res
 }
 
 /** Calls the AI provider and returns plain text. */
+/** Below the hosting edge's ~100 second request limit, so our message wins. */
+export const AI_TIMEOUT_MS = 85_000;
+
 export async function callFlashAi(
   system: string,
   user: string,
@@ -183,12 +186,6 @@ export async function callFlashAi(
             ],
           };
 
-  const res = await fetch(chosen.url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...chosen.headers },
-    body: JSON.stringify(body),
-  });
-
   const recordUsage = async (ok: boolean) => {
     if (!tenantId) return;
     try {
@@ -205,7 +202,31 @@ export async function callFlashAi(
     }
   };
 
-  const raw = await res.text();
+  // A bounded wait. There was none, so a slow or stuck provider left the
+  // spinner running indefinitely -- the SEO Studio writes a whole article in
+  // one call, and those routinely take a minute. The hosting edge drops a
+  // request after about 100 seconds with a bare error, so stopping first means
+  // the person gets a message that says what happened. The signal also covers
+  // reading the body, where a stalled stream would otherwise hang.
+  let res: Response;
+  let raw: string;
+  try {
+    res = await fetch(chosen.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...chosen.headers },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+    });
+    raw = await res.text();
+  } catch (error) {
+    await recordUsage(false);
+    const name = error instanceof Error ? error.name : "";
+    throw new Error(
+      name === "TimeoutError" || name === "AbortError"
+        ? `The AI did not finish within ${AI_TIMEOUT_MS / 1000} seconds and was stopped. Try again, or ask for a shorter piece.`
+        : "The AI service could not be reached. Try again in a moment.",
+    );
+  }
   if (!res.ok) await recordUsage(false);
   else await recordUsage(true);
 

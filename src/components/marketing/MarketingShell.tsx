@@ -1,6 +1,7 @@
 import { FlasWordmark } from "@/components/FlashLogoBadge";
 import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
+import { HomepageChatWidget } from "@/components/marketing/HomepageChatWidget";
 
 /**
  * Header and footer shared by every public marketing page.
@@ -48,6 +49,7 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
+      <HomepageChatWidget />
       {children}
 
       <footer className="mt-20 border-t py-8 text-center text-xs text-muted-foreground">

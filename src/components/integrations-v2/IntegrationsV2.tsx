@@ -1,3 +1,4 @@
+import { PlatformAppKeysDialog } from "@/components/integrations/PlatformAppsCard";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

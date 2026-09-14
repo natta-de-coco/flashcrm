@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useReveal } from "@/hooks/useReveal";
 import { InboxPreview } from "@/components/marketing/InboxPreview";
 import { StickyCta } from "@/components/marketing/StickyCta";
+import { HomepageChatWidget } from "@/components/marketing/HomepageChatWidget";
 import { POSTS } from "@/content/blog";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
@@ -288,21 +289,16 @@ const WHATSAPP = "https://wa.me/9710509630506";
 function Landing() {
   useReveal();
 
-  // The chat widget is not loaded here.
-  //
-  // widget.js now requires a data-site-key: the chat endpoint refuses
-  // tenant-less sessions, so a keyless widget cannot deliver a message. This
-  // page had one embedded with no key, which meant the launcher opened, the
-  // visitor typed, and every message was silently rejected while the panel
-  // replied "a team member will reply shortly".
-  //
-  // To put a real one back, create a site under Integrations and embed
-  // widget.js with that key.
+  // The chat widget loads through <HomepageChatWidget />, only when the
+  // platform owner has a website under Integrations for this domain. It was
+  // once embedded here with no key, so every visitor's message was silently
+  // rejected; a widget with no working site behind it now simply isn't shown.
 
   const latest = POSTS.slice(0, 3);
 
   return (
     <div className="min-h-screen bg-background">
+      <HomepageChatWidget />
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <span className="flex min-w-0 items-center gap-3">
