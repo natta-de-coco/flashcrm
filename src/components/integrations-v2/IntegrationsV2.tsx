@@ -110,6 +110,7 @@ export function IntegrationsV2() {
   const disconnect = useServerFn(disconnectConnection);
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [providerSetupOpen, setProviderSetupOpen] = useState(false);
+  const [keysDialogProvider, setKeysDialogProvider] = useState<ProviderKey | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
   const [connecting, setConnecting] = useState<string | null>(null);
