@@ -34,11 +34,16 @@ describe("contact identities migration", () => {
 
   it("matches on a normalized value, not on what someone typed", () => {
     // "+971 50 963 0506" and "971509630506" are the same customer.
-    assert.match(flat, /normalized text GENERATED ALWAYS AS \(public\.normalize_contact_identity\(kind, value\)\) STORED/);
+    assert.match(
+      flat,
+      /normalized text GENERATED ALWAYS AS \(public\.normalize_contact_identity\(kind, value\)\) STORED/,
+    );
   });
 
   it("keeps the normalizer IMMUTABLE, or the index cannot be built", () => {
-    const fn = sql.slice(sql.indexOf("CREATE OR REPLACE FUNCTION public.normalize_contact_identity"));
+    const fn = sql.slice(
+      sql.indexOf("CREATE OR REPLACE FUNCTION public.normalize_contact_identity"),
+    );
     assert.match(fn.slice(0, 400), /IMMUTABLE/);
   });
 
@@ -49,7 +54,9 @@ describe("contact identities migration", () => {
       assert.match(sql, new RegExp(`ALTER TABLE public\\.${table}\\s+ENABLE ROW LEVEL SECURITY`));
       assert.match(
         flat,
-        new RegExp(`CREATE POLICY ${table}_tenant_all ON public\\.${table} FOR ALL TO authenticated USING \\(tenant_id = public\\.current_tenant_id\\(\\)\\)`),
+        new RegExp(
+          `CREATE POLICY ${table}_tenant_all ON public\\.${table} FOR ALL TO authenticated USING \\(tenant_id = public\\.current_tenant_id\\(\\)\\)`,
+        ),
       );
     }
     assert.doesNotMatch(flat, /USING \(true\)/);
@@ -66,17 +73,25 @@ describe("contact identities migration", () => {
   it("backfills existing contacts without failing on duplicates", () => {
     // A tenant with two contacts sharing a number must not abort the whole
     // migration; the first keeps it and the duplicate is left for a human.
-    const inserts = sql.match(/INSERT INTO public\.contact_identities[\s\S]*?ON CONFLICT DO NOTHING;/g);
+    const inserts = sql.match(
+      /INSERT INTO public\.contact_identities[\s\S]*?ON CONFLICT DO NOTHING;/g,
+    );
     assert.equal(inserts?.length, 2, "expected a phone backfill and an email backfill");
   });
 
   it("keeps a number when its branch is deleted", () => {
     // Closing a branch must not delete the customer's phone number.
-    assert.match(flat, /branch_id uuid REFERENCES public\.contact_branches\(id\) ON DELETE SET NULL/);
+    assert.match(
+      flat,
+      /branch_id uuid REFERENCES public\.contact_branches\(id\) ON DELETE SET NULL/,
+    );
   });
 
   it("removes identities and branches with the contact", () => {
-    assert.match(flat, /contact_id uuid NOT NULL REFERENCES public\.contacts\(id\) ON DELETE CASCADE/);
+    assert.match(
+      flat,
+      /contact_id uuid NOT NULL REFERENCES public\.contacts\(id\) ON DELETE CASCADE/,
+    );
   });
 
   it("allows at most one primary of each kind", () => {
@@ -89,7 +104,10 @@ describe("contact identities migration", () => {
   it("does not expose the resolver to anonymous callers", () => {
     // It takes a tenant id as an argument and is SECURITY DEFINER, so an
     // anonymous caller could otherwise enumerate whose number is whose.
-    assert.match(flat, /REVOKE ALL ON FUNCTION public\.resolve_contact_by_identity\(uuid, text, text\) FROM PUBLIC, anon/);
+    assert.match(
+      flat,
+      /REVOKE ALL ON FUNCTION public\.resolve_contact_by_identity\(uuid, text, text\) FROM PUBLIC, anon/,
+    );
   });
 
   it("only accepts the two kinds the resolver understands", () => {

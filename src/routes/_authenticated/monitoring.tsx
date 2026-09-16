@@ -253,9 +253,7 @@ function MonitoringPage() {
               // Advice needs something to advise on. Asked with no traffic, the
               // model has nothing but the prompt and invents plausible-sounding
               // recommendations, which is worse than an unavailable button.
-              disabled={
-                insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total
-              }
+              disabled={insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total}
               title={!stats.data?.total ? "Available once messages have been sent" : undefined}
             >
               {insightsMutation.isPending ? (

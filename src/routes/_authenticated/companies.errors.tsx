@@ -165,8 +165,8 @@ function ErrorsPage() {
 
       {app.data?.truncated && (
         <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
-          More than {app.data.scanned} events in this window — the list below groups the most
-          recent ones only. Narrow the range for an accurate picture.
+          More than {app.data.scanned} events in this window — the list below groups the most recent
+          ones only. Narrow the range for an accurate picture.
         </p>
       )}
 
@@ -180,8 +180,8 @@ function ErrorsPage() {
             </CardTitle>
             <CardDescription>
               Browser crashes, failed server calls and blank screens, grouped and ordered by how
-              many people hit them — not by raw count, so one user in a render loop cannot outrank
-              a problem twenty customers share.
+              many people hit them — not by raw count, so one user in a render loop cannot outrank a
+              problem twenty customers share.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -238,10 +238,7 @@ function ErrorsPage() {
                     <div className="mt-3 space-y-2 border-t pt-3 text-xs">
                       <Field label="Routes" value={g.routes.join(", ") || "—"} />
                       <Field label="Releases" value={g.releases.join(", ") || "—"} />
-                      <Field
-                        label="First seen"
-                        value={formatMomentUnambiguous(g.firstSeen)}
-                      />
+                      <Field label="First seen" value={formatMomentUnambiguous(g.firstSeen)} />
                       {g.sampleStack && (
                         <div>
                           <p className="mb-1 font-medium text-muted-foreground">Stack</p>
@@ -302,9 +299,7 @@ function ErrorsPage() {
                             retryable
                           </Badge>
                         )}
-                        <span className="text-xs text-muted-foreground">
-                          {e.occurrence_count}×
-                        </span>
+                        <span className="text-xs text-muted-foreground">{e.occurrence_count}×</span>
                       </span>
                       <span className="mt-1.5 block break-words text-sm font-medium">
                         {e.friendly_title}
@@ -344,9 +339,7 @@ function ErrorsPage() {
                         variant={e.resolved_at ? "outline" : "default"}
                         className="mt-1 h-7 text-xs"
                         disabled={markResolved.isPending}
-                        onClick={() =>
-                          markResolved.mutate({ id: e.id, resolved: !e.resolved_at })
-                        }
+                        onClick={() => markResolved.mutate({ id: e.id, resolved: !e.resolved_at })}
                       >
                         {e.resolved_at ? "Reopen" : "Mark resolved"}
                       </Button>

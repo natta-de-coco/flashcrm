@@ -14,7 +14,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   addContactIdentity,
@@ -288,7 +294,8 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
 /** The label shown on a contact card, e.g. "3 numbers · 2 branches". */
 export function contactReachSummary(identities: number, branches: number): string {
   const parts: string[] = [];
-  if (identities > 0) parts.push(`${identities} ${identities === 1 ? "contact point" : "contact points"}`);
+  if (identities > 0)
+    parts.push(`${identities} ${identities === 1 ? "contact point" : "contact points"}`);
   if (branches > 0) parts.push(`${branches} ${branches === 1 ? "branch" : "branches"}`);
   return parts.join(" · ");
 }

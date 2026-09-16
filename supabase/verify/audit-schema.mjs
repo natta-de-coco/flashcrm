@@ -18,18 +18,35 @@ const PORT = 54985;
 
 const p = new EmbeddedPostgres({
   databaseDir: path.join(HERE, ".pgdata-audit"),
-  user: "postgres", password: "postgres", port: PORT, persistent: false,
+  user: "postgres",
+  password: "postgres",
+  port: PORT,
+  persistent: false,
   initdbFlags: ["--encoding=UTF8", "--locale=C"],
 });
 await p.initialise();
 await p.start();
-const c = new pg.Client({ host: "localhost", port: PORT, user: "postgres", password: "postgres", database: "postgres" });
+const c = new pg.Client({
+  host: "localhost",
+  port: PORT,
+  user: "postgres",
+  password: "postgres",
+  database: "postgres",
+});
 await c.connect();
 await c.query("SET search_path TO public, extensions");
 await c.query(fs.readFileSync(path.join(HERE, "supabase-shim.sql"), "utf8"));
-for (const f of fs.readdirSync(MIG).filter((f) => f.endsWith(".sql")).sort()) {
-  try { await c.query(fs.readFileSync(path.join(MIG, f), "utf8")); }
-  catch { try { await c.query("ROLLBACK"); } catch {} }
+for (const f of fs
+  .readdirSync(MIG)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()) {
+  try {
+    await c.query(fs.readFileSync(path.join(MIG, f), "utf8"));
+  } catch {
+    try {
+      await c.query("ROLLBACK");
+    } catch {}
+  }
 }
 
 const show = async (title, why, sql, params = []) => {

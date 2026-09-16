@@ -187,12 +187,24 @@ export function ConnectionWizard({
                 <div className="rounded-md border p-3">
                   <p className="font-medium">Official setup shortcuts</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    No treasure hunt. These open the provider's own pages for apps, keys, permissions and review.
+                    No treasure hunt. These open the provider's own pages for apps, keys,
+                    permissions and review.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {provider.links.map((link) => (
-                      <Button key={link.id} asChild size="sm" variant="outline" className="h-8 gap-1 text-xs">
-                        <a href={link.url} target="_blank" rel="noreferrer noopener" title={link.description}>
+                      <Button
+                        key={link.id}
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1 text-xs"
+                      >
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          title={link.description}
+                        >
                           {link.label} <ExternalLink className="size-3" />
                         </a>
                       </Button>
@@ -247,13 +259,20 @@ export function ConnectionWizard({
                 <div className="rounded-md border bg-muted/40 p-3 text-xs">
                   <p className="font-medium">Where are the keys?</p>
                   <p className="mt-1 text-muted-foreground">
-                    Open the official provider page below. Copy only the App/Client ID and Secret requested by Flas — never paste user access tokens here.
+                    Open the official provider page below. Copy only the App/Client ID and Secret
+                    requested by Flas — never paste user access tokens here.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {provider.links
                       .filter((link) => link.id === "apps" || link.id === "credentials")
                       .map((link) => (
-                        <Button key={link.id} asChild size="sm" variant="outline" className="h-8 gap-1 text-xs">
+                        <Button
+                          key={link.id}
+                          asChild
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1 text-xs"
+                        >
                           <a href={link.url} target="_blank" rel="noreferrer noopener">
                             {link.label} <ExternalLink className="size-3" />
                           </a>
@@ -292,9 +311,15 @@ export function ConnectionWizard({
                 )}
                 {definition && definition.requestedScopes.length > 0 && (
                   <div className="mt-2 rounded-md border bg-muted/40 p-3 text-xs">
-                    <p className="font-medium">Grant the full Flas permission set shown on the provider screen</p>
+                    <p className="font-medium">
+                      Grant the full Flas permission set shown on the provider screen
+                    </p>
                     <p className="mt-1 text-muted-foreground">
-                      Approve every permission Flas requests for this connector. Do not grant unrelated permissions that Flas did not request. If the provider lets you decline individual scopes, Flas will verify the result and mark only the affected capability unavailable instead of pretending the connection is healthy.
+                      Approve every permission Flas requests for this connector. Do not grant
+                      unrelated permissions that Flas did not request. If the provider lets you
+                      decline individual scopes, Flas will verify the result and mark only the
+                      affected capability unavailable instead of pretending the connection is
+                      healthy.
                     </p>
                     <p className="mt-2 text-muted-foreground">
                       These permissions power:{" "}
@@ -310,10 +335,24 @@ export function ConnectionWizard({
               {provider ? (
                 <div className="flex flex-wrap gap-2">
                   {provider.links
-                    .filter((link) => link.id === "permissions" || link.id === "review" || link.id === "api")
+                    .filter(
+                      (link) =>
+                        link.id === "permissions" || link.id === "review" || link.id === "api",
+                    )
                     .map((link) => (
-                      <Button key={link.id} asChild size="sm" variant="outline" className="h-8 gap-1 text-xs">
-                        <a href={link.url} target="_blank" rel="noreferrer noopener" title={link.description}>
+                      <Button
+                        key={link.id}
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1 text-xs"
+                      >
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          title={link.description}
+                        >
                           {link.label} <ExternalLink className="size-3" />
                         </a>
                       </Button>
@@ -333,7 +372,9 @@ export function ConnectionWizard({
               <p className="text-xs text-muted-foreground">
                 Redirect URI to whitelist in your provider app:{" "}
                 <span className="break-all font-mono">
-                  {origin ? `${origin}${OAUTH_REDIRECT_PATH}` : `https://flas.mobidigisol.com${OAUTH_REDIRECT_PATH}`}
+                  {origin
+                    ? `${origin}${OAUTH_REDIRECT_PATH}`
+                    : `https://flas.mobidigisol.com${OAUTH_REDIRECT_PATH}`}
                 </span>
               </p>
             </section>
@@ -342,13 +383,20 @@ export function ConnectionWizard({
           {step === "connect" && (
             <section className="space-y-3">
               <p className="text-muted-foreground">
-                Flas opens the platform's official login in a new browser tab. Your password stays with the provider; Flas receives only the OAuth authorization result.
+                Flas opens the platform's official login in a new browser tab. Your password stays
+                with the provider; Flas receives only the OAuth authorization result.
               </p>
               <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
                 <li>Press Connect below and sign in on the provider's own page.</li>
-                <li>Approve every permission Flas shows. If you manage several assets, choose the right client Page/channel/account.</li>
+                <li>
+                  Approve every permission Flas shows. If you manage several assets, choose the
+                  right client Page/channel/account.
+                </li>
                 <li>Return to Flas. The connection is verified before it is shown as healthy.</li>
-                <li>If something is missing, Flas should name the exact scope/review/account-type blocker — not the timeless classic “Something went wrong.”</li>
+                <li>
+                  If something is missing, Flas should name the exact scope/review/account-type
+                  blocker — not the timeless classic “Something went wrong.”
+                </li>
               </ol>
               <div className="flex flex-wrap gap-2">
                 {meta?.oauth ? (

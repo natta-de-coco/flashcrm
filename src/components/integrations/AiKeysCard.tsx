@@ -72,8 +72,8 @@ export function AiKeysCard() {
           {configured.length > 0 && <Badge variant="secondary">{configured.length}</Badge>}
         </CardTitle>
         <CardDescription>
-          Flas AI works without this. Add your own OpenAI or Anthropic key and every AI request
-          from this workspace runs against your account instead — your usage, your bill, your rate
+          Flas AI works without this. Add your own OpenAI or Anthropic key and every AI request from
+          this workspace runs against your account instead — your usage, your bill, your rate
           limits. Remove it and Flas falls back to the shared key.
         </CardDescription>
       </CardHeader>
@@ -139,8 +139,8 @@ export function AiKeysCard() {
                 autoComplete="off"
                 spellCheck={false}
                 placeholder={
-                provider === "openai" ? "sk-…" : provider === "google" ? "AIza…" : "sk-ant-…"
-              }
+                  provider === "openai" ? "sk-…" : provider === "google" ? "AIza…" : "sk-ant-…"
+                }
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
               />

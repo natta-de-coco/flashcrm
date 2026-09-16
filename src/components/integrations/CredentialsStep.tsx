@@ -179,9 +179,7 @@ export function CredentialsStep({
           Continue
         </Button>
         {!complete && (
-          <span className="text-xs text-muted-foreground">
-            Fill every field above to continue.
-          </span>
+          <span className="text-xs text-muted-foreground">Fill every field above to continue.</span>
         )}
       </div>
     </section>

@@ -24,8 +24,10 @@ export const PROVIDER_SETUP: Readonly<Record<ProviderSetupInfo["provider"], Prov
   meta: {
     provider: "meta",
     displayName: "Meta",
-    ownerTask: "Create or open the Meta app, copy the App ID/Secret, configure the redirect URI, and request Advanced Access for the permissions Flas actually uses.",
-    connectionTask: "Sign in with Facebook, approve every permission shown, then choose the Business/Page/Instagram account you want to connect.",
+    ownerTask:
+      "Create or open the Meta app, copy the App ID/Secret, configure the redirect URI, and request Advanced Access for the permissions Flas actually uses.",
+    connectionTask:
+      "Sign in with Facebook, approve every permission shown, then choose the Business/Page/Instagram account you want to connect.",
     links: [
       {
         id: "apps",
@@ -43,7 +45,8 @@ export const PROVIDER_SETUP: Readonly<Record<ProviderSetupInfo["provider"], Prov
         id: "review",
         label: "Meta App Review",
         url: "https://developers.facebook.com/docs/app-review/",
-        description: "Prepare Advanced Access / App Review for permissions used outside your own Business.",
+        description:
+          "Prepare Advanced Access / App Review for permissions used outside your own Business.",
       },
       {
         id: "docs",
@@ -56,8 +59,10 @@ export const PROVIDER_SETUP: Readonly<Record<ProviderSetupInfo["provider"], Prov
   google: {
     provider: "google",
     displayName: "Google",
-    ownerTask: "Select the Google Cloud project, configure the OAuth consent screen, create a Web OAuth client, enable the required APIs, and add the exact Flas redirect URI.",
-    connectionTask: "Choose the Google account that owns/manages the asset, approve the requested scopes, then select the channel/property/location inside Flas.",
+    ownerTask:
+      "Select the Google Cloud project, configure the OAuth consent screen, create a Web OAuth client, enable the required APIs, and add the exact Flas redirect URI.",
+    connectionTask:
+      "Choose the Google account that owns/manages the asset, approve the requested scopes, then select the channel/property/location inside Flas.",
     links: [
       {
         id: "credentials",
@@ -75,7 +80,8 @@ export const PROVIDER_SETUP: Readonly<Record<ProviderSetupInfo["provider"], Prov
         id: "api",
         label: "API Library",
         url: "https://console.cloud.google.com/apis/library",
-        description: "Enable YouTube, Business Profile, Google Ads, Analytics or Search Console APIs as needed.",
+        description:
+          "Enable YouTube, Business Profile, Google Ads, Analytics or Search Console APIs as needed.",
       },
       {
         id: "docs",
@@ -88,8 +94,10 @@ export const PROVIDER_SETUP: Readonly<Record<ProviderSetupInfo["provider"], Prov
   linkedin: {
     provider: "linkedin",
     displayName: "LinkedIn",
-    ownerTask: "Create/open the LinkedIn app, associate it with the company Page, copy the Client ID/Secret, configure redirect URLs, then request the products your use case needs.",
-    connectionTask: "Sign in with a Page admin account, approve the available permissions, and choose the organization/account Flas should use.",
+    ownerTask:
+      "Create/open the LinkedIn app, associate it with the company Page, copy the Client ID/Secret, configure redirect URLs, then request the products your use case needs.",
+    connectionTask:
+      "Sign in with a Page admin account, approve the available permissions, and choose the organization/account Flas should use.",
     links: [
       {
         id: "apps",
@@ -120,8 +128,10 @@ export const PROVIDER_SETUP: Readonly<Record<ProviderSetupInfo["provider"], Prov
   tiktok: {
     provider: "tiktok",
     displayName: "TikTok",
-    ownerTask: "Create/open the TikTok developer app, add Login Kit / required products, configure the redirect URI and request approval for the scopes Flas actually needs.",
-    connectionTask: "Sign in to TikTok and grant the requested scopes. TikTok can allow a user to grant only a subset, so Flas must verify what was actually granted.",
+    ownerTask:
+      "Create/open the TikTok developer app, add Login Kit / required products, configure the redirect URI and request approval for the scopes Flas actually needs.",
+    connectionTask:
+      "Sign in to TikTok and grant the requested scopes. TikTok can allow a user to grant only a subset, so Flas must verify what was actually granted.",
     links: [
       {
         id: "apps",
@@ -152,8 +162,10 @@ export const PROVIDER_SETUP: Readonly<Record<ProviderSetupInfo["provider"], Prov
   twitter: {
     provider: "twitter",
     displayName: "X",
-    ownerTask: "Open the X developer project/app, configure OAuth 2.0 user authentication, add the callback URL, choose the required app permissions, and copy the OAuth client credentials.",
-    connectionTask: "Authorize Flas with the X account. Flas should only advertise capabilities covered by both the app access tier and the scopes actually granted.",
+    ownerTask:
+      "Open the X developer project/app, configure OAuth 2.0 user authentication, add the callback URL, choose the required app permissions, and copy the OAuth client credentials.",
+    connectionTask:
+      "Authorize Flas with the X account. Flas should only advertise capabilities covered by both the app access tier and the scopes actually granted.",
     links: [
       {
         id: "apps",
@@ -178,14 +190,17 @@ export const PROVIDER_SETUP: Readonly<Record<ProviderSetupInfo["provider"], Prov
   pinterest: {
     provider: "pinterest",
     displayName: "Pinterest",
-    ownerTask: "Create/open the Pinterest developer app, copy the App ID/secret, configure the exact redirect URI, choose scopes and request the access tier needed by the product.",
-    connectionTask: "Authorize the Pinterest business account and grant the requested scopes, then choose the boards/account Flas should use.",
+    ownerTask:
+      "Create/open the Pinterest developer app, copy the App ID/secret, configure the exact redirect URI, choose scopes and request the access tier needed by the product.",
+    connectionTask:
+      "Authorize the Pinterest business account and grant the requested scopes, then choose the boards/account Flas should use.",
     links: [
       {
         id: "apps",
         label: "Pinterest My Apps",
         url: "https://developers.pinterest.com/apps/",
-        description: "Create/open the app and find its App ID, secret and redirect URI configuration.",
+        description:
+          "Create/open the app and find its App ID, secret and redirect URI configuration.",
       },
       {
         id: "permissions",

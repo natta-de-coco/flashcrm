@@ -62,8 +62,35 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-async function readJson(res: Response, provider: string): Promise<any> {
-  const json: any = await res.json().catch(() => ({}));
+type MetricValue = { value?: string };
+type ReportRow = {
+  dimensionValues?: MetricValue[];
+  metricValues?: MetricValue[];
+  keys?: string[];
+  clicks?: unknown;
+  impressions?: unknown;
+  ctr?: unknown;
+  position?: unknown;
+};
+type ReportJson = {
+  error?: { message?: string; status?: string };
+  error_description?: string;
+  metricHeaders?: { name?: string }[];
+  totals?: { metricValues?: MetricValue[] }[];
+  rows?: ReportRow[];
+  currency?: string;
+  data?: {
+    campaign_name?: string;
+    spend?: unknown;
+    reach?: unknown;
+    clicks?: unknown;
+    impressions?: unknown;
+    ctr?: unknown;
+    cpc?: unknown;
+  }[];
+};
+async function readJson(res: Response, provider: string): Promise<ReportJson> {
+  const json: ReportJson = await res.json().catch(() => ({}));
   if (!res.ok || json?.error) {
     const detail =
       json?.error?.message ??
@@ -95,10 +122,10 @@ export async function ga4Report(token: string, property: string): Promise<Channe
     }),
   });
   const json = await readJson(res, "Google Analytics");
-  const headerNames: string[] = (json?.metricHeaders ?? []).map((h: any) => String(h?.name));
-  const at = (values: any[] | undefined, name: string) =>
+  const headerNames: string[] = (json?.metricHeaders ?? []).map((h) => String(h?.name));
+  const at = (values: MetricValue[] | undefined, name: string) =>
     num(values?.[headerNames.indexOf(name)]?.value);
-  const totals = json?.totals?.[0]?.metricValues as any[] | undefined;
+  const totals = json?.totals?.[0]?.metricValues as MetricValue[] | undefined;
 
   return {
     platform: "google_analytics",
@@ -121,7 +148,7 @@ export async function ga4Report(token: string, property: string): Promise<Channe
         { key: "totalUsers", label: "Users", format: "number" },
         { key: "keyEvents", label: "Key events", format: "number" },
       ],
-      rows: (json?.rows ?? []).map((row: any) => ({
+      rows: (json?.rows ?? []).map((row) => ({
         label: String(row?.dimensionValues?.[0]?.value ?? "(not set)"),
         values: {
           sessions: at(row?.metricValues, "sessions"),
@@ -172,7 +199,7 @@ export async function searchConsoleReport(token: string, siteUrl: string): Promi
         { key: "ctr", label: "CTR", format: "percent" },
         { key: "position", label: "Position", format: "decimal" },
       ],
-      rows: (byQuery?.rows ?? []).map((row: any) => ({
+      rows: (byQuery?.rows ?? []).map((row) => ({
         label: String(row?.keys?.[0] ?? "(not set)"),
         values: {
           clicks: num(row?.clicks),
@@ -230,7 +257,7 @@ export async function metaAdsReport(token: string, adAccountId: string): Promise
         { key: "clicks", label: "Clicks", format: "number" },
         { key: "ctr", label: "CTR", format: "percent" },
       ],
-      rows: (campaigns?.data ?? []).map((row: any) => ({
+      rows: (campaigns?.data ?? []).map((row) => ({
         label: String(row?.campaign_name ?? "(unnamed campaign)"),
         values: {
           spend: num(row?.spend),

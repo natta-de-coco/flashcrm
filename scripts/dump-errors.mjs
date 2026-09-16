@@ -98,10 +98,19 @@ for (const e of events) {
   let g = groups.get(fp);
   if (!g) {
     g = {
-      fingerprint: fp, message: e.message, kind: e.kind, severity: e.severity,
-      count: 0, firstSeen: e.created_at, lastSeen: e.created_at,
-      routes: new Set(), releases: new Set(), companies: new Set(), users: new Set(),
-      sampleStack: e.stack, sampleUrl: e.url,
+      fingerprint: fp,
+      message: e.message,
+      kind: e.kind,
+      severity: e.severity,
+      count: 0,
+      firstSeen: e.created_at,
+      lastSeen: e.created_at,
+      routes: new Set(),
+      releases: new Set(),
+      companies: new Set(),
+      users: new Set(),
+      sampleStack: e.stack,
+      sampleUrl: e.url,
     };
     groups.set(fp, g);
   }
@@ -119,23 +128,33 @@ for (const e of events) {
 const ranked = [...groups.values()]
   .map((g) => ({
     ...g,
-    routes: [...g.routes], releases: [...g.releases],
-    companies: [...g.companies], affectedUsers: g.users.size, users: undefined,
+    routes: [...g.routes],
+    releases: [...g.releases],
+    companies: [...g.companies],
+    affectedUsers: g.users.size,
+    users: undefined,
   }))
   .sort((a, b) => b.affectedUsers - a.affectedUsers || b.count - a.count);
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 fs.writeFileSync(
   path.join(OUT_DIR, "latest.json"),
-  JSON.stringify({ generatedAt: new Date().toISOString(), days, since, groups: ranked, integration }, null, 2),
+  JSON.stringify(
+    { generatedAt: new Date().toISOString(), days, since, groups: ranked, integration },
+    null,
+    2,
+  ),
 );
 
 // The markdown is what Claude actually reads — dense enough to be useful,
 // short enough not to swamp a conversation.
 const md = [];
 md.push(`# Error report — last ${days} day${days === 1 ? "" : "s"}`);
-md.push(`Generated ${new Date().toISOString()} · ${events.length} raw events, ${ranked.length} groups`);
-if (events.length >= 2000) md.push(`\n> Hit the 2000-row read cap — narrow the window for an accurate picture.`);
+md.push(
+  `Generated ${new Date().toISOString()} · ${events.length} raw events, ${ranked.length} groups`,
+);
+if (events.length >= 2000)
+  md.push(`\n> Hit the 2000-row read cap — narrow the window for an accurate picture.`);
 
 md.push(`\n## App errors\n`);
 if (ranked.length === 0) md.push("None.");

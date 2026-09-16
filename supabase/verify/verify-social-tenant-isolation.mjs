@@ -52,31 +52,56 @@ const SURFACE = [
 
 const p = new EmbeddedPostgres({
   databaseDir: path.join(HERE, ".pgdata-social"),
-  user: "postgres", password: "postgres", port: PORT, persistent: false,
+  user: "postgres",
+  password: "postgres",
+  port: PORT,
+  persistent: false,
   initdbFlags: ["--encoding=UTF8", "--locale=C"],
 });
 await p.initialise();
 await p.start();
-const c = new pg.Client({ host: "localhost", port: PORT, user: "postgres", password: "postgres", database: "postgres" });
+const c = new pg.Client({
+  host: "localhost",
+  port: PORT,
+  user: "postgres",
+  password: "postgres",
+  database: "postgres",
+});
 await c.connect();
 await c.query("SET search_path TO public, extensions");
 await c.query(fs.readFileSync(path.join(HERE, "supabase-shim.sql"), "utf8"));
-for (const f of fs.readdirSync(MIG).filter((f) => f.endsWith(".sql")).sort()) {
-  try { await c.query(fs.readFileSync(path.join(MIG, f), "utf8")); }
-  catch { try { await c.query("ROLLBACK"); } catch {} }
+for (const f of fs
+  .readdirSync(MIG)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()) {
+  try {
+    await c.query(fs.readFileSync(path.join(MIG, f), "utf8"));
+  } catch {
+    try {
+      await c.query("ROLLBACK");
+    } catch {}
+  }
 }
 
 // ── workspaces and people ───────────────────────────────────────────────────
 const org = async (name, slug) =>
-  (await c.query("insert into organizations(name,slug) values($1,$2) returning id", [name, slug])).rows[0].id;
+  (await c.query("insert into organizations(name,slug) values($1,$2) returning id", [name, slug]))
+    .rows[0].id;
 
 const person = async (email, tenant, role) => {
-  const id = (await c.query("insert into auth.users(email) values($1) returning id", [email])).rows[0].id;
+  const id = (await c.query("insert into auth.users(email) values($1) returning id", [email]))
+    .rows[0].id;
   await c.query("update profiles set tenant_id=$2, staff_role=$3 where id=$1", [id, tenant, role]);
   if (role === "company_admin") {
-    await c.query("insert into user_roles(user_id,role) values($1,'admin') on conflict do nothing", [id]);
+    await c.query(
+      "insert into user_roles(user_id,role) values($1,'admin') on conflict do nothing",
+      [id],
+    );
   } else {
-    await c.query("insert into user_roles(user_id,role) values($1,'agent') on conflict do nothing", [id]);
+    await c.query(
+      "insert into user_roles(user_id,role) values($1,'agent') on conflict do nothing",
+      [id],
+    );
   }
   return id;
 };
@@ -102,7 +127,9 @@ try {
      values ($1,'expired@example.test','staff',$2,'pending', now() - interval '30 days')`,
     [orgA, people["A-admin"]],
   );
-} catch { /* table shape varies; the persona still has no tenant_id */ }
+} catch {
+  /* table shape varies; the persona still has no tenant_id */
+}
 
 // ── generic seeder ──────────────────────────────────────────────────────────
 // Fills every NOT NULL column that has no default, choosing a value by type.
@@ -212,7 +239,8 @@ async function sampleFor(table, col, tenantId, tag, cache) {
   if (t.startsWith("timestamp")) return new Date().toISOString();
   if (t === "date") return new Date().toISOString().slice(0, 10);
   if (t === "boolean") return false;
-  if (["integer", "bigint", "smallint", "numeric", "double precision", "real"].includes(t)) return 0;
+  if (["integer", "bigint", "smallint", "numeric", "double precision", "real"].includes(t))
+    return 0;
   if (t === "ARRAY") return [];
   if (t === "jsonb" || t === "json") return "{}";
   return `${tag}`;
@@ -225,8 +253,7 @@ async function seed(table, tenantId, tag, cache, depth = 0) {
   // current_tenant_id()) cannot be left out: the seeder runs as the superuser
   // with no JWT, so the default evaluates to NULL and the insert fails. Supply
   // those explicitly, along with anything that has no default at all.
-  const sessionDefault = (d) =>
-    !!d && /auth\.(uid|jwt)|current_tenant_id|current_setting/i.test(d);
+  const sessionDefault = (d) => !!d && /auth\.(uid|jwt)|current_tenant_id|current_setting/i.test(d);
   const needed = cols.filter(
     (x) =>
       x.column_name === "tenant_id" ||
@@ -268,7 +295,11 @@ async function asUser(uid, fn) {
   } catch (e) {
     return { threw: e.message.split("\n")[0] };
   } finally {
-    try { await c.query("commit"); } catch { await c.query("rollback"); }
+    try {
+      await c.query("commit");
+    } catch {
+      await c.query("rollback");
+    }
   }
 }
 
@@ -298,10 +329,9 @@ async function canWrite(who, uid, table, rowId) {
   if (!rowId || typeof rowId === "object") return null;
   checks += 2;
   const upd = await asUser(uid, async () => {
-    const q = await c.query(
-      `update public."${table}" set tenant_id = tenant_id where id=$1`,
-      [rowId],
-    );
+    const q = await c.query(`update public."${table}" set tenant_id = tenant_id where id=$1`, [
+      rowId,
+    ]);
     return { n: q.rowCount ?? 0 };
   });
   if (!upd.threw && (upd.n ?? 0) > 0) {
@@ -348,7 +378,9 @@ for (const who of attackers) {
     if (r) reads++;
     await canWrite(who, uid, table, target);
   }
-  console.log(`  ${who.padEnd(16)} ${reads === 0 ? "no cross-workspace reads" : `${reads} LEAKED READS`}`);
+  console.log(
+    `  ${who.padEnd(16)} ${reads === 0 ? "no cross-workspace reads" : `${reads} LEAKED READS`}`,
+  );
 }
 
 // The mirror: B must not reach A either, so a pass is not an artefact of
@@ -361,7 +393,9 @@ console.log("\n=== reverse direction (B-admin against workspace A rows) ===");
     if (r) reads++;
     await canWrite("B-admin", people["B-admin"], table, seeded[table]?.a);
   }
-  console.log(`  B-admin          ${reads === 0 ? "no cross-workspace reads" : `${reads} LEAKED READS`}`);
+  console.log(
+    `  B-admin          ${reads === 0 ? "no cross-workspace reads" : `${reads} LEAKED READS`}`,
+  );
 }
 
 // A control: an in-tenant admin must still be able to work. A suite that

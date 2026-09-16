@@ -94,8 +94,12 @@ function NavMenu({
               >
                 <item.icon className="mt-0.5 size-4 shrink-0" />
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium leading-tight">{item.label}</span>
-                  <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">{item.desc}</span>
+                  <span className="block truncate text-sm font-medium leading-tight">
+                    {item.label}
+                  </span>
+                  <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">
+                    {item.desc}
+                  </span>
                 </span>
               </Link>
             ))}
@@ -277,7 +281,9 @@ function AuthenticatedLayout() {
                   <NavMenu sections={sections} onNavigate={() => setMobileOpen(false)} />
                 </nav>
                 <div className="mt-4 border-t border-sidebar-border pt-3">
-                  <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">{user?.email}</p>
+                  <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">
+                    {user?.email}
+                  </p>
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -315,9 +321,13 @@ function AuthenticatedLayout() {
             >
               <Search className="size-4" />
               Search Flas…
-              <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">{shortcutHint()}</kbd>
+              <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
+                {shortcutHint()}
+              </kbd>
             </button>
-            <div className="ml-auto"><QuickCreate /></div>
+            <div className="ml-auto">
+              <QuickCreate />
+            </div>
           </header>
 
           {shellOwnsMain ? (

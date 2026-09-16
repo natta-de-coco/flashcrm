@@ -21,20 +21,17 @@ const SITE_URL = `https://${ROOT_DOMAIN}`;
  * "undefined", or an unbounded provider body, so the audit payload stays valid.
  */
 async function normalizeProviderError(response: Response): Promise<string | undefined> {
-  if (response.ok) return undefined
-  let detail = ""
+  if (response.ok) return undefined;
+  let detail = "";
   try {
-    const body = await response.clone().text()
-    detail = body
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(0, 300)
+    const body = await response.clone().text();
+    detail = body.replace(/\s+/g, " ").trim().slice(0, 300);
   } catch {
-    detail = ""
+    detail = "";
   }
-  const status = Number.isFinite(response.status) ? response.status : 0
-  const base = status ? `Email service returned ${status}` : "Email service did not respond"
-  return detail ? `${base}: ${detail}` : base
+  const status = Number.isFinite(response.status) ? response.status : 0;
+  const base = status ? `Email service returned ${status}` : "Email service did not respond";
+  return detail ? `${base}: ${detail}` : base;
 }
 
 // The SDK handler owns verification, dispatch, and retry semantics; this file
@@ -43,7 +40,7 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const auditRequest = request.clone()
+        const auditRequest = request.clone();
         const handler = createAuthEmailHandler({
           apiKey: process.env["LOVABLE_API_KEY"]!,
           from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
@@ -102,18 +99,18 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
                 React.createElement(ReauthenticationEmail, { token: data.token ?? "" }),
             },
           },
-        })
-        const response = await handler(request)
+        });
+        const response = await handler(request);
 
         try {
           const payload = (await auditRequest.json()) as {
-            data?: { action_type?: string; email?: string }
-          }
-          const actionType = payload.data?.action_type
-          const recipientEmail = payload.data?.email
+            data?: { action_type?: string; email?: string };
+          };
+          const actionType = payload.data?.action_type;
+          const recipientEmail = payload.data?.email;
           if ((actionType === "signup" || actionType === "recovery") && recipientEmail) {
-            const { recordAuthEmailOutcome } = await import("@/lib/auth-email-audit.server")
-            const providerError = await normalizeProviderError(response)
+            const { recordAuthEmailOutcome } = await import("@/lib/auth-email-audit.server");
+            const providerError = await normalizeProviderError(response);
             await recordAuthEmailOutcome({
               recipientEmail,
               actionType,
@@ -121,15 +118,15 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
               // Only present when we actually have a reason — an absent key is
               // never written as the string "undefined".
               ...(providerError ? { providerError } : {}),
-            })
+            });
           }
         } catch (error) {
           console.error("[Auth email audit] Could not inspect verified email event", {
             message: error instanceof Error ? error.message : "Unknown error",
-          })
+          });
         }
 
-        return response
+        return response;
       },
     },
   },

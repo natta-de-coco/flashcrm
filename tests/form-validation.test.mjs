@@ -233,12 +233,18 @@ describe("invoice lines cannot carry values that corrupt the total", () => {
   });
 
   it("rejects a negative price, discount or tax rate", () => {
-    assert.match(invoiceLineBlocker([{ ...good, unit_price: -1 }]) ?? "", /Price cannot be negative/);
+    assert.match(
+      invoiceLineBlocker([{ ...good, unit_price: -1 }]) ?? "",
+      /Price cannot be negative/,
+    );
     assert.match(
       invoiceLineBlocker([{ ...good, discount_value: -5 }]) ?? "",
       /Discount cannot be negative/,
     );
-    assert.match(invoiceLineBlocker([{ ...good, tax_rate: -5 }]) ?? "", /Tax rate cannot be negative/);
+    assert.match(
+      invoiceLineBlocker([{ ...good, tax_rate: -5 }]) ?? "",
+      /Tax rate cannot be negative/,
+    );
   });
 
   it("rejects a value that is not a number", () => {
@@ -253,7 +259,10 @@ describe("invoice lines cannot carry values that corrupt the total", () => {
 describe("document-level charges cannot be negative", () => {
   it("accepts zero and missing charges", () => {
     assert.equal(documentChargeBlocker({}), null);
-    assert.equal(documentChargeBlocker({ invoice_discount: 0, shipping: 0, additional_charges: 0 }), null);
+    assert.equal(
+      documentChargeBlocker({ invoice_discount: 0, shipping: 0, additional_charges: 0 }),
+      null,
+    );
   });
 
   it("rejects each negative charge by name", () => {

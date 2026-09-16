@@ -273,32 +273,37 @@ function AuthPage() {
                 </form>
               ) : (
                 <form onSubmit={signIn} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Work email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={busy}>
-                  {busy ? "Signing in…" : "Sign in"}
-                </Button>
-                <Button type="button" variant="link" className="h-auto w-full p-0" onClick={() => setForgotOpen(true)}>
-                  Forgot your password?
-                </Button>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Work email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={busy}>
+                    {busy ? "Signing in…" : "Sign in"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto w-full p-0"
+                    onClick={() => setForgotOpen(true)}
+                  >
+                    Forgot your password?
+                  </Button>
                 </form>
               )}
             </TabsContent>
@@ -337,34 +342,38 @@ function AuthPage() {
                 </div>
               ) : (
                 <form onSubmit={signUp} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Full name</Label>
-                  <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email2">Work email</Label>
-                  <Input
-                    id="email2"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password2">Password</Label>
-                  <Input
-                    id="password2"
-                    type="password"
-                    required
-                    minLength={8}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={busy}>
-                  {busy ? "Creating account…" : "Create account"}
-                </Button>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Full name</Label>
+                    <Input
+                      id="name"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email2">Work email</Label>
+                    <Input
+                      id="email2"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password2">Password</Label>
+                    <Input
+                      id="password2"
+                      type="password"
+                      required
+                      minLength={8}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={busy}>
+                    {busy ? "Creating account…" : "Create account"}
+                  </Button>
                 </form>
               )}
             </TabsContent>

@@ -361,72 +361,74 @@ function Landing() {
 
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 sm:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
             <div className="text-center lg:text-left">
-            <span
-              data-reveal
-              className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand"
-            >
-              <span className="relative flex size-2">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-70" />
-                <span className="relative inline-flex size-2 rounded-full bg-brand" />
+              <span
+                data-reveal
+                className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand"
+              >
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-70" />
+                  <span className="relative inline-flex size-2 rounded-full bg-brand" />
+                </span>
+                WhatsApp Cloud API · Flas AI · Social inbox · Invoicing
               </span>
-              WhatsApp Cloud API · Flas AI · Social inbox · Invoicing
-            </span>
 
-            <h1
-              data-reveal
-              style={{ ["--reveal-delay" as string]: "50ms" }}
-              className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl"
-            >
-              The complete WhatsApp &amp;{" "}
-              <span className="bg-gradient-to-r from-brand to-brand-deep bg-clip-text text-transparent">
-                AI growth CRM
-              </span>{" "}
-              for your business
-            </h1>
+              <h1
+                data-reveal
+                style={{ ["--reveal-delay" as string]: "50ms" }}
+                className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl"
+              >
+                The complete WhatsApp &amp;{" "}
+                <span className="bg-gradient-to-r from-brand to-brand-deep bg-clip-text text-transparent">
+                  AI growth CRM
+                </span>{" "}
+                for your business
+              </h1>
 
-            <p
-              data-reveal
-              style={{ ["--reveal-delay" as string]: "100ms" }}
-              className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground sm:text-lg lg:mx-0"
-            >
-              Flas CRM brings every WhatsApp chat, social message, website lead, campaign, invoice
-              and SEO post into one workspace — with Flas AI writing, replying and advising
-              alongside your team. Built and supported by Mobi Digital Solutions.
-            </p>
+              <p
+                data-reveal
+                style={{ ["--reveal-delay" as string]: "100ms" }}
+                className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground sm:text-lg lg:mx-0"
+              >
+                Flas CRM brings every WhatsApp chat, social message, website lead, campaign, invoice
+                and SEO post into one workspace — with Flas AI writing, replying and advising
+                alongside your team. Built and supported by Mobi Digital Solutions.
+              </p>
 
-            <div
-              data-reveal
-              style={{ ["--reveal-delay" as string]: "150ms" }}
-              className="mt-9 flex flex-wrap justify-center gap-3 lg:justify-start"
-            >
-              <Button asChild size="lg" className="flas-sheen relative overflow-hidden">
-                <Link to="/auth">
-                  Start free for one month <ArrowRight className="size-4" />
-                </Link>
-              </Button>
-              <Button asChild size="lg" variant="outline">
-                <a href="#quote">Request a quotation</a>
-              </Button>
-            </div>
+              <div
+                data-reveal
+                style={{ ["--reveal-delay" as string]: "150ms" }}
+                className="mt-9 flex flex-wrap justify-center gap-3 lg:justify-start"
+              >
+                <Button asChild size="lg" className="flas-sheen relative overflow-hidden">
+                  <Link to="/auth">
+                    Start free for one month <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+                <Button asChild size="lg" variant="outline">
+                  <a href="#quote">Request a quotation</a>
+                </Button>
+              </div>
 
-            <p
-              data-reveal
-              style={{ ["--reveal-delay" as string]: "200ms" }}
-              className="mt-5 text-sm"
-            >
-              <span className="text-muted-foreground line-through">$30/month</span>{" "}
-              <span className="font-semibold text-brand">$20/month for your first six months</span>{" "}
-              <span className="text-muted-foreground">
-                · or $240 a year instead of $360 · one month free first
-              </span>
-            </p>
-            <p
-              data-reveal
-              style={{ ["--reveal-delay" as string]: "250ms" }}
-              className="mt-2 text-xs text-muted-foreground"
-            >
-              Cancel any time · no card needed to start.
-            </p>
+              <p
+                data-reveal
+                style={{ ["--reveal-delay" as string]: "200ms" }}
+                className="mt-5 text-sm"
+              >
+                <span className="text-muted-foreground line-through">$30/month</span>{" "}
+                <span className="font-semibold text-brand">
+                  $20/month for your first six months
+                </span>{" "}
+                <span className="text-muted-foreground">
+                  · or $240 a year instead of $360 · one month free first
+                </span>
+              </p>
+              <p
+                data-reveal
+                style={{ ["--reveal-delay" as string]: "250ms" }}
+                className="mt-2 text-xs text-muted-foreground"
+              >
+                Cancel any time · no card needed to start.
+              </p>
             </div>
 
             {/* The product itself, rather than a stock photograph of a laptop. */}
@@ -573,7 +575,9 @@ function Landing() {
                 <p className="mt-2 line-clamp-3 flex-1 text-sm text-muted-foreground">
                   {p.excerpt}
                 </p>
-                <span className="mt-4 text-xs text-muted-foreground">{p.readingMinutes} min read</span>
+                <span className="mt-4 text-xs text-muted-foreground">
+                  {p.readingMinutes} min read
+                </span>
               </Link>
             ))}
           </div>

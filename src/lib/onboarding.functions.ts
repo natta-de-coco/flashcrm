@@ -269,7 +269,9 @@ export const removeStaff = createServerFn({ method: "POST" })
         .eq("tenant_id", me.tenant_id)
         .eq("staff_role", "company_admin");
       if ((count ?? 0) <= 1) {
-        throw new Error("This is the only company admin — promote someone else before removing them.");
+        throw new Error(
+          "This is the only company admin — promote someone else before removing them.",
+        );
       }
     }
 
@@ -345,7 +347,8 @@ export const claimInvites = createServerFn({ method: "POST" })
     // has_role()-gated policy silently refused them (WhatsApp templates, bot
     // settings, SMTP keys, connected-app credentials...). Granting the legacy
     // role here puts invited admins on the same footing as the founder.
-    const isAdminRole = invite.staff_role === "company_admin" || invite.staff_role === "super_admin";
+    const isAdminRole =
+      invite.staff_role === "company_admin" || invite.staff_role === "super_admin";
     await supabaseAdmin
       .from("user_roles")
       .upsert(

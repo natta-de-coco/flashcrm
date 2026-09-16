@@ -26,7 +26,8 @@ const mod = await import("../node_modules/.cache/flas-homepage-widget.mjs");
 const { domainCoversHost } = mod;
 
 const MUTATION = process.env.MUTATION ?? "";
-if (MUTATION === "any_tenant") console.log("!! MUTATION: owner restriction off — the suite must FAIL");
+if (MUTATION === "any_tenant")
+  console.log("!! MUTATION: owner restriction off — the suite must FAIL");
 const pick = (sites, owners, host) =>
   mod.pickHomepageSite(
     sites,
@@ -66,7 +67,11 @@ describe("which site the homepage widget uses", () => {
   });
 
   test("a customer's site registered with Flas's domain is never used", () => {
-    const hijack = site({ site_key: "key-customer", tenant_id: CUSTOMER, created_at: "2026-01-01T00:00:00Z" });
+    const hijack = site({
+      site_key: "key-customer",
+      tenant_id: CUSTOMER,
+      created_at: "2026-01-01T00:00:00Z",
+    });
     assert.equal(pick([hijack], [OWNER], "flas.mobidigisol.com"), null);
     assert.equal(pick([hijack, site()], [OWNER], "flas.mobidigisol.com"), "key-owner");
   });
@@ -78,7 +83,10 @@ describe("which site the homepage widget uses", () => {
   });
 
   test("a site for another domain is not used on this one", () => {
-    assert.equal(pick([site({ domain: "atozsecurity.ae" })], [OWNER], "flas.mobidigisol.com"), null);
+    assert.equal(
+      pick([site({ domain: "atozsecurity.ae" })], [OWNER], "flas.mobidigisol.com"),
+      null,
+    );
   });
 
   test("with two matching owner sites, the oldest wins, so adding one never swaps it", () => {

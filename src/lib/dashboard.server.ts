@@ -179,7 +179,6 @@ export async function getDashboardOverviewData(
   const interactionRows = interactions.data ?? [];
   const leads = leadRows.data ?? [];
 
-
   // ---- 7-day activity buckets (received vs sent) ----
   const buckets: DayBucket[] = [];
   const bucketIndex = new Map<string, number>();
@@ -316,7 +315,6 @@ export async function getDashboardOverviewData(
       unread: unreadTotal,
       contacts: contactsTotal,
       botReplies,
-
     },
     activity: { buckets, weekTotal, todayTotal },
     trends,

@@ -547,7 +547,11 @@ export function IntegrationSettings() {
             </Button>
           </div>
           <a
-            href={widgetSite ? `/widget-demo?siteKey=${encodeURIComponent(widgetSite.site_key)}` : "/widget-demo"}
+            href={
+              widgetSite
+                ? `/widget-demo?siteKey=${encodeURIComponent(widgetSite.site_key)}`
+                : "/widget-demo"
+            }
             target="_blank"
             rel="noreferrer"
             className="text-xs font-medium text-brand hover:underline"

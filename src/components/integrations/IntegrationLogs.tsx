@@ -81,7 +81,9 @@ export function IntegrationLogs() {
                 <div className="min-w-0">
                   <p
                     className={
-                      FAILED_ACTIONS.has(row.action) ? "font-medium text-destructive" : "font-medium"
+                      FAILED_ACTIONS.has(row.action)
+                        ? "font-medium text-destructive"
+                        : "font-medium"
                     }
                   >
                     {ACTION_LABEL[row.action] ?? row.action}

@@ -227,7 +227,10 @@ export async function humanizeHtml(
     "You are Flas AI, an editor who makes AI text sound human. Keep the exact same HTML tag structure; only rewrite the prose inside tags. " +
     "Remove clichés, hype words and repetitive phrasing. Vary sentence length. Return ONLY the rewritten HTML.";
   const user = `Tone target: ${tone}.\n\nHTML to humanize:\n${contentHtml}`;
-  const out = await callFlashAi(system, user, { tenantId: tenantId ?? null, feature: "seo_humanize" });
+  const out = await callFlashAi(system, user, {
+    tenantId: tenantId ?? null,
+    feature: "seo_humanize",
+  });
   return out.trim() || contentHtml;
 }
 

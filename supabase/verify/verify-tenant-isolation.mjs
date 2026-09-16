@@ -21,35 +21,70 @@ const PORT = 54987;
 
 const p = new EmbeddedPostgres({
   databaseDir: path.join(HERE, ".pgdata-isolation"),
-  user: "postgres", password: "postgres", port: PORT, persistent: false,
+  user: "postgres",
+  password: "postgres",
+  port: PORT,
+  persistent: false,
   initdbFlags: ["--encoding=UTF8", "--locale=C"],
 });
 await p.initialise();
 await p.start();
-const c = new pg.Client({ host: "localhost", port: PORT, user: "postgres", password: "postgres", database: "postgres" });
+const c = new pg.Client({
+  host: "localhost",
+  port: PORT,
+  user: "postgres",
+  password: "postgres",
+  database: "postgres",
+});
 await c.connect();
 await c.query("SET search_path TO public, extensions");
 await c.query(fs.readFileSync(path.join(HERE, "supabase-shim.sql"), "utf8"));
-for (const f of fs.readdirSync(MIG).filter((f) => f.endsWith(".sql")).sort()) {
-  try { await c.query(fs.readFileSync(path.join(MIG, f), "utf8")); }
-  catch { try { await c.query("ROLLBACK"); } catch {} }
+for (const f of fs
+  .readdirSync(MIG)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()) {
+  try {
+    await c.query(fs.readFileSync(path.join(MIG, f), "utf8"));
+  } catch {
+    try {
+      await c.query("ROLLBACK");
+    } catch {}
+  }
 }
 
-const orgA = (await c.query("insert into organizations(name,slug) values('Acme','acme') returning id")).rows[0].id;
-const orgB = (await c.query("insert into organizations(name,slug) values('Globex','globex') returning id")).rows[0].id;
+const orgA = (
+  await c.query("insert into organizations(name,slug) values('Acme','acme') returning id")
+).rows[0].id;
+const orgB = (
+  await c.query("insert into organizations(name,slug) values('Globex','globex') returning id")
+).rows[0].id;
 const mk = async (email, org, admin) => {
-  const id = (await c.query("insert into auth.users(email) values($1) returning id", [email])).rows[0].id;
-  await c.query("update profiles set tenant_id=$2, staff_role=$3 where id=$1",
-    [id, org, admin ? "company_admin" : "staff"]);
-  if (admin) await c.query("insert into user_roles(user_id,role) values($1,'admin') on conflict do nothing", [id]);
+  const id = (await c.query("insert into auth.users(email) values($1) returning id", [email]))
+    .rows[0].id;
+  await c.query("update profiles set tenant_id=$2, staff_role=$3 where id=$1", [
+    id,
+    org,
+    admin ? "company_admin" : "staff",
+  ]);
+  if (admin)
+    await c.query(
+      "insert into user_roles(user_id,role) values($1,'admin') on conflict do nothing",
+      [id],
+    );
   return id;
 };
 const adminA = await mk("admin@acme.test", orgA, true);
 const staffA = await mk("staff@acme.test", orgA, false);
 const adminB = await mk("admin@globex.test", orgB, true);
 
-await c.query("insert into system_alerts(title,severity,tenant_id) values('Acme alert','warning',$1)", [orgA]);
-await c.query("insert into system_alerts(title,severity,tenant_id) values('Globex alert','warning',$1)", [orgB]);
+await c.query(
+  "insert into system_alerts(title,severity,tenant_id) values('Acme alert','warning',$1)",
+  [orgA],
+);
+await c.query(
+  "insert into system_alerts(title,severity,tenant_id) values('Globex alert','warning',$1)",
+  [orgB],
+);
 await c.query("insert into system_alerts(title,severity) values('Platform billing','critical')");
 
 const q = async (uid, sql) => {
@@ -60,7 +95,9 @@ const q = async (uid, sql) => {
     const { rows } = await c.query(sql);
     await c.query("reset role");
     return rows;
-  } finally { await c.query("commit"); }
+  } finally {
+    await c.query("commit");
+  }
 };
 
 let failures = 0;
@@ -71,11 +108,17 @@ const check = (label, pass, detail) => {
 
 console.log("");
 console.log("=== can one company see another? ===");
-for (const [who, uid] of [["Acme admin", adminA], ["Acme staff", staffA]]) {
+for (const [who, uid] of [
+  ["Acme admin", adminA],
+  ["Acme staff", staffA],
+]) {
   const seen = (await q(uid, "select email from profiles order by email")).map((r) => r.email);
   check(`${who} reads profiles`, !seen.some((e) => e.includes("globex")), seen.join(", "));
 }
-const roles = await q(adminA, `select p.email from user_roles ur join profiles p on p.id=ur.user_id`);
+const roles = await q(
+  adminA,
+  `select p.email from user_roles ur join profiles p on p.id=ur.user_id`,
+);
 check("Acme admin reads user_roles", !roles.some((r) => r.email.includes("globex")));
 
 console.log("");
@@ -85,16 +128,28 @@ let changed = 0;
 try {
   await c.query("select set_config('request.jwt.claim.sub',$1,true)", [adminA]);
   await c.query("set local role authenticated");
-  changed = (await c.query("update profiles set full_name='hacked' where id=$1", [adminB])).rowCount;
+  changed = (await c.query("update profiles set full_name='hacked' where id=$1", [adminB]))
+    .rowCount;
   await c.query("reset role");
-} catch { changed = 0; } finally { await c.query("commit"); }
+} catch {
+  changed = 0;
+} finally {
+  await c.query("commit");
+}
 check("Acme admin edits Globex's user", changed === 0, `${changed} row(s) affected`);
 
 console.log("");
 console.log("=== alerts and legacy singletons ===");
-for (const [who, uid, forbidden] of [["Acme", adminA, "Globex"], ["Globex", adminB, "Acme"]]) {
+for (const [who, uid, forbidden] of [
+  ["Acme", adminA, "Globex"],
+  ["Globex", adminB, "Acme"],
+]) {
   const a = (await q(uid, "select title from system_alerts")).map((r) => r.title);
-  check(`${who} sees only its own alerts`, !a.some((t) => t.includes(forbidden)), a.join(", ") || "(none)");
+  check(
+    `${who} sees only its own alerts`,
+    !a.some((t) => t.includes(forbidden)),
+    a.join(", ") || "(none)",
+  );
 }
 for (const t of ["bot_settings", "wa_config"]) {
   const n = (await q(adminA, `select count(*)::int as n from ${t}`))[0].n;
@@ -102,7 +157,9 @@ for (const t of ["bot_settings", "wa_config"]) {
 }
 
 console.log("");
-console.log(failures === 0 ? "OK - companies are isolated." : `FAIL - ${failures} isolation check(s) failed.`);
+console.log(
+  failures === 0 ? "OK - companies are isolated." : `FAIL - ${failures} isolation check(s) failed.`,
+);
 await c.end();
 await p.stop();
 process.exit(failures === 0 ? 0 : 1);

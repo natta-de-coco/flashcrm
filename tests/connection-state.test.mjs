@@ -65,7 +65,11 @@ describe("state vocabulary", () => {
 
   test("states a customer must act on say who owns the fix", () => {
     for (const s of ["missing_app_credentials", "scope_incomplete", "revoked"]) {
-      assert.equal(CONNECTION_STATE_INFO[s].actionOwner, "customer", `${s} should be customer-owned`);
+      assert.equal(
+        CONNECTION_STATE_INFO[s].actionOwner,
+        "customer",
+        `${s} should be customer-owned`,
+      );
       assert.ok(CONNECTION_STATE_INFO[s].nextAction, `${s} should tell them what to do`);
     }
   });
@@ -122,7 +126,13 @@ describe("transitions", () => {
 
   test("every authorized state can reach disconnected", () => {
     // A customer must always be able to unplug an integration.
-    for (const s of ["connected", "scope_incomplete", "token_expiring", "refresh_failed", "revoked"]) {
+    for (const s of [
+      "connected",
+      "scope_incomplete",
+      "token_expiring",
+      "refresh_failed",
+      "revoked",
+    ]) {
       assert.ok(legal(s, "disconnected"), `${s} should be able to reach disconnected`);
     }
   });
@@ -161,7 +171,10 @@ describe("derived connection state", () => {
   test("the six situations that used to be one are now distinct", () => {
     // computeHealth() returned "disconnected" for every one of these.
     assert.equal(deriveConnectionState({ ...base, active: false }).state, "disconnected");
-    assert.equal(deriveConnectionState({ ...base, access_token: null }).state, "ready_to_authorize");
+    assert.equal(
+      deriveConnectionState({ ...base, access_token: null }).state,
+      "ready_to_authorize",
+    );
     assert.equal(
       deriveConnectionState({ ...base, token_expires_at: iso(-HOUR) }).state,
       "token_expiring",
@@ -173,11 +186,17 @@ describe("derived connection state", () => {
   });
 
   test("a token outside the refresh window is not flagged", () => {
-    assert.equal(deriveConnectionState({ ...base, token_expires_at: iso(100 * HOUR) }).state, "connected");
+    assert.equal(
+      deriveConnectionState({ ...base, token_expires_at: iso(100 * HOUR) }).state,
+      "connected",
+    );
   });
 
   test("a token inside the 72 hour window is flagged", () => {
-    assert.equal(deriveConnectionState({ ...base, token_expires_at: iso(71 * HOUR) }).state, "token_expiring");
+    assert.equal(
+      deriveConnectionState({ ...base, token_expires_at: iso(71 * HOUR) }).state,
+      "token_expiring",
+    );
   });
 
   test("every derived state carries a reason", () => {
@@ -187,7 +206,10 @@ describe("derived connection state", () => {
       { ...base, access_token: null },
       { ...base, token_expires_at: iso(-HOUR) },
     ]) {
-      assert.ok(deriveConnectionState(row).reason.length > 0, "a state without a reason is unusable in the UI");
+      assert.ok(
+        deriveConnectionState(row).reason.length > 0,
+        "a state without a reason is unusable in the UI",
+      );
     }
   });
 });
@@ -201,7 +223,10 @@ describe("scope completeness", () => {
 
   test("a fully granted account reports nothing missing", () => {
     const granted = [
-      "pages_show_list", "pages_read_engagement", "pages_messaging", "read_insights",
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_messaging",
+      "read_insights",
       "pages_manage_engagement",
     ];
     assert.deepEqual(missingScopesFor("facebook", granted), []);
@@ -211,15 +236,23 @@ describe("scope completeness", () => {
     // Requested since 2026-09-10. A Page that granted everything under the old
     // scope list must surface the gap, not silently keep failing replies.
     const grantedBeforeTheChange = [
-      "pages_show_list", "pages_read_engagement", "pages_messaging", "read_insights",
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_messaging",
+      "read_insights",
     ];
-    assert.deepEqual(missingScopesFor("facebook", grantedBeforeTheChange), ["pages_manage_engagement"]);
+    assert.deepEqual(missingScopesFor("facebook", grantedBeforeTheChange), [
+      "pages_manage_engagement",
+    ]);
   });
 
   test("a declined permission is reported", () => {
     const granted = ["pages_show_list", "pages_read_engagement", "read_insights"];
     const missing = missingScopesFor("facebook", granted);
-    assert.ok(missing.includes("pages_messaging"), `expected pages_messaging in ${missing.join(", ")}`);
+    assert.ok(
+      missing.includes("pages_messaging"),
+      `expected pages_messaging in ${missing.join(", ")}`,
+    );
   });
 
   test("scopes for capabilities Flas has not built are never demanded", () => {
