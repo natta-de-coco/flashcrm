@@ -250,6 +250,16 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
               : {}),
           });
         }
+        if (allowedOrigin && connector.provider === "meta" && isAdmin) {
+          blockers.push({
+            code: "META_DOMAIN_REGISTRATION_UNVERIFIED",
+            title: "Check Meta domain registration",
+            userMessage: "Meta app domain registration must be checked by a FLAS administrator.",
+            severity: "INFO",
+            owner: "FLAS_ADMIN",
+            technical: `In the ${source === "workspace" ? "workspace-owned" : "shared FLAS"} Meta app: Settings > Basic > App Domains: ${new URL(allowedOrigin).hostname}; Website URL: ${allowedOrigin}; Facebook Login > Settings > Valid OAuth Redirect URIs: ${allowedOrigin}/api/public/oauth-callback. Confirm these belong to the same app used by FLAS.`,
+          });
+        }
         if (allowedOrigin) {
           blockers.push({
             code: "REDIRECT_REGISTRATION_UNVERIFIED",

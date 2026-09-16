@@ -47,14 +47,17 @@ export const getConnections = createServerFn({ method: "GET" })
     // because the refresh token is deliberately unreadable from a browser
     // session; only the yes/no leaves the server.
     const renewing = new Set<string>();
+    const tokened = new Set<string>();
     if (tenantId) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { data: withRefresh } = await supabaseAdmin
+      const { data: rows } = await supabaseAdmin
         .from("social_accounts")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .not("refresh_token", "is", null);
-      for (const r of withRefresh ?? []) renewing.add(r.id);
+        .select("id, access_token, refresh_token")
+        .eq("tenant_id", tenantId);
+      for (const row of rows ?? []) {
+        if (row.refresh_token) renewing.add(row.id);
+        if (row.access_token) tokened.add(row.id);
+      }
     }
 
     const { computeHealth } = await import("@/lib/connections.server");
@@ -67,7 +70,7 @@ export const getConnections = createServerFn({ method: "GET" })
         // Both branches of this were "set", so health could never report a
         // missing credential -- an account saved without a token showed as
         // healthy right up until its first sync failed.
-        access_token: a.connect_method === "oauth" || a.external_id ? "set" : null,
+        access_token: tokened.has(a.id) ? "set" : null,
         token_expires_at: a.token_expires_at,
         last_synced_at: a.last_synced_at,
       }),

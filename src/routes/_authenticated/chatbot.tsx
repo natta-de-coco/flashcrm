@@ -1,3 +1,4 @@
+import { WebsiteKnowledgeCard } from "@/components/WebsiteKnowledgeCard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -138,6 +139,7 @@ function ChatbotPage() {
       </header>
 
       <div className="grid max-w-3xl gap-4">
+        <WebsiteKnowledgeCard />
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <div className="space-y-1">

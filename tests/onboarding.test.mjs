@@ -3,6 +3,9 @@ import { beforeEach, test } from "node:test";
 import { createHmac, randomBytes } from "node:crypto";
 import {
   openSecret,
+  publicKnowledgeUrl,
+  relevantWebsiteExcerpts,
+  syncWebsiteKnowledge,
   sealSecret,
   resolveWaCredentials,
   verifyWaSignature,
@@ -61,6 +64,9 @@ class Query {
     this.payload = payload;
     return this;
   }
+  upsert(payload) {
+    return this.insert(payload);
+  }
   update(payload) {
     this.mode = "update";
     this.payload = payload;
@@ -89,7 +95,10 @@ class Query {
       found = found.slice(0, this.max);
       if (this.mode === "update") for (const row of found) Object.assign(row, this.payload);
       if (this.mode === "insert") {
-        found = [{ id: `created-${table.length}`, ...this.payload }];
+        found = (Array.isArray(this.payload) ? this.payload : [this.payload]).map((payload, i) => ({
+          id: `created-${table.length + i}`,
+          ...payload,
+        }));
         table.push(...found);
       }
       if (this.mode === "delete") rows[this.table] = table.filter((r) => !found.includes(r));
@@ -457,4 +466,155 @@ test("WhatsApp webhook batches cannot borrow the first number's app signature", 
   assert.equal(await verifyWaSignature(raw, ["a", "b"], signature), false);
   assert.equal(await verifyWaSignature(raw, ["unknown"], signature), false);
   assert.equal(await verifyWaSignature("tampered", ["a"], signature), false);
+});
+
+test("website addresses reject local targets and discard query credentials", () => {
+  for (const url of [
+    "http://127.0.0.1",
+    "http://169.254.169.254",
+    "http://[::1]",
+    "http://example.local.",
+    "https://user:secret@example.com",
+    "http://2130706433",
+    "https://example.com:8443",
+  ]) {
+    assert.throws(() => publicKnowledgeUrl(url));
+  }
+  assert.equal(
+    publicKnowledgeUrl("https://example.com/products?token=private#x"),
+    "https://example.com/products",
+  );
+});
+
+test("website retrieval finds relevant passages beyond the first paragraph and excludes older/different sources", () => {
+  const page = {
+    url: "https://example.com/shipping",
+    title: "Shipping",
+    indexed_at: "fresh",
+    summary: "Company introduction. ".repeat(100) + "Furniture delivery takes three working days.",
+  };
+  const excerpts = relevantWebsiteExcerpts(
+    [
+      page,
+      { ...page, url: "https://example.com.evil.com/shipping", summary: "PRIVATE" },
+      { ...page, indexed_at: "old", summary: "OLD POLICY" },
+    ],
+    "How long does furniture delivery take?",
+    "https://example.com",
+    "fresh",
+  );
+  assert.ok(excerpts.some((p) => p.text.includes("three working days")));
+  assert.ok(!JSON.stringify(excerpts).includes("PRIVATE"));
+  assert.ok(!JSON.stringify(excerpts).includes("OLD POLICY"));
+  assert.ok(excerpts.length <= 6);
+});
+
+test("reading a public website uses only the crawler endpoint, saves this tenant and reports partial discovery", async () => {
+  process.env.FIRECRAWL_API_KEY = "test-crawler-key";
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "https://api.firecrawl.dev/v2/scrape");
+    const request = JSON.parse(options.body);
+    calls.push(request.url);
+    if (request.url.includes("/failed")) return new Response("unavailable", { status: 503 });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          markdown:
+            "Furniture delivery takes three working days. Contact the team to confirm stock.",
+          metadata: { sourceURL: request.url, title: "Delivery" },
+          links: [
+            "https://example.com/failed",
+            "https://evil.com/private",
+            "http://127.0.0.1/admin",
+          ],
+        },
+      }),
+    );
+  };
+  try {
+    const result = await syncWebsiteKnowledge(db, "https://example.com", tenant);
+    assert.equal(result.pages, 1);
+    assert.equal(result.skipped, 1);
+    assert.deepEqual(calls, ["https://example.com/", "https://example.com/failed"]);
+    assert.equal(rows.website_pages[0].tenant_id, tenant);
+    assert.equal(rows.website_sync_state[0].tenant_id, tenant);
+    assert.equal(rows.website_pages[0].indexed_at, rows.website_sync_state[0].last_synced_at);
+    assert.ok(!JSON.stringify(rows).includes("test-crawler-key"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.FIRECRAWL_API_KEY;
+  }
+});
+
+test("an unconfigured website reader does not fetch or claim ready", async () => {
+  delete process.env.FIRECRAWL_API_KEY;
+  await assert.rejects(syncWebsiteKnowledge(db, "https://example.com", tenant), /one-time setup/);
+  assert.equal(rows.website_sync_state, undefined);
+});
+
+test("customer replies receive relevant website knowledge only from the current workspace snapshot", async () => {
+  process.env.LOVABLE_API_KEY = "test-gateway-key";
+  rows.conversations = [{ id: "chat", tenant_id: tenant }];
+  rows.messages = [
+    {
+      conversation_id: "chat",
+      tenant_id: tenant,
+      sender: "contact",
+      body: "How long is furniture delivery?",
+      created_at: "today",
+    },
+  ];
+  rows.website_sync_state = [
+    {
+      tenant_id: tenant,
+      site_url: "https://example.com",
+      status: "ready",
+      last_synced_at: "fresh",
+    },
+  ];
+  rows.website_pages = [
+    {
+      tenant_id: tenant,
+      url: "https://example.com/delivery",
+      title: "Delivery",
+      summary: "Furniture delivery is three working days.",
+      indexed_at: "fresh",
+    },
+    {
+      tenant_id: "other",
+      url: "https://example.com/delivery",
+      title: "Delivery",
+      summary: "PRIVATE OTHER TENANT",
+      indexed_at: "fresh",
+    },
+  ];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_, options) => {
+    const request = JSON.parse(options.body);
+    assert.match(request.messages[0].content, /three working days/);
+    assert.ok(!options.body.includes("PRIVATE OTHER TENANT"));
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                text: "The website says three working days. The team can confirm availability.",
+                handoff: false,
+              }),
+            },
+          },
+        ],
+      }),
+    );
+  };
+  try {
+    assert.ok(await generateBotReply(tenant, "chat", botSettings));
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete process.env.LOVABLE_API_KEY;
+  }
 });

@@ -1,3 +1,5 @@
+import { IntegrationLogs } from "@/components/integrations/IntegrationLogs";
+import { IntegrationSettings } from "@/components/integrations/IntegrationSettings";
 import {
   ConnectionOutcome,
   type ConnectionOutcomeSearch,
@@ -443,6 +445,15 @@ export function IntegrationsAuditFixed({
           </div>
         </section>
 
+        {isAdmin && (
+          <details id="channel-setup" className="rounded-xl border p-4">
+            <summary className="cursor-pointer font-medium">Advanced admin settings</summary>
+            <div className="mt-4 space-y-4">
+              <IntegrationSettings />
+              <IntegrationLogs />
+            </div>
+          </details>
+        )}
         <section id="ai-keys" className="scroll-mt-20 space-y-3">
           <SectionHeading
             title="Your own AI keys"
