@@ -1,5 +1,8 @@
 import { PageHeader } from "@/components/PageHeader";
 import { AiKeysCard } from "@/components/integrations/AiKeysCard";
+import { IntegrationLogs } from "@/components/integrations/IntegrationLogs";
+import { IntegrationSettings } from "@/components/integrations/IntegrationSettings";
+
 import { CredentialsStep } from "@/components/integrations/CredentialsStep";
 import { connectorIcon } from "@/components/integrations/connector-icons";
 import { Badge } from "@/components/ui/badge";
@@ -397,6 +400,14 @@ export function IntegrationsAuditFixed() {
           </div>
         </section>
 
+        <section id="channel-setup" className="scroll-mt-20 space-y-3">
+          <SectionHeading
+            title="WhatsApp numbers, website chat and API keys"
+            description="Add the WhatsApp Cloud API numbers you send from, copy your website chat snippet and manage developer keys."
+          />
+          <IntegrationSettings />
+        </section>
+
         <section id="ai-keys" className="scroll-mt-20 space-y-3">
           <SectionHeading
             title="Your own AI keys"
@@ -404,7 +415,10 @@ export function IntegrationsAuditFixed() {
           />
           <AiKeysCard />
         </section>
+
+        <IntegrationLogs />
       </div>
+
 
       <Dialog
         open={marketplaceOpen}

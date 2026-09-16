@@ -45,18 +45,22 @@ export const getConnections = createServerFn({ method: "GET" })
     const tenantId = await callerTenantId(supabase, context.userId);
     const providerReady = await providerReadiness(tenantId);
 
-    // Whether each connection's access token renews itself. Worked out here
-    // because the refresh token is deliberately unreadable from a browser
-    // session; only the yes/no leaves the server.
+    // Whether each connection's access token renews itself, and whether it
+    // actually holds a token at all. Both are worked out here because tokens
+    // are deliberately unreadable from a browser session; only the yes/no
+    // leaves the server.
     const renewing = new Set<string>();
+    const tokened = new Set<string>();
     if (tenantId) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { data: withRefresh } = await supabaseAdmin
+      const { data: rows } = await supabaseAdmin
         .from("social_accounts")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .not("refresh_token", "is", null);
-      for (const r of withRefresh ?? []) renewing.add(r.id);
+        .select("id, access_token, refresh_token")
+        .eq("tenant_id", tenantId);
+      for (const r of rows ?? []) {
+        if (r.refresh_token) renewing.add(r.id);
+        if (r.access_token) tokened.add(r.id);
+      }
     }
 
     const { computeHealth } = await import("@/lib/connections.server");
@@ -66,10 +70,11 @@ export const getConnections = createServerFn({ method: "GET" })
       health: computeHealth({
         active: a.active,
         renews: renewing.has(a.id),
-        // Both branches of this were "set", so health could never report a
-        // missing credential -- an account saved without a token showed as
-        // healthy right up until its first sync failed.
-        access_token: a.connect_method === "oauth" || a.external_id ? "set" : null,
+        // Presence of the real stored token, never a proxy such as
+        // external_id: a manually added TikTok channel legitimately has no
+        // account id and was being reported as disconnected.
+        access_token: tokened.has(a.id) ? "set" : null,
+
         token_expires_at: a.token_expires_at,
         last_synced_at: a.last_synced_at,
       }),
