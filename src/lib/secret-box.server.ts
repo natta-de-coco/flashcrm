@@ -19,12 +19,8 @@
  * rotation a configuration change rather than a migration.
  * TOKEN_ENCRYPTION_KEY=<base64> is accepted as shorthand for a single key "k1".
  *
- * With no key configured, sealSecret() returns the value unchanged and the
- * integration health report says encryption is off. Deliberate: refusing to
- * store a token would break every connection the moment the variable went
- * missing, which is worse than the plaintext it replaces. openSecret() always
- * accepts unprefixed legacy plaintext for the same reason, so existing rows
- * keep working and are sealed the next time they are written.
+ * New writes fail closed when encryption is unavailable. Legacy plaintext can
+ * still be read and is sealed on its next write.
  */
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
@@ -119,13 +115,16 @@ export async function encryptionConfigured(): Promise<boolean> {
 
 /**
  * Seals a credential for storage. Empty stays empty, an already-sealed value
- * is returned as it is, and with no key configured the value is unchanged.
+ * is returned as it is. New plaintext writes require a valid encryption key.
  */
 export async function sealSecret(plain: string | null | undefined): Promise<string | null> {
   if (plain === null || plain === undefined || plain === "") return null;
   if (isSealed(plain)) return plain;
   const ring = await keyring();
-  if (!ring) return plain;
+  if (!ring)
+    throw new Error(
+      "Secure credential storage is unavailable. Ask a FLAS administrator to configure encryption.",
+    );
   const iv = crypto.getRandomValues(new Uint8Array(new ArrayBuffer(12)));
   const ciphertext = new Uint8Array(
     await crypto.subtle.encrypt(

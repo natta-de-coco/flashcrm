@@ -12,6 +12,7 @@
  * with two or more the connection was saved with no channel at all, and sync
  * then stopped at "add your ID" with nowhere to add it.
  */
+import { providerPages } from "./provider-pages.server";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 
 export type ConnectionTarget = {
@@ -27,6 +28,7 @@ export type TargetList =
 
 /** Platforms whose login can manage more than one channel, served by this module. */
 export const TARGET_PLATFORMS = [
+  "youtube",
   "linkedin",
   "google_business",
   "google_analytics",
@@ -40,6 +42,7 @@ export function hasTargetDiscovery(platform: string): boolean {
 
 export async function listConnectionTargets(platform: string, token: string): Promise<TargetList> {
   try {
+    if (platform === "youtube") return await youtubeTargets(token);
     if (platform === "linkedin") return await linkedinTargets(token);
     if (platform === "google_business") return await businessProfileTargets(token);
     if (platform === "google_analytics") return await ga4Targets(token);
@@ -76,6 +79,8 @@ export function targetProfile(target: ConnectionTarget): {
 /** What to tell the customer when a login manages nothing Flas can connect. */
 export function noTargetReason(platform: string): string {
   switch (platform) {
+    case "youtube":
+      return "No YouTube channel was returned for this sign-in. Connect again using the Google or Brand Account that owns the channel.";
     case "linkedin":
       return "This LinkedIn account is not an administrator of any Company Page. Ask a Page admin to add you as a Super admin or Content admin, then connect again.";
     case "google_business":
@@ -99,26 +104,21 @@ async function linkedinTargets(token: string): Promise<TargetList> {
   };
   // Posting and analytics act on a Page, and LinkedIn allows them only for
   // members with an approved ADMINISTRATOR role on it.
-  const res = await fetch(
-    "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=50",
-    { headers },
-  );
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return {
-      ok: false,
-      targets: [],
-      reason: `LinkedIn refused to list your Company Pages (HTTP ${res.status}). The Flas LinkedIn app may not have Community Management API access yet.`,
-    };
-  }
+  const entries = await providerPages<{ organization?: string }>({
+    url: "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=50",
+    token,
+    items: "elements",
+    pagination: "linkedin",
+    headers,
+  });
   const ids = [
     ...new Set<string>(
-      (json?.elements ?? [])
-        .map((e: any) => String(e?.organization ?? ""))
+      entries
+        .map((e) => String(e?.organization ?? ""))
         .filter((urn: string) => urn.startsWith("urn:li:organization:"))
         .map((urn: string) => urn.slice("urn:li:organization:".length)),
     ),
-  ].slice(0, 25);
+  ];
 
   const targets = await Promise.all(
     ids.map(async (id): Promise<ConnectionTarget> => {
@@ -128,7 +128,9 @@ async function linkedinTargets(token: string): Promise<TargetList> {
           headers,
         },
       );
-      const org: any = r.ok ? await r.json().catch(() => ({})) : {};
+      const org: { vanityName?: string; localizedName?: string } = r.ok
+        ? await r.json().catch(() => ({}))
+        : {};
       const vanity = typeof org?.vanityName === "string" ? org.vanityName : null;
       return {
         id,
@@ -143,44 +145,34 @@ async function linkedinTargets(token: string): Promise<TargetList> {
 }
 
 async function businessProfileTargets(token: string): Promise<TargetList> {
-  const auth = { headers: { Authorization: `Bearer ${token}` } };
-  const accountsRes = await fetch(
-    "https://mybusinessaccountmanagement.googleapis.com/v1/accounts",
-    auth,
-  );
-  const accountsJson: any = await accountsRes.json().catch(() => ({}));
-  if (!accountsRes.ok) {
-    return {
-      ok: false,
-      targets: [],
-      // Google answers 429 (quota 0) or 403 until it approves API access.
-      reason:
-        accountsRes.status === 429 || accountsRes.status === 403
-          ? "Google refused the Business Profile request. Google must approve Business Profile API access for this app before its locations can be listed."
-          : `Google refused to list your Business Profile accounts (HTTP ${accountsRes.status}).`,
-    };
-  }
-
+  const accounts = await providerPages<{ name: string; accountName?: string }>({
+    url: "https://mybusinessaccountmanagement.googleapis.com/v1/accounts",
+    token,
+    items: "accounts",
+  });
   const targets: ConnectionTarget[] = [];
-  for (const account of (accountsJson?.accounts ?? []).slice(0, 10)) {
-    const accountName = String(account?.name ?? "");
-    if (!accountName) continue;
-    const locRes = await fetch(
-      `https://mybusinessbusinessinformation.googleapis.com/v1/${accountName}/locations?readMask=name,title,storefrontAddress&pageSize=100`,
-      auth,
-    );
-    const locJson: any = await locRes.json().catch(() => ({}));
-    for (const location of locJson?.locations ?? []) {
-      if (!location?.name) continue;
-      const address =
-        location.storefrontAddress?.addressLines?.[0] ??
-        location.storefrontAddress?.locality ??
-        null;
+  for (const account of accounts) {
+    if (!/^accounts\/[^/]+$/.test(account.name))
+      throw new Error("Google returned an invalid account identifier.");
+    const locations = await providerPages<{
+      name: string;
+      title?: string;
+      storefrontAddress?: { addressLines?: string[]; locality?: string };
+    }>({
+      url: `https://mybusinessbusinessinformation.googleapis.com/v1/${account.name}/locations?readMask=name,title,storefrontAddress&pageSize=100`,
+      token,
+      items: "locations",
+    });
+    for (const location of locations) {
+      if (!/^locations\/[^/]+$/.test(location.name)) continue;
       targets.push({
-        // The path reviews are read from: accounts/{a}/locations/{l}.
-        id: `${accountName}/${location.name}`,
+        id: `${account.name}/${location.name}`,
         name: location.title ?? location.name,
-        detail: address ?? account.accountName ?? null,
+        detail:
+          location.storefrontAddress?.addressLines?.[0] ??
+          location.storefrontAddress?.locality ??
+          account.accountName ??
+          null,
         profileUrl: null,
       });
     }
@@ -189,20 +181,16 @@ async function businessProfileTargets(token: string): Promise<TargetList> {
 }
 
 async function ga4Targets(token: string): Promise<TargetList> {
-  const res = await fetch(
-    "https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200",
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return {
-      ok: false,
-      targets: [],
-      reason: `Google Analytics refused to list your properties (HTTP ${res.status}). Check that the Google Analytics Admin API is enabled for this app.`,
-    };
-  }
+  const summaries = await providerPages<{
+    displayName?: string;
+    propertySummaries?: { property: string; displayName?: string }[];
+  }>({
+    url: "https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=200",
+    token,
+    items: "accountSummaries",
+  });
   const targets: ConnectionTarget[] = [];
-  for (const account of json?.accountSummaries ?? []) {
+  for (const account of summaries) {
     for (const property of account?.propertySummaries ?? []) {
       if (!property?.property) continue;
       targets.push({
@@ -220,7 +208,9 @@ async function searchConsoleTargets(token: string): Promise<TargetList> {
   const res = await fetch("https://www.googleapis.com/webmasters/v3/sites", {
     headers: { Authorization: `Bearer ${token}` },
   });
-  const json: any = await res.json().catch(() => ({}));
+  const json: { siteEntry?: { siteUrl?: string; permissionLevel?: string }[] } = await res
+    .json()
+    .catch(() => ({}));
   if (!res.ok) {
     return {
       ok: false,
@@ -235,8 +225,8 @@ async function searchConsoleTargets(token: string): Promise<TargetList> {
   };
   const targets = (json?.siteEntry ?? [])
     // An unverified site returns no data; offering it would connect nothing.
-    .filter((s: any) => s?.siteUrl && s.permissionLevel !== "siteUnverifiedUser")
-    .map((s: any): ConnectionTarget => ({
+    .filter((s) => s?.siteUrl && s.permissionLevel !== "siteUnverifiedUser")
+    .map((s): ConnectionTarget => ({
       id: String(s.siteUrl),
       name: String(s.siteUrl).replace(/^sc-domain:/, ""),
       detail: LEVELS[String(s.permissionLevel)] ?? null,
@@ -246,21 +236,20 @@ async function searchConsoleTargets(token: string): Promise<TargetList> {
 }
 
 async function metaAdAccountTargets(token: string): Promise<TargetList> {
-  const res = await fetch(
-    "https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,currency,account_status&limit=100",
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok || json?.error) {
-    return {
-      ok: false,
-      targets: [],
-      reason: `Meta refused to list your ad accounts: ${json?.error?.message ?? `HTTP ${res.status}`}`,
-    };
-  }
-  const targets = (json?.data ?? [])
-    .filter((a: any) => a?.id)
-    .map((a: any): ConnectionTarget => ({
+  const accounts = await providerPages<{
+    id: string;
+    name?: string;
+    currency?: string;
+    account_status?: number;
+  }>({
+    url: "https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,currency,account_status&limit=100",
+    token,
+    items: "data",
+    pagination: "meta",
+  });
+  const targets = accounts
+    .filter((a) => a?.id)
+    .map((a): ConnectionTarget => ({
       id: String(a.id),
       name: a.name ?? String(a.id),
       detail:
@@ -270,4 +259,28 @@ async function metaAdAccountTargets(token: string): Promise<TargetList> {
       profileUrl: null,
     }));
   return { ok: true, targets };
+}
+
+async function youtubeTargets(token: string): Promise<TargetList> {
+  // mine=true lists only channels authorized by this consent. It does not grant
+  // FLAS access to every Brand Account owned by the signed-in Google user.
+  const channels = await providerPages<{
+    id: string;
+    snippet?: { title?: string; customUrl?: string };
+  }>({
+    url: "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true&maxResults=50",
+    token,
+    items: "items",
+  });
+  return {
+    ok: true,
+    targets: channels
+      .filter((ch) => ch.id)
+      .map((ch) => ({
+        id: ch.id,
+        name: ch.snippet?.title ?? "YouTube channel",
+        detail: ch.snippet?.customUrl ?? null,
+        profileUrl: `https://www.youtube.com/channel/${encodeURIComponent(ch.id)}`,
+      })),
+  };
 }

@@ -16,9 +16,7 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
     const { sendWhatsAppText, storeOutbound, resolveWaCredentials } =
       await import("@/lib/wa.server");
 
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
-      "current_tenant_id",
-    );
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
     // "no workspace", which sent people hunting a problem that was not theirs.
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
@@ -102,9 +100,7 @@ export const draftBotReply = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { getBotSettings, generateBotReply } = await import("@/lib/wa.server");
 
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
-      "current_tenant_id",
-    );
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
     // "no workspace", which sent people hunting a problem that was not theirs.
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
@@ -120,9 +116,9 @@ export const draftBotReply = createServerFn({ method: "POST" })
 
     const settings = await getBotSettings(tenantId as string);
     if (!settings) throw new Error("Chatbot is not configured");
-    const draft = await generateBotReply(data.conversationId, settings);
+    const draft = await generateBotReply(tenantId as string, data.conversationId, settings);
     if (!draft) throw new Error("The assistant could not generate a reply right now");
-    return { draft };
+    return { draft: draft.text };
   });
 
 const RetrySchema = z.object({ eventId: z.string().uuid() });
@@ -135,9 +131,7 @@ export const retryWebhookEvent = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { processWaPayload, finishWebhookEvent } = await import("@/lib/monitoring.server");
 
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
-      "current_tenant_id",
-    );
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
     // "no workspace", which sent people hunting a problem that was not theirs.
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
@@ -193,9 +187,7 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
     const { sendWhatsAppTemplate, storeOutbound, resolveWaCredentials } =
       await import("@/lib/wa.server");
 
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
-      "current_tenant_id",
-    );
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
     // "no workspace", which sent people hunting a problem that was not theirs.
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
@@ -314,9 +306,7 @@ export const translateMessage = createServerFn({ method: "POST" })
     const { callFlashAi } = await import("@/lib/flash-ai.server");
     const { logAudit } = await import("@/lib/audit.server");
 
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
-      "current_tenant_id",
-    );
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
     // "no workspace", which sent people hunting a problem that was not theirs.
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
@@ -395,9 +385,7 @@ export const buildCatalogMessage = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
-      "current_tenant_id",
-    );
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
     // "no workspace", which sent people hunting a problem that was not theirs.
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);

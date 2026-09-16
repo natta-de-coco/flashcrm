@@ -127,7 +127,7 @@ describe("Business Profile: the locations a Google account manages", () => {
       () => listConnectionTargets("google_business", "tok"),
     );
     assert.equal(result.ok, false);
-    assert.match(result.reason, /approve Business Profile API access/);
+    assert.match(result.reason, /HTTP 429/);
   });
 });
 
@@ -158,12 +158,82 @@ describe("which platforms use the picker", () => {
   it("LinkedIn and Business Profile do; others do not", () => {
     assert.equal(hasTargetDiscovery("linkedin"), true);
     assert.equal(hasTargetDiscovery("google_business"), true);
-    assert.equal(hasTargetDiscovery("youtube"), false);
+    assert.equal(hasTargetDiscovery("youtube"), true);
     assert.equal(hasTargetDiscovery("facebook"), false);
   });
 
   it("a login that manages nothing gets a reason, not a blank connection", () => {
     assert.match(noTargetReason("linkedin"), /administrator/);
     assert.match(noTargetReason("google_business"), /location/);
+  });
+});
+
+describe("complete asset discovery", () => {
+  it("offers every YouTube channel returned by this grant, including later pages", async () => {
+    const { result, asked } = await withFetch(
+      (url) =>
+        url.includes("pageToken=next")
+          ? json(200, { items: [{ id: "second", snippet: { title: "Second" } }] })
+          : json(200, {
+              items: [{ id: "first", snippet: { title: "First" } }],
+              nextPageToken: "next",
+            }),
+      () => listConnectionTargets("youtube", "private-test-token"),
+    );
+    assert.deepEqual(
+      result.targets.map((t) => t.id),
+      ["first", "second"],
+    );
+    assert.ok(
+      asked.every(
+        (c) =>
+          c.headers.Authorization === "Bearer private-test-token" &&
+          !c.url.includes("private-test-token"),
+      ),
+    );
+  });
+  it("a failed later page refuses selection instead of returning an incomplete list", async () => {
+    const { result } = await withFetch(
+      (url) =>
+        url.includes("pageToken=next")
+          ? json(403, {})
+          : json(200, { items: [{ id: "first" }], nextPageToken: "next" }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.targets, []);
+  });
+  it("refuses repeated pagination cursors instead of looping indefinitely", async () => {
+    const { result, asked } = await withFetch(
+      () => json(200, { items: [], nextPageToken: "same" }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(asked.length, 2);
+  });
+  it("uses the original Meta endpoint for later pages, never an untrusted next URL", async () => {
+    const { result, asked } = await withFetch(
+      (url) =>
+        url.includes("after=cursor")
+          ? json(200, { data: [{ id: "act_2" }] })
+          : json(200, {
+              data: [{ id: "act_1" }],
+              paging: { next: "https://attacker.example/steal", cursors: { after: "cursor" } },
+            }),
+      () => listConnectionTargets("meta_ads", "token"),
+    );
+    assert.equal(result.targets.length, 2);
+    assert.ok(asked.every((c) => new URL(c.url).hostname === "graph.facebook.com"));
+  });
+  it("a Business Profile location refusal does not masquerade as no locations", async () => {
+    const { result } = await withFetch(
+      (url) =>
+        url.includes("accountmanagement")
+          ? json(200, { accounts: [{ name: "accounts/1" }] })
+          : json(403, {}),
+      () => listConnectionTargets("google_business", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.targets, []);
   });
 });

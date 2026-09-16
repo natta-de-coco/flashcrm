@@ -132,13 +132,15 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!account?.access_token) throw new Error("This account has no stored authorization.");
-    const { openSecret, sealSecret } = await import("@/lib/secret-box.server");
+    const { openSecret } = await import("@/lib/secret-box.server");
     account.access_token = await openSecret(account.access_token);
     // Checked again after opening: a stored value can open to nothing, and that
     // is "no authorization", not a null handed to discovery.
     if (!account.access_token) throw new Error("This account has no stored authorization.");
 
-    const platform = account.platform as "facebook" | "instagram";
+    if (account.platform !== "facebook" && account.platform !== "instagram")
+      throw new Error("Page selection only applies to Facebook and Instagram.");
+    const platform = account.platform;
     // Checked before discovery so the customer gets the real reason. Once a
     // Page is chosen the row holds that Page's token, which cannot list other
     // Pages -- so asking to switch failed with "no longer available to this
@@ -155,6 +157,10 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
 
     const targetId = platform === "instagram" ? page.instagram?.id : page.id;
     if (!targetId) throw new Error("That Page has no Instagram professional account attached.");
+    if (platform === "facebook" && !page.pageAccessToken)
+      throw new Error(
+        "Facebook did not grant access to this Page. Please reconnect and allow Page access.",
+      );
 
     const profile = {
       external_id: targetId,
@@ -174,65 +180,37 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
       );
     }
 
-    // Reconnecting a channel that is already connected here folds the fresh
-    // authorization into the existing row and drops the pending one, so the
-    // same Page never ends up with two rows.
-    const { data: already } = await supabaseAdmin
-      .from("social_accounts")
-      .select("id")
-      .eq("tenant_id", tenantId as string)
-      .eq("platform", account.platform)
-      .eq("external_id", targetId)
-      .neq("id", account.id)
-      .limit(1);
-    const keepId = already?.[0]?.id ?? account.id;
-
-    // The row may be a revoked or disconnected connection being reconnected
-    // through the picker. Its state has to follow the fresh authorization, or
-    // it reads active and revoked at the same time.
-    const { deriveConnectionState } = await import("@/lib/connection-state.server");
-    const derived = deriveConnectionState({
-      active: true,
-      access_token:
-        page.pageAccessToken && platform === "facebook"
-          ? page.pageAccessToken
-          : account.access_token,
-      token_expires_at: account.token_expires_at,
-      granted_scopes: account.granted_scopes,
-      platform: account.platform,
+    const { saveAuthorizedConnection } = await import("@/lib/connections.server");
+    const { capabilityCeiling } = await import("@/lib/social-connector-definitions");
+    const selectedToken =
+      page.pageAccessToken && platform === "facebook" ? page.pageAccessToken : account.access_token;
+    const selectedExpiry =
+      page.pageAccessToken &&
+      platform === "facebook" &&
+      account.token_expires_at &&
+      new Date(account.token_expires_at).getTime() - Date.now() > 24 * 60 * 60 * 1000
+        ? null
+        : account.token_expires_at;
+    const keepId = await saveAuthorizedConnection({
+      tenantId,
+      platform,
+      token: selectedToken,
+      expiresAt: selectedExpiry,
+      grantedScopes: account.granted_scopes ?? [],
+      profile: {
+        ...profile,
+        name: profile.name ?? undefined,
+        username: profile.username ?? undefined,
+        picture: profile.picture ?? undefined,
+        followers: profile.followers ?? undefined,
+        profile_url:
+          platform === "instagram" && page.instagram?.username
+            ? `https://instagram.com/${page.instagram.username}`
+            : (page.profileUrl ?? undefined),
+      },
+      permissions: [...capabilityCeiling(platform)],
     });
-
-    const { error: saveError } = await supabaseAdmin
-      .from("social_accounts")
-      .update({
-        external_id: targetId,
-        label: profile.name ?? account.label,
-        profile: profile as never,
-        // A Page-scoped token outranks the user token for Page operations.
-        access_token: await sealSecret(
-          page.pageAccessToken && platform === "facebook"
-            ? page.pageAccessToken
-            : account.access_token,
-        ),
-        // A Page token taken from a long-lived user token does not expire;
-        // the stored user token is long-lived when it has more than a day
-        // left. Keeping its date would schedule a pointless, failing refresh.
-        token_expires_at:
-          page.pageAccessToken &&
-          platform === "facebook" &&
-          account.token_expires_at &&
-          new Date(account.token_expires_at).getTime() - Date.now() > 24 * 60 * 60 * 1000
-            ? null
-            : account.token_expires_at,
-        granted_scopes: account.granted_scopes,
-        active: true,
-        health: "connected",
-        connection_state: derived.state,
-        state_reason: derived.reason,
-      })
-      .eq("id", keepId)
-      .eq("tenant_id", tenantId as string);
-    if (saveError) throw new Error(`Could not save the selected Page: ${saveError.message}`);
+    if (!keepId) throw new Error("Could not save the selected Page.");
 
     if (keepId !== account.id) {
       // Only the pending, never-identified row is removed.
@@ -259,6 +237,8 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
     const report = await runConnectionTest({
       account: {
         ...account,
+        id: keepId,
+        token_expires_at: selectedExpiry,
         external_id: targetId,
         access_token:
           page.pageAccessToken && platform === "facebook"
@@ -269,7 +249,7 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
       trigger: "post_oauth",
     });
 
-    return { ok: true, report };
+    return { ok: true, accountId: keepId, report };
   });
 
 /** Per-capability health for one account, for the Capability Matrix (§6). */
@@ -414,47 +394,19 @@ export const selectConnectionTarget = createServerFn({ method: "POST" })
     const target = pickTarget(listed.targets, data.targetId);
     if (!target) throw new Error("That account is not available to this login.");
 
-    const { data: already } = await supabaseAdmin
-      .from("social_accounts")
-      .select("id")
-      .eq("tenant_id", tenantId as string)
-      .eq("platform", account.platform)
-      .eq("external_id", target.id)
-      .neq("id", account.id)
-      .limit(1);
-    const keepId = already?.[0]?.id ?? account.id;
-
-    const { deriveConnectionState } = await import("@/lib/connection-state.server");
-    const derived = deriveConnectionState({
-      active: true,
-      access_token: token,
-      token_expires_at: account.token_expires_at,
-      granted_scopes: account.granted_scopes,
-      platform: account.platform,
-      refresh_token: account.refresh_token,
+    const { saveAuthorizedConnection } = await import("@/lib/connections.server");
+    const { capabilityCeiling } = await import("@/lib/social-connector-definitions");
+    const keepId = await saveAuthorizedConnection({
+      tenantId,
+      platform: account.platform as import("@/lib/connections-catalog").AccountPlatform,
+      token,
+      refreshToken: await openSecret(account.refresh_token),
+      expiresAt: account.token_expires_at,
+      grantedScopes: account.granted_scopes ?? [],
+      profile: targetProfile(target),
+      permissions: [...capabilityCeiling(account.platform)],
     });
-    const profile = targetProfile(target);
-
-    const { error: saveError } = await supabaseAdmin
-      .from("social_accounts")
-      .update({
-        external_id: target.id,
-        label: target.name,
-        profile: profile as never,
-        profile_url: profile.profile_url ?? null,
-        // The stored values as they are: already sealed, nothing to re-seal.
-        access_token: account.access_token,
-        refresh_token: account.refresh_token,
-        token_expires_at: account.token_expires_at,
-        granted_scopes: account.granted_scopes,
-        active: true,
-        health: "connected",
-        connection_state: derived.state,
-        state_reason: derived.reason,
-      })
-      .eq("id", keepId)
-      .eq("tenant_id", tenantId as string);
-    if (saveError) throw new Error(`Could not save the chosen account: ${saveError.message}`);
+    if (!keepId) throw new Error("Could not save the chosen account.");
 
     if (keepId !== account.id) {
       await supabaseAdmin

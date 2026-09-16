@@ -47,6 +47,7 @@ export type Connector = {
    * does nothing is worse than an honest "not yet".
    */
   unavailableReason?: string;
+  limitedReason?: string;
   /** OAuth provider family used for the token exchange. */
   provider?: "meta" | "google" | "linkedin" | "tiktok" | "twitter" | "pinterest";
   /** Capabilities the official API supports (subject to granted permissions). */
@@ -62,9 +63,10 @@ export type Connector = {
 export const CONNECTORS: Connector[] = [
   {
     id: "facebook",
+    limitedReason: "Publishing and sending Messenger replies are not available yet.",
     name: "Facebook",
     group: "social",
-    blurb: "Page posts, comments, Messenger and Page insights.",
+    blurb: "Read Page posts, comments, Messenger and basic insights.",
     oauth: true,
     provider: "meta",
     manageUrl: "https://business.facebook.com/latest/home",
@@ -72,9 +74,11 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "instagram",
+    limitedReason:
+      "Publishing and Instagram DMs are not available yet. A professional account linked to a Facebook Page is required.",
     name: "Instagram",
     group: "social",
-    blurb: "Feed, Reels, comments, DMs and account insights.",
+    blurb: "Professional account posts, comments and insights.",
     oauth: true,
     provider: "meta",
     manageUrl: "https://business.facebook.com/latest/instagram_content",
@@ -82,6 +86,8 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "linkedin",
+    limitedReason:
+      "Reading and analytics depend on approved LinkedIn access. Publishing is not available yet.",
     name: "LinkedIn",
     group: "social",
     blurb: "Company page posts and follower/impression analytics.",
@@ -94,7 +100,8 @@ export const CONNECTORS: Connector[] = [
     id: "tiktok",
     name: "TikTok",
     group: "social",
-    blurb: "Video publishing and video performance data.",
+    blurb: "Connect your TikTok profile.",
+    limitedReason: "Profile and video metrics. Video publishing is not implemented in FLAS yet.",
     oauth: true,
     provider: "tiktok",
     manageUrl: "https://www.tiktok.com/tiktokstudio",
@@ -102,6 +109,8 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "youtube",
+    limitedReason:
+      "Read videos, comments and public statistics. Uploading and comment replies are not available yet.",
     name: "YouTube",
     group: "social",
     blurb: "Channel videos, comments and channel statistics.",
@@ -115,6 +124,7 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "twitter",
+    limitedReason: "Read posts and public metrics. Publishing and DMs are not available yet.",
     name: "X / Twitter",
     group: "social",
     blurb: "Posts and public post metrics.",
@@ -138,9 +148,11 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "pinterest",
+    limitedReason:
+      "Profile connection only. Pin sync, publishing and analytics are not available yet.",
     name: "Pinterest",
     group: "social",
-    blurb: "Pins, boards and pin analytics.",
+    blurb: "Connect your Pinterest profile.",
     oauth: true,
     provider: "pinterest",
     manageUrl: "https://www.pinterest.com/business/hub/",
@@ -160,15 +172,14 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "whatsapp",
+    unavailableReason:
+      "Simple WhatsApp onboarding is coming soon. Existing connected numbers keep working.",
     name: "WhatsApp Business",
     group: "messaging",
     blurb: "Numbers, templates, chatbot and conversations.",
     oauth: false,
     manageUrl: "https://business.facebook.com/wa/manage/",
-    // No internalHref: this used to point at /connect, the page the card is
-    // already on, so "Set up in Flas" went nowhere. WhatsApp has no OAuth
-    // flow, so its guided wizard collects the Phone Number ID and permanent
-    // token directly instead.
+    // Embedded Signup is a separate integration, not the Pages OAuth flow.
   },
   {
     id: "meta_ads",
@@ -241,6 +252,7 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "shopify",
+    unavailableReason: "Guided Shopify onboarding is coming soon.",
     name: "Shopify",
     group: "commerce",
     blurb: "Store widget, products and order-driven leads.",
@@ -250,6 +262,7 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "woocommerce",
+    unavailableReason: "Guided WooCommerce onboarding is coming soon.",
     name: "WooCommerce",
     group: "commerce",
     blurb: "Store leads and product catalogue sync.",

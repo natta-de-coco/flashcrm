@@ -91,9 +91,9 @@ describe("key rotation", () => {
 });
 
 describe("configuration", () => {
-  it("with no key, stores the value unchanged and reports encryption off", async () => {
+  it("with no key, refuses new credential writes and reports encryption off", async () => {
     useKeys(null);
-    assert.equal(await sealSecret("token"), "token");
+    await assert.rejects(sealSecret("token"), /Secure credential storage is unavailable/);
     assert.equal(await encryptionConfigured(), false);
   });
 

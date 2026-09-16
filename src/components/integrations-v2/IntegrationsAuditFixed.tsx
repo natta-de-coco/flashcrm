@@ -1,3 +1,12 @@
+import {
+  ConnectionOutcome,
+  type ConnectionOutcomeSearch,
+} from "@/components/integrations/ConnectionOutcome";
+import {
+  connectorDefinition,
+  resolveAllCapabilities,
+  CAPABILITY_LABELS,
+} from "@/lib/social-connector-definitions";
 import { PageHeader } from "@/components/PageHeader";
 import { AiKeysCard } from "@/components/integrations/AiKeysCard";
 import { CredentialsStep } from "@/components/integrations/CredentialsStep";
@@ -5,7 +14,13 @@ import { connectorIcon } from "@/components/integrations/connector-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
@@ -44,6 +59,9 @@ type Account = {
   platform: string;
   label: string;
   active: boolean;
+  external_id: string | null;
+  granted_scopes?: string[] | null;
+  renews?: boolean;
   health: string;
   last_synced_at: string | null;
   token_expires_at: string | null;
@@ -70,34 +88,20 @@ const POPULAR = new Set([
 ]);
 
 function friendlyCapability(platform: string): string[] {
-  switch (platform) {
-    case "facebook":
-      return ["Page profile", "Posts", "Analytics"];
-    case "instagram":
-      return ["Profile", "Posts & Reels", "Insights"];
-    case "youtube":
-      return ["Channel", "Videos", "Analytics"];
-    case "linkedin":
-      return ["Company Page", "Posts", "Analytics"];
-    case "google_business":
-      return ["Business profile", "Reviews", "Performance"];
-    case "meta_ads":
-      return ["Campaigns", "Spend", "Performance"];
-    case "google_analytics":
-      return ["Traffic", "Sources", "Conversions"];
-    case "search_console":
-      return ["Clicks", "Impressions", "Queries"];
-    case "whatsapp":
-      return ["Conversations", "Templates", "Inbox"];
-    case "wordpress":
-      return ["Lead capture", "Website chat", "Publishing"];
-    case "shopify":
-      return ["Store leads", "Website chat", "Commerce"];
-    case "woocommerce":
-      return ["Store leads", "Products", "Commerce"];
-    default:
-      return ["Profile access"];
-  }
+  const definition = connectorDefinition(platform);
+  return (
+    definition
+      ? resolveAllCapabilities(definition)
+          .filter((c) =>
+            ["implemented", "requires_provider_review", "limited_by_account_type"].includes(
+              c.status,
+            ),
+          )
+          .map((c) => c.key)
+      : []
+  )
+    .filter((key) => key !== "webhooks")
+    .map((key) => CAPABILITY_LABELS[key]);
 }
 
 function humanTime(value: string | null) {
@@ -106,7 +110,13 @@ function humanTime(value: string | null) {
   return Number.isNaN(date.getTime()) ? "Not yet" : date.toLocaleString();
 }
 
-export function IntegrationsAuditFixed() {
+export function IntegrationsAuditFixed({
+  search = {},
+  onDismiss = () => {},
+}: {
+  search?: ConnectionOutcomeSearch;
+  onDismiss?: () => void;
+}) {
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
@@ -128,7 +138,12 @@ export function IntegrationsAuditFixed() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<{ platform: string; message: string } | null>(null);
 
-  const accounts = ((connections.data?.accounts ?? []) as Account[]).filter((a) => a.active);
+  const allAccounts = (connections.data?.accounts ?? []) as Account[];
+  const accounts = allAccounts.filter((a) => a.active && a.external_id);
+  const pendingAccounts = allAccounts.filter(
+    (a) => a.active && !a.external_id && a.connect_method === "oauth",
+  );
+  const [resume, setResume] = useState<ConnectionOutcomeSearch | null>(null);
   const rows = readiness.data?.rows ?? [];
   const readinessMap = new Map(rows.map((r) => [r.id, r]));
   const attention = accounts.filter((a) => {
@@ -158,36 +173,18 @@ export function IntegrationsAuditFixed() {
       if (!result.ready) {
         setBlocked({
           platform,
-          message: isAdmin
-            ? result.reason
-            : "This connection is temporarily unavailable while administrator setup is completed.",
-        });
-        return;
-      }
-      const opened = window.open(result.url, "_blank", "noopener,noreferrer");
-      if (!opened) {
-        setBlocked({
-          platform,
           message:
-            "Your browser blocked the secure sign-in window. Allow pop-ups for FLAS and try again.",
+            "This connection is temporarily unavailable while administrator setup is completed.",
         });
         return;
       }
-      toast.info(
-        "Finish sign-in with the provider. FLAS will refresh this page after the callback completes.",
-      );
-      window.setTimeout(() => {
-        void qc.invalidateQueries({ queryKey: ["connections"] });
-        void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
-      }, 3500);
+      window.location.assign(result.url);
     },
-    onError: (e: Error, platform) => {
+    onError: (_e: Error, platform) => {
       setConnecting(null);
       setBlocked({
         platform,
-        message: isAdmin
-          ? e.message
-          : "The connection could not start. Please try again or ask an administrator.",
+        message: "The connection could not start. Please try again or ask an administrator.",
       });
     },
   });
@@ -210,9 +207,10 @@ export function IntegrationsAuditFixed() {
   function openConnector(connector: Connector) {
     setBlocked(null);
     const row = readinessMap.get(connector.id);
-    if (row?.status === "ADMIN_SETUP_REQUIRED") {
+    if (!row) return;
+    if (row.status === "ADMIN_SETUP_REQUIRED") {
       if (isAdmin && (connector.oauth || connector.id === "whatsapp")) {
-        setCredentialsFor(connector.id);
+        setProviderSetupOpen(true);
       } else {
         setBlocked({
           platform: connector.id,
@@ -265,7 +263,7 @@ export function IntegrationsAuditFixed() {
                   setProviderSetupOpen(true);
                 }}
               >
-                <Settings2 className="mr-2 size-4" /> Provider setup
+                <Settings2 className="mr-2 size-4" /> Admin diagnostics
               </Button>
             )}
             <Button
@@ -279,6 +277,54 @@ export function IntegrationsAuditFixed() {
           </div>
         </div>
 
+        {connections.isError && (
+          <Problem
+            message="We could not load your integrations. Please refresh and try again."
+            onAdmin={undefined}
+          />
+        )}
+        {readiness.isError && (
+          <Problem
+            message="We could not check connection availability. Please refresh and try again."
+            onAdmin={undefined}
+          />
+        )}
+        {blocked && !marketplaceOpen && (
+          <Problem
+            message={blocked.message}
+            onAdmin={isAdmin ? () => setProviderSetupOpen(true) : undefined}
+          />
+        )}
+        <ConnectionOutcome
+          search={resume ?? search}
+          accounts={allAccounts}
+          onChanged={() => {
+            void qc.invalidateQueries({ queryKey: ["connections"] });
+          }}
+          onDismiss={() => {
+            setResume(null);
+            onDismiss();
+          }}
+        />
+        {pendingAccounts.length > 0 && !search.select_target && !resume && (
+          <section className="space-y-3">
+            <SectionHeading
+              title="Finish connecting"
+              description="Sign-in is saved. Choose the Page or account to complete the connection."
+            />
+            {pendingAccounts.map((account) => (
+              <Button
+                key={account.id}
+                variant="outline"
+                onClick={() =>
+                  setResume({ connected: account.platform, select_target: account.id })
+                }
+              >
+                Choose {CONNECTORS.find((c) => c.id === account.platform)?.name ?? "account"}
+              </Button>
+            ))}
+          </section>
+        )}
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard label="Connected" value={accounts.length} tone="good" />
           <StatCard
@@ -336,7 +382,7 @@ export function IntegrationsAuditFixed() {
                 <Skeleton key={i} className="h-52" />
               ))}
             </div>
-          ) : accounts.length === 0 ? (
+          ) : connections.isError ? null : accounts.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
                 <Link2 className="size-6" />
@@ -418,7 +464,7 @@ export function IntegrationsAuditFixed() {
           <DialogHeader>
             <DialogTitle>Add Integration</DialogTitle>
             <DialogDescription>
-              Choose a platform. FLAS checks every prerequisite before enabling Connect.
+              Choose a platform, continue with your account, then choose the channel to connect.
             </DialogDescription>
           </DialogHeader>
           <div className="relative">
@@ -469,10 +515,10 @@ export function IntegrationsAuditFixed() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={providerSetupOpen} onOpenChange={setProviderSetupOpen}>
+      <Dialog open={isAdmin && providerSetupOpen} onOpenChange={setProviderSetupOpen}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Provider Setup</DialogTitle>
+            <DialogTitle>Admin diagnostics</DialogTitle>
             <DialogDescription>
               Admin-only readiness. A provider is Ready only when credentials, origin and secure
               token storage all pass.
@@ -483,7 +529,7 @@ export function IntegrationsAuditFixed() {
       </Dialog>
 
       <Dialog
-        open={Boolean(credentialsFor)}
+        open={isAdmin && Boolean(credentialsFor)}
         onOpenChange={(open) => {
           if (!open) setCredentialsFor(null);
         }}
@@ -491,10 +537,13 @@ export function IntegrationsAuditFixed() {
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {credentialConnector ? `Configure ${credentialConnector.name}` : "Configure provider"}
+              {credentialConnector
+                ? `Advanced workspace app: ${credentialConnector.name}`
+                : "Advanced workspace app"}
             </DialogTitle>
             <DialogDescription>
-              Secrets are sent to a server function and are never displayed again.
+              FLAS normally provides the shared app. Only use this optional override if your
+              workspace administrator maintains a separate provider app. Secrets stay on the server.
             </DialogDescription>
           </DialogHeader>
           {spec && credentialConnector ? (
@@ -518,13 +567,7 @@ export function IntegrationsAuditFixed() {
   );
 }
 
-function Problem({
-  message,
-  onAdmin,
-}: {
-  message: string;
-  onAdmin: (() => void) | undefined;
-}) {
+function Problem({ message, onAdmin }: { message: string; onAdmin: (() => void) | undefined }) {
   return (
     <div className="rounded-xl border border-amber-300/60 bg-amber-50/60 p-4 dark:bg-amber-950/10">
       <div className="flex gap-3">
@@ -550,11 +593,7 @@ function ProviderReadiness({
   rows: IntegrationReadinessRow[];
   onConfigure: (id: string) => void;
 }) {
-  const oauthFamilies = Array.from(
-    new Map(
-      rows.filter((r) => r.oauth && r.provider).map((r) => [r.provider, r]),
-    ).values(),
-  );
+  const oauthFamilies = rows.filter((r) => r.oauth);
   const utility = rows.filter((r) =>
     ["whatsapp", "wordpress", "shopify", "woocommerce"].includes(r.id),
   );
@@ -564,7 +603,7 @@ function ProviderReadiness({
         <h3 className="mb-2 text-sm font-semibold">OAuth providers</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {oauthFamilies.map((row) => (
-            <ReadinessCard key={row.provider} row={row} onConfigure={() => onConfigure(row.id)} />
+            <ReadinessCard key={row.id} row={row} onConfigure={() => onConfigure(row.id)} />
           ))}
         </div>
       </div>
@@ -588,7 +627,7 @@ function ReadinessCard({
   onConfigure: () => void;
 }) {
   const setup = providerSetup(row.provider);
-  const label = row.providerName ?? row.name;
+  const label = row.name;
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -618,21 +657,20 @@ function ReadinessCard({
         <CheckLine ok={row.checks.allowedOrigin} label="OAuth return address" />
         <CheckLine ok={row.checks.publicAppUrl} label="Public app URL" />
         <CheckLine ok={row.checks.encryption} label="Token encryption" />
+        <CheckLine ok={row.checks.storage} label="OAuth database schema" />
         {row.callbackUri && <CopyRow label="Callback" value={row.callbackUri} />}
-        {row.blockers
-          .filter((b) => b.severity === "BLOCKING")
-          .map((b) => (
-            <div key={b.code} className="rounded-md border border-amber-300/50 p-2">
-              <p className="font-medium">{b.title}</p>
-              {b.technical && (
-                <p className="mt-1 break-words text-xs text-muted-foreground">{b.technical}</p>
-              )}
-            </div>
-          ))}
+        {row.blockers.map((b) => (
+          <div key={b.code} className="rounded-md border border-amber-300/50 p-2">
+            <p className="font-medium">{b.title}</p>
+            {b.technical && (
+              <p className="mt-1 break-words text-xs text-muted-foreground">{b.technical}</p>
+            )}
+          </div>
+        ))}
         <div className="flex flex-wrap gap-2">
-          {row.status === "ADMIN_SETUP_REQUIRED" && (row.oauth || row.id === "whatsapp") && (
+          {row.oauth && row.status !== "COMING_SOON" && (
             <Button size="sm" onClick={onConfigure}>
-              <KeyRound className="mr-1.5 size-3.5" /> Configure
+              <KeyRound className="mr-1.5 size-3.5" /> Advanced: workspace app
             </Button>
           )}
           {setup?.links?.[0] && (
@@ -688,7 +726,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
 }
 
 function StatusBadge({ row }: { row: IntegrationReadinessRow }) {
-  if (row.status === "READY") return <Badge>Ready</Badge>;
+  if (row.status === "READY") return <Badge>Available</Badge>;
   if (row.status === "LIMITED") return <Badge variant="secondary">Limited</Badge>;
   if (row.status === "COMING_SOON") return <Badge variant="outline">Coming soon</Badge>;
   return <Badge variant="secondary">Setup needed</Badge>;
@@ -711,7 +749,10 @@ function MarketplaceCard({
   const status =
     readiness?.status ?? (connector.unavailableReason ? "COMING_SOON" : "ADMIN_SETUP_REQUIRED");
   const disabled =
-    connecting || status === "COMING_SOON" || (status === "ADMIN_SETUP_REQUIRED" && !isAdmin);
+    !readiness ||
+    connecting ||
+    status === "COMING_SOON" ||
+    (status === "ADMIN_SETUP_REQUIRED" && !isAdmin);
   const action =
     status === "COMING_SOON"
       ? "Coming soon"
@@ -719,7 +760,9 @@ function MarketplaceCard({
         ? isAdmin
           ? "Fix setup"
           : "Temporarily unavailable"
-        : `Connect ${connector.name}`;
+        : connector.oauth
+          ? `Continue with ${connector.provider === "meta" ? "Facebook" : connector.provider === "google" ? "Google" : connector.name}`
+          : `Open ${connector.name}`;
   return (
     <Card className="flex h-full flex-col">
       <CardHeader className="pb-3">
@@ -742,10 +785,18 @@ function MarketplaceCard({
             .slice(0, 3)
             .map((cap) => (
               <div key={cap} className="flex items-center gap-1.5">
-                <CheckCircle2 className="size-3.5 text-emerald-600" /> {cap}
+                {cap}
               </div>
             ))}
         </div>
+        {connector.limitedReason && (
+          <p className="text-xs text-muted-foreground">{connector.limitedReason}</p>
+        )}
+        {connector.oauth && (
+          <p className="text-xs text-muted-foreground">
+            Features depend on your account and the permissions approved by the provider.
+          </p>
+        )}
         {readiness?.blockers.some((b) => b.severity === "BLOCKING") && (
           <p className="text-xs text-muted-foreground">
             {readiness.blockers.find((b) => b.severity === "BLOCKING")?.userMessage}
@@ -758,7 +809,11 @@ function MarketplaceCard({
             onClick={onConnect}
             disabled={disabled}
           >
-            {connecting ? "Opening secure sign-in…" : action}
+            {!readiness
+              ? "Checking availability…"
+              : connecting
+                ? "Opening secure sign-in…"
+                : action}
           </Button>
         </div>
       </CardContent>

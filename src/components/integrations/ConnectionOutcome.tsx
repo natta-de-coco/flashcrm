@@ -28,6 +28,7 @@ import { toast } from "sonner";
  */
 export type ConnectionOutcomeSearch = {
   connected?: string;
+  account_id?: string;
   connect_blocked?: string;
   connect_reason?: string;
   connect_error?: string;
@@ -42,6 +43,7 @@ export type ConnectionOutcomeSearch = {
  * picker because Page tokens come with them.
  */
 const CHANNEL_PICKER_PLATFORMS: ReadonlySet<string> = new Set([
+  "youtube",
   "linkedin",
   "google_business",
   "google_analytics",
@@ -50,6 +52,7 @@ const CHANNEL_PICKER_PLATFORMS: ReadonlySet<string> = new Set([
 ]);
 
 const PICKER_NOUN: Record<string, string> = {
+  youtube: "YouTube channel",
   linkedin: "Company Page",
   google_business: "location",
   google_analytics: "GA4 property",
@@ -90,10 +93,13 @@ export function ConnectionOutcome({
   // first row for the platform is often a different, already-pinned one --
   // opening the picker on it listed nothing and failed.
   const account = connected
-    ? (accounts.find((a) => a.id === pendingId) ??
-      accounts.find((a) => a.platform === connected && !a.external_id) ??
-      accounts.find((a) => a.platform === connected) ??
-      null)
+    ? pendingId
+      ? (accounts.find((a) => a.id === pendingId && a.platform === connected) ?? null)
+      : search.account_id
+        ? (accounts.find((a) => a.id === search.account_id && a.platform === connected) ?? null)
+        : (accounts.find((a) => a.platform === connected && !a.external_id) ??
+          accounts.find((a) => a.platform === connected) ??
+          null)
     : null;
 
   if (blocked) {
@@ -105,17 +111,7 @@ export function ConnectionOutcome({
           <p className="font-medium">
             {search.connect_reason ?? "The platform did not return a usable authorization."}
           </p>
-          {search.connect_detail && <p>{search.connect_detail}</p>}
-          {search.connect_help && (
-            <a
-              className="inline-block text-xs underline underline-offset-2"
-              href={search.connect_help}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              Open the page where this is fixed
-            </a>
-          )}
+
           <p className="text-xs opacity-80">
             Nothing was saved, so there is no half-connected account to clean up. Fix the cause
             above and press Connect again.
@@ -134,7 +130,10 @@ export function ConnectionOutcome({
         <XCircle className="size-4" />
         <AlertTitle>Connection failed</AlertTitle>
         <AlertDescription className="space-y-3">
-          <p>{errored}</p>
+          <p>
+            Sign-in could not be completed. Please try connecting again. If this keeps happening,
+            ask a FLAS administrator to check the connection.
+          </p>
           <Button size="sm" variant="outline" onClick={onDismiss}>
             Dismiss
           </Button>
@@ -142,6 +141,16 @@ export function ConnectionOutcome({
       </Alert>
     );
   }
+
+  if (!account)
+    return (
+      <Alert>
+        <AlertTitle>Loading your connection</AlertTitle>
+        <AlertDescription>
+          Refresh if the account does not appear, or start sign-in again.
+        </AlertDescription>
+      </Alert>
+    );
 
   if (needsTarget && account) {
     return CHANNEL_PICKER_PLATFORMS.has(account.platform) ? (
@@ -191,17 +200,17 @@ function TargetPicker({
       onChanged();
       onDismiss();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: () =>
+      toast.error(
+        "Could not complete the connection. Please try again or ask a FLAS administrator.",
+      ),
   });
 
   return (
     <Card className="mt-4 border-primary/40">
       <CardHeader>
         <CardTitle className="text-base">Choose which account Flas should manage</CardTitle>
-        <CardDescription>
-          This login controls more than one. Flas will not guess — pick the one this workspace
-          should read and post to.
-        </CardDescription>
+        <CardDescription>Choose the account this workspace should use.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {targets.isPending && (
@@ -215,7 +224,9 @@ function TargetPicker({
           <Alert variant="destructive">
             <AlertTriangle className="size-4" />
             <AlertTitle>Couldn&apos;t list the available accounts</AlertTitle>
-            <AlertDescription>{(targets.error as Error).message}</AlertDescription>
+            <AlertDescription>
+              {"Could not load your accounts. Try again or ask a FLAS administrator."}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -250,6 +261,8 @@ function TargetPicker({
           <button
             key={t.pageId}
             type="button"
+            aria-pressed={chosen === t.pageId}
+            disabled={choose.isPending}
             onClick={() => setChosen(t.pageId)}
             className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition ${
               chosen === t.pageId ? "border-primary bg-primary/5" : "hover:bg-muted/50"
@@ -321,7 +334,10 @@ function ConnectedBanner({
   const test = useMutation({
     mutationFn: () => testFn({ data: { accountId: account?.id ?? "" } }),
     onSuccess: () => onChanged(),
-    onError: (e: Error) => toast.error(e.message),
+    onError: () =>
+      toast.error(
+        "Could not complete the connection. Please try again or ask a FLAS administrator.",
+      ),
   });
 
   const report = test.data;
@@ -329,12 +345,12 @@ function ConnectedBanner({
   return (
     <Alert className="mt-4">
       <CheckCircle2 className="size-4" />
-      <AlertTitle>Connected to {platform}</AlertTitle>
+      <AlertTitle>Connected to {account?.label ?? platform}</AlertTitle>
       <AlertDescription className="space-y-3">
         {!report && (
           <p className="text-sm">
-            Authorization saved. Run a check to confirm what Flas can actually do with it — the
-            token being accepted is not the same as the permissions being granted.
+            Your account is connected. Available features depend on the access your provider
+            approved.
           </p>
         )}
 
@@ -407,7 +423,10 @@ function ChannelPicker({
       onChanged();
       onDismiss();
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: () =>
+      toast.error(
+        "Could not complete the connection. Please try again or ask a FLAS administrator.",
+      ),
   });
 
   return (
@@ -415,8 +434,8 @@ function ChannelPicker({
       <CardHeader>
         <CardTitle className="text-base">Choose which {noun} Flas should manage</CardTitle>
         <CardDescription>
-          This login manages more than one. Flas will not guess — pick the one this workspace should
-          use. To add another later, connect again and choose it.
+          Choose the account this workspace should use. To add another later, connect again and
+          choose it.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -431,7 +450,9 @@ function ChannelPicker({
           <Alert variant="destructive">
             <AlertTriangle className="size-4" />
             <AlertTitle>Couldn&apos;t list the available accounts</AlertTitle>
-            <AlertDescription>{(targets.error as Error).message}</AlertDescription>
+            <AlertDescription>
+              {"Could not load your accounts. Try again or ask a FLAS administrator."}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -439,7 +460,10 @@ function ChannelPicker({
           <Alert>
             <AlertTriangle className="size-4" />
             <AlertTitle>The platform did not list any accounts</AlertTitle>
-            <AlertDescription>{targets.data.reason}</AlertDescription>
+            <AlertDescription>
+              The provider could not list your accounts. Check that you have access to the account,
+              or ask a FLAS administrator.
+            </AlertDescription>
           </Alert>
         )}
 
@@ -447,6 +471,8 @@ function ChannelPicker({
           <button
             key={t.id}
             type="button"
+            aria-pressed={chosen === t.id}
+            disabled={choose.isPending}
             onClick={() => setChosen(t.id)}
             className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition ${
               chosen === t.id ? "border-primary bg-primary/5" : "hover:bg-muted/50"
@@ -482,5 +508,24 @@ function ChannelPicker({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Only known, bounded callback fields are accepted. Help URLs are not rendered. */
+export function parseConnectionOutcomeSearch(
+  search: Record<string, unknown>,
+): ConnectionOutcomeSearch {
+  const keys = [
+    "connected",
+    "account_id",
+    "connect_blocked",
+    "connect_reason",
+    "connect_error",
+    "select_target",
+  ] as const;
+  return Object.fromEntries(
+    keys
+      .filter((key) => typeof search[key] === "string")
+      .map((key) => [key, String(search[key]).slice(0, 300)]),
   );
 }

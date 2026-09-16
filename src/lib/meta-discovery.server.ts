@@ -8,6 +8,7 @@
 // to a different Page the same user managed. That produced connected-but-
 // empty accounts with no explanation, which is the single most common reason
 // a Meta connection appears to "work" and then does nothing.
+import { providerPages } from "./provider-pages.server";
 import { normalizeProviderError, type NormalizedError } from "./integration-errors.server";
 
 export const META_API_VERSION = "v21.0";
@@ -82,11 +83,14 @@ export async function discoverMetaTargets(token: string): Promise<MetaDiscovery>
   let httpStatus: number | null = null;
 
   try {
-    const res = await fetch(
-      `${GRAPH}/me/accounts?fields=${fields}&limit=100&access_token=${encodeURIComponent(token)}`,
-    );
-    httpStatus = res.status;
-    json = (await res.json()) as AccountsResponse;
+    const data = await providerPages<Record<string, unknown>>({
+      url: `${GRAPH}/me/accounts?fields=${fields}&limit=100`,
+      token,
+      items: "data",
+      pagination: "meta",
+    });
+    httpStatus = 200;
+    json = { data };
   } catch (thrown) {
     const error = normalizeProviderError({
       platform: "facebook",

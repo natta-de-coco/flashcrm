@@ -6,7 +6,14 @@ import { capabilityCeiling } from "@/lib/social-connector-definitions";
 
 function back(origin: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();
-  return new Response(null, { status: 302, headers: { Location: `${origin}/social?${qs}` } });
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      Location: `${origin}/connect?${qs}`,
+    },
+  });
 }
 
 /** Map raw provider/SDK errors to a small set of user-safe codes.  Prevents
@@ -148,7 +155,6 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             codeVerifier: row.code_verifier, // real PKCE for twitter/X
           });
 
-          let metaLongLived = false;
           if (meta.provider === "meta") {
             // Meta's code exchange yields a short-lived user token (1-2 hours).
             // Upgrade it now: Page tokens taken from a long-lived user token do
@@ -159,7 +165,6 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             try {
               const longLived = await upgradeMetaToken(tokens.token, row.tenant_id);
               tokens = { ...tokens, token: longLived.token, expiresAt: longLived.expiresAt };
-              metaLongLived = true;
             } catch {
               console.error(
                 "[oauth-callback] Meta long-lived token exchange failed; keeping the short-lived token",
@@ -176,17 +181,20 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           // before we call it connected. Saving a Page-less or Instagram-less
           // authorization as "connected" is how an account ends up green in
           // the UI while doing nothing.
-          let metaSole: import("@/lib/meta-discovery.server").MetaPage | null = null;
           if (platform === "facebook" || platform === "instagram") {
-            const {
-              discoverMetaTargets,
-              diagnoseMetaConnection,
-              needsTargetSelection,
-              soleTarget,
-            } = await import("@/lib/meta-discovery.server");
+            const { discoverMetaTargets, diagnoseMetaConnection } =
+              await import("@/lib/meta-discovery.server");
             const discovery = await discoverMetaTargets(tokens.token);
             const diagnosis = diagnoseMetaConnection(discovery, platform);
             if (diagnosis) {
+              await markAttemptState("callback_error", diagnosis.title);
+              await auditOutcome(
+                "blocked",
+                row.platform,
+                row.tenant_id,
+                row.user_id ?? null,
+                diagnosis.title,
+              );
               // Stop here rather than storing a connection that cannot work.
               // Pass the explanation through, not just the headline -- the
               // user lands on a page that has no other way to learn what went
@@ -198,9 +206,8 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                 ...(diagnosis.helpUrl ? { connect_help: diagnosis.helpUrl } : {}),
               });
             }
-            if (needsTargetSelection(discovery, platform)) {
-              // More than one Page/account qualifies — the user must choose
-              // rather than us silently taking whichever came back first.
+            {
+              // Confirm the Page/account explicitly, even when only one is available.
               const pendingId = await saveAuthorizedConnection({
                 tenantId: row.tenant_id,
                 platform,
@@ -222,23 +229,9 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
               // which once several channels can be connected is often another.
               return back(origin, { connected: platform, select_target: pendingId ?? "1" });
             }
-            metaSole = soleTarget(discovery, platform);
           }
 
-          // For a single Meta target, use what discovery already found rather
-          // than looking again. discoverProfile() takes the first Page Meta
-          // returns, which for Instagram is the wrong one whenever the linked
-          // Instagram account sits on any other Page -- that saved an empty
-          // connection shown as "connected". And a Facebook Page must be
-          // operated with its own Page token: saving the user token made
-          // comment replies and Messenger reads fail silently.
-          // LinkedIn and Business Profile logins can manage several channels.
-          // Ask the provider which, and let the customer choose when there is
-          // more than one. A login that manages none -- or that the provider
-          // will not list yet -- stops here with the reason, rather than saving
-          // a connection that can never sync.
-          let chosenTarget: import("@/lib/connection-targets.server").ConnectionTarget | null =
-            null;
+          // Ask the provider which asset this grant can manage, then require a choice.
           if ((await import("@/lib/connection-targets.server")).hasTargetDiscovery(platform)) {
             const { listConnectionTargets, noTargetReason } =
               await import("@/lib/connection-targets.server");
@@ -253,7 +246,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                 connect_detail: why,
               });
             }
-            if (listed.targets.length > 1) {
+            {
               const pendingTargetId = await saveAuthorizedConnection({
                 tenantId: row.tenant_id,
                 platform,
@@ -270,54 +263,17 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
               );
               return back(origin, { connected: platform, select_target: pendingTargetId ?? "1" });
             }
-            chosenTarget = listed.targets[0]!;
           }
 
-          let saveToken = tokens.token;
-          let saveExpiresAt = tokens.expiresAt;
-          let profile: Awaited<ReturnType<typeof discoverProfile>>;
-          if (metaSole && platform === "instagram" && metaSole.instagram) {
-            const ig = metaSole.instagram;
-            profile = {
-              external_id: ig.id,
-              name: ig.name ?? ig.username ?? metaSole.name,
-              username: ig.username ?? undefined,
-              picture: ig.picture ?? undefined,
-              followers: ig.followers ?? undefined,
-              bio: ig.biography ?? undefined,
-              website: ig.website ?? undefined,
-              profile_url: ig.username ? `https://instagram.com/${ig.username}` : undefined,
-            };
-          } else if (metaSole && platform === "facebook") {
-            profile = {
-              external_id: metaSole.id,
-              name: metaSole.name,
-              username: metaSole.username ?? undefined,
-              category: metaSole.category ?? undefined,
-              picture: metaSole.picture ?? undefined,
-              followers: metaSole.followers ?? undefined,
-              profile_url: metaSole.profileUrl ?? undefined,
-            };
-            if (metaSole.pageAccessToken) {
-              saveToken = metaSole.pageAccessToken;
-              // A Page token taken from a long-lived user token has no expiry.
-              // Recording the user token's 60-day date would have the health
-              // check "refresh" it with fb_exchange_token -- a user-token
-              // operation -- and mark a working Page as broken.
-              if (metaLongLived) saveExpiresAt = null;
-            }
-          } else if (chosenTarget) {
-            const { targetProfile } = await import("@/lib/connection-targets.server");
-            profile = targetProfile(chosenTarget);
-          } else {
-            profile = await discoverProfile(platform, tokens.token);
-          }
-          await saveAuthorizedConnection({
+          const profile = await discoverProfile(platform, tokens.token);
+          if (!profile.external_id)
+            throw new Error("The provider did not identify an account. Please connect again.");
+          const accountId = await saveAuthorizedConnection({
             tenantId: row.tenant_id,
             platform,
-            token: saveToken,
+            token: tokens.token,
             refreshToken: tokens.refreshToken,
-            expiresAt: saveExpiresAt,
+            expiresAt: tokens.expiresAt,
             grantedScopes: tokens.scopes,
             profile,
             permissions: [...capabilityCeiling(platform)],
@@ -330,7 +286,10 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             row.user_id ?? null,
             "Connected",
           );
-          return back(origin, { connected: row.platform });
+          return back(origin, {
+            connected: row.platform,
+            ...(accountId ? { account_id: accountId } : {}),
+          });
         } catch (e) {
           // Log the raw error server-side, but only leak a sanitized code to
           // the browser URL (previous version echoed full SDK error text).

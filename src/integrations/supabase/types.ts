@@ -4967,6 +4967,7 @@ export type Database = {
       };
     };
     Functions: {
+      integration_oauth_storage_ready: { Args: never; Returns: boolean };
       _is_locked_super_admin_email: {
         Args: { _email: string };
         Returns: boolean;

@@ -17,25 +17,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: 22
+          cache: npm
 
       - name: Install dependencies
-        run: bun install
+        run: npm ci --no-audit --no-fund
 
       - name: TypeScript
-        run: bun x tsc --noEmit
+        run: npx tsc --noEmit
 
       - name: Audit punch-list regressions
-        run: bun run test:audit-punchlist
+        run: npm run test:audit-punchlist
 
       - name: Full unit/integration test suite
-        run: bun run test
+        run: npm run test
 
       - name: Lint
-        run: bun run lint
+        run: npm run lint
 
       - name: Production build
-        run: bun run build
+        run: npm run build
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install disposable database harness
+        run: npm install --no-save --package-lock=false --no-audit --no-fund embedded-postgres@17.10.0-beta.17 pg@8.23.0
+      - name: Migration and readiness guards
+        run: node supabase/verify/verify-migrations.mjs
+      - name: OAuth state and refresh leases
+        run: node supabase/verify/verify-oauth-security.mjs
+      - name: Social tenant isolation
+        run: node supabase/verify/verify-social-tenant-isolation.mjs

@@ -14,8 +14,14 @@ describe("audit punch-list security fixes", () => {
 
   test("OAuth state consume and purge functions are not executable by browser roles", async () => {
     const sql = await read("supabase/migrations/20260914090000_audit_punchlist_security.sql");
-    assert.match(sql, /REVOKE EXECUTE ON FUNCTION public\.consume_oauth_state_hash\(text\) FROM anon, authenticated/i);
-    assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.consume_oauth_state_hash\(text\) TO service_role/i);
+    assert.match(
+      sql,
+      /REVOKE EXECUTE ON FUNCTION public\.consume_oauth_state_hash\(text\) FROM anon, authenticated/i,
+    );
+    assert.match(
+      sql,
+      /GRANT EXECUTE ON FUNCTION public\.consume_oauth_state_hash\(text\) TO service_role/i,
+    );
     assert.match(sql, /REVOKE ALL ON public\.oauth_states FROM anon, authenticated/i);
   });
 
@@ -30,10 +36,12 @@ describe("audit punch-list security fixes", () => {
 describe("integration readiness", () => {
   test("preflight checks credentials, app URL, origin and encryption without launching OAuth", async () => {
     const source = await read("src/lib/integration-readiness.functions.ts");
-    assert.match(source, /resolveCredentials/);
-    assert.match(source, /PUBLIC_APP_URL/);
-    assert.match(source, /resolveAllowedOrigin/);
-    assert.match(source, /encryptionConfigured/);
+    const preflight = await read("src/lib/oauth-preflight.server.ts");
+    assert.match(source, /oauthPreflight/);
+    assert.match(preflight, /resolveCredentials/);
+    assert.match(preflight, /PUBLIC_APP_URL/);
+    assert.match(preflight, /resolveAllowedOrigin/);
+    assert.match(preflight, /encryptionConfigured/);
     // A documentation comment may mention startAuthorization(), but readiness
     // must never actually call it with an argument object (that would write
     // oauth_states/audit side effects just by rendering the page).
