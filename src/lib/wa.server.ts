@@ -269,14 +269,20 @@ export async function ingestInboundMessage(args: IngestArgs) {
     if (contactId) {
       if (name) await supabaseAdmin.from("contacts").update({ name }).eq("id", contactId);
     } else {
+      // WhatsApp delivers the sender as bare digits ("971501234567"). Store it
+      // in international form so the contact record is dialable and satisfies
+      // the phone-format guard; identity matching keeps using the raw value.
+      const digits = phone.replace(/[^0-9]/g, "");
+      const storedPhone = phone.trim().startsWith("+") ? `+${digits}` : digits ? `+${digits}` : phone;
       const { data: created, error } = await supabaseAdmin
         .from("contacts")
-        .insert({ phone, name: name || phone, tenant_id: tenantId })
+        .insert({ phone: storedPhone, name: name || storedPhone, tenant_id: tenantId })
         .select("id")
         .single();
       if (error) throw error;
       contactId = created.id;
     }
+
 
     // Record the number as an identity so the next message from it resolves
     // directly, including for contacts that predate this table. Conflicts are
