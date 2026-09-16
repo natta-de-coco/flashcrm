@@ -40,7 +40,10 @@ await c.connect();
 await c.query("SET search_path TO public, extensions");
 await c.query(fs.readFileSync(path.join(HERE, "supabase-shim.sql"), "utf8"));
 
-for (const f of fs.readdirSync(MIG).filter((f) => f.endsWith(".sql")).sort()) {
+for (const f of fs
+  .readdirSync(MIG)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()) {
   try {
     await c.query(fs.readFileSync(path.join(MIG, f), "utf8"));
   } catch {
@@ -109,8 +112,13 @@ await c.query(
 );
 
 const resolve = async (tenant, kind, value) =>
-  (await c.query("select * from public.resolve_contact_by_identity($1,$2,$3)", [tenant, kind, value]))
-    .rows[0] ?? null;
+  (
+    await c.query("select * from public.resolve_contact_by_identity($1,$2,$3)", [
+      tenant,
+      kind,
+      value,
+    ])
+  ).rows[0] ?? null;
 
 const r1 = await resolve(org, "phone", "+971 50 963 0506");
 check("the mobile resolves to the contact", r1?.contact_id === contact);
@@ -184,7 +192,9 @@ check("closing a branch keeps its number", kept.rows.length === 1);
 check("and detaches it rather than deleting it", kept.rows[0]?.branch_id === null);
 
 await c.query("delete from public.contacts where id=$1", [contact]);
-const gone = await c.query("select 1 from public.contact_identities where contact_id=$1", [contact]);
+const gone = await c.query("select 1 from public.contact_identities where contact_id=$1", [
+  contact,
+]);
 check("deleting a contact removes its identities", gone.rows.length === 0);
 
 console.log("\n--- backfill ---");
@@ -201,7 +211,11 @@ const bfRows = await c.query(
   "select kind, normalized from public.contact_identities where contact_id=$1 order by kind",
   [bf],
 );
-check("re-running the migration backfills existing contacts", bfRows.rows.length === 2, JSON.stringify(bfRows.rows));
+check(
+  "re-running the migration backfills existing contacts",
+  bfRows.rows.length === 2,
+  JSON.stringify(bfRows.rows),
+);
 check(
   "and normalizes what it backfills",
   bfRows.rows.find((r) => r.kind === "email")?.normalized === "x@y.com",

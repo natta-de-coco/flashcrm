@@ -126,7 +126,9 @@ export function PlatformAppKeysDialog({
   const mutation = useMutation({
     mutationFn: async () => {
       if (!provider) throw new Error("Pick a platform first.");
-      return save({ data: { provider, clientId: clientId.trim(), clientSecret: clientSecret.trim() } });
+      return save({
+        data: { provider, clientId: clientId.trim(), clientSecret: clientSecret.trim() },
+      });
     },
     onSuccess: () => {
       toast.success("App keys saved — this platform can now be connected.");
@@ -147,8 +149,8 @@ export function PlatformAppKeysDialog({
             {info ? `Connect your ${info.name} app` : "Platform app keys"}
           </DialogTitle>
           <DialogDescription>
-            Flas uses your own developer app so your data and rate limits stay yours. Create the app,
-            paste the redirect URL below into it, then paste the two keys here.
+            Flas uses your own developer app so your data and rate limits stay yours. Create the
+            app, paste the redirect URL below into it, then paste the two keys here.
           </DialogDescription>
         </DialogHeader>
 
@@ -157,7 +159,9 @@ export function PlatformAppKeysDialog({
             <ol className="grid gap-1 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
               <li>1. Open the developer console and create (or open) an app.</li>
               <li>2. Add the redirect URL below as an allowed OAuth redirect URI.</li>
-              <li>3. Copy the {info.idLabel} and {info.secretLabel} into the fields here.</li>
+              <li>
+                3. Copy the {info.idLabel} and {info.secretLabel} into the fields here.
+              </li>
               <li>4. Save — then press Connect on any {info.covers} card.</li>
             </ol>
             <CopyRow label="Redirect URL" value={redirectUri()} />
@@ -190,7 +194,9 @@ export function PlatformAppKeysDialog({
               </p>
             </div>
             <Button
-              disabled={mutation.isPending || clientId.trim().length < 4 || clientSecret.trim().length < 8}
+              disabled={
+                mutation.isPending || clientId.trim().length < 4 || clientSecret.trim().length < 8
+              }
               onClick={() => mutation.mutate()}
             >
               {mutation.isPending ? "Saving…" : "Save app keys"}
@@ -226,7 +232,10 @@ export function PlatformAppsCard({ providerReady }: { providerReady?: ProviderRe
             const ready = providerReady?.[key]?.ready ?? configured.has(key);
             const source = providerReady?.[key]?.source;
             return (
-              <div key={key} className="flex min-w-0 items-start justify-between gap-2 rounded-md border p-2.5">
+              <div
+                key={key}
+                className="flex min-w-0 items-start justify-between gap-2 rounded-md border p-2.5"
+              >
                 <div className="min-w-0">
                   <p className="truncate text-xs font-medium">{PROVIDER_INFO[key].name}</p>
                   <p className="text-[11px] text-muted-foreground">{PROVIDER_INFO[key].covers}</p>

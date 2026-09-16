@@ -61,7 +61,12 @@ export async function aiOptionsFor(
   return { tenantId: await resolveTenantId(supabase), feature, userId: userId ?? null };
 }
 
-type ResolvedProvider = { provider: string; apiKey: string; url: string; headers: Record<string, string> };
+type ResolvedProvider = {
+  provider: string;
+  apiKey: string;
+  url: string;
+  headers: Record<string, string>;
+};
 
 /**
  * Picks whose key pays for this call. A tenant that has pasted their own
@@ -179,12 +184,12 @@ export async function callFlashAi(
               contents: [{ role: "user", parts: [{ text: user }] }],
             }
           : {
-            model: FLASH_MODEL,
-            input: [
-              { role: "system", content: system },
-              { role: "user", content: user },
-            ],
-          };
+              model: FLASH_MODEL,
+              input: [
+                { role: "system", content: system },
+                { role: "user", content: user },
+              ],
+            };
 
   const recordUsage = async (ok: boolean) => {
     if (!tenantId) return;
@@ -537,13 +542,15 @@ export async function gatherMessagingAnalytics(
         .select("id, label, display_phone, phone_number_id, access_token")
         .eq("tenant_id", tenantId)
         .eq("active", true)
-    : { data: [] as Array<{
-        id: string;
-        label: string;
-        display_phone: string;
-        phone_number_id: string;
-        access_token: string;
-      }> };
+    : {
+        data: [] as Array<{
+          id: string;
+          label: string;
+          display_phone: string;
+          phone_number_id: string;
+          access_token: string;
+        }>,
+      };
 
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;

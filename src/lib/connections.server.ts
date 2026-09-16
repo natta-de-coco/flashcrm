@@ -223,7 +223,7 @@ export async function saveAuthorizedConnection(args: {
   const sealedToken = await sealSecret(args.token);
   const sealedRefresh = args.refreshToken
     ? await sealSecret(args.refreshToken)
-    : (existing?.refresh_token ?? null);
+    : await sealSecret(existing?.refresh_token);
 
   const payload = {
     tenant_id: args.tenantId,
@@ -280,11 +280,12 @@ export async function saveAuthorizedConnection(args: {
       !isLegalTransition(from, to) &&
       isLegalTransition(from, "ready_to_authorize" as never)
     ) {
-      await supabaseAdmin
+      const { error: transitionError } = await supabaseAdmin
         .from("social_accounts")
         .update({ connection_state: "ready_to_authorize", state_reason: "Re-authorizing" })
         .eq("id", existing.id)
         .eq("tenant_id", args.tenantId);
+      if (transitionError) throw new Error("Could not prepare the account for reconnect.");
     }
     const { error: updateError } = await supabaseAdmin
       .from("social_accounts")
@@ -307,14 +308,15 @@ export async function saveAuthorizedConnection(args: {
   if (error?.code === "23505") {
     const winner = await findExisting();
     if (winner) {
-      await supabaseAdmin
+      const { error: retryError } = await supabaseAdmin
         .from("social_accounts")
         .update({
           ...payload,
-          refresh_token: args.refreshToken ? sealedRefresh : (winner.refresh_token ?? null),
+          refresh_token: args.refreshToken ? sealedRefresh : await sealSecret(winner.refresh_token),
         })
         .eq("id", winner.id)
         .eq("tenant_id", args.tenantId);
+      if (retryError) throw new Error("Could not save the reconnected account.");
       return winner.id;
     }
   }

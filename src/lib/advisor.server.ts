@@ -2,7 +2,12 @@
 // business manager persona that reads the tenant's live data (channels, social,
 // leads, catalog, location) and returns a structured strategic review.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { aiOptionsFor, callFlashAi, gatherLeadSummary, gatherMessagingAnalytics } from "./flash-ai.server";
+import {
+  aiOptionsFor,
+  callFlashAi,
+  gatherLeadSummary,
+  gatherMessagingAnalytics,
+} from "./flash-ai.server";
 import { getDashboardOverviewData } from "./dashboard.server";
 
 export type AdvisorProfile = {

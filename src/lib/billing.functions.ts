@@ -361,9 +361,8 @@ export const convertQuotationToInvoice = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const supabase = context.supabase;
-    const { loadDocumentBundle, requireTenantId, saveDraftDocument, tenantToday } = await import(
-      "@/lib/billing.server"
-    );
+    const { loadDocumentBundle, requireTenantId, saveDraftDocument, tenantToday } =
+      await import("@/lib/billing.server");
     const { doc, items } = await loadDocumentBundle(supabase, data.id);
     if (doc.kind !== "quotation") throw new Error("Only quotations can be converted.");
 

@@ -33,3 +33,7 @@ dist-ssr
 
 # Production error dumps: contain customer emails and stack traces.
 .errors/
+
+# Disposable local database verification artifacts
+supabase/verify/.pgdata*/
+supabase/verify/result*.json

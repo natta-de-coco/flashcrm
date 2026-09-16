@@ -108,7 +108,7 @@ export function providerCredentials(provider: Provider): {
   secret: string | undefined;
 } {
   const cfg = PROVIDERS[provider];
-  return { id: process.env[cfg.idEnv], secret: process.env[cfg.secretEnv] };
+  return { id: process.env[cfg.idEnv]?.trim(), secret: process.env[cfg.secretEnv]?.trim() };
 }
 
 /**
@@ -121,12 +121,13 @@ export async function resolveCredentials(
   tenantId?: string | null,
 ): Promise<{ id: string | undefined; secret: string | undefined; source: "workspace" | "shared" }> {
   if (tenantId) {
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("platform_apps")
       .select("client_id, client_secret")
       .eq("tenant_id", tenantId)
       .eq("provider", provider)
       .maybeSingle();
+    if (error) throw new Error("Could not resolve provider configuration.");
     if (data?.client_id && data.client_secret) {
       return {
         id: data.client_id,
@@ -197,9 +198,10 @@ export function resolveAllowedOrigin(candidate: string): string | null {
     return null;
   }
   if (
-    parsed.protocol !== "https:" &&
-    parsed.hostname !== "localhost" &&
-    parsed.hostname !== "127.0.0.1"
+    parsed.username ||
+    parsed.password ||
+    (parsed.protocol !== "https:" &&
+      !(parsed.protocol === "http:" && ["localhost", "127.0.0.1"].includes(parsed.hostname)))
   ) {
     return null;
   }
@@ -244,34 +246,15 @@ export async function startAuthorization(args: {
     return { ready: false, reason: meta.unavailableReason, missing: [] };
   }
   const cfg = PROVIDERS[meta.provider];
-  const creds = await resolveCredentials(meta.provider, args.tenantId);
-  if (!creds.id || !creds.secret) {
+  const { oauthPreflight } = await import("./oauth-preflight.server");
+  const preflight = await oauthPreflight(meta.provider, args.tenantId, args.origin);
+  const { credentials: creds, allowedOrigin } = preflight;
+  if (!preflight.ready || !allowedOrigin || !creds.id) {
     return {
       ready: false,
-      reason: `${meta.name} needs your own ${meta.provider} app keys. Open Connect & setup → Platform app keys, paste the ${meta.provider} App ID and Secret once, and every account on this platform then connects with one click.`,
-      missing: providerEnvNames(meta.provider),
-    };
-  }
-
-  // The origin arrives from the browser, so it decides where a provider sends
-  // an authorization code. Providers enforce their own redirect allowlists,
-  // which limits the damage, but an unchecked value here is still an
-  // attacker-controlled input reaching an outbound URL. Check it against ours.
-  const allowedOrigin = resolveAllowedOrigin(args.origin);
-  if (!allowedOrigin) {
-    // Almost always a deployment that was never told its own address: with no
-    // OAUTH_ALLOWED_ORIGINS or PUBLIC_APP_URL the allowlist is loopback only,
-    // and every provider is refused. Name the setting so the fix is obvious.
-    let attempted = "this address";
-    try {
-      attempted = new URL(args.origin).origin;
-    } catch {
-      /* keep the generic wording for a malformed origin */
-    }
-    return {
-      ready: false,
-      reason: `${attempted} is not an allowed sign-in return address for this deployment. Add it to OAUTH_ALLOWED_ORIGINS in the host's secrets and redeploy.`,
-      missing: ["OAUTH_ALLOWED_ORIGINS"],
+      reason:
+        "This connection is temporarily unavailable. A FLAS administrator needs to complete setup.",
+      missing: [],
     };
   }
 
@@ -313,7 +296,8 @@ export async function startAuthorization(args: {
     state,
     scopes,
     extraAuthParams: cfg.extraAuthParams,
-    configId: cfg.configIdEnv ? process.env[cfg.configIdEnv] : undefined,
+    configId:
+      creds.source === "shared" && cfg.configIdEnv ? process.env[cfg.configIdEnv] : undefined,
     pkceChallenge: pkce?.challenge,
   });
   return { ready: true, url: `${cfg.authorizeUrl}?${params.toString()}` };
@@ -625,11 +609,13 @@ export async function metaGrantedScopes(token: string): Promise<string[] | null>
     const res = await fetch("https://graph.facebook.com/v21.0/me/permissions", {
       headers: { Authorization: `Bearer ${token}` },
     });
-    const json: any = await res.json().catch(() => ({}));
+    const json: { data?: { status?: string; permission?: string }[] } = await res
+      .json()
+      .catch(() => ({}));
     if (!res.ok || !Array.isArray(json?.data)) return null;
     return json.data
-      .filter((p: any) => p?.status === "granted")
-      .map((p: any) => String(p.permission));
+      .filter((p) => p?.status === "granted" && typeof p.permission === "string")
+      .map((p) => String(p.permission));
   } catch {
     return null;
   }

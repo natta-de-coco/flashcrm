@@ -59,9 +59,7 @@ export const saveKpiTargets = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SaveSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { KPI_DEFINITIONS } = await import("@/lib/kpi.server");
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
-      "current_tenant_id",
-    );
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
     // "no workspace", which sent people hunting a problem that was not theirs.
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
@@ -152,9 +150,7 @@ export const generateKpiTargetsFromAdvisor = createServerFn({ method: "POST" })
     const { proposeKpiTargets } = await import("@/lib/advisor.server");
     const proposals = await proposeKpiTargets(context.supabase);
 
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc(
-      "current_tenant_id",
-    );
+    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
     // "no workspace", which sent people hunting a problem that was not theirs.
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);

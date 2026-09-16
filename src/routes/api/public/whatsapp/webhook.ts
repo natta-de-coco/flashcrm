@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { createHmac, timingSafeEqual } from "crypto";
 import type { WaWebhookBody } from "@/lib/monitoring.server";
 
 /**
@@ -11,33 +10,12 @@ import type { WaWebhookBody } from "@/lib/monitoring.server";
  * and trigger AI-generated bot replies at will.
  */
 async function verifySignature(raw: string, body: WaWebhookBody, header: string | null) {
-  const phoneNumberId = body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
-
-  let secret: string | null = null;
-  if (phoneNumberId) {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data } = await supabaseAdmin
-      .from("wa_numbers")
-      .select("app_secret")
-      .eq("phone_number_id", phoneNumberId)
-      .maybeSingle();
-    secret = data?.app_secret ?? null;
-  }
-  if (!secret) secret = process.env["WHATSAPP_APP_SECRET"] ?? null;
-
-  if (!secret) {
-    console.error(
-      "[whatsapp] no app secret configured for this number — rejecting webhook (fail closed)",
-    );
-    return { ok: false as const, enforced: true };
-  }
-  if (!header || !header.startsWith("sha256=")) return { ok: false as const, enforced: true };
-
-  const expected = `sha256=${createHmac("sha256", secret).update(raw, "utf8").digest("hex")}`;
-  const a = Buffer.from(header);
-  const b = Buffer.from(expected);
-  const ok = a.length === b.length && timingSafeEqual(a, b);
-  return { ok, enforced: true };
+  const { verifyWaSignature } = await import("@/lib/wa.server");
+  const ids = (body.entry ?? []).flatMap((entry) =>
+    (entry.changes ?? []).map((change) => change.value?.metadata?.phone_number_id ?? ""),
+  );
+  if (ids.some((id) => !id)) return { ok: false, enforced: true };
+  return { ok: await verifyWaSignature(raw, ids, header), enforced: true };
 }
 
 export const Route = createFileRoute("/api/public/whatsapp/webhook")({

@@ -98,7 +98,10 @@ function WidgetDemo() {
 
         <h2 className="mt-12 text-lg font-semibold">What the visitor is asked for</h2>
         <ul className="mt-3 grid gap-2 text-sm text-slate-600">
-          <li>• Name and WhatsApp number, before the first message — so a lead exists even if they never type again.</li>
+          <li>
+            • Name and WhatsApp number, before the first message — so a lead exists even if they
+            never type again.
+          </li>
           <li>• Email, optional.</li>
           <li>
             • Marketing consent as a separate unticked box. Asking a question is not agreeing to

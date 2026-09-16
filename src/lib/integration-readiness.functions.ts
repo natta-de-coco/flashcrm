@@ -3,11 +3,7 @@ import { CONNECTORS } from "@/lib/connections-catalog";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-export type ReadinessStatus =
-  | "READY"
-  | "ADMIN_SETUP_REQUIRED"
-  | "LIMITED"
-  | "COMING_SOON";
+export type ReadinessStatus = "READY" | "ADMIN_SETUP_REQUIRED" | "LIMITED" | "COMING_SOON";
 
 export type ReadinessBlocker = {
   code: string;
@@ -40,6 +36,7 @@ export type IntegrationReadinessRow = {
     publicAppUrl: boolean;
     allowedOrigin: boolean;
     encryption: boolean;
+    storage: boolean;
   };
   blockers: ReadinessBlocker[];
   /** Safe technical key names for admins only. Empty for normal members. */
@@ -64,20 +61,6 @@ const CredentialLabels: Record<string, { id: string; secret: string }> = {
   pinterest: { id: "App ID", secret: "App Secret" },
 };
 
-function validPublicAppUrl(): string | null {
-  const raw = (process.env["PUBLIC_APP_URL"] ?? "").trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
-      return null;
-    }
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Side-effect-free readiness. Unlike startAuthorization(), this never writes an
  * oauth_states row and never creates an audit event. It is safe to call when
@@ -95,12 +78,10 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
 
     const tenantId = profile?.tenant_id ?? null;
     const isAdmin = ["company_admin", "super_admin"].includes(String(profile?.staff_role ?? ""));
-    const { resolveCredentials, providerEnvNames, resolveAllowedOrigin } = await import("@/lib/oauth.server");
-    const { encryptionConfigured } = await import("@/lib/secret-box.server");
-
-    const encryptionOk = await encryptionConfigured();
-    const publicOrigin = validPublicAppUrl();
-    const allowedOrigin = resolveAllowedOrigin(data.origin.replace(/\/$/, ""));
+    const { providerEnvNames, resolveAllowedOrigin } = await import("@/lib/oauth.server");
+    const { oauthPreflight, publicAppOrigin } = await import("@/lib/oauth-preflight.server");
+    const publicOrigin = publicAppOrigin();
+    const allowedOrigin = resolveAllowedOrigin(data.origin);
 
     const providerCache = new Map<
       string,
@@ -109,6 +90,9 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
         secretPresent: boolean;
         source: "workspace" | "shared" | "none";
         envNames: string[];
+        encryptionOk: boolean;
+        credentialError: boolean;
+        storageOk: boolean;
       }
     >();
 
@@ -121,7 +105,18 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
       let secretPresent = false;
       let envNames: string[] = [];
       let credentialOk = true;
+      let encryptionOk = true;
+      let credentialError = false;
+      let storageOk = true;
 
+      if (connector.limitedReason)
+        blockers.push({
+          code: "LIMITED_CONNECTOR",
+          title: "Limited features",
+          userMessage: connector.limitedReason,
+          severity: "WARNING",
+          owner: "FLAS_ADMIN",
+        });
       if (connector.unavailableReason) {
         blockers.push({
           code: "COMING_SOON",
@@ -135,7 +130,8 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
       if (connector.oauth && connector.provider) {
         let providerState = providerCache.get(connector.provider);
         if (!providerState) {
-          const creds = tenantId ? await resolveCredentials(connector.provider, tenantId) : { id: undefined, secret: undefined, source: "shared" as const };
+          const preflight = await oauthPreflight(connector.provider, tenantId, data.origin);
+          const creds = preflight.credentials;
           envNames = providerEnvNames(connector.provider);
           idPresent = Boolean(creds.id?.trim());
           secretPresent = Boolean(creds.secret?.trim());
@@ -144,12 +140,56 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
             secretPresent,
             source: idPresent && secretPresent ? creds.source : "none",
             envNames,
+            encryptionOk: preflight.checks.encryption,
+            credentialError: preflight.credentialError,
+            storageOk: preflight.checks.storage,
           };
           providerCache.set(connector.provider, providerState);
         }
-        ({ idPresent, secretPresent, source, envNames } = providerState);
+        ({ idPresent, secretPresent, source, envNames, encryptionOk, credentialError, storageOk } =
+          providerState);
+        if (!storageOk)
+          blockers.push({
+            code: "OAUTH_STORAGE_UNAVAILABLE",
+            title: "OAuth storage is not ready",
+            userMessage:
+              "This connection is temporarily unavailable while FLAS setup is completed.",
+            severity: "BLOCKING",
+            owner: "FLAS_ADMIN",
+            ...(isAdmin
+              ? {
+                  technical:
+                    "Apply the repository migrations and verify server database access, OAuth state columns and social account state columns.",
+                }
+              : {}),
+          });
+        if (!tenantId)
+          blockers.push({
+            code: "WORKSPACE_MISSING",
+            title: "Workspace is not ready",
+            userMessage: "Your workspace is still being set up.",
+            severity: "BLOCKING",
+            owner: "FLAS_ADMIN",
+          });
+        if (credentialError)
+          blockers.push({
+            code: "CREDENTIALS_UNREADABLE",
+            title: "Provider configuration could not be read",
+            userMessage: "This connection is temporarily unavailable.",
+            severity: "BLOCKING",
+            owner: "FLAS_ADMIN",
+            ...(isAdmin
+              ? {
+                  technical:
+                    "Check platform_apps migration, server database access and the credential encryption keyring.",
+                }
+              : {}),
+          });
         credentialOk = idPresent && secretPresent;
-        const labels = CredentialLabels[connector.provider] ?? { id: "Client ID", secret: "Client Secret" };
+        const labels = CredentialLabels[connector.provider] ?? {
+          id: "Client ID",
+          secret: "Client Secret",
+        };
 
         if (!idPresent) {
           blockers.push({
@@ -157,7 +197,7 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
             title: `${labels.id} is missing`,
             userMessage: `${connector.name} is waiting for administrator setup.`,
             severity: "BLOCKING",
-            owner: "WORKSPACE_ADMIN",
+            owner: "FLAS_ADMIN",
             ...(isAdmin && envNames[0] ? { technical: `Missing ${envNames[0]}` } : {}),
           });
         }
@@ -167,7 +207,7 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
             title: `${labels.secret} is missing`,
             userMessage: `${connector.name} is waiting for administrator setup.`,
             severity: "BLOCKING",
-            owner: "WORKSPACE_ADMIN",
+            owner: "FLAS_ADMIN",
             ...(isAdmin && envNames[1] ? { technical: `Missing ${envNames[1]}` } : {}),
           });
         }
@@ -175,7 +215,8 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
           blockers.push({
             code: "PUBLIC_APP_URL_MISSING",
             title: "FLAS public address is not configured",
-            userMessage: "This connection is temporarily unavailable while FLAS setup is completed.",
+            userMessage:
+              "This connection is temporarily unavailable while FLAS setup is completed.",
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
             ...(isAdmin ? { technical: "Set PUBLIC_APP_URL to the deployed HTTPS origin." } : {}),
@@ -185,7 +226,8 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
           blockers.push({
             code: "OAUTH_ORIGIN_MISSING",
             title: "FLAS sign-in return address is not allowed",
-            userMessage: "This connection is temporarily unavailable while FLAS setup is completed.",
+            userMessage:
+              "This connection is temporarily unavailable while FLAS setup is completed.",
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
             ...(isAdmin
@@ -199,10 +241,23 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
           blockers.push({
             code: "TOKEN_ENCRYPTION_MISSING",
             title: "Credential encryption is not configured",
-            userMessage: "This connection is temporarily unavailable while secure storage is configured.",
+            userMessage:
+              "This connection is temporarily unavailable while secure storage is configured.",
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
-            ...(isAdmin ? { technical: "Configure TOKEN_ENCRYPTION_KEYS before storing provider tokens." } : {}),
+            ...(isAdmin
+              ? { technical: "Configure TOKEN_ENCRYPTION_KEYS before storing provider tokens." }
+              : {}),
+          });
+        }
+        if (allowedOrigin && connector.provider === "meta" && isAdmin) {
+          blockers.push({
+            code: "META_DOMAIN_REGISTRATION_UNVERIFIED",
+            title: "Check Meta domain registration",
+            userMessage: "Meta app domain registration must be checked by a FLAS administrator.",
+            severity: "INFO",
+            owner: "FLAS_ADMIN",
+            technical: `In the ${source === "workspace" ? "workspace-owned" : "shared FLAS"} Meta app: Settings > Basic > App Domains: ${new URL(allowedOrigin).hostname}; Website URL: ${allowedOrigin}; Facebook Login > Settings > Valid OAuth Redirect URIs: ${allowedOrigin}/api/public/oauth-callback. Confirm these belong to the same app used by FLAS.`,
           });
         }
         if (allowedOrigin) {
@@ -211,9 +266,11 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
             title: "Provider redirect registration must match",
             userMessage: "The provider app must allow the FLAS callback address.",
             severity: "INFO",
-            owner: "WORKSPACE_ADMIN",
+            owner: "FLAS_ADMIN",
             ...(isAdmin
-              ? { technical: `${allowedOrigin}/api/public/oauth-callback must be registered in the provider console.` }
+              ? {
+                  technical: `${allowedOrigin}/api/public/oauth-callback must be registered in the provider console.`,
+                }
               : {}),
           });
         }
@@ -229,7 +286,7 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
             title: "No WhatsApp Business number is connected",
             userMessage: "Add a WhatsApp Business number to start using the inbox.",
             severity: "BLOCKING",
-            owner: "WORKSPACE_ADMIN",
+            owner: "FLAS_ADMIN",
           });
         }
       }
@@ -250,12 +307,17 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
         name: connector.name,
         group: connector.group,
         provider: connector.provider ?? null,
-        providerName: connector.provider ? (ProviderNames[connector.provider] ?? connector.provider) : null,
+        providerName: connector.provider
+          ? (ProviderNames[connector.provider] ?? connector.provider)
+          : null,
         oauth: connector.oauth,
         ready: status === "READY" || status === "LIMITED",
         status,
         source,
-        callbackUri: allowedOrigin && connector.oauth ? `${allowedOrigin}/api/public/oauth-callback` : null,
+        callbackUri:
+          isAdmin && allowedOrigin && connector.oauth
+            ? `${allowedOrigin}/api/public/oauth-callback`
+            : null,
         credentials: {
           idPresent,
           secretPresent,
@@ -267,15 +329,24 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
           publicAppUrl: connector.oauth ? Boolean(publicOrigin) : true,
           allowedOrigin: connector.oauth ? Boolean(allowedOrigin) : true,
           encryption: connector.oauth ? encryptionOk : true,
+          storage: connector.oauth ? storageOk : true,
         },
-        blockers,
-        missing: isAdmin
+        blockers: isAdmin
           ? blockers
+          : blockers
               .filter((b) => b.severity === "BLOCKING")
-              .map((b) => b.technical ?? b.title)
+              .map((b) => ({
+                code: "SETUP_REQUIRED",
+                title: "Temporarily unavailable",
+                userMessage: b.userMessage,
+                severity: b.severity,
+                owner: b.owner,
+              })),
+        missing: isAdmin
+          ? blockers.filter((b) => b.severity !== "INFO").map((b) => b.technical ?? b.title)
           : [],
       });
     }
 
-    return { rows, isAdmin, publicOrigin };
+    return { rows, isAdmin, publicOrigin: isAdmin ? publicOrigin : null };
   });

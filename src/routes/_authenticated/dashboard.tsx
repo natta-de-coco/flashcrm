@@ -692,7 +692,8 @@ function DashboardPage() {
               <>
                 {data?.recentConversations.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No conversations yet. Connect WhatsApp in Integrations or embed the website widget.
+                    No conversations yet. Connect WhatsApp in Integrations or embed the website
+                    widget.
                   </p>
                 )}
                 {data?.recentConversations.map((c) => (

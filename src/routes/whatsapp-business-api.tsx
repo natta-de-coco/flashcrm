@@ -3,7 +3,15 @@ import { Button } from "@/components/ui/button";
 import { useReveal } from "@/hooks/useReveal";
 import { InboxPreview } from "@/components/marketing/InboxPreview";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, Check, ChevronDown, FileCheck2, Phone, ShieldCheck, Users } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  FileCheck2,
+  Phone,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 
 const SITE = "https://flas.mobidigisol.com";
 const TITLE = "WhatsApp Business API setup, approval & shared inbox | Flas CRM";
@@ -152,10 +160,7 @@ function WhatsAppApiPage() {
 
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr]">
             <div>
-              <p
-                data-reveal
-                className="text-xs font-semibold uppercase tracking-widest text-brand"
-              >
+              <p data-reveal className="text-xs font-semibold uppercase tracking-widest text-brand">
                 WhatsApp Business Platform
               </p>
               <h1
@@ -243,10 +248,7 @@ function WhatsAppApiPage() {
               ))}
             </div>
 
-            <p
-              data-reveal
-              className="mt-10 text-center text-sm text-muted-foreground"
-            >
+            <p data-reveal className="mt-10 text-center text-sm text-muted-foreground">
               Prefer to do it yourself? Our{" "}
               <Link
                 to="/blog/$slug"
@@ -284,10 +286,7 @@ function WhatsAppApiPage() {
             ))}
           </div>
 
-          <div
-            data-reveal
-            className="mt-12 rounded-3xl border bg-muted/40 px-8 py-10 text-center"
-          >
+          <div data-reveal className="mt-12 rounded-3xl border bg-muted/40 px-8 py-10 text-center">
             <h2 className="text-2xl font-bold">Tell us your situation</h2>
             <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
               How many numbers, how many agents, and whether you are migrating an existing number.

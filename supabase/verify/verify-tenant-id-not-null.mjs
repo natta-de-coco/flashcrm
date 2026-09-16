@@ -23,28 +23,55 @@ fs.rmSync(DATA_DIR, { recursive: true, force: true });
 
 const p = new EmbeddedPostgres({
   databaseDir: DATA_DIR,
-  user: "postgres", password: "postgres", port: PORT, persistent: false,
+  user: "postgres",
+  password: "postgres",
+  port: PORT,
+  persistent: false,
   initdbFlags: ["--encoding=UTF8", "--locale=C"],
 });
 await p.initialise();
 await p.start();
-const c = new pg.Client({ host: "localhost", port: PORT, user: "postgres", password: "postgres", database: "postgres" });
+const c = new pg.Client({
+  host: "localhost",
+  port: PORT,
+  user: "postgres",
+  password: "postgres",
+  database: "postgres",
+});
 await c.connect();
 await c.query("SET search_path TO public, extensions");
 await c.query(fs.readFileSync(path.join(HERE, "supabase-shim.sql"), "utf8"));
-for (const f of fs.readdirSync(MIG).filter((f) => f.endsWith(".sql")).sort()) {
-  try { await c.query(fs.readFileSync(path.join(MIG, f), "utf8")); }
-  catch { try { await c.query("ROLLBACK"); } catch {} }
+for (const f of fs
+  .readdirSync(MIG)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()) {
+  try {
+    await c.query(fs.readFileSync(path.join(MIG, f), "utf8"));
+  } catch {
+    try {
+      await c.query("ROLLBACK");
+    } catch {}
+  }
 }
 
-const CONSTRAINED = ["contacts", "conversations", "messages", "leads", "wa_numbers", "campaigns", "wa_templates"];
+const CONSTRAINED = [
+  "contacts",
+  "conversations",
+  "messages",
+  "leads",
+  "wa_numbers",
+  "campaigns",
+  "wa_templates",
+];
 // Left nullable on purpose. If a later change constrains one of these, this
 // suite fails and the reason has to be argued rather than assumed.
 const NULLABLE_BY_DESIGN = ["profiles", "audit_log", "system_alerts"];
 
 if (process.env.SABOTAGE) {
   for (const t of CONSTRAINED) {
-    try { await c.query(`ALTER TABLE public.${t} ALTER COLUMN tenant_id DROP NOT NULL`); } catch {}
+    try {
+      await c.query(`ALTER TABLE public.${t} ALTER COLUMN tenant_id DROP NOT NULL`);
+    } catch {}
   }
   console.log("!! SABOTAGE: NOT NULL dropped - the suite must now FAIL");
 }
@@ -68,7 +95,10 @@ const nullability = async (table) => {
 console.log("\n=== customer-data tables reject a NULL tenant_id ===");
 for (const t of CONSTRAINED) {
   const n = await nullability(t);
-  if (n === null) { check(false, `${t}.tenant_id exists`, "column or table missing"); continue; }
+  if (n === null) {
+    check(false, `${t}.tenant_id exists`, "column or table missing");
+    continue;
+  }
   check(n === "NO", `${t}.tenant_id is NOT NULL`, `is_nullable=${n}`);
 }
 
@@ -77,7 +107,8 @@ console.log("\n=== the constraint is enforced on write ===");
 {
   // information_schema can be right while something else lets a write through;
   // attempting the write is the claim that matters.
-  const org = (await c.query("insert into organizations(name,slug) values('NN','nn') returning id")).rows[0].id;
+  const org = (await c.query("insert into organizations(name,slug) values('NN','nn') returning id"))
+    .rows[0].id;
   void org;
   let refused = false;
   try {
@@ -92,7 +123,10 @@ console.log("\n=== the constraint is enforced on write ===");
 console.log("\n=== tables excluded on purpose are still nullable ===");
 for (const t of NULLABLE_BY_DESIGN) {
   const n = await nullability(t);
-  if (n === null) { console.log(`  SKIP  ${t} (not present)`); continue; }
+  if (n === null) {
+    console.log(`  SKIP  ${t} (not present)`);
+    continue;
+  }
   check(n === "YES", `${t}.tenant_id is still nullable`, `is_nullable=${n}`);
 }
 
@@ -107,14 +141,19 @@ console.log("\n=== the migration names the table rather than failing generically
     await c.query(fs.readFileSync(path.join(MIG, "20260909120000_tenant_id_not_null.sql"), "utf8"));
   } catch (e) {
     message = e.message;
-    try { await c.query("ROLLBACK"); } catch {}
+    try {
+      await c.query("ROLLBACK");
+    } catch {}
   }
-  check(/contacts/.test(message) && /NULL tenant_id/i.test(message),
-    "it refuses, and says which table and how many rows", message.slice(0, 120));
+  check(
+    /contacts/.test(message) && /NULL tenant_id/i.test(message),
+    "it refuses, and says which table and how many rows",
+    message.slice(0, 120),
+  );
 
   await c.query("delete from contacts where tenant_id is null");
   await c.query(fs.readFileSync(path.join(MIG, "20260909120000_tenant_id_not_null.sql"), "utf8"));
-  check(await nullability("contacts") === "NO", "and applies cleanly once the orphans are gone");
+  check((await nullability("contacts")) === "NO", "and applies cleanly once the orphans are gone");
 }
 
 console.log("");

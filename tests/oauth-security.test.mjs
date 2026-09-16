@@ -139,7 +139,16 @@ describe("secret redaction", () => {
       const out = redactSecrets(input) ?? "";
       assert.ok(out.includes("[redacted]"), `nothing was redacted in: ${out}`);
       // The specific secret substrings must be gone.
-      for (const secret of ["EAAB123456789abcdef", "1//0gabcdefghijklmnop", "sk-abcdefghijklmnop", "abcdef1234567890", "EAAGm0PX4ZCpsBA1234567890abcdefghij", "sk-ant-abcdefghijklmnop", "4/0AeanS0abcdefghij", "abcdef0123456789abcdef0123456789"]) {
+      for (const secret of [
+        "EAAB123456789abcdef",
+        "1//0gabcdefghijklmnop",
+        "sk-abcdefghijklmnop",
+        "abcdef1234567890",
+        "EAAGm0PX4ZCpsBA1234567890abcdefghij",
+        "sk-ant-abcdefghijklmnop",
+        "4/0AeanS0abcdefghij",
+        "abcdef0123456789abcdef0123456789",
+      ]) {
         if (input.includes(secret)) {
           assert.equal(out.includes(secret), false, `"${secret}" survived redaction: ${out}`);
         }

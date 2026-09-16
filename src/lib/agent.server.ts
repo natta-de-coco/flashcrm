@@ -106,7 +106,11 @@ async function businessBrief(ctx: AgentContext): Promise<string> {
  * because a half-understood plan is worse than none.
  */
 export function extractJson(raw: string): unknown {
-  const text = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  const text = raw
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/, "")
+    .trim();
   try {
     return JSON.parse(text);
   } catch {
@@ -166,7 +170,8 @@ export async function planTask(
 
 /* ── Execution ────────────────────────────────────────────────────────────── */
 
-export type StepResult = { ok: true; summary: string; data: unknown } | { ok: false; error: string };
+export type StepResult =
+  { ok: true; summary: string; data: unknown } | { ok: false; error: string };
 
 /**
  * Runs one step.
@@ -382,19 +387,20 @@ export async function executeStep(
         // hand-made one does.
         const snapshot = await buildCustomerSnapshot(db, String(i["contactId"]));
 
-        const items = (i["items"] as { description: string; quantity: number; unitPrice: number }[])
-          .map((line) => ({
-            product_id: null,
-            name: line.description,
-            sku: null,
-            description: line.description,
-            quantity: line.quantity,
-            unit: null,
-            unit_price: line.unitPrice,
-            discount_value: 0,
-            discount_type: "percent" as const,
-            tax_rate: Number(settings?.default_tax_rate ?? 0),
-          }));
+        const items = (
+          i["items"] as { description: string; quantity: number; unitPrice: number }[]
+        ).map((line) => ({
+          product_id: null,
+          name: line.description,
+          sku: null,
+          description: line.description,
+          quantity: line.quantity,
+          unit: null,
+          unit_price: line.unitPrice,
+          discount_value: 0,
+          discount_type: "percent" as const,
+          tax_rate: Number(settings?.default_tax_rate ?? 0),
+        }));
 
         const result = await saveDraftDocument(db, ctx.userId, {
           kind: "quotation",
@@ -457,6 +463,9 @@ export async function executeStep(
     }
   } catch (e) {
     const { redactSecrets } = await import("@/lib/integration-errors.server");
-    return { ok: false, error: redactSecrets(e instanceof Error ? e.message : String(e)) ?? "Failed" };
+    return {
+      ok: false,
+      error: redactSecrets(e instanceof Error ? e.message : String(e)) ?? "Failed",
+    };
   }
 }

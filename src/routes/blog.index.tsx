@@ -131,7 +131,8 @@ function BlogIndex() {
               </h2>
               <p className="mt-2 flex-1 text-sm text-muted-foreground">{p.excerpt}</p>
               <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
-                Read <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                Read{" "}
+                <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
               </span>
             </Link>
           ))}

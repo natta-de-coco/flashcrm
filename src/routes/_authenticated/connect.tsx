@@ -1,13 +1,16 @@
 import { IntegrationsAuditFixed } from "@/components/integrations-v2/IntegrationsAuditFixed";
+import { parseConnectionOutcomeSearch } from "@/components/integrations/ConnectionOutcome";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/connect")({
+  validateSearch: parseConnectionOutcomeSearch,
   head: () => ({
     meta: [
       { title: "Integrations — Flas CRM" },
       {
         name: "description",
-        content: "Connect and manage social channels, messaging, analytics, advertising, websites and commerce integrations in Flas CRM.",
+        content:
+          "Connect and manage social channels, messaging, analytics, advertising, websites and commerce integrations in Flas CRM.",
       },
       { property: "og:title", content: "Integrations — Flas CRM" },
       {
@@ -16,5 +19,18 @@ export const Route = createFileRoute("/_authenticated/connect")({
       },
     ],
   }),
-  component: IntegrationsAuditFixed,
+  component: ConnectPage,
 });
+
+function ConnectPage() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  return (
+    <IntegrationsAuditFixed
+      search={search}
+      onDismiss={() => {
+        void navigate({ search: {}, replace: true });
+      }}
+    />
+  );
+}

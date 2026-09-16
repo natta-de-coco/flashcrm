@@ -20,8 +20,12 @@ await build({
 
 const reg = await import("../node_modules/.cache/flas-registry.mjs");
 const {
-  CONNECTOR_DEFINITIONS, CONNECTOR_COUNTS, CAPABILITY_KEYS, CAPABILITY_LABELS,
-  STATUS_LABELS, resolveAllCapabilities,
+  CONNECTOR_DEFINITIONS,
+  CONNECTOR_COUNTS,
+  CAPABILITY_KEYS,
+  CAPABILITY_LABELS,
+  STATUS_LABELS,
+  resolveAllCapabilities,
 } = reg;
 
 const out = [];
@@ -30,9 +34,11 @@ out.push("");
 out.push("**Generated from `src/lib/social-connector-definitions.ts` — do not edit by hand.**");
 out.push("Regenerate with `npm run docs:capabilities`.");
 out.push("");
-out.push(`Generated ${new Date().toISOString().slice(0, 10)} · ${CONNECTOR_COUNTS.total} connectors ` +
-  `(${CONNECTOR_COUNTS.oauthPlatforms} API platform connectors using OAuth, ` +
-  `${CONNECTOR_COUNTS.keyedOrPlugin} connected with keys or a plugin).`);
+out.push(
+  `Generated ${new Date().toISOString().slice(0, 10)} · ${CONNECTOR_COUNTS.total} connectors ` +
+    `(${CONNECTOR_COUNTS.oauthPlatforms} API platform connectors using OAuth, ` +
+    `${CONNECTOR_COUNTS.keyedOrPlugin} connected with keys or a plugin).`,
+);
 out.push("");
 out.push("## How to read this");
 out.push("");
@@ -53,16 +59,22 @@ out.push("");
 out.push("## Summary");
 out.push("");
 const shown = CAPABILITY_KEYS.filter((k) =>
-  CONNECTOR_DEFINITIONS.some((c) => c.capabilities[k].providerSupports));
+  CONNECTOR_DEFINITIONS.some((c) => c.capabilities[k].providerSupports),
+);
 out.push("| Connector | " + shown.map((k) => CAPABILITY_LABELS[k]).join(" | ") + " |");
 out.push("|---|" + shown.map(() => "---").join("|") + "|");
 const mark = (r) =>
-  r.status === "implemented" ? "yes"
-  : r.status === "not_supported" ? "—"
-  : r.status === "not_implemented" ? "provider only"
-  : r.status === "scope_not_requested" ? "**scope missing**"
-  : r.status === "requires_provider_review" ? "review"
-  : "account type";
+  r.status === "implemented"
+    ? "yes"
+    : r.status === "not_supported"
+      ? "—"
+      : r.status === "not_implemented"
+        ? "provider only"
+        : r.status === "scope_not_requested"
+          ? "**scope missing**"
+          : r.status === "requires_provider_review"
+            ? "review"
+            : "account type";
 for (const c of CONNECTOR_DEFINITIONS) {
   const byKey = Object.fromEntries(resolveAllCapabilities(c).map((r) => [r.key, r]));
   out.push(`| ${c.displayName} | ` + shown.map((k) => mark(byKey[k])).join(" | ") + " |");
@@ -77,9 +89,13 @@ for (const c of CONNECTOR_DEFINITIONS) {
   out.push("");
   out.push(`- **ID**: \`${c.id}\` · **Category**: ${c.category} · **Auth**: ${c.authMethod}`);
   out.push(`- **Account types**: ${c.accountTypes.join("; ")}`);
-  out.push(`- **Provider review required**: ${c.providerReviewRequired ? "yes" : "no"} · ` +
-    `**Sandbox**: ${c.sandboxAvailable ? "yes" : "no"} · **Last verified**: ${c.lastVerified}`);
-  out.push(`- **Requested scopes**: ${c.requestedScopes.length ? c.requestedScopes.map((s) => `\`${s}\``).join(", ") : "none (not OAuth)"}`);
+  out.push(
+    `- **Provider review required**: ${c.providerReviewRequired ? "yes" : "no"} · ` +
+      `**Sandbox**: ${c.sandboxAvailable ? "yes" : "no"} · **Last verified**: ${c.lastVerified}`,
+  );
+  out.push(
+    `- **Requested scopes**: ${c.requestedScopes.length ? c.requestedScopes.map((s) => `\`${s}\``).join(", ") : "none (not OAuth)"}`,
+  );
   if (c.optionalScopes.length) {
     out.push(`- **Not requested**: ${c.optionalScopes.map((s) => `\`${s}\``).join(", ")}`);
   }
@@ -92,9 +108,9 @@ for (const c of CONNECTOR_DEFINITIONS) {
     if (!r.providerSupports && !r.note) continue;
     out.push(
       `| ${CAPABILITY_LABELS[r.key]} | ${r.providerSupports ? "yes" : "no"} | ` +
-      `${r.flasImplements ? "yes" : "no"} | ${STATUS_LABELS[r.status]} | ` +
-      `${r.requiredScopes.length ? r.requiredScopes.map((s) => `\`${s}\``).join(", ") : "—"} | ` +
-      `${(r.note ?? "").replace(/\|/g, "\|")} |`,
+        `${r.flasImplements ? "yes" : "no"} | ${STATUS_LABELS[r.status]} | ` +
+        `${r.requiredScopes.length ? r.requiredScopes.map((s) => `\`${s}\``).join(", ") : "—"} | ` +
+        `${(r.note ?? "").replace(/\|/g, "\|")} |`,
     );
   }
   if (c.knownLimitations.length) {

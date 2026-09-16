@@ -32,7 +32,11 @@ type Turn = {
 
 const SCRIPT: Turn[] = [
   { from: "them", text: "Hi, do you have the 4-camera CCTV kit in stock?", delay: 600 },
-  { from: "bot", text: "Yes — the 4-camera kit is in stock at AED 1,450, including installation.", delay: 1500 },
+  {
+    from: "bot",
+    text: "Yes — the 4-camera kit is in stock at AED 1,450, including installation.",
+    delay: 1500,
+  },
   { from: "them", text: "Can someone install it this Saturday?", delay: 1600 },
   { from: "agent", text: "Saturday 10am works. I'll send the quotation now.", delay: 1800 },
 ];

@@ -5,6 +5,7 @@
  * so a manipulated browser payload can never dictate an invoice total. PDFs are
  * generated with pdf-lib, hashed, and stored in the private `invoices` bucket.
  */
+import type { Tables } from "@/integrations/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeDocumentTotals, round2 } from "./billing-math";
 import { todayInTimeZone } from "./locale";
@@ -81,7 +82,7 @@ export async function ensureBillingSettings(supabase: AnyClient, tenantId: strin
 
 /** Company snapshot frozen onto every document at finalization time. */
 export function companySnapshot(
-  settings: any,
+  settings: Partial<Tables<"billing_settings">> | null,
   logoUrl?: string | null,
 ) {
   return {
@@ -358,16 +359,16 @@ export async function loadDocumentBundle(supabase: AnyClient, documentId: string
 }
 
 function toPdfInput(
-  doc: any,
-  items: any[],
-  settings: any,
-  bank: any,
-  template: any,
+  doc: Tables<"sales_documents">,
+  items: Tables<"sales_document_items">[],
+  settings: Tables<"billing_settings"> | null,
+  bank: Tables<"bank_accounts"> | null,
+  template: Tables<"invoice_templates"> | null,
   mode: "draft" | "final" | "cancelled",
   verificationUrl: string | null,
 ): InvoicePdfInput {
-  const company = doc.company_snapshot ?? {};
-  const customer = doc.customer_snapshot ?? {};
+  const company = (doc.company_snapshot ?? {}) as InvoicePdfInput["company"];
+  const customer = (doc.customer_snapshot ?? {}) as InvoicePdfInput["customer"];
   const pdfItems: PdfItem[] = items.map((item) => ({
     name: item.name_snapshot,
     description: item.description_snapshot,
@@ -385,7 +386,7 @@ function toPdfInput(
   }));
 
   return {
-    kind: doc.kind,
+    kind: doc.kind as DocKind,
     mode,
     doc_number: doc.doc_number,
     status: doc.status,
@@ -412,27 +413,27 @@ function toPdfInput(
     terms: doc.terms,
     items: pdfItems,
     company: {
-      legal_name: company.legal_name ?? settings?.legal_name,
-      trade_name: company.trade_name ?? settings?.trade_name,
-      address: company.address ?? settings?.address,
-      country: company.country ?? settings?.country,
-      phone: company.phone ?? settings?.phone,
-      email: company.email ?? settings?.email,
-      website: company.website ?? settings?.website,
-      vat_number: company.vat_number ?? settings?.vat_number,
-      registration_number: company.registration_number ?? settings?.registration_number,
-      logo_url: company.logo_url ?? settings?.logo_url,
-      signatory_name: company.signatory_name ?? settings?.signatory_name,
-      signatory_position: company.signatory_position ?? settings?.signatory_position,
+      legal_name: company.legal_name ?? settings?.legal_name ?? null,
+      trade_name: company.trade_name ?? settings?.trade_name ?? null,
+      address: company.address ?? settings?.address ?? null,
+      country: company.country ?? settings?.country ?? null,
+      phone: company.phone ?? settings?.phone ?? null,
+      email: company.email ?? settings?.email ?? null,
+      website: company.website ?? settings?.website ?? null,
+      vat_number: company.vat_number ?? settings?.vat_number ?? null,
+      registration_number: company.registration_number ?? settings?.registration_number ?? null,
+      logo_url: company.logo_url ?? settings?.logo_url ?? null,
+      signatory_name: company.signatory_name ?? settings?.signatory_name ?? null,
+      signatory_position: company.signatory_position ?? settings?.signatory_position ?? null,
     },
     customer: {
-      name: customer.name,
-      company: customer.company,
-      address: customer.address,
-      shipping_address: customer.shipping_address,
-      email: customer.email,
-      phone: customer.phone,
-      vat_number: customer.vat_number,
+      name: customer.name ?? null,
+      company: customer.company ?? null,
+      address: customer.address ?? null,
+      shipping_address: customer.shipping_address ?? null,
+      email: customer.email ?? null,
+      phone: customer.phone ?? null,
+      vat_number: customer.vat_number ?? null,
     },
     bank: bank
       ? {
@@ -449,8 +450,8 @@ function toPdfInput(
     custom_fields: (doc.custom_fields ?? {}) as Record<string, string>,
     branding: settings?.show_flash_branding !== false,
     template: {
-      primary_color: template?.primary_color,
-      accent_color: template?.accent_color,
+      ...(template?.primary_color ? { primary_color: template.primary_color } : {}),
+      ...(template?.accent_color ? { accent_color: template.accent_color } : {}),
       watermark_enabled: settings?.watermark_enabled !== false,
       watermark_opacity: Number(settings?.watermark_opacity ?? 0.06),
       watermark_scale: Number(settings?.watermark_scale ?? 0.55),
@@ -531,10 +532,7 @@ export async function finalizeDocument(
       verification_id: verificationId,
       verification_token: doc.verification_token ?? token(20),
       share_token: doc.share_token ?? token(24),
-      company_snapshot: companySnapshot(
-        settings,
-        doc.company_snapshot?.logo_url,
-      ),
+      company_snapshot: companySnapshot(settings, doc.company_snapshot?.logo_url),
     })
     .eq("id", documentId);
   if (lockError) throw new Error(lockError.message);
@@ -574,7 +572,10 @@ export async function finalizeDocument(
   return { id: documentId, verification_id: verificationId, pdf_hash: hash, storage_path: path };
 }
 
-export function storagePath(tenantId: string, doc: any) {
+export function storagePath(
+  tenantId: string,
+  doc: Pick<Tables<"sales_documents">, "issue_date" | "kind" | "doc_number" | "version">,
+) {
   const date = new Date((doc.issue_date as string | number | Date | undefined) ?? Date.now());
   const year = String(date.getUTCFullYear());
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");

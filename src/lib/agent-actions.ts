@@ -167,7 +167,14 @@ const addContactBranch: ActionSpec = {
  * now casts to this tuple's element type, so a future drift from the generated
  * database types is a compile error instead of a failed customer request.
  */
-export const CONTACT_STAGES = ["new", "qualified", "proposal", "negotiation", "won", "lost"] as const;
+export const CONTACT_STAGES = [
+  "new",
+  "qualified",
+  "proposal",
+  "negotiation",
+  "won",
+  "lost",
+] as const;
 export type ContactStage = (typeof CONTACT_STAGES)[number];
 
 const setContactStage: ActionSpec = {

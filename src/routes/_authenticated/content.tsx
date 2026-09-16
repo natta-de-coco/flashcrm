@@ -278,7 +278,9 @@ function ContentPage() {
               </Button>
               <Button
                 className="flex-1 gap-2"
-                disabled={savePost.isPending || !form.scheduled_at || contentDraftBlocker(form) !== null}
+                disabled={
+                  savePost.isPending || !form.scheduled_at || contentDraftBlocker(form) !== null
+                }
                 title={contentDraftBlocker(form) ?? undefined}
                 onClick={() => savePost.mutate("scheduled")}
               >

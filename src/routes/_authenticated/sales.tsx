@@ -12,7 +12,9 @@ import {
 import {
   InvoiceBuilder,
   emptyDocument,
-  type BuilderState, previewTotals } from "@/components/sales/InvoiceBuilder";
+  type BuilderState,
+  previewTotals,
+} from "@/components/sales/InvoiceBuilder";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

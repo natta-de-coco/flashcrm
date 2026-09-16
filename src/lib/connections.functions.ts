@@ -28,7 +28,7 @@ export const getConnections = createServerFn({ method: "GET" })
       supabase
         .from("social_accounts")
         .select(
-          "id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method",
+          "id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method, granted_scopes",
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -41,14 +41,11 @@ export const getConnections = createServerFn({ method: "GET" })
     ]);
     if (accounts.error) throw accounts.error;
 
-    const { providerReadiness } = await import("@/lib/oauth.server");
     const tenantId = await callerTenantId(supabase, context.userId);
-    const providerReady = await providerReadiness(tenantId);
 
-    // Whether each connection's access token renews itself, and whether it
-    // actually holds a token at all. Both are worked out here because tokens
-    // are deliberately unreadable from a browser session; only the yes/no
-    // leaves the server.
+    // Whether each connection's access token renews itself. Worked out here
+    // because the refresh token is deliberately unreadable from a browser
+    // session; only the yes/no leaves the server.
     const renewing = new Set<string>();
     const tokened = new Set<string>();
     if (tenantId) {
@@ -57,9 +54,9 @@ export const getConnections = createServerFn({ method: "GET" })
         .from("social_accounts")
         .select("id, access_token, refresh_token")
         .eq("tenant_id", tenantId);
-      for (const r of rows ?? []) {
-        if (r.refresh_token) renewing.add(r.id);
-        if (r.access_token) tokened.add(r.id);
+      for (const row of rows ?? []) {
+        if (row.refresh_token) renewing.add(row.id);
+        if (row.access_token) tokened.add(row.id);
       }
     }
 
@@ -70,11 +67,10 @@ export const getConnections = createServerFn({ method: "GET" })
       health: computeHealth({
         active: a.active,
         renews: renewing.has(a.id),
-        // Presence of the real stored token, never a proxy such as
-        // external_id: a manually added TikTok channel legitimately has no
-        // account id and was being reported as disconnected.
+        // Both branches of this were "set", so health could never report a
+        // missing credential -- an account saved without a token showed as
+        // healthy right up until its first sync failed.
         access_token: tokened.has(a.id) ? "set" : null,
-
         token_expires_at: a.token_expires_at,
         last_synced_at: a.last_synced_at,
       }),
@@ -83,7 +79,6 @@ export const getConnections = createServerFn({ method: "GET" })
     return {
       accounts: enriched,
       scans: scans.data ?? [],
-      providerReady,
       whatsappNumbers: waNumbers.data ?? [],
       sites: sites.data ?? [],
       serverTime: new Date().toISOString(),
@@ -125,7 +120,14 @@ export const startConnect = createServerFn({ method: "POST" })
       ...(result.ready ? {} : { details: { reason: result.reason } }),
     });
 
-    return result;
+    return result.ready
+      ? result
+      : {
+          ready: false as const,
+          reason:
+            "This connection is temporarily unavailable. Please ask a FLAS administrator to check setup.",
+          missing: [],
+        };
   });
 
 /**
@@ -142,46 +144,22 @@ export const startConnect = createServerFn({ method: "POST" })
  */
 export const getConnectReadiness = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const tenantId = await callerTenantId(context.supabase, context.userId);
-    const { CONNECTORS } = await import("@/lib/connections-catalog");
-    const { resolveCredentials, providerEnvNames } = await import("@/lib/oauth.server");
-
-    // One lookup per provider family, not per connector -- Facebook and
-    // Instagram share the same Meta app.
-    const seen = new Map<string, { ready: boolean; missing: string[]; source: string }>();
-
-    const rows = [];
-    for (const c of CONNECTORS) {
-      if (!c.oauth || !c.provider) continue;
-      let state = seen.get(c.provider);
-      if (!state) {
-        const missing: string[] = [];
-        let source = "none";
-        if (tenantId) {
-          const creds = await resolveCredentials(c.provider, tenantId);
-          source = creds.source ?? "none";
-          const [idEnv, secretEnv] = providerEnvNames(c.provider);
-          if (!creds.id && idEnv) missing.push(idEnv);
-          if (!creds.secret && secretEnv) missing.push(secretEnv);
-        } else {
-          missing.push(...providerEnvNames(c.provider));
-        }
-        state = { ready: missing.length === 0, missing, source };
-        seen.set(c.provider, state);
-      }
-      rows.push({
-        id: c.id,
-        name: c.name,
-        provider: c.provider,
-        ready: state.ready,
-        missing: state.missing,
-        // "tenant" when this workspace pasted its own app keys, "shared" when
-        // it is falling back to the platform-wide ones.
-        source: state.source,
-      });
-    }
-    return rows;
+  .handler(async () => {
+    const { getIntegrationReadiness } = await import("@/lib/integration-readiness.functions");
+    const { publicAppOrigin } = await import("@/lib/oauth-preflight.server");
+    const result = await getIntegrationReadiness({
+      data: { origin: publicAppOrigin() ?? "http://localhost:8080" },
+    });
+    return result.rows
+      .filter((row) => row.oauth)
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        provider: row.provider!,
+        ready: row.ready,
+        missing: row.missing,
+        source: row.source,
+      }));
   });
 
 /** Flas Account Scan for one connected account. */

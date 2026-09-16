@@ -402,9 +402,9 @@ function SeoStudioPage() {
         <div className="grid gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
           <p>
             <span className="font-semibold">Connect a WordPress site to publish.</span> Articles
-            from this studio are published to your WordPress website. You can write, generate
-            and save drafts now; <span className="font-medium">Sync &amp; publish</span> turns
-            on once a site is connected below.
+            from this studio are published to your WordPress website. You can write, generate and
+            save drafts now; <span className="font-medium">Sync &amp; publish</span> turns on once a
+            site is connected below.
           </p>
           <WordPressSitesCard />
         </div>
