@@ -5064,6 +5064,7 @@ export type Database = {
         Args: { _conversation_id: string }
         Returns: number
       }
+      integration_oauth_storage_ready: { Args: never; Returns: boolean }
       is_legal_connection_transition: {
         Args: { _from: string; _to: string }
         Returns: boolean
