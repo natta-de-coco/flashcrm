@@ -12,6 +12,11 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { captureError, installTelemetry } from "../lib/telemetry";
+import {
+  installStaleChunkRecovery,
+  isStaleChunkError,
+  reloadForStaleChunk,
+} from "../lib/stale-chunk";
 import { AuthProvider } from "@/hooks/useAuth";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -40,10 +45,15 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const staleChunk = isStaleChunkError(error);
   useEffect(() => {
+    // A newer version was published while this tab was open: reload once to
+    // fetch it. Only if that already happened moments ago is it reported, as
+    // the file is then genuinely missing.
+    if (staleChunk && reloadForStaleChunk()) return;
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
     captureError(error, { kind: "error_boundary" });
-  }, [error]);
+  }, [error, staleChunk]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -57,6 +67,11 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              // Retrying in place would request the same missing file again.
+              if (staleChunk) {
+                window.location.reload();
+                return;
+              }
               router.invalidate();
               reset();
             }}
@@ -135,6 +150,7 @@ function RootComponent() {
   // route + session context so support can trace any incident.
   useEffect(() => {
     installTelemetry();
+    installStaleChunkRecovery();
   }, []);
 
   return (
