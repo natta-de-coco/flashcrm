@@ -195,3 +195,14 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
 });
+
+// What an admin sees after saving a workspace's own provider app.
+await build({
+  entryPoints: ["src/lib/credential-handoff.ts"],
+  outfile: "node_modules/.cache/flas-credential-handoff.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});

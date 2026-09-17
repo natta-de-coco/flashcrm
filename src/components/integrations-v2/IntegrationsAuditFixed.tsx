@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { credentialSpec, OAUTH_REDIRECT_PATH } from "@/lib/connection-setup";
+import { actionableBlockers, continueTarget, handoffPhase } from "@/lib/credential-handoff";
 import { connectionStatus } from "@/lib/connection-status";
 import { disconnectConnection, getConnections, startConnect } from "@/lib/connections.functions";
 import {
@@ -135,6 +136,10 @@ export function IntegrationsAuditFixed({
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [providerSetupOpen, setProviderSetupOpen] = useState(false);
   const [credentialsFor, setCredentialsFor] = useState<string | null>(null);
+  // The connector that sent an admin to setup, and the next step shown after
+  // they save app details. Saving stores credentials; it does not sign in.
+  const [setupReturnTo, setSetupReturnTo] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState<{ connectorId: string; verified: boolean } | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -200,6 +205,12 @@ export function IntegrationsAuditFixed({
     onError: (e: Error) => toast.error(e.message),
   });
 
+  function openDiagnostics(returnTo: string | null) {
+    setSetupReturnTo(returnTo);
+    setHandoff(null);
+    setProviderSetupOpen(true);
+  }
+
   function chooseCategory(next: "popular" | ConnectorGroup) {
     setCategory(next);
     setQuery("");
@@ -212,7 +223,7 @@ export function IntegrationsAuditFixed({
     if (!row) return;
     if (row.status === "ADMIN_SETUP_REQUIRED") {
       if (isAdmin && (connector.oauth || connector.id === "whatsapp")) {
-        setProviderSetupOpen(true);
+        openDiagnostics(connector.id);
       } else {
         setBlocked({
           platform: connector.id,
@@ -262,7 +273,7 @@ export function IntegrationsAuditFixed({
                 variant="outline"
                 onClick={() => {
                   setBlocked(null);
-                  setProviderSetupOpen(true);
+                  openDiagnostics(null);
                 }}
               >
                 <Settings2 className="mr-2 size-4" /> Admin diagnostics
@@ -291,10 +302,29 @@ export function IntegrationsAuditFixed({
             onAdmin={undefined}
           />
         )}
+        {handoff && (
+          <CredentialHandoff
+            connector={CONNECTORS.find((c) => c.id === handoff.connectorId)}
+            row={readinessMap.get(handoff.connectorId)}
+            refreshing={!handoff.verified || readiness.isFetching}
+            continuing={connect.isPending}
+            onContinue={() => {
+              const id = handoff.connectorId;
+              setHandoff(null);
+              setSetupReturnTo(null);
+              connect.mutate(id);
+            }}
+            onDiagnostics={() => openDiagnostics(handoff.connectorId)}
+            onDismiss={() => {
+              setHandoff(null);
+              setSetupReturnTo(null);
+            }}
+          />
+        )}
         {blocked && !marketplaceOpen && (
           <Problem
             message={blocked.message}
-            onAdmin={isAdmin ? () => setProviderSetupOpen(true) : undefined}
+            onAdmin={isAdmin ? () => openDiagnostics(null) : undefined}
           />
         )}
         <ConnectionOutcome
@@ -508,7 +538,7 @@ export function IntegrationsAuditFixed({
           {blocked && (
             <Problem
               message={blocked.message}
-              onAdmin={isAdmin ? () => setProviderSetupOpen(true) : undefined}
+              onAdmin={isAdmin ? () => openDiagnostics(null) : undefined}
             />
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -562,9 +592,17 @@ export function IntegrationsAuditFixed({
               spec={spec}
               platformName={credentialConnector.name}
               redirectUri={`${origin}${OAUTH_REDIRECT_PATH}`}
-              onSaved={() => {
-                void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
+              onSaved={async () => {
+                // Saving stores the app; it neither starts sign-in nor connects an
+                // account. Close both dialogs, re-check readiness on the server and
+                // say what is next -- continuing with the product the admin chose.
+                const target = continueTarget(credentialConnector.id, setupReturnTo, CONNECTORS);
                 setCredentialsFor(null);
+                setProviderSetupOpen(false);
+                setBlocked(null);
+                setHandoff({ connectorId: target, verified: false });
+                await qc.invalidateQueries({ queryKey: ["integration-readiness"] });
+                setHandoff((h) => (h && h.connectorId === target ? { ...h, verified: true } : h));
               }}
             />
           ) : (
@@ -574,6 +612,110 @@ export function IntegrationsAuditFixed({
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * The next step after an administrator saves app details. Saving stores
+ * credentials; it neither starts sign-in nor connects an account, so this says
+ * which one comes next instead of leaving the admin in a dialog. "Ready" here
+ * means FLAS can start sign-in -- not that any account is connected yet.
+ */
+function CredentialHandoff({
+  connector,
+  row,
+  refreshing,
+  continuing,
+  onContinue,
+  onDiagnostics,
+  onDismiss,
+}: {
+  connector: Connector | undefined;
+  row: IntegrationReadinessRow | undefined;
+  refreshing: boolean;
+  continuing: boolean;
+  onContinue: () => void;
+  onDiagnostics: () => void;
+  onDismiss: () => void;
+}) {
+  const name = connector?.name ?? "this integration";
+  const phase = handoffPhase(row, refreshing);
+  const blockers = actionableBlockers(row);
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="rounded-xl border border-emerald-300/60 bg-emerald-50/60 p-4 dark:bg-emerald-950/10"
+    >
+      <div className="flex gap-3">
+        {phase === "ready" ? (
+          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
+        ) : phase === "checking" ? (
+          <RefreshCw className="mt-0.5 size-5 shrink-0 animate-spin text-muted-foreground" />
+        ) : (
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+        )}
+        <div className="min-w-0 flex-1">
+          {phase === "checking" && (
+            <>
+              <p className="font-medium">App details saved</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Checking whether FLAS can start {name} sign-in...
+              </p>
+            </>
+          )}
+          {phase === "ready" && (
+            <>
+              <p className="font-medium">App details saved. Now connect your {name} account.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Saving the app does not connect an account. Continue to sign in, approve access,
+                then choose the Page or account FLAS should manage.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" disabled={continuing} onClick={onContinue}>
+                  Continue with {name} <ArrowRight className="ml-1 size-4" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={onDismiss}>
+                  Not now
+                </Button>
+              </div>
+            </>
+          )}
+          {(phase === "blocked" || phase === "unknown") && (
+            <>
+              <p className="font-medium">
+                App details saved, but FLAS still cannot start {name} sign-in
+              </p>
+              {blockers.length > 0 ? (
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {blockers.map((b) => (
+                    <li key={b.code} className="break-words">
+                      <span className="font-medium">{b.title}</span>
+                      <span className="text-muted-foreground"> - {b.userMessage}</span>
+                      {b.technical ? (
+                        <code className="ml-1 rounded bg-muted px-1 text-xs">{b.technical}</code>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The setup could not be confirmed. Open admin diagnostics to see what is missing.
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={onDiagnostics}>
+                  Open admin diagnostics
+                </Button>
+                <Button size="sm" variant="ghost" onClick={onDismiss}>
+                  Dismiss
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
