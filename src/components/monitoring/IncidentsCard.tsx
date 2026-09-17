@@ -16,6 +16,31 @@ const KIND_LABEL: Record<string, string> = {
   error_boundary: "Screen crashed",
 };
 
+const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type Incident = Awaited<ReturnType<typeof getErrorEvents>>["events"][number];
+
+type IncidentGroup = {
+  latest: Incident;
+  count: number;
+};
+
+function groupIncidents(events: Incident[]): IncidentGroup[] {
+  const grouped = new Map<string, IncidentGroup>();
+
+  for (const event of events) {
+    const key = `${event.kind}:${event.route ?? ""}:${event.message}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    grouped.set(key, { latest: event, count: 1 });
+  }
+
+  return [...grouped.values()];
+}
+
 export function IncidentsCard() {
   const incidents = useQuery({
     queryKey: ["error-events"],
@@ -24,6 +49,12 @@ export function IncidentsCard() {
   });
 
   const events = incidents.data?.events ?? [];
+  const activeCutoff = Date.now() - ACTIVE_WINDOW_MS;
+  const activeGroups = groupIncidents(
+    events.filter((event) => new Date(event.created_at).getTime() >= activeCutoff),
+  );
+  const historicalCount =
+    events.length - activeGroups.reduce((total, group) => total + group.count, 0);
 
   return (
     <Card className="mb-6">
@@ -31,24 +62,32 @@ export function IncidentsCard() {
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Bug className="size-4 text-primary" />
           Application incidents
-          {events.length > 0 && <Badge variant="secondary">{events.length} recent</Badge>}
+          <Badge variant={activeGroups.length > 0 ? "destructive" : "secondary"}>
+            {activeGroups.length > 0 ? `${activeGroups.length} active` : "Healthy"}
+          </Badge>
         </CardTitle>
         <CardDescription>
-          Captured automatically with the page, session and user so nothing fails silently. Only
-          your own workspace is shown.
+          Active means recorded in the last 24 hours. Repeated copies are grouped so one problem
+          appears once. Only your own workspace is shown.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {incidents.isLoading && <Skeleton className="h-16 w-full" />}
-        {!incidents.isLoading && events.length === 0 && (
+        {!incidents.isLoading && activeGroups.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No incidents recorded — the app has been running cleanly.
+            No incidents recorded in the last 24 hours.
           </p>
         )}
-        {events.slice(0, 25).map((event) => (
-          <div key={event.id} className="rounded-lg border p-3">
+        {activeGroups.slice(0, 25).map(({ latest: event, count }) => (
+          <div
+            key={`${event.kind}:${event.route ?? ""}:${event.message}`}
+            className="rounded-lg border p-3"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-semibold">{KIND_LABEL[event.kind] ?? event.kind}</span>
+              <span className="text-sm font-semibold">
+                {KIND_LABEL[event.kind] ?? event.kind}
+                {count > 1 ? ` · repeated ${count} times` : ""}
+              </span>
               <Badge variant={event.severity === "error" ? "destructive" : "secondary"}>
                 {event.severity}
               </Badge>
@@ -61,6 +100,12 @@ export function IncidentsCard() {
             </p>
           </div>
         ))}
+        {!incidents.isLoading && historicalCount > 0 && (
+          <p className="pt-1 text-xs text-muted-foreground">
+            {historicalCount} older {historicalCount === 1 ? "incident is" : "incidents are"} kept
+            in history and do not count as active.
+          </p>
+        )}
       </CardContent>
     </Card>
   );
