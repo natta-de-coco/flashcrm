@@ -53,7 +53,7 @@ import {
   Unplug,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type Account = {
@@ -112,6 +112,10 @@ function humanTime(value: string | null) {
   return Number.isNaN(date.getTime()) ? "Not yet" : date.toLocaleString();
 }
 
+function signInLabel(provider: string | null | undefined, name: string) {
+  return `Continue with ${provider === "meta" ? "Facebook" : provider === "google" ? "Google" : name}`;
+}
+
 export function IntegrationsAuditFixed({
   search = {},
   onDismiss = () => {},
@@ -138,6 +142,7 @@ export function IntegrationsAuditFixed({
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
   const [connecting, setConnecting] = useState<string | null>(null);
+  const starting = useRef(false);
   const [blocked, setBlocked] = useState<{ platform: string; message: string } | null>(null);
 
   const allAccounts = (connections.data?.accounts ?? []) as Account[];
@@ -171,8 +176,10 @@ export function IntegrationsAuditFixed({
       return start({ data: { platform: platform as never, origin: window.location.origin } });
     },
     onSuccess: (result, platform) => {
+      starting.current = false;
       setConnecting(null);
       if (!result.ready) {
+        void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
         setBlocked({
           platform,
           message:
@@ -183,13 +190,26 @@ export function IntegrationsAuditFixed({
       window.location.assign(result.url);
     },
     onError: (_e: Error, platform) => {
+      starting.current = false;
       setConnecting(null);
+      void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
       setBlocked({
         platform,
         message: "The connection could not start. Please try again or ask an administrator.",
       });
     },
   });
+
+  function beginConnect(platform: string) {
+    if (starting.current || connect.isPending) return;
+    starting.current = true;
+    setCredentialsFor(null);
+    setProviderSetupOpen(false);
+    setMarketplaceOpen(false);
+    // startConnect rechecks all prerequisites server-side. Do not rely on
+    // readiness cached before the workspace app was saved.
+    connect.mutate(platform);
+  }
 
   const remove = useMutation({
     mutationFn: async (id: string) => disconnect({ data: { id } }),
@@ -223,7 +243,7 @@ export function IntegrationsAuditFixed({
     }
     if (row?.status === "COMING_SOON") return;
     if (connector.oauth) {
-      connect.mutate(connector.id);
+      beginConnect(connector.id);
       return;
     }
     if (connector.internalHref && connector.internalHref !== "/connect") {
@@ -279,6 +299,12 @@ export function IntegrationsAuditFixed({
           </div>
         </div>
 
+        {connecting && (
+          <p role="status" className="rounded-xl border bg-muted/40 p-4 text-sm">
+            Opening secure sign-in… Choose your Page or account after signing in to finish
+            connecting.
+          </p>
+        )}
         {connections.isError && (
           <Problem
             message="We could not load your integrations. Please refresh and try again."
@@ -532,10 +558,16 @@ export function IntegrationsAuditFixed({
             <DialogTitle>Admin diagnostics</DialogTitle>
             <DialogDescription>
               Admin-only readiness. A provider is Ready only when credentials, origin and secure
-              token storage all pass.
+              token storage all pass. Available means sign-in can start; your account is connected
+              only after you sign in and choose its Page or channel.
             </DialogDescription>
           </DialogHeader>
-          <ProviderReadiness rows={rows} onConfigure={(id) => setCredentialsFor(id)} />
+          <ProviderReadiness
+            rows={rows}
+            onConfigure={(id) => setCredentialsFor(id)}
+            onConnect={beginConnect}
+            connecting={connect.isPending}
+          />
         </DialogContent>
       </Dialog>
 
@@ -559,12 +591,19 @@ export function IntegrationsAuditFixed({
           </DialogHeader>
           {spec && credentialConnector ? (
             <CredentialsStep
+              key={credentialConnector.id}
               spec={spec}
               platformName={credentialConnector.name}
               redirectUri={`${origin}${OAUTH_REDIRECT_PATH}`}
+              continueLabel={
+                credentialConnector.oauth
+                  ? `Save and ${signInLabel(credentialConnector.provider, credentialConnector.name).replace(/^Continue/, "continue")}`
+                  : "Save settings"
+              }
               onSaved={() => {
                 void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
                 setCredentialsFor(null);
+                if (credentialConnector.oauth) beginConnect(credentialConnector.id);
               }}
             />
           ) : (
@@ -600,9 +639,13 @@ function Problem({ message, onAdmin }: { message: string; onAdmin: (() => void) 
 function ProviderReadiness({
   rows,
   onConfigure,
+  onConnect,
+  connecting,
 }: {
   rows: IntegrationReadinessRow[];
   onConfigure: (id: string) => void;
+  onConnect: (id: string) => void;
+  connecting: boolean;
 }) {
   const oauthFamilies = rows.filter((r) => r.oauth);
   const utility = rows.filter((r) =>
@@ -614,7 +657,13 @@ function ProviderReadiness({
         <h3 className="mb-2 text-sm font-semibold">OAuth providers</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {oauthFamilies.map((row) => (
-            <ReadinessCard key={row.id} row={row} onConfigure={() => onConfigure(row.id)} />
+            <ReadinessCard
+              key={row.id}
+              row={row}
+              onConfigure={() => onConfigure(row.id)}
+              onConnect={() => onConnect(row.id)}
+              connecting={connecting}
+            />
           ))}
         </div>
       </div>
@@ -633,9 +682,13 @@ function ProviderReadiness({
 function ReadinessCard({
   row,
   onConfigure,
+  onConnect,
+  connecting = false,
 }: {
   row: IntegrationReadinessRow;
   onConfigure: () => void;
+  onConnect?: () => void;
+  connecting?: boolean;
 }) {
   const setup = providerSetup(row.provider);
   const label = row.name;
@@ -679,8 +732,13 @@ function ReadinessCard({
           </div>
         ))}
         <div className="flex flex-wrap gap-2">
+          {row.oauth && (row.status === "READY" || row.status === "LIMITED") && onConnect && (
+            <Button size="sm" onClick={onConnect} disabled={connecting}>
+              {connecting ? "Opening secure sign-in…" : signInLabel(row.provider, row.name)}
+            </Button>
+          )}
           {row.oauth && row.status !== "COMING_SOON" && (
-            <Button size="sm" onClick={onConfigure}>
+            <Button size="sm" variant="outline" onClick={onConfigure} disabled={connecting}>
               <KeyRound className="mr-1.5 size-3.5" /> Advanced: workspace app
             </Button>
           )}
