@@ -12,21 +12,13 @@ export function brokeredPreviewStorage() {
     "gpt-eng.com",
     "gptengineer.run",
   ];
-  const onPreviewZone = PREVIEW_ZONES.some(
-    (z) => host === z || host.endsWith("." + z),
-  );
+  const onPreviewZone = PREVIEW_ZONES.some((z) => host === z || host.endsWith("." + z));
   // Read the id only from non-user-controlled host positions, so a user-named
   // preview--<name> host can't smuggle another project's id.
-  const UUID =
-    "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+  const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
   const projectId = onPreviewZone
     ? (host.match(
-        new RegExp(
-          "^(?:id-preview(?:-[a-z0-9]+)?|project)--(" +
-            UUID +
-            ")(?:-dev)?(?=\\.|$)",
-          "i",
-        ),
+        new RegExp("^(?:id-preview(?:-[a-z0-9]+)?|project)--(" + UUID + ")(?:-dev)?(?=\\.|$)", "i"),
       )?.[1] ?? host.match(new RegExp("^(" + UUID + ")(?=[.-])", "i"))?.[1])
     : undefined;
   const framed = window.parent && window.parent !== window;
@@ -34,8 +26,7 @@ export function brokeredPreviewStorage() {
 
   // Post only to the real editor ancestor, validated as a Lovable origin, so the
   // session token can never reach an untrusted embedder.
-  const dev =
-    host.endsWith(".lovableproject-dev.com") || host.endsWith(".gpt-eng.com");
+  const dev = host.endsWith(".lovableproject-dev.com") || host.endsWith(".gpt-eng.com");
   const EDITOR = dev
     ? /^https:\/\/([a-z0-9-]+\.)*(lovable\.dev|gptengineer\.app)$|^http:\/\/localhost:3000$/
     : /^https:\/\/([a-z0-9-]+\.)*(lovable\.dev|gptengineer\.app)$/;
@@ -50,8 +41,7 @@ export function brokeredPreviewStorage() {
         : ["https://lovable.dev"];
   const RESULT = "lovable-preview-auth:result";
   const TIMEOUT = 2000;
-  const newId = () =>
-    Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const newId = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
   const request = (
     type: string,
@@ -61,7 +51,6 @@ export function brokeredPreviewStorage() {
     new Promise((resolve) => {
       const requestId = newId();
       let done = false;
-      let timer: ReturnType<typeof setTimeout>;
       const finish = (r: { ok: boolean; value?: string | null } | null) => {
         if (done) return;
         done = true;
@@ -78,9 +67,8 @@ export function brokeredPreviewStorage() {
       const msg: Record<string, unknown> = { type, requestId, projectId, key };
       if (value !== undefined) msg["value"] = value;
       // targetOrigin per trusted editor origin, so a session token never reaches an arbitrary embedder.
-      for (const origin of editorOrigins)
-        window.parent.postMessage(msg, origin);
-      timer = setTimeout(() => finish(null), TIMEOUT);
+      for (const origin of editorOrigins) window.parent.postMessage(msg, origin);
+      const timer = setTimeout(() => finish(null), TIMEOUT);
     });
 
   // The editor may not be listening yet at the first getItem, so retry once.
@@ -108,9 +96,7 @@ export function brokeredPreviewStorage() {
     },
     setItem: (key: string, value: string) => {
       localStorage.setItem(key, value);
-      return request("lovable-preview-auth:set", key, value).then(
-        () => undefined,
-      );
+      return request("lovable-preview-auth:set", key, value).then(() => undefined);
     },
     removeItem: (key: string) => {
       localStorage.removeItem(key);
