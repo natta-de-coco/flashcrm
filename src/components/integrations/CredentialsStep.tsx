@@ -27,12 +27,14 @@ export function CredentialsStep({
   platformName,
   redirectUri,
   onSaved,
+  continueLabel = "Continue",
 }: {
   spec: CredentialSpec;
   platformName: string;
   /** Whitelisting this exact URL is the most common missed step. */
   redirectUri: string;
   onSaved: () => void;
+  continueLabel?: string;
 }) {
   const qc = useQueryClient();
   const saveApp = useServerFn(savePlatformApp);
@@ -78,10 +80,12 @@ export function CredentialsStep({
       setValues({});
       toast.success(
         spec.scope === "provider"
-          ? "Keys saved — this channel can connect now."
+          ? "App details saved. Provider sign-in is still needed to connect your account."
           : "Number connected.",
       );
       void qc.invalidateQueries({ queryKey: ["connect-readiness"] });
+      void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
+      void qc.invalidateQueries({ queryKey: ["connections"] });
       void qc.invalidateQueries({ queryKey: ["platform-apps"] });
       void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
       onSaved();
@@ -176,7 +180,7 @@ export function CredentialsStep({
       <div className="flex items-center gap-3 border-t pt-4">
         <Button disabled={!complete || save.isPending} onClick={() => save.mutate()}>
           {save.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
-          Continue
+          {continueLabel}
         </Button>
         {!complete && (
           <span className="text-xs text-muted-foreground">Fill every field above to continue.</span>
