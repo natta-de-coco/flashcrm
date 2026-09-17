@@ -50,7 +50,10 @@ describe("recognising a stale chunk", () => {
   });
 
   test("Firefox, Safari and Vite's CSS preload wording", () => {
-    assert.equal(isStaleChunkError(new Error("error loading dynamically imported module: /assets/x.js")), true);
+    assert.equal(
+      isStaleChunkError(new Error("error loading dynamically imported module: /assets/x.js")),
+      true,
+    );
     assert.equal(isStaleChunkError(new TypeError("Importing a module script failed.")), true);
     assert.equal(isStaleChunkError(new Error("Unable to preload CSS for /assets/x.css")), true);
   });
@@ -93,12 +96,23 @@ describe("reloading once, never in a loop", () => {
 
   test("without storage there is no guard, so it does not reload automatically", () => {
     if (MUTATION === "no_guard") return assert.fail("guard removed");
-    assert.equal(mod.reloadForStaleChunk(1, null, () => assert.fail("reloaded")), false);
+    assert.equal(
+      mod.reloadForStaleChunk(1, null, () => assert.fail("reloaded")),
+      false,
+    );
   });
 
   test("storage that throws does not reload", () => {
     if (MUTATION === "no_guard") return assert.fail("guard removed");
-    const broken = { getItem: () => { throw new Error("blocked"); }, setItem: () => {} };
-    assert.equal(mod.reloadForStaleChunk(1, broken, () => assert.fail("reloaded")), false);
+    const broken = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {},
+    };
+    assert.equal(
+      mod.reloadForStaleChunk(1, broken, () => assert.fail("reloaded")),
+      false,
+    );
   });
 });

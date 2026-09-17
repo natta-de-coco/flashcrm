@@ -127,7 +127,9 @@ check("Acme admin reads user_roles", !roles.some((r) => r.email.includes("globex
 // and onboarding grants that legacy 'admin' role to whoever creates a
 // workspace. This suite already built the very user that exposes it -- it
 // simply never asked the question.
-const orgsSeen = (await q(adminA, "select name from organizations order by name")).map((r) => r.name);
+const orgsSeen = (await q(adminA, "select name from organizations order by name")).map(
+  (r) => r.name,
+);
 check(
   "Acme admin lists only its own company",
   orgsSeen.length === 1 && orgsSeen[0] === "Acme",
@@ -146,7 +148,9 @@ check("billing identifiers are not readable by customers", paddle === "denied", 
 // could be satisfied by breaking the manager portal.
 const superUid = await mk("owner@flas.test", orgA, true);
 await c.query("update profiles set staff_role='super_admin' where id=$1", [superUid]);
-const superSees = (await q(superUid, "select name from organizations order by name")).map((r) => r.name);
+const superSees = (await q(superUid, "select name from organizations order by name")).map(
+  (r) => r.name,
+);
 check("super admin still sees every company", superSees.length === 2, superSees.join(", "));
 
 console.log("");
