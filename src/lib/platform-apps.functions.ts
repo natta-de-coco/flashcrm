@@ -9,7 +9,7 @@ const ProviderSchema = z.enum(["meta", "google", "linkedin", "tiktok", "twitter"
 
 /** Platform OAuth app credentials are workspace-wide secrets — only admins
  *  should be able to write or delete them, not every staff member. */
-async function requireCompanyAdmin(context: {
+export async function requireCompanyAdmin(context: {
   supabase: import("@supabase/supabase-js").SupabaseClient;
   userId: string;
 }) {

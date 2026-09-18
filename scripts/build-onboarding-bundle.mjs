@@ -12,7 +12,8 @@ await build({
       export * from './src/lib/oauth.server';
       export * from './src/lib/integration-readiness.functions';
       export * from './src/lib/social-doctor.functions';
-      export * from './src/lib/connections.server';`,
+      export * from './src/lib/connections.server';
+      export * from './src/lib/wa-numbers.functions';`,
     resolveDir: process.cwd(),
   },
   outfile: "node_modules/.cache/flas-onboarding.mjs",
