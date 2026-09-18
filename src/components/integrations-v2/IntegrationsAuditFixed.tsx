@@ -28,6 +28,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { credentialSpec, OAUTH_REDIRECT_PATH } from "@/lib/connection-setup";
+import { actionableBlockers, continueTarget } from "@/lib/credential-handoff";
+import type { ReadinessBlocker } from "@/lib/integration-readiness.functions";
 import { connectionStatus } from "@/lib/connection-status";
 import { disconnectConnection, getConnections, startConnect } from "@/lib/connections.functions";
 import {
@@ -138,6 +140,9 @@ export function IntegrationsAuditFixed({
   const disconnect = useServerFn(disconnectConnection);
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [providerSetupOpen, setProviderSetupOpen] = useState(false);
+  // Which connector sent the admin to setup, so saving an app continues with
+  // that product rather than whichever row the credentials were typed into.
+  const [setupReturnTo, setSetupReturnTo] = useState<string | null>(null);
   const [credentialsFor, setCredentialsFor] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
@@ -200,9 +205,15 @@ export function IntegrationsAuditFixed({
     },
   });
 
+  function openDiagnostics(returnTo: string | null) {
+    setSetupReturnTo(returnTo);
+    setProviderSetupOpen(true);
+  }
+
   function beginConnect(platform: string) {
     if (starting.current || connect.isPending) return;
     starting.current = true;
+    setSetupReturnTo(null);
     setCredentialsFor(null);
     setProviderSetupOpen(false);
     setMarketplaceOpen(false);
@@ -232,7 +243,7 @@ export function IntegrationsAuditFixed({
     if (!row) return;
     if (row.status === "ADMIN_SETUP_REQUIRED") {
       if (isAdmin && (connector.oauth || connector.id === "whatsapp")) {
-        setProviderSetupOpen(true);
+        openDiagnostics(connector.id);
       } else {
         setBlocked({
           platform: connector.id,
@@ -282,7 +293,7 @@ export function IntegrationsAuditFixed({
                 variant="outline"
                 onClick={() => {
                   setBlocked(null);
-                  setProviderSetupOpen(true);
+                  openDiagnostics(null);
                 }}
               >
                 <Settings2 className="mr-2 size-4" /> Admin diagnostics
@@ -320,7 +331,8 @@ export function IntegrationsAuditFixed({
         {blocked && !marketplaceOpen && (
           <Problem
             message={blocked.message}
-            onAdmin={isAdmin ? () => setProviderSetupOpen(true) : undefined}
+            blockers={isAdmin ? actionableBlockers(readinessMap.get(blocked.platform)) : []}
+            onAdmin={isAdmin ? () => openDiagnostics(null) : undefined}
           />
         )}
         <ConnectionOutcome
@@ -538,7 +550,7 @@ export function IntegrationsAuditFixed({
           {blocked && (
             <Problem
               message={blocked.message}
-              onAdmin={isAdmin ? () => setProviderSetupOpen(true) : undefined}
+              onAdmin={isAdmin ? () => openDiagnostics(null) : undefined}
             />
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -607,7 +619,9 @@ export function IntegrationsAuditFixed({
               onSaved={() => {
                 void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
                 setCredentialsFor(null);
-                if (credentialConnector.oauth) beginConnect(credentialConnector.id);
+                if (credentialConnector.oauth) {
+                  beginConnect(continueTarget(credentialConnector.id, setupReturnTo, CONNECTORS));
+                }
               }}
             />
           ) : (
@@ -621,7 +635,16 @@ export function IntegrationsAuditFixed({
   );
 }
 
-function Problem({ message, onAdmin }: { message: string; onAdmin: (() => void) | undefined }) {
+function Problem({
+  message,
+  onAdmin,
+  blockers = [],
+}: {
+  message: string;
+  onAdmin: (() => void) | undefined;
+  /** Administrators see exactly what is missing; members never do. */
+  blockers?: ReadinessBlocker[];
+}) {
   return (
     <div className="rounded-xl border border-amber-300/60 bg-amber-50/60 p-4 dark:bg-amber-950/10">
       <div className="flex gap-3">
@@ -629,6 +652,19 @@ function Problem({ message, onAdmin }: { message: string; onAdmin: (() => void) 
         <div>
           <p className="font-medium">This connection needs setup before it can continue</p>
           <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+          {blockers.length > 0 && (
+            <ul className="mt-2 space-y-1.5 text-sm">
+              {blockers.map((b) => (
+                <li key={b.code} className="break-words">
+                  <span className="font-medium">{b.title}</span>
+                  <span className="text-muted-foreground"> - {b.userMessage}</span>
+                  {b.technical ? (
+                    <code className="ml-1 rounded bg-muted px-1 text-xs">{b.technical}</code>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
           {onAdmin && (
             <Button className="mt-3" size="sm" variant="outline" onClick={onAdmin}>
               Open Provider Setup

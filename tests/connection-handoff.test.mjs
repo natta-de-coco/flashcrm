@@ -14,6 +14,18 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 
+function loadLib(relative) {
+  const libSource = readFileSync(new URL(relative, import.meta.url), "utf8");
+  const libCompiled = ts.transpileModule(libSource, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS },
+  }).outputText;
+  const libExports = {};
+  runInNewContext(libCompiled, { exports: libExports, require: () => ({}) });
+  return libExports;
+}
+
+const credentialHandoff = loadLib("../src/lib/credential-handoff.ts");
+
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
   if (!tree || typeof tree !== "object") return [];
@@ -23,6 +35,8 @@ function nodes(tree) {
 function harness({
   status = "ADMIN_SETUP_REQUIRED",
   result = { ready: true, url: "https://provider.example/login" },
+  connectors,
+  blockers = [],
 } = {}) {
   const state = [],
     requests = [],
@@ -38,7 +52,8 @@ function harness({
     oauth: true,
     group: "social",
   };
-  const row = { ...connector, status, checks: {}, credentials: {}, blockers: [] };
+  const catalog = connectors ?? [connector];
+  const rows = catalog.map((c) => ({ ...c, status, checks: {}, credentials: {}, blockers }));
   const start = async (request) => {
     requests.push(request);
     return result;
@@ -69,7 +84,7 @@ function harness({
     "@tanstack/react-query": {
       useQueryClient: () => ({ invalidateQueries: async () => {} }),
       useQuery: ({ queryKey }) => ({
-        data: queryKey[0] === "connections" ? { accounts: [] } : { rows: [row] },
+        data: queryKey[0] === "connections" ? { accounts: [] } : { rows },
       }),
       useMutation(options) {
         const index = mutationCursor++;
@@ -93,7 +108,8 @@ function harness({
     },
     "@tanstack/react-start": { useServerFn: (fn) => fn },
     "@/hooks/useAuth": { useAuth: () => ({ isAdmin: true }) },
-    "@/lib/connections-catalog": { CONNECTORS: [connector] },
+    "@/lib/connections-catalog": { CONNECTORS: catalog },
+    "@/lib/credential-handoff": credentialHandoff,
     "@/lib/connections.functions": { startConnect: start },
     "@/lib/connection-setup": {
       credentialSpec: () => ({ scope: "provider", fields: [] }),
@@ -164,4 +180,94 @@ test("a second sign-in click while the first is pending does not create another 
   diagnostics.props.onConnect("instagram");
   await h.flush();
   assert.equal(h.requests.length, 1);
+});
+
+const FACEBOOK = {
+  id: "facebook",
+  name: "Facebook",
+  provider: "meta",
+  oauth: true,
+  group: "social",
+};
+const INSTAGRAM = {
+  id: "instagram",
+  name: "Instagram",
+  provider: "meta",
+  oauth: true,
+  group: "social",
+};
+const YOUTUBE = {
+  id: "youtube",
+  name: "YouTube",
+  provider: "google",
+  oauth: true,
+  group: "social",
+};
+
+test("sign-in continues with the product the admin chose, not the row they typed keys into", async () => {
+  // One Meta app serves both, so an admin who set out to connect Instagram may
+  // well save the app from the Facebook row. Connecting Facebook instead would
+  // be the wrong product.
+  const h = harness({ connectors: [FACEBOOK, INSTAGRAM] });
+  const card = nodes(h.render()).find(
+    (n) => n.type?.name === "MarketplaceCard" && n.props.connector.id === "instagram",
+  );
+  card.props.onConnect();
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.flush();
+  assert.equal(h.requests[0].data.platform, "instagram");
+});
+
+test("configuring a provider on its own connects that provider", async () => {
+  const h = harness({ connectors: [FACEBOOK, INSTAGRAM] });
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.flush();
+  assert.equal(h.requests[0].data.platform, "facebook");
+});
+
+test("a choice from another provider never redirects the saved app's sign-in", async () => {
+  const h = harness({ connectors: [FACEBOOK, YOUTUBE] });
+  const card = nodes(h.render()).find(
+    (n) => n.type?.name === "MarketplaceCard" && n.props.connector.id === "youtube",
+  );
+  card.props.onConnect();
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.flush();
+  assert.equal(h.requests[0].data.platform, "facebook");
+});
+
+test("a refused start tells the admin every actionable blocker, worst first", async () => {
+  const h = harness({
+    result: { ready: false },
+    blockers: [
+      { code: "NOTE", title: "note", userMessage: "", severity: "INFO", owner: "PROVIDER" },
+      {
+        code: "REVIEW",
+        title: "Meta review pending",
+        userMessage: "Some features wait for approval.",
+        severity: "WARNING",
+        owner: "PROVIDER",
+      },
+      {
+        code: "STORAGE",
+        title: "OAuth database schema is missing",
+        userMessage: "Run the pending database migrations.",
+        severity: "BLOCKING",
+        owner: "FLAS_ADMIN",
+        technical: "integration_oauth_storage_ready",
+      },
+    ],
+  });
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("instagram");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.flush();
+  const problem = h.find(h.render(), "Problem");
+  assert.deepEqual(
+    problem.props.blockers.map((b) => b.code),
+    ["STORAGE", "REVIEW"],
+  );
+  assert.deepEqual(h.redirects, []);
 });
