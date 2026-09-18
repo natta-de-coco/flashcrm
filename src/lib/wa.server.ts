@@ -323,6 +323,24 @@ export async function ingestInboundMessage(args: IngestArgs) {
   const { tenantId, channel, phone, sessionId, name, text, waMessageId, waNumberId } = args;
   if (!tenantId) throw new Error("ingestInboundMessage: tenantId is required");
 
+  // Meta redelivers a webhook it thinks was not received. A WhatsApp message
+  // already stored must not be counted as unread again or answered again.
+  const alreadyHandled = (conversationId: string | null) => ({
+    conversationId: conversationId as string,
+    reply: null as string | null,
+    replyMessageId: null as string | null,
+    duplicate: true,
+  });
+  if (waMessageId) {
+    const { data: seen } = await supabaseAdmin
+      .from("messages")
+      .select("id, conversation_id")
+      .eq("wa_message_id", waMessageId)
+      .limit(1)
+      .maybeSingle();
+    if (seen) return alreadyHandled(seen.conversation_id ?? null);
+  }
+
   // 1. Contact — matched by identity WITHIN this tenant only.
   //
   // A customer is not one number. They message from a mobile, then the office
@@ -458,7 +476,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
   }
 
   // 3. Inbound message
-  await supabaseAdmin.from("messages").insert({
+  const { error: insertError } = await supabaseAdmin.from("messages").insert({
     conversation_id: conversation.id,
     direction: "inbound",
     sender: "contact",
@@ -466,6 +484,14 @@ export async function ingestInboundMessage(args: IngestArgs) {
     wa_message_id: waMessageId ?? null,
     tenant_id: tenantId,
   });
+  if (insertError) {
+    // Two deliveries of the same message can both pass the check above; the
+    // unique index on wa_message_id decides which one is stored. The other
+    // stops here -- this error used to be ignored, and the bot replied twice.
+    if (insertError.code === "23505" && waMessageId) return alreadyHandled(conversation.id);
+    // Never answer a message that was not saved.
+    throw new Error(`Could not store the inbound message: ${insertError.message}`);
+  }
 
   // Atomic increment — a read-then-write here would drop a count under
   // concurrent inbound messages on a busy conversation.

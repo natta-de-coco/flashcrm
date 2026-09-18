@@ -282,8 +282,26 @@ async function claimWebhookEventOnce(source: string, eventId: string): Promise<b
   const { error } = await supabaseAdmin
     .from("webhook_dedup")
     .insert({ event_source: source, event_id: eventId });
+  if (!error) return true;
   // Unique-violation (23505) means we've already processed this id.
-  return !error;
+  if (error.code === "23505") return false;
+  // Any other failure used to read as "already processed" too, so one
+  // transient database error silently lost a customer's message for good.
+  // Carry on instead: ingestInboundMessage refuses a WhatsApp message id it
+  // has already stored, so a retry still cannot be answered twice.
+  console.error("[webhook] could not record event for deduplication", source, error.code ?? "");
+  return true;
+}
+
+/** Undoes claimWebhookEventOnce when the work it guarded did not finish, so a
+ *  retry of the event can do that work instead of skipping it. */
+async function releaseWebhookEvent(source: string, eventId: string): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("webhook_dedup")
+    .delete()
+    .eq("event_source", source)
+    .eq("event_id", eventId);
+  if (error) console.error("[webhook] could not release event", source, error.code ?? "");
 }
 
 /**
@@ -357,15 +375,26 @@ export async function processWaPayload(body: WaWebhookBody) {
         if (!(await claimWebhookEventOnce("whatsapp:message", message.id))) continue;
         handled += 1;
 
-        const { conversationId, reply, replyMessageId } = await ingestInboundMessage({
-          tenantId,
-          channel: "whatsapp",
-          phone: from,
-          name: contactName,
-          text,
-          waMessageId: message.id,
-          waNumberId,
-        });
+        let ingested: Awaited<ReturnType<typeof ingestInboundMessage>>;
+        try {
+          ingested = await ingestInboundMessage({
+            tenantId,
+            channel: "whatsapp",
+            phone: from,
+            name: contactName,
+            text,
+            waMessageId: message.id,
+            waNumberId,
+          });
+        } catch (error) {
+          // Retrying this event (Monitoring -> Retry) used to skip the message
+          // as "already processed", mark the event fixed, and lose it for good.
+          // A retry cannot answer twice: ingestInboundMessage recognizes a
+          // message it already stored.
+          await releaseWebhookEvent("whatsapp:message", message.id);
+          throw error;
+        }
+        const { conversationId, reply, replyMessageId } = ingested;
 
         if (reply) {
           try {

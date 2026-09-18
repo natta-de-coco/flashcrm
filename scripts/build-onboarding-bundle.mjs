@@ -5,6 +5,7 @@ import { build } from "esbuild";
 await build({
   stdin: {
     contents: `export * from './src/lib/wa.server';
+      export * from './src/lib/monitoring.server';
       export * from './src/lib/website-knowledge';
       export * from './src/lib/website-knowledge.server';
       export * from './src/lib/secret-box.server';

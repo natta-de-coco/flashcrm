@@ -19,6 +19,7 @@ import {
   selectMetaTarget,
   selectConnectionTarget,
   saveAuthorizedConnection,
+  processWaPayload,
 } from "../node_modules/.cache/flas-onboarding.mjs";
 
 let rows, operations, failingTable;
@@ -616,5 +617,229 @@ test("customer replies receive relevant website knowledge only from the current 
   } finally {
     globalThis.fetch = originalFetch;
     delete process.env.LOVABLE_API_KEY;
+  }
+});
+
+// Meta redelivers a webhook it thinks was not received. A redelivered message
+// must not be counted as unread again or answered again: the unique index on
+// wa_message_id rejected the duplicate row, but that error was ignored and the
+// bot replied a second time.
+function watchInbound() {
+  const calls = { fetch: 0, unread: 0 };
+  const realFetch = globalThis.fetch;
+  const realRpc = db.rpc;
+  globalThis.fetch = async () => {
+    calls.fetch += 1;
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ text: "Hello!", handoff: false }) } }],
+      }),
+    );
+  };
+  db.rpc = async (name, args) => {
+    if (name === "increment_unread_count") calls.unread += 1;
+    return realRpc(name, args);
+  };
+  return {
+    calls,
+    restore() {
+      globalThis.fetch = realFetch;
+      db.rpc = realRpc;
+      delete process.env.LOVABLE_API_KEY;
+    },
+  };
+}
+
+function botReady() {
+  process.env.LOVABLE_API_KEY = "test-gateway-key";
+  rows.tenant_bot_settings = [{ tenant_id: tenant, ...botSettings }];
+}
+
+const redelivered = {
+  tenantId: tenant,
+  channel: "whatsapp",
+  phone: "+971500000000",
+  text: "Do you have this in blue?",
+  waMessageId: "wamid.redelivered",
+};
+
+test("a redelivered WhatsApp message is not counted or answered twice", async () => {
+  botReady();
+  rows.messages = [
+    { id: "m1", conversation_id: "chat", wa_message_id: "wamid.redelivered", tenant_id: tenant },
+  ];
+  const w = watchInbound();
+  try {
+    const result = await ingestInboundMessage(redelivered);
+    assert.equal(result.duplicate, true);
+    assert.equal(result.reply, null);
+    assert.equal(rows.messages.length, 1);
+    assert.equal(w.calls.fetch, 0, "the bot was not asked for a second reply");
+    assert.equal(w.calls.unread, 0, "the unread count did not go up again");
+  } finally {
+    w.restore();
+  }
+});
+
+test("two deliveries racing past the check stop at the unique index", async () => {
+  botReady();
+  const realFrom = db.from;
+  db.from = (table) => {
+    const q = realFrom(table);
+    if (table === "messages") {
+      q.insert = () => ({
+        then: (resolve, reject) =>
+          Promise.resolve({
+            data: null,
+            error: { code: "23505", message: "duplicate key value" },
+          }).then(resolve, reject),
+      });
+    }
+    return q;
+  };
+  const w = watchInbound();
+  try {
+    const result = await ingestInboundMessage(redelivered);
+    assert.equal(result.duplicate, true);
+    assert.equal(w.calls.fetch, 0);
+    assert.equal(w.calls.unread, 0);
+  } finally {
+    db.from = realFrom;
+    w.restore();
+  }
+});
+
+test("a message that could not be saved is never answered", async () => {
+  botReady();
+  const realFrom = db.from;
+  db.from = (table) => {
+    const q = realFrom(table);
+    if (table === "messages") {
+      q.insert = () => ({
+        then: (resolve, reject) =>
+          Promise.resolve({ data: null, error: { code: "XX000", message: "Unavailable" } }).then(
+            resolve,
+            reject,
+          ),
+      });
+    }
+    return q;
+  };
+  const w = watchInbound();
+  try {
+    await assert.rejects(ingestInboundMessage(redelivered), /Could not store the inbound message/);
+    assert.equal(w.calls.fetch, 0);
+  } finally {
+    db.from = realFrom;
+    w.restore();
+  }
+});
+
+// The webhook claims each message id before handling it. A claim that outlives
+// a failed attempt made the in-app Retry skip the message and report success.
+function webhookDouble() {
+  const realFrom = db.from;
+  const realRpc = db.rpc;
+  const faults = { messages: null, webhook_dedup: null };
+  // As in production: a returning number resolves to the contact it created.
+  const digits = (v) => String(v ?? "").replace(/[^0-9]/g, "");
+  db.rpc = async (name, args) => {
+    if (name !== "resolve_contact_by_identity") return realRpc(name, args);
+    const hit = (rows.contact_identities ?? []).find(
+      (r) =>
+        r.tenant_id === args._tenant_id &&
+        r.kind === args._kind &&
+        digits(r.value) === digits(args._value),
+    );
+    return { data: hit ? [{ contact_id: hit.contact_id, branch_id: null }] : [], error: null };
+  };
+  const refuse = (error) => ({
+    then: (resolve, reject) => Promise.resolve({ data: null, error }).then(resolve, reject),
+  });
+  db.from = (table) => {
+    const q = realFrom(table);
+    const insert = q.insert.bind(q);
+    q.insert = (payload) => {
+      if (faults[table]) return refuse(faults[table]);
+      // webhook_dedup's primary key, which the in-memory double does not enforce.
+      const taken =
+        table === "webhook_dedup" &&
+        (rows.webhook_dedup ?? []).some(
+          (r) => r.event_source === payload.event_source && r.event_id === payload.event_id,
+        );
+      if (taken) return refuse({ code: "23505", message: "duplicate key value" });
+      return insert(payload);
+    };
+    return q;
+  };
+  return {
+    faults,
+    restore() {
+      db.from = realFrom;
+      db.rpc = realRpc;
+    },
+  };
+}
+
+const inboundWebhook = (id) => ({
+  entry: [
+    {
+      changes: [
+        {
+          value: {
+            metadata: { phone_number_id: "pn-1" },
+            contacts: [{ profile: { name: "Sara" } }],
+            messages: [{ id, from: "971500000000", type: "text", text: { body: "In stock?" } }],
+          },
+        },
+      ],
+    },
+  ],
+});
+const storedWith = (id) => (rows.messages ?? []).filter((m) => m.wa_message_id === id);
+
+test("retrying a webhook whose message could not be saved stores it the second time", async () => {
+  rows.wa_numbers = [{ id: "num-1", tenant_id: tenant, phone_number_id: "pn-1", active: true }];
+  const w = webhookDouble();
+  try {
+    w.faults.messages = { code: "XX000", message: "Unavailable" };
+    await assert.rejects(
+      processWaPayload(inboundWebhook("wamid.retry")),
+      /Could not store the inbound message/,
+    );
+    assert.equal((rows.webhook_dedup ?? []).length, 0, "the claim was given back");
+
+    // The database recovered and someone pressed Retry on the failed event.
+    w.faults.messages = null;
+    assert.equal(await processWaPayload(inboundWebhook("wamid.retry")), 1);
+    assert.equal(storedWith("wamid.retry").length, 1);
+    assert.equal(storedWith("wamid.retry")[0].tenant_id, tenant);
+    assert.equal(rows.conversations.length, 1, "the retry reused the conversation");
+
+    // Meta delivers the same message again: skipped, still stored once.
+    assert.equal(await processWaPayload(inboundWebhook("wamid.retry")), 0);
+    assert.equal(storedWith("wamid.retry").length, 1);
+  } finally {
+    w.restore();
+  }
+});
+
+test("a transient failure recording the webhook event does not drop the message", async () => {
+  rows.wa_numbers = [{ id: "num-1", tenant_id: tenant, phone_number_id: "pn-1", active: true }];
+  const w = webhookDouble();
+  const realError = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args.join(" "));
+  try {
+    w.faults.webhook_dedup = { code: "57014", message: "statement timeout" };
+    await processWaPayload(inboundWebhook("wamid.transient"));
+    assert.equal(storedWith("wamid.transient").length, 1);
+    assert.ok(
+      logged.some((line) => line.includes("could not record event for deduplication")),
+      "the failure is logged, not silent",
+    );
+  } finally {
+    console.error = realError;
+    w.restore();
   }
 });
