@@ -195,12 +195,18 @@ export async function sealTenantSecrets(
   const configured = await encryptionConfigured();
   const report: SealReport = { configured, plaintext: 0, alreadySealed: 0, sealedNow: 0 };
 
-  const [{ data: accounts }, { data: apps }] = await Promise.all([
+  const [{ data: accounts }, { data: apps }, { data: numbers }] = await Promise.all([
     supabaseAdmin
       .from("social_accounts")
       .select("id, access_token, refresh_token")
       .eq("tenant_id", tenantId),
     supabaseAdmin.from("platform_apps").select("id, client_secret").eq("tenant_id", tenantId),
+    // Every reader of these now opens them first (wa.server, WhatsApp
+    // analytics, the number health check), so they can be sealed too.
+    supabaseAdmin
+      .from("wa_numbers")
+      .select("id, access_token, app_secret")
+      .eq("tenant_id", tenantId),
   ]);
 
   const seal = async (value: string | null): Promise<string | null> => {
@@ -245,6 +251,23 @@ export async function sealTenantSecrets(
         .eq("tenant_id", tenantId);
       if (error) throw new Error(`Could not store a sealed app secret: ${error.message}`);
       report.sealedNow++;
+    }
+  }
+
+  for (const row of numbers ?? []) {
+    const access = await seal(row.access_token);
+    const secret = await seal(row.app_secret);
+    if (access || secret) {
+      const { error } = await supabaseAdmin
+        .from("wa_numbers")
+        .update({
+          ...(access ? { access_token: access } : {}),
+          ...(secret ? { app_secret: secret } : {}),
+        })
+        .eq("id", row.id)
+        .eq("tenant_id", tenantId);
+      if (error) throw new Error(`Could not store a sealed WhatsApp credential: ${error.message}`);
+      report.sealedNow += (access ? 1 : 0) + (secret ? 1 : 0);
     }
   }
 

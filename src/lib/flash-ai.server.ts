@@ -558,11 +558,16 @@ export async function gatherMessagingAnalytics(
     const local = perNumberLocal.get(n.id) ?? { conversations: 0, unread: 0 };
     const meta: NumberAnalytics["meta"] = { ok: false, sent: 0, delivered: 0 };
     try {
+      // Stored tokens may be encrypted; sending the stored value as-is sent
+      // ciphertext to Meta. Opened here, and sent as a header rather than in
+      // the URL.
+      const { openSecret } = await import("@/lib/secret-box.server");
+      const token = await openSecret(n.access_token);
+      if (!token) throw new Error("This number has no usable access token.");
       const url =
         `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
-        `?fields=analytics.start(${start}).end(${end}).granularity(DAY)` +
-        `&access_token=${encodeURIComponent(n.access_token)}`;
-      const res = await fetch(url);
+        `?fields=analytics.start(${start}).end(${end}).granularity(DAY)`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const json = (await res.json()) as {
         analytics?: { data_points?: Array<{ sent?: number; delivered?: number }> };
         error?: { message?: string };

@@ -211,3 +211,103 @@ describe("the browser can no longer write WhatsApp credentials", () => {
     assert.doesNotMatch(grant, /access_token|app_secret/);
   });
 });
+
+describe("readers open stored WhatsApp tokens before using them", () => {
+  it("the number health check sends the opened token in a header, never the stored value", () =>
+    withKeys(async () => {
+      const mod = await import("../node_modules/.cache/flas-onboarding.mjs");
+      const sealed = await mod.sealSecret(TOKEN);
+      assert.match(sealed, /^enc:v1:/);
+      const numbers = [
+        {
+          id: "n1",
+          label: "Main",
+          display_phone: "+971",
+          phone_number_id: "112233445566778",
+          access_token: sealed,
+          active: true,
+          is_default: true,
+          alerts_enabled: false,
+        },
+      ];
+      const chain = (rows) => {
+        const q = {
+          select: () => q,
+          eq: () => q,
+          in: () => q,
+          gte: () => q,
+          order: () => Promise.resolve({ data: rows, error: null }),
+          then: (resolve, reject) =>
+            Promise.resolve({ data: [], count: 0, error: null }).then(resolve, reject),
+        };
+        return q;
+      };
+      globalThis.onboardingDb = {
+        from: (table) => chain(table === "wa_numbers" ? numbers : []),
+      };
+      const calls = [];
+      const realFetch = globalThis.fetch;
+      globalThis.fetch = async (url, init) => {
+        calls.push({ url: String(url), auth: init?.headers?.Authorization });
+        return new Response(JSON.stringify({ quality_rating: "GREEN", analytics: {} }), {
+          status: 200,
+        });
+      };
+      try {
+        const out = await mod.getMetaSyncHealth({
+          context: { supabase: { rpc: async () => ({ data: "tenant-a" }) } },
+        });
+        assert.equal(out.numbers[0].apiOk, true);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+      assert.ok(calls.length > 0);
+      for (const call of calls) {
+        assert.equal(call.auth, `Bearer ${TOKEN}`);
+        assert.doesNotMatch(call.url, /access_token=/);
+        assert.ok(!call.url.includes("enc:v1"));
+      }
+    }));
+
+  it("WhatsApp analytics opens the token and keeps it out of the URL", () => {
+    const src = readFileSync("src/lib/flash-ai.server.ts", "utf8");
+    assert.match(src, /openSecret\(n\.access_token\)/);
+    assert.doesNotMatch(src, /access_token=\$\{encodeURIComponent\(n\.access_token\)\}/);
+  });
+});
+
+describe("Encrypt now covers WhatsApp numbers", () => {
+  it("seals plaintext WhatsApp tokens and app secrets for the workspace", () =>
+    withKeys(async () => {
+      const mod = await import("../node_modules/.cache/flas-onboarding.mjs");
+      const tables = {
+        social_accounts: [],
+        platform_apps: [],
+        wa_numbers: [
+          { id: "n1", tenant_id: "tenant-a", access_token: TOKEN, app_secret: APP_SECRET },
+        ],
+      };
+      const updates = [];
+      globalThis.onboardingDb = {
+        from(table) {
+          const q = {
+            select: () => q,
+            eq: () => q,
+            update(patch) {
+              updates.push({ table, patch });
+              return { eq: () => ({ eq: async () => ({ error: null }) }) };
+            },
+            then: (resolve, reject) =>
+              Promise.resolve({ data: tables[table] ?? [], error: null }).then(resolve, reject),
+          };
+          return q;
+        },
+      };
+      const report = await mod.sealTenantSecrets("tenant-a");
+      assert.equal(report.sealedNow, 2);
+      const wa = updates.find((u) => u.table === "wa_numbers");
+      assert.match(wa.patch.access_token, /^enc:v1:/);
+      assert.match(wa.patch.app_secret, /^enc:v1:/);
+      assert.equal(await mod.openSecret(wa.patch.access_token), TOKEN);
+    }));
+});
