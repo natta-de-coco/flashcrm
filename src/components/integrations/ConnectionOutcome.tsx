@@ -9,6 +9,8 @@ import {
   selectMetaTarget,
   testSocialConnection,
 } from "@/lib/social-doctor.functions";
+import { CONNECTORS } from "@/lib/connections-catalog";
+import { outcomeCopy } from "@/lib/oauth-outcome";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle } from "lucide-react";
@@ -35,7 +37,22 @@ export type ConnectionOutcomeSearch = {
   connect_detail?: string;
   connect_help?: string;
   select_target?: string;
+  /** The platform whose sign-in the person cancelled. */
+  connect_cancelled?: string;
+  /** Why sign-in did not finish: expired, incomplete or provider_refused. */
+  connect_code?: string;
+  /** The platform a failed sign-in was for. */
+  connect_platform?: string;
 };
+
+/**
+ * A platform id from the URL, as a name. Only known connector ids are shown;
+ * anything else reads as "the provider", so a crafted link cannot put its own
+ * words on this screen.
+ */
+function platformName(id: string | undefined): string {
+  return CONNECTORS.find((c) => c.id === id)?.name ?? "the provider";
+}
 
 /**
  * Connectors whose login can manage several channels and is served by
@@ -72,11 +89,14 @@ export function ConnectionOutcome({
   accounts,
   onChanged,
   onDismiss,
+  onRetry,
 }: {
   search: ConnectionOutcomeSearch;
   accounts: Account[];
   onChanged: () => void;
   onDismiss: () => void;
+  /** Starts sign-in again for a platform, offered after a cancel. */
+  onRetry?: ((platform: string) => void) | undefined;
 }) {
   const blocked = search.connect_blocked;
   const errored = search.connect_error;
@@ -86,7 +106,34 @@ export function ConnectionOutcome({
   const pendingId =
     search.select_target && search.select_target !== "1" ? search.select_target : null;
 
-  if (!blocked && !errored && !connected) return null;
+  const cancelled = search.connect_cancelled;
+  if (!blocked && !errored && !connected && !cancelled) return null;
+
+  if (cancelled) {
+    const name = platformName(cancelled);
+    const known = CONNECTORS.some((c) => c.id === cancelled);
+    return (
+      <Alert className="mt-4">
+        <AlertTitle>Sign-in to {name} was cancelled</AlertTitle>
+        <AlertDescription className="space-y-3">
+          <p>
+            Sign-in stopped before FLAS got access, so nothing was connected or changed. You can try
+            again whenever you are ready.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {onRetry && known && (
+              <Button size="sm" onClick={() => onRetry(cancelled)}>
+                Try again
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={onDismiss}>
+              Dismiss
+            </Button>
+          </div>
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   // The account the callback just created, so the picker knows what to act
   // on. By id first: once several channels per platform can be connected, the
@@ -128,12 +175,11 @@ export function ConnectionOutcome({
     return (
       <Alert variant="destructive" className="mt-4">
         <XCircle className="size-4" />
-        <AlertTitle>Connection failed</AlertTitle>
+        <AlertTitle>
+          {outcomeCopy(search.connect_code, platformName(search.connect_platform)).title}
+        </AlertTitle>
         <AlertDescription className="space-y-3">
-          <p>
-            Sign-in could not be completed. Please try connecting again. If this keeps happening,
-            ask a FLAS administrator to check the connection.
-          </p>
+          <p>{outcomeCopy(search.connect_code, platformName(search.connect_platform)).message}</p>
           <Button size="sm" variant="outline" onClick={onDismiss}>
             Dismiss
           </Button>
@@ -522,6 +568,9 @@ export function parseConnectionOutcomeSearch(
     "connect_reason",
     "connect_error",
     "select_target",
+    "connect_cancelled",
+    "connect_code",
+    "connect_platform",
   ] as const;
   return Object.fromEntries(
     keys

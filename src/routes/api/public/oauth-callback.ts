@@ -1,6 +1,7 @@
 // Platform OAuth redirect target. The caller is authenticated by the
 // single-use, unguessable state row created when the flow started — no session
 // is required, and no code is trusted without a matching live state.
+import { isUserCancellation } from "@/lib/oauth-outcome";
 import { createFileRoute } from "@tanstack/react-router";
 import { capabilityCeiling } from "@/lib/social-connector-definitions";
 
@@ -87,11 +88,15 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
         const origin = url.origin;
         const state = url.searchParams.get("state") ?? "";
         const code = url.searchParams.get("code") ?? "";
-        const denied = url.searchParams.get("error_description") ?? url.searchParams.get("error");
+        const providerError = url.searchParams.get("error");
+        const denied = url.searchParams.get("error_description") ?? providerError;
 
         if (!state) {
           await auditOutcome("failed", null, null, null, "No state parameter in the callback");
-          return back(origin, { connect_error: "Authorization response was incomplete." });
+          return back(origin, {
+            connect_error: "Authorization response was incomplete.",
+            connect_code: "incomplete",
+          });
         }
 
         const {
@@ -112,6 +117,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           );
           return back(origin, {
             connect_error: "This authorization link expired. Please start the connection again.",
+            connect_code: "expired",
           });
         }
         if (denied || !code) {
@@ -128,8 +134,15 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
               ? `Provider refused or the user declined: ${String(denied).slice(0, 200)}`
               : "Provider returned no authorization code",
           );
+          // Pressing Cancel is a choice, not a failure: it gets its own calm
+          // outcome instead of "Connection failed -- ask an administrator".
+          if (denied && isUserCancellation(providerError, url.searchParams.get("error_reason"))) {
+            return back(origin, { connect_cancelled: row.platform });
+          }
           return back(origin, {
             connect_error: `Authorization was not completed for ${row.platform.replace(/_/g, " ")}.`,
+            connect_code: denied ? "provider_refused" : "incomplete",
+            connect_platform: row.platform,
           });
         }
 
