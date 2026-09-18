@@ -336,6 +336,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
       .from("messages")
       .select("id, conversation_id")
       .eq("wa_message_id", waMessageId)
+      .eq("tenant_id", tenantId)
       .limit(1)
       .maybeSingle();
     if (seen) return alreadyHandled(seen.conversation_id ?? null);
