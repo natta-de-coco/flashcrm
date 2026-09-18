@@ -15,6 +15,30 @@ type OrgSync = {
   subscriptionId?: string;
 };
 
+/**
+ * Paddle delivers an event again until it gets a 2xx. A failed write must fail
+ * the delivery: answering 200 told Paddle the payment was recorded, so a
+ * company that paid could stay unactivated with nothing left to retry. Every
+ * write below sets state rather than adding to it, so applying a redelivered
+ * event again is harmless.
+ */
+function mustSucceed(error: { message: string } | null, what: string): void {
+  if (error) throw new Error(`Could not ${what}: ${error.message}`);
+}
+
+/**
+ * Paddle does not promise delivery order, so a change can arrive before the
+ * subscription.created that records the subscription. Failing it makes Paddle
+ * deliver it again after that has been processed, instead of dropping the
+ * change. Only for a subscription started from FLAS checkout (it carries our
+ * userId) and created recently: an old one FLAS never recorded will not
+ * appear by waiting.
+ */
+function awaitingCreation(data: any): boolean {
+  const createdAt = Date.parse(data?.createdAt ?? "");
+  return Boolean(data?.customData?.userId) && Date.now() - createdAt < 60 * 60 * 1000;
+}
+
 async function syncOrganization(sync: OrgSync) {
   const tenantId = sync.tenantId;
   if (!tenantId) return;
@@ -42,7 +66,8 @@ async function syncOrganization(sync: OrgSync) {
     patch.suspended = true;
   }
   if (sync.periodEnd) patch.subscription_renews_at = sync.periodEnd;
-  await supabaseAdmin.from("organizations").update(patch).eq("id", tenantId);
+  const { error } = await supabaseAdmin.from("organizations").update(patch).eq("id", tenantId);
+  mustSucceed(error, "update the company's subscription");
 
   const { logAudit } = await import("@/lib/audit.server");
   await logAudit({
@@ -74,7 +99,7 @@ async function handleSubscriptionCreated(data: any, env: PaddleEnv) {
   }
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  await supabaseAdmin.from("subscriptions").upsert(
+  const { error: saveError } = await supabaseAdmin.from("subscriptions").upsert(
     {
       user_id: userId,
       paddle_subscription_id: id,
@@ -89,6 +114,7 @@ async function handleSubscriptionCreated(data: any, env: PaddleEnv) {
     },
     { onConflict: "paddle_subscription_id" },
   );
+  mustSucceed(saveError, "save the subscription");
 
   // Derive the tenant from the subscriber's own profile server-side, never
   // from customData.tenantId directly — customData is set client-side when
@@ -96,11 +122,14 @@ async function handleSubscriptionCreated(data: any, env: PaddleEnv) {
   // checkout at an arbitrary tenantId and have this handler apply someone
   // else's subscription status to their organization. userId is used only
   // to look up the real tenant; the client-supplied tenantId is ignored.
-  const { data: profile } = await supabaseAdmin
+  const { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles")
     .select("tenant_id")
     .eq("id", userId)
     .maybeSingle();
+  // A failed lookup used to read as "no company", so the payment was
+  // acknowledged and never applied.
+  mustSucceed(profileError, "find the subscriber's company");
 
   await syncOrganization({
     tenantId: profile?.tenant_id ?? undefined,
@@ -116,7 +145,7 @@ async function handleSubscriptionUpdated(data: any, env: PaddleEnv) {
   const { id, status, currentBillingPeriod, scheduledChange, items } = data;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-  const { data: row } = await supabaseAdmin
+  const { data: row, error } = await supabaseAdmin
     .from("subscriptions")
     .update({
       status,
@@ -129,14 +158,17 @@ async function handleSubscriptionUpdated(data: any, env: PaddleEnv) {
     .eq("environment", env)
     .select("user_id")
     .maybeSingle();
+  mustSucceed(error, "update the subscription");
+  if (!row && awaitingCreation(data)) throw new Error(`Subscription ${id} is not recorded yet`);
 
   // Mirror onto the company row via the subscriber's profile tenant.
   if (row?.user_id) {
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("tenant_id")
       .eq("id", row.user_id)
       .maybeSingle();
+    mustSucceed(profileError, "find the subscriber's company");
     await syncOrganization({
       tenantId: profile?.tenant_id ?? undefined,
       status,
@@ -149,20 +181,24 @@ async function handleSubscriptionUpdated(data: any, env: PaddleEnv) {
 
 async function handleSubscriptionCanceled(data: any, env: PaddleEnv) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data: row } = await supabaseAdmin
+  const { data: row, error } = await supabaseAdmin
     .from("subscriptions")
     .update({ status: "canceled", updated_at: new Date().toISOString() })
     .eq("paddle_subscription_id", data.id)
     .eq("environment", env)
     .select("user_id")
     .maybeSingle();
+  mustSucceed(error, "cancel the subscription");
+  if (!row && awaitingCreation(data))
+    throw new Error(`Subscription ${data.id} is not recorded yet`);
 
   if (row?.user_id) {
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("tenant_id")
       .eq("id", row.user_id)
       .maybeSingle();
+    mustSucceed(profileError, "find the subscriber's company");
     await syncOrganization({
       tenantId: profile?.tenant_id ?? undefined,
       status: "canceled",
@@ -176,22 +212,25 @@ async function handlePaymentFailed(data: any) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const subscriptionId = data.subscriptionId ?? data.subscription_id;
   if (!subscriptionId) return;
-  const { data: row } = await supabaseAdmin
+  const { data: row, error } = await supabaseAdmin
     .from("subscriptions")
     .select("user_id")
     .eq("paddle_subscription_id", subscriptionId)
     .maybeSingle();
+  mustSucceed(error, "find the subscription");
   if (!row?.user_id) return;
-  const { data: profile } = await supabaseAdmin
+  const { data: profile, error: profileError } = await supabaseAdmin
     .from("profiles")
     .select("tenant_id")
     .eq("id", row.user_id)
     .maybeSingle();
+  mustSucceed(profileError, "find the subscriber's company");
   if (profile?.tenant_id) {
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from("organizations")
       .update({ subscription_status: "past_due" })
       .eq("id", profile.tenant_id);
+    mustSucceed(updateError, "mark the company past due");
   }
   const { raiseAlert } = await import("@/lib/monitoring.server");
   await raiseAlert({
@@ -213,8 +252,14 @@ export const Route = createFileRoute("/api/public/payments/webhook")({
         const env = (
           (process.env["PADDLE_ENV"] ?? "sandbox").toLowerCase() === "live" ? "live" : "sandbox"
         ) as PaddleEnv;
+        let event: Awaited<ReturnType<typeof verifyWebhook>>;
         try {
-          const event = await verifyWebhook(request, env);
+          event = await verifyWebhook(request, env);
+        } catch (e) {
+          console.error("Webhook error:", e);
+          return new Response("Webhook error", { status: 400 });
+        }
+        try {
           switch (event.eventType) {
             case EventName.SubscriptionCreated:
               await handleSubscriptionCreated(event.data, env);
@@ -233,8 +278,20 @@ export const Route = createFileRoute("/api/public/payments/webhook")({
           }
           return Response.json({ received: true });
         } catch (e) {
-          console.error("Webhook error:", e);
-          return new Response("Webhook error", { status: 400 });
+          // Not acknowledged, so Paddle delivers the event again.
+          console.error("Payment event could not be recorded:", e);
+          try {
+            const { raiseAlert } = await import("@/lib/monitoring.server");
+            await raiseAlert({
+              title: "Payment event could not be recorded",
+              message: `${event.eventType}: Paddle will deliver it again. ${e instanceof Error ? e.message : ""}`,
+              severity: "critical",
+              source: "billing",
+            });
+          } catch {
+            // The retry still happens; the alert is only a courtesy.
+          }
+          return new Response("Webhook processing failed", { status: 500 });
         }
       },
     },
