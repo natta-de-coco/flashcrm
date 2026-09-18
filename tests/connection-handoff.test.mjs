@@ -38,6 +38,9 @@ function harness({
   connectors,
   blockers = [],
   accounts = [],
+  // FLAS staff by default: most tests here exercise the diagnostics path.
+  auth = { isAdmin: true, isSuperAdmin: true },
+  setupOwner = status === "ADMIN_SETUP_REQUIRED" ? "flas" : null,
 } = {}) {
   const state = [],
     requests = [],
@@ -54,7 +57,15 @@ function harness({
     group: "social",
   };
   const catalog = connectors ?? [connector];
-  const rows = catalog.map((c) => ({ ...c, status, checks: {}, credentials: {}, blockers }));
+  const rows = catalog.map((c) => ({
+    ...c,
+    status,
+    setupOwner,
+    source: "shared",
+    checks: {},
+    credentials: {},
+    blockers,
+  }));
   const start = async (request) => {
     requests.push(request);
     return result;
@@ -108,7 +119,7 @@ function harness({
       },
     },
     "@tanstack/react-start": { useServerFn: (fn) => fn },
-    "@/hooks/useAuth": { useAuth: () => ({ isAdmin: true }) },
+    "@/hooks/useAuth": { useAuth: () => auth },
     "@/lib/connections-catalog": { CONNECTORS: catalog },
     "@/lib/credential-handoff": credentialHandoff,
     "@/lib/connections.functions": { startConnect: start },
@@ -117,6 +128,14 @@ function harness({
       OAUTH_REDIRECT_PATH: "/api/public/oauth-callback",
     },
     "@/lib/provider-setup-links": { providerSetup: () => null },
+    "@/components/integrations/connector-icons": {
+      connectorIcon: () => ({ icon: "Icon", tint: "" }),
+    },
+    "@/lib/social-connector-definitions": {
+      connectorDefinition: () => null,
+      resolveAllCapabilities: () => [],
+      CAPABILITY_LABELS: {},
+    },
   };
   const exports = {};
   runInNewContext(compiled, {
@@ -319,4 +338,93 @@ test("a pending connection is never counted as connected", () => {
     (n) => n.type?.name === "StatCard" && n.props.label === "Connected",
   );
   assert.equal(connected.props.value, 0);
+});
+
+const COMPANY_OWNER = { isAdmin: true, isSuperAdmin: false };
+const MEMBER = { isAdmin: false, isSuperAdmin: false };
+
+/** A marketplace card's own button, rendered. */
+function cardButton(h, id) {
+  const card = nodes(h.render()).find(
+    (n) => n.type?.name === "MarketplaceCard" && n.props.connector.id === id,
+  );
+  return nodes(card.type(card.props)).find((n) => n.type === "Button");
+}
+const text = (node) =>
+  [node?.props?.children ?? ""]
+    .flat(Infinity)
+    .filter((c) => typeof c === "string" || typeof c === "number")
+    .join("")
+    .trim();
+const mentions = (tree, words) =>
+  nodes(tree).some((n) => n.type === "Button" && text(n).includes(words));
+
+test("a new company owner gets Continue with Facebook and never sees FLAS's setup screens", async () => {
+  const h = harness({ status: "READY", connectors: [FACEBOOK], auth: COMPANY_OWNER });
+  const screen = h.render();
+  assert.equal(h.find(screen, "ProviderReadiness"), undefined, "no diagnostics dialog");
+  assert.equal(mentions(screen, "Admin diagnostics"), false);
+  const button = cardButton(h, "facebook");
+  assert.equal(text(button), "Continue with Facebook");
+  assert.equal(button.props.disabled, false);
+  button.props.onClick();
+  await h.flush();
+  assert.equal(h.requests[0].data.platform, "facebook");
+  assert.deepEqual(h.redirects, ["https://provider.example/login"]);
+});
+
+test("while FLAS finishes setup, a company owner is told there is nothing to do", () => {
+  const h = harness({ connectors: [FACEBOOK], auth: COMPANY_OWNER });
+  const button = cardButton(h, "facebook");
+  assert.equal(text(button), "Available soon");
+  assert.equal(button.props.disabled, true);
+  // Even if the card is reached some other way, no setup screen opens.
+  const card = nodes(h.render()).find((n) => n.type?.name === "MarketplaceCard");
+  card.props.onConnect();
+  const screen = h.render();
+  const problem = h.find(screen, "Problem");
+  assert.equal(problem.props.calm, true);
+  assert.match(problem.props.message, /nothing you need to do/);
+  assert.equal(problem.props.onAdmin, undefined);
+  // Built inside the screen's sandbox, so compare by length, not identity.
+  assert.equal(problem.props.blockers.length, 0);
+  assert.equal(h.find(screen, "CredentialsStep"), undefined);
+  assert.equal(h.requests.length, 0);
+});
+
+test("a member sees the same calm state", () => {
+  const h = harness({ connectors: [FACEBOOK], auth: MEMBER });
+  const button = cardButton(h, "facebook");
+  assert.equal(text(button), "Available soon");
+  assert.equal(button.props.disabled, true);
+  assert.equal(h.find(h.render(), "WorkspaceApps"), undefined, "no advanced settings");
+});
+
+test("a refused start reads as calm for a company owner", async () => {
+  const h = harness({
+    status: "READY",
+    connectors: [FACEBOOK],
+    auth: COMPANY_OWNER,
+    result: { ready: false },
+  });
+  cardButton(h, "facebook").props.onClick();
+  await h.flush();
+  const problem = h.find(h.render(), "Problem");
+  assert.equal(problem.props.calm, true);
+  assert.match(problem.props.message, /Facebook isn't available to connect yet/);
+  assert.equal(problem.props.onAdmin, undefined);
+  assert.deepEqual(h.redirects, []);
+});
+
+test("a company admin can still bring its own app, from Advanced settings only", async () => {
+  const h = harness({ status: "READY", connectors: [FACEBOOK, INSTAGRAM], auth: COMPANY_OWNER });
+  const apps = h.find(h.render(), "WorkspaceApps");
+  // One Meta app serves Facebook and Instagram: offered once.
+  const offered = nodes(apps.type(apps.props)).filter((n) => n.type === "Button");
+  assert.equal(offered.length, 1);
+  assert.equal(text(offered[0]), "Use your own app");
+  apps.props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.flush();
+  assert.equal(h.requests[0].data.platform, "facebook");
 });

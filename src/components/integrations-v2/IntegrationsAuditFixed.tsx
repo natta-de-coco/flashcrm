@@ -44,6 +44,7 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  Clock,
   Copy,
   ExternalLink,
   KeyRound,
@@ -125,7 +126,10 @@ export function IntegrationsAuditFixed({
   search?: ConnectionOutcomeSearch;
   onDismiss?: () => void;
 }) {
-  const { isAdmin } = useAuth();
+  // Company owners are admins of their workspace, not of FLAS: they get
+  // Continue with Facebook, never FLAS's server diagnostics. Those are for
+  // FLAS staff (super admins) only.
+  const { isAdmin, isSuperAdmin } = useAuth();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
@@ -148,7 +152,12 @@ export function IntegrationsAuditFixed({
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
   const [connecting, setConnecting] = useState<string | null>(null);
   const starting = useRef(false);
-  const [blocked, setBlocked] = useState<{ platform: string; message: string } | null>(null);
+  const [blocked, setBlocked] = useState<{
+    platform: string;
+    message: string;
+    /** Nothing for this person to do: FLAS itself is finishing setup. */
+    calm?: boolean;
+  } | null>(null);
 
   const allAccounts = (connections.data?.accounts ?? []) as Account[];
   const accounts = allAccounts.filter((a) => a.active && a.external_id);
@@ -185,11 +194,15 @@ export function IntegrationsAuditFixed({
       setConnecting(null);
       if (!result.ready) {
         void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
-        setBlocked({
-          platform,
-          message:
-            "This connection is temporarily unavailable while administrator setup is completed.",
-        });
+        setBlocked(
+          isSuperAdmin
+            ? {
+                platform,
+                message:
+                  "This connection is temporarily unavailable while administrator setup is completed.",
+              }
+            : { platform, calm: true, message: notYetMessage(platformName(platform)) },
+        );
         return;
       }
       window.location.assign(result.url);
@@ -200,7 +213,7 @@ export function IntegrationsAuditFixed({
       void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
       setBlocked({
         platform,
-        message: "The connection could not start. Please try again or ask an administrator.",
+        message: "The connection could not start. Please try again in a moment.",
       });
     },
   });
@@ -242,13 +255,18 @@ export function IntegrationsAuditFixed({
     const row = readinessMap.get(connector.id);
     if (!row) return;
     if (row.status === "ADMIN_SETUP_REQUIRED") {
-      if (isAdmin && (connector.oauth || connector.id === "whatsapp")) {
+      if (isSuperAdmin && (connector.oauth || connector.id === "whatsapp")) {
         openDiagnostics(connector.id);
-      } else {
+      } else if (row.setupOwner === "workspace") {
         setBlocked({
           platform: connector.id,
-          message: "This integration needs administrator setup before it can connect.",
+          message: isAdmin
+            ? (row.blockers.find((b) => b.severity === "BLOCKING")?.userMessage ??
+              `${connector.name} needs one more step from your workspace.`)
+            : `Ask your workspace admin to finish setting up ${connector.name}.`,
         });
+      } else {
+        setBlocked({ platform: connector.id, calm: true, message: notYetMessage(connector.name) });
       }
       return;
     }
@@ -288,7 +306,7 @@ export function IntegrationsAuditFixed({
             description="Connect the tools your team uses and manage every account from one clear place."
           />
           <div className="flex flex-wrap gap-2">
-            {isAdmin && (
+            {isSuperAdmin && (
               <Button
                 variant="outline"
                 onClick={() => {
@@ -331,8 +349,9 @@ export function IntegrationsAuditFixed({
         {blocked && !marketplaceOpen && (
           <Problem
             message={blocked.message}
-            blockers={isAdmin ? actionableBlockers(readinessMap.get(blocked.platform)) : []}
-            onAdmin={isAdmin ? () => openDiagnostics(null) : undefined}
+            calm={blocked.calm}
+            blockers={isSuperAdmin ? actionableBlockers(readinessMap.get(blocked.platform)) : []}
+            onAdmin={isSuperAdmin ? () => openDiagnostics(null) : undefined}
           />
         )}
         <ConnectionOutcome
@@ -491,6 +510,14 @@ export function IntegrationsAuditFixed({
           <details id="channel-setup" className="rounded-xl border p-4">
             <summary className="cursor-pointer font-medium">Advanced admin settings</summary>
             <div className="mt-4 space-y-4">
+              <WorkspaceApps
+                rows={rows}
+                onConfigure={(id) => {
+                  setBlocked(null);
+                  setSetupReturnTo(null);
+                  setCredentialsFor(id);
+                }}
+              />
               <IntegrationSettings />
               <IntegrationLogs />
             </div>
@@ -550,7 +577,8 @@ export function IntegrationsAuditFixed({
           {blocked && (
             <Problem
               message={blocked.message}
-              onAdmin={isAdmin ? () => openDiagnostics(null) : undefined}
+              calm={blocked.calm}
+              onAdmin={isSuperAdmin ? () => openDiagnostics(null) : undefined}
             />
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -561,6 +589,7 @@ export function IntegrationsAuditFixed({
                 readiness={readinessMap.get(connector.id) ?? null}
                 connecting={connecting === connector.id}
                 isAdmin={isAdmin}
+                isSuperAdmin={isSuperAdmin}
                 onConnect={() => openConnector(connector)}
               />
             ))}
@@ -568,24 +597,26 @@ export function IntegrationsAuditFixed({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isAdmin && providerSetupOpen} onOpenChange={setProviderSetupOpen}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Admin diagnostics</DialogTitle>
-            <DialogDescription>
-              Admin-only readiness. A provider is Ready only when credentials, origin and secure
-              token storage all pass. Available means sign-in can start; your account is connected
-              only after you sign in and choose its Page or channel.
-            </DialogDescription>
-          </DialogHeader>
-          <ProviderReadiness
-            rows={rows}
-            onConfigure={(id) => setCredentialsFor(id)}
-            onConnect={beginConnect}
-            connecting={connect.isPending}
-          />
-        </DialogContent>
-      </Dialog>
+      {isSuperAdmin && (
+        <Dialog open={providerSetupOpen} onOpenChange={setProviderSetupOpen}>
+          <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Admin diagnostics</DialogTitle>
+              <DialogDescription>
+                Admin-only readiness. A provider is Ready only when credentials, origin and secure
+                token storage all pass. Available means sign-in can start; your account is connected
+                only after you sign in and choose its Page or channel.
+              </DialogDescription>
+            </DialogHeader>
+            <ProviderReadiness
+              rows={rows}
+              onConfigure={(id) => setCredentialsFor(id)}
+              onConnect={beginConnect}
+              connecting={connect.isPending}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Dialog
         open={isAdmin && Boolean(credentialsFor)}
@@ -639,12 +670,28 @@ function Problem({
   message,
   onAdmin,
   blockers = [],
+  calm = false,
 }: {
   message: string;
   onAdmin: (() => void) | undefined;
-  /** Administrators see exactly what is missing; members never do. */
+  /** FLAS staff see exactly what is missing; companies never do. */
   blockers?: ReadinessBlocker[];
+  /** Nothing for this person to do: say so without a warning. */
+  calm?: boolean | undefined;
 }) {
+  if (calm) {
+    return (
+      <div role="status" className="rounded-xl border bg-muted/40 p-4">
+        <div className="flex gap-3">
+          <Clock className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <div>
+            <p className="font-medium">Not available to connect yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rounded-xl border border-amber-300/60 bg-amber-50/60 p-4 dark:bg-amber-950/10">
       <div className="flex gap-3">
@@ -834,10 +881,19 @@ function CopyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatusBadge({ row }: { row: IntegrationReadinessRow }) {
+function StatusBadge({
+  row,
+  forCompany = false,
+}: {
+  row: IntegrationReadinessRow;
+  /** Seen by a company rather than FLAS staff. */
+  forCompany?: boolean;
+}) {
   if (row.status === "READY") return <Badge>Available</Badge>;
   if (row.status === "LIMITED") return <Badge variant="secondary">Limited</Badge>;
   if (row.status === "COMING_SOON") return <Badge variant="outline">Coming soon</Badge>;
+  if (forCompany && row.setupOwner !== "workspace")
+    return <Badge variant="secondary">Available soon</Badge>;
   return <Badge variant="secondary">Setup needed</Badge>;
 }
 
@@ -846,29 +902,39 @@ function MarketplaceCard({
   readiness,
   connecting,
   isAdmin,
+  isSuperAdmin = false,
   onConnect,
 }: {
   connector: Connector;
   readiness: IntegrationReadinessRow | null;
   connecting: boolean;
   isAdmin: boolean;
+  isSuperAdmin?: boolean;
   onConnect: () => void;
 }) {
   const { icon: Icon, tint } = connectorIcon(connector.id);
   const status =
     readiness?.status ?? (connector.unavailableReason ? "COMING_SOON" : "ADMIN_SETUP_REQUIRED");
+  const setupNeeded = status === "ADMIN_SETUP_REQUIRED";
+  // A step the company takes itself (only its admins can); anything else is
+  // FLAS finishing its own setup, which nobody in the company can fix.
+  const workspaceStep = setupNeeded && readiness?.setupOwner === "workspace";
   const disabled =
     !readiness ||
     connecting ||
     status === "COMING_SOON" ||
-    (status === "ADMIN_SETUP_REQUIRED" && !isAdmin);
+    (setupNeeded && !isSuperAdmin && !(workspaceStep && isAdmin));
   const action =
     status === "COMING_SOON"
       ? "Coming soon"
-      : status === "ADMIN_SETUP_REQUIRED"
-        ? isAdmin
+      : setupNeeded
+        ? isSuperAdmin
           ? "Fix setup"
-          : "Temporarily unavailable"
+          : workspaceStep
+            ? isAdmin
+              ? `Set up ${connector.name}`
+              : "Ask your admin to set this up"
+            : "Available soon"
         : connector.oauth
           ? `Continue with ${connector.provider === "meta" ? "Facebook" : connector.provider === "google" ? "Google" : connector.name}`
           : `Open ${connector.name}`;
@@ -880,7 +946,7 @@ function MarketplaceCard({
             <Icon className={`size-5 ${tint}`} />
           </span>
           {readiness ? (
-            <StatusBadge row={readiness} />
+            <StatusBadge row={readiness} forCompany={!isSuperAdmin} />
           ) : (
             <Badge variant="secondary">Checking</Badge>
           )}
@@ -914,7 +980,7 @@ function MarketplaceCard({
         <div className="mt-auto pt-2">
           <Button
             className="w-full"
-            variant={status === "ADMIN_SETUP_REQUIRED" ? "outline" : "default"}
+            variant={setupNeeded ? "outline" : "default"}
             onClick={onConnect}
             disabled={disabled}
           >
@@ -1065,6 +1131,75 @@ function StatCard({
                 : "bg-muted-foreground/30"
           }`}
         />
+      </CardContent>
+    </Card>
+  );
+}
+
+function platformName(id: string): string {
+  return CONNECTORS.find((c) => c.id === id)?.name ?? "This integration";
+}
+
+/** What a company is told while FLAS itself finishes setting a connection up. */
+function notYetMessage(name: string): string {
+  return `${name} isn't available to connect yet. FLAS is finishing its setup, so there is nothing you need to do. Please check back soon.`;
+}
+
+/**
+ * Optional: a company can connect through its own provider app instead of the
+ * FLAS one. Kept in Advanced settings on purpose, because nearly every company
+ * should simply use Continue with Facebook.
+ */
+function WorkspaceApps({
+  rows,
+  onConfigure,
+}: {
+  rows: IntegrationReadinessRow[];
+  onConfigure: (id: string) => void;
+}) {
+  const families: IntegrationReadinessRow[] = [];
+  for (const row of rows) {
+    if (!row.oauth || !row.provider || row.status === "COMING_SOON") continue;
+    if (!families.some((f) => f.provider === row.provider)) families.push(row);
+  }
+  if (families.length === 0) return null;
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Use your own developer app (optional)</CardTitle>
+        <CardDescription>
+          Most companies never need this: FLAS connects through its own app, so Continue with
+          Facebook just works. Add your own app only if your company must use it. Accounts already
+          connected through a different app may need to be reconnected.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {families.map((row) => (
+          <div
+            key={row.provider}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"
+          >
+            <div className="min-w-0">
+              <p className="font-medium">{row.providerName ?? row.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {rows
+                  .filter((r) => r.provider === row.provider && r.status !== "COMING_SOON")
+                  .map((r) => r.name)
+                  .join(", ")}
+                {" · "}
+                {row.source === "workspace"
+                  ? "Using your own app"
+                  : row.source === "shared"
+                    ? "Using the FLAS app"
+                    : "Not available yet"}
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => onConfigure(row.id)}>
+              <KeyRound className="mr-1.5 size-3.5" />
+              {row.source === "workspace" ? "Update your app keys" : "Use your own app"}
+            </Button>
+          </div>
+        ))}
       </CardContent>
     </Card>
   );

@@ -50,7 +50,9 @@ describe("integration readiness", () => {
 
   test("normal-user readiness does not return raw environment key names", async () => {
     const source = await read("src/lib/integration-readiness.functions.ts");
-    assert.match(source, /missing: isAdmin/);
+    assert.match(source, /missing: seesPlatform/);
+    // Only FLAS staff: a company owner is an admin of their workspace, not of FLAS.
+    assert.match(source, /const seesPlatform = role === "super_admin";/);
   });
 
   test("the Integrations route uses the audit-fixed readiness UI", async () => {
