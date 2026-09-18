@@ -127,7 +127,18 @@ describe("Business Profile: the locations a Google account manages", () => {
       () => listConnectionTargets("google_business", "tok"),
     );
     assert.equal(result.ok, false);
-    assert.match(result.reason, /HTTP 429/);
+    assert.match(result.reason, /Google has not yet approved Business Profile API access/);
+    assert.match(result.diagnostic, /HTTP 429/);
+  });
+
+  it("separates Google's technical refusal from the customer action", async () => {
+    const { result } = await withFetch(
+      () => json(403, {}),
+      () => listConnectionTargets("google_business", "tok"),
+    );
+    assert.equal(result.ok, false);
+    assert.match(result.reason, /enable both Business Profile APIs/);
+    assert.match(result.diagnostic, /HTTP 403/);
   });
 });
 

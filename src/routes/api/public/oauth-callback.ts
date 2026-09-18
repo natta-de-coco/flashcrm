@@ -237,13 +237,20 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
               await import("@/lib/connection-targets.server");
             const listed = await listConnectionTargets(platform, tokens.token);
             if (!listed.ok || listed.targets.length === 0) {
-              const why = listed.ok ? noTargetReason(platform) : listed.reason;
-              await markAttemptState("callback_error", why.slice(0, 200));
-              await auditOutcome("blocked", row.platform, row.tenant_id, row.user_id ?? null, why);
+              const customerReason = listed.ok ? noTargetReason(platform) : listed.reason;
+              const diagnostic = listed.ok ? customerReason : (listed.diagnostic ?? customerReason);
+              await markAttemptState("callback_error", diagnostic.slice(0, 200));
+              await auditOutcome(
+                "blocked",
+                row.platform,
+                row.tenant_id,
+                row.user_id ?? null,
+                diagnostic,
+              );
               return back(origin, {
                 connect_blocked: platform,
-                connect_reason: listed.ok ? "Nothing to connect" : "Could not list your accounts",
-                connect_detail: why,
+                connect_reason: customerReason,
+                connect_detail: diagnostic,
               });
             }
             {
