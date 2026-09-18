@@ -1,4 +1,6 @@
 import { WordPressSitesCard } from "@/components/WordPressSitesCard";
+import { addWhatsAppNumber } from "@/lib/wa-numbers.functions";
+import { useServerFn } from "@tanstack/react-start";
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,17 +81,19 @@ export function IntegrationSettings() {
     planThresholds.data?.find((t) => t.plan === (tenant?.plan ?? "default")) ??
     planThresholds.data?.find((t) => t.plan === "default");
 
+  const saveNumber = useServerFn(addWhatsAppNumber);
   const addNumber = useMutation({
+    // Saved by the server, which encrypts the token and app secret.
     mutationFn: async () => {
-      const { error } = await supabase.from("wa_numbers").insert({
-        label: numForm.label.trim(),
-        display_phone: numForm.display_phone.trim() || null,
-        phone_number_id: numForm.phone_number_id.trim(),
-        access_token: numForm.access_token.trim(),
-        ...(numForm.app_secret.trim() ? { app_secret: numForm.app_secret.trim() } : {}),
-        is_default: (numbers.data ?? []).length === 0,
+      await saveNumber({
+        data: {
+          label: numForm.label.trim(),
+          displayPhone: numForm.display_phone.trim() || undefined,
+          phoneNumberId: numForm.phone_number_id.trim(),
+          accessToken: numForm.access_token.trim(),
+          appSecret: numForm.app_secret.trim() || undefined,
+        },
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       setNumForm({

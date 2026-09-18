@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { CredentialSpec } from "@/lib/connection-setup";
 import { savePlatformApp } from "@/lib/platform-apps.functions";
+import { addWhatsAppNumber } from "@/lib/wa-numbers.functions";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Check, CheckCircle2, Copy, ExternalLink, Loader2 } from "lucide-react";
@@ -38,6 +39,7 @@ export function CredentialsStep({
 }) {
   const qc = useQueryClient();
   const saveApp = useServerFn(savePlatformApp);
+  const addNumber = useServerFn(addWhatsAppNumber);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
 
@@ -61,19 +63,17 @@ export function CredentialsStep({
         return;
       }
       // WhatsApp: the credentials belong to one phone number, not to an app.
-      const { count } = await supabase
-        .from("wa_numbers")
-        .select("id", { count: "exact", head: true });
+      // Saved by the server, which encrypts the token and app secret.
       const appSecret = value("app_secret").trim();
-      const { error } = await supabase.from("wa_numbers").insert({
-        label: value("label").trim(),
-        display_phone: value("display_phone").trim() || null,
-        phone_number_id: value("phone_number_id").trim(),
-        access_token: value("access_token").trim(),
-        ...(appSecret ? { app_secret: appSecret } : {}),
-        is_default: (count ?? 0) === 0,
+      await addNumber({
+        data: {
+          label: value("label").trim(),
+          displayPhone: value("display_phone").trim() || undefined,
+          phoneNumberId: value("phone_number_id").trim(),
+          accessToken: value("access_token").trim(),
+          appSecret: appSecret || undefined,
+        },
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       setSaved(true);
