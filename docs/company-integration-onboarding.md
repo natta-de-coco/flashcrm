@@ -11,7 +11,7 @@ Normal users should only see:
 5. Choose the Page, channel, location or account
 6. **Connected**
 
-They must not be asked for app IDs, app secrets, tokens, scopes, callback URLs or developer-console settings. FLAS keeps shared provider credentials in the server secret store. A separate company-owned app is an advanced administrator option only.
+They must not be asked for app IDs, app secrets, tokens, scopes, callback URLs or developer-console settings. FLAS keeps shared provider credentials in the server secret store. A separate company-owned app is an advanced administrator option only: **Integrations → Advanced admin settings → Use your own developer app**, which also shows that company the callback to register in its own app.
 
 ## What FLAS must prepare once
 
@@ -62,7 +62,7 @@ Then use the same customer flow for every OAuth provider:
 
 1. Sign in to the correct FLAS company workspace.
 2. Open **Integrations** and select **Add integration**.
-3. Select the provider. If the card says setup is incomplete, stop and use admin diagnostics; do not ask the customer for app credentials.
+3. Select the provider. If the card says **Available soon**, FLAS's own setup for that provider is incomplete: stop, and have a FLAS super admin open **Admin diagnostics** from a FLAS staff account (company users never see diagnostics). Do not ask the customer for app credentials.
 4. Select **Continue with provider** and sign in with the provider account that controls the business asset.
 5. Approve the permissions shown by the provider. If the provider refuses a permission, record the provider's reason and keep the connector limited.
 6. Back in FLAS, choose the exact Page, professional Instagram account, channel, location, Company Page or other asset.
@@ -174,6 +174,7 @@ Before onboarding company number two, and after any OAuth, token, picker or webh
 ## Status language
 
 - **Available**: FLAS has the server-side prerequisites required to start OAuth. It does not mean the provider will grant consent, review or quota.
+- **Available soon**: what a company sees while FLAS's own setup for that provider is incomplete (shared app keys, callback origin, token encryption or OAuth storage). The company is told there is nothing it needs to do; FLAS staff see the exact reason in **Admin diagnostics**.
 - **Working**: a real asset completed login, selection and the implemented acceptance check.
 - **Limited**: connection works, but only the capabilities clearly listed in FLAS are implemented or approved.
 - **Waiting for provider**: configuration is correct but provider review, verification or quota is still outstanding.

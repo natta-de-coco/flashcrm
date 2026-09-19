@@ -1175,29 +1175,43 @@ function WorkspaceApps({
       </CardHeader>
       <CardContent className="space-y-2">
         {families.map((row) => (
-          <div
-            key={row.provider}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"
-          >
-            <div className="min-w-0">
-              <p className="font-medium">{row.providerName ?? row.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {rows
-                  .filter((r) => r.provider === row.provider && r.status !== "COMING_SOON")
-                  .map((r) => r.name)
-                  .join(", ")}
-                {" · "}
-                {row.source === "workspace"
-                  ? "Using your own app"
-                  : row.source === "shared"
-                    ? "Using the FLAS app"
-                    : "Not available yet"}
-              </p>
+          <div key={row.provider} className="space-y-2 rounded-lg border p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium">{row.providerName ?? row.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {rows
+                    .filter((r) => r.provider === row.provider && r.status !== "COMING_SOON")
+                    .map((r) => r.name)
+                    .join(", ")}
+                  {" · "}
+                  {row.source === "workspace"
+                    ? "Using your own app"
+                    : row.source === "shared"
+                      ? "Using the FLAS app"
+                      : "Not available yet"}
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => onConfigure(row.id)}>
+                <KeyRound className="mr-1.5 size-3.5" />
+                {row.source === "workspace" ? "Update your app keys" : "Use your own app"}
+              </Button>
             </div>
-            <Button size="sm" variant="outline" onClick={() => onConfigure(row.id)}>
-              <KeyRound className="mr-1.5 size-3.5" />
-              {row.source === "workspace" ? "Update your app keys" : "Use your own app"}
-            </Button>
+            {row.source === "workspace" && (
+              // The company owns this app, so it has to register FLAS in it.
+              <div className="space-y-2 text-xs text-muted-foreground">
+                {row.callbackUri && (
+                  <CopyRow label="Register this callback in your app" value={row.callbackUri} />
+                )}
+                {row.blockers
+                  .filter((b) => b.owner === "WORKSPACE_ADMIN" && b.technical)
+                  .map((b) => (
+                    <p key={b.code} className="break-words">
+                      {b.technical}
+                    </p>
+                  ))}
+              </div>
+            )}
           </div>
         ))}
       </CardContent>

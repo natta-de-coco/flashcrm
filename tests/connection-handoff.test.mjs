@@ -41,6 +41,8 @@ function harness({
   // FLAS staff by default: most tests here exercise the diagnostics path.
   auth = { isAdmin: true, isSuperAdmin: true },
   setupOwner = status === "ADMIN_SETUP_REQUIRED" ? "flas" : null,
+  source = "shared",
+  callbackUri = null,
 } = {}) {
   const state = [],
     requests = [],
@@ -61,7 +63,8 @@ function harness({
     ...c,
     status,
     setupOwner,
-    source: "shared",
+    source,
+    callbackUri,
     checks: {},
     credentials: {},
     blockers,
@@ -427,4 +430,45 @@ test("a company admin can still bring its own app, from Advanced settings only",
   h.find(h.render(), "CredentialsStep").props.onSaved();
   await h.flush();
   assert.equal(h.requests[0].data.platform, "facebook");
+});
+
+test("a company on its own Meta app is shown exactly what to register in it", () => {
+  const callback = "https://flas.example/api/public/oauth-callback";
+  const note = "In the workspace-owned Meta app: Settings > Basic > App Domains: flas.example";
+  const setup = (source) => {
+    const h = harness({
+      status: "READY",
+      connectors: [FACEBOOK],
+      auth: COMPANY_OWNER,
+      source,
+      callbackUri: source === "workspace" ? callback : null,
+      blockers: [
+        {
+          code: "META_DOMAIN_REGISTRATION_UNVERIFIED",
+          title: "Check Meta domain registration",
+          userMessage: "",
+          severity: "INFO",
+          owner: source === "workspace" ? "WORKSPACE_ADMIN" : "FLAS_ADMIN",
+          technical: note,
+        },
+      ],
+    });
+    const apps = h.find(h.render(), "WorkspaceApps");
+    return nodes(apps.type(apps.props));
+  };
+  const own = setup("workspace");
+  assert.equal(own.find((n) => n.type?.name === "CopyRow")?.props.value, callback);
+  assert.ok(own.some((n) => n.type === "p" && text(n) === note));
+  assert.ok(own.some((n) => n.type === "Button" && text(n) === "Update your app keys"));
+
+  const shared = setup("shared");
+  assert.equal(
+    shared.find((n) => n.type?.name === "CopyRow"),
+    undefined,
+  );
+  assert.equal(
+    shared.some((n) => text(n) === note),
+    false,
+    "FLAS's own app is not theirs to fix",
+  );
 });
