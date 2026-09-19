@@ -25,6 +25,7 @@ function loadLib(relative) {
 }
 
 const credentialHandoff = loadLib("../src/lib/credential-handoff.ts");
+const { credentialsNote } = loadLib("../src/lib/credentials-note.ts");
 
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -470,5 +471,30 @@ test("a company on its own Meta app is shown exactly what to register in it", ()
     shared.some((n) => text(n) === note),
     false,
     "FLAS's own app is not theirs to fix",
+  );
+});
+
+test("company admins can open the Health report again; members cannot", () => {
+  // "Encrypt now" lives in the Health report, which only the old, unrouted
+  // screen opened: credentials saved before encryption could never be sealed.
+  const isReport = (n) => n.type === "HealthReportDialog";
+  const owner = harness({ status: "READY", connectors: [FACEBOOK], auth: COMPANY_OWNER });
+  assert.ok(nodes(owner.render()).some(isReport));
+  const member = harness({ status: "READY", connectors: [FACEBOOK], auth: MEMBER });
+  assert.equal(nodes(member.render()).some(isReport), false);
+});
+
+test("the Health report names FLAS's encryption setting to FLAS staff only", () => {
+  const off = { configured: false, plaintext: 0 };
+  assert.match(credentialsNote(off, true), /TOKEN_ENCRYPTION_KEYS/);
+  assert.doesNotMatch(credentialsNote(off, false), /TOKEN_ENCRYPTION_KEYS|server/);
+  assert.match(credentialsNote(off, false), /nothing you need to do/);
+  assert.equal(
+    credentialsNote({ configured: true, plaintext: 2 }, false),
+    "2 stored credential(s) are not encrypted yet.",
+  );
+  assert.equal(
+    credentialsNote({ configured: true, plaintext: 0 }, false),
+    "Stored credentials are encrypted.",
   );
 });

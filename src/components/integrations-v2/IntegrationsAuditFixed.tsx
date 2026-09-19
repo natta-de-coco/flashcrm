@@ -1,3 +1,4 @@
+import { HealthReportDialog } from "@/components/integrations/HealthReportDialog";
 import { IntegrationLogs } from "@/components/integrations/IntegrationLogs";
 import { IntegrationSettings } from "@/components/integrations/IntegrationSettings";
 import {
@@ -53,6 +54,7 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  Stethoscope,
   Unplug,
   XCircle,
 } from "lucide-react";
@@ -306,6 +308,18 @@ export function IntegrationsAuditFixed({
             description="Connect the tools your team uses and manage every account from one clear place."
           />
           <div className="flex flex-wrap gap-2">
+            {/* Connection health, retries and "Encrypt now" for this company's
+                stored credentials. Only the old, unrouted screen opened it, so
+                credentials saved before encryption had no way to be sealed. */}
+            {isAdmin && (
+              <HealthReportDialog
+                trigger={
+                  <Button variant="outline">
+                    <Stethoscope className="mr-2 size-4" /> Health report
+                  </Button>
+                }
+              />
+            )}
             {isSuperAdmin && (
               <Button
                 variant="outline"
