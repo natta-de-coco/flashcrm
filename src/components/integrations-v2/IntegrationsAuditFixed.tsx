@@ -345,6 +345,10 @@ export function IntegrationsAuditFixed({
             setResume(null);
             onDismiss();
           }}
+          onRetry={(platform) => {
+            onDismiss();
+            beginConnect(platform);
+          }}
         />
         {pendingAccounts.length > 0 && !search.select_target && !resume && (
           <section className="space-y-3">

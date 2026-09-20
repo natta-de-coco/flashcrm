@@ -37,6 +37,7 @@ function harness({
   result = { ready: true, url: "https://provider.example/login" },
   connectors,
   blockers = [],
+  accounts = [],
 } = {}) {
   const state = [],
     requests = [],
@@ -84,7 +85,7 @@ function harness({
     "@tanstack/react-query": {
       useQueryClient: () => ({ invalidateQueries: async () => {} }),
       useQuery: ({ queryKey }) => ({
-        data: queryKey[0] === "connections" ? { accounts: [] } : { rows },
+        data: queryKey[0] === "connections" ? { accounts } : { rows },
       }),
       useMutation(options) {
         const index = mutationCursor++;
@@ -270,4 +271,52 @@ test("a refused start tells the admin every actionable blocker, worst first", as
     ["STORAGE", "REVIEW"],
   );
   assert.deepEqual(h.redirects, []);
+});
+
+test("an unfinished Page choice can be resumed after a reload", () => {
+  // Sign-in finished but no Page was chosen yet (the row has no external id).
+  // After a reload the screen must offer to finish, for exactly that account.
+  const h = harness({
+    status: "READY",
+    accounts: [
+      {
+        id: "pending-1",
+        platform: "instagram",
+        active: true,
+        external_id: null,
+        connect_method: "oauth",
+      },
+    ],
+  });
+  const isChoose = (n) =>
+    n.type === "Button" &&
+    Array.isArray(n.props.children) &&
+    n.props.children.join("") === "Choose Instagram";
+  const choose = nodes(h.render()).find(isChoose);
+  assert.ok(choose, "the unfinished connection is offered");
+  choose.props.onClick();
+  const screen = h.render();
+  const outcome = nodes(screen).find((n) => n.type === "ConnectionOutcome");
+  assert.equal(outcome.props.search.select_target, "pending-1");
+  assert.equal(outcome.props.search.connected, "instagram");
+  assert.equal(nodes(screen).some(isChoose), false);
+});
+
+test("a pending connection is never counted as connected", () => {
+  const h = harness({
+    status: "READY",
+    accounts: [
+      {
+        id: "pending-1",
+        platform: "instagram",
+        active: true,
+        external_id: null,
+        connect_method: "oauth",
+      },
+    ],
+  });
+  const connected = nodes(h.render()).find(
+    (n) => n.type?.name === "StatCard" && n.props.label === "Connected",
+  );
+  assert.equal(connected.props.value, 0);
 });
