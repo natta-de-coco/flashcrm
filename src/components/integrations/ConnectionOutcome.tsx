@@ -77,6 +77,13 @@ const PICKER_NOUN: Record<string, string> = {
   meta_ads: "ad account",
 };
 
+const PROVIDER_LABEL: Record<string, string> = {
+  google_business: "Google Business Profile",
+  google_analytics: "Google Analytics",
+  search_console: "Google Search Console",
+  meta_ads: "Meta Ads",
+};
+
 type Account = {
   id: string;
   platform: string;
@@ -153,7 +160,9 @@ export function ConnectionOutcome({
     return (
       <Alert variant="destructive" className="mt-4">
         <XCircle className="size-4" />
-        <AlertTitle>Couldn&apos;t finish connecting {blocked}</AlertTitle>
+        <AlertTitle>
+          Couldn&apos;t finish connecting {PROVIDER_LABEL[blocked] ?? blocked.replaceAll("_", " ")}
+        </AlertTitle>
         <AlertDescription className="space-y-3">
           <p className="font-medium">
             {search.connect_reason ?? "The platform did not return a usable authorization."}
@@ -506,10 +515,7 @@ function ChannelPicker({
           <Alert>
             <AlertTriangle className="size-4" />
             <AlertTitle>The platform did not list any accounts</AlertTitle>
-            <AlertDescription>
-              The provider could not list your accounts. Check that you have access to the account,
-              or ask a FLAS administrator.
-            </AlertDescription>
+            <AlertDescription>{targets.data.reason}</AlertDescription>
           </Alert>
         )}
 

@@ -24,7 +24,37 @@ export type ConnectionTarget = {
 };
 
 export type TargetList =
-  { ok: true; targets: ConnectionTarget[] } | { ok: false; targets: []; reason: string };
+  | { ok: true; targets: ConnectionTarget[] }
+  | { ok: false; targets: []; reason: string; diagnostic?: string };
+
+function targetListFailure(platform: string, error: unknown): TargetList {
+  const diagnostic = error instanceof Error ? error.message : "The platform did not respond.";
+
+  // Google returns 429 when the Business Profile API is enabled but the
+  // project still has its default zero quota. Retrying OAuth cannot fix that:
+  // an administrator must finish Google's one-time API access application.
+  if (platform === "google_business" && /HTTP 429\b/.test(diagnostic)) {
+    return {
+      ok: false,
+      targets: [],
+      reason:
+        "Google has not yet approved Business Profile API access for FLAS. An administrator must finish Google's one-time access application, then reconnect after Google grants quota.",
+      diagnostic,
+    };
+  }
+
+  if (platform === "google_business" && /HTTP 403\b/.test(diagnostic)) {
+    return {
+      ok: false,
+      targets: [],
+      reason:
+        "Google Business Profile API access is not ready. An administrator must enable both Business Profile APIs and complete Google's one-time access application.",
+      diagnostic,
+    };
+  }
+
+  return { ok: false, targets: [], reason: diagnostic };
+}
 
 /** Platforms whose login can manage more than one channel, served by this module. */
 export const TARGET_PLATFORMS = [
@@ -49,11 +79,7 @@ export async function listConnectionTargets(platform: string, token: string): Pr
     if (platform === "search_console") return await searchConsoleTargets(token);
     if (platform === "meta_ads") return await metaAdAccountTargets(token);
   } catch (error) {
-    return {
-      ok: false,
-      targets: [],
-      reason: error instanceof Error ? error.message : "The platform did not respond.",
-    };
+    return targetListFailure(platform, error);
   }
   return { ok: false, targets: [], reason: "This platform has no account picker." };
 }
