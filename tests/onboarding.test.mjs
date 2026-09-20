@@ -159,8 +159,8 @@ test("readiness and authorization agree; readiness writes nothing and exposes no
   assert.ok(!JSON.stringify(result).includes("test-secret"));
 });
 
-test("all setup failures are reported to admins and none create an OAuth attempt", async () => {
-  rows.profiles[0].staff_role = "company_admin";
+test("all setup failures are reported to FLAS staff and none create an OAuth attempt", async () => {
+  rows.profiles[0].staff_role = "super_admin";
   delete process.env.META_APP_ID;
   delete process.env.META_APP_SECRET;
   process.env.PUBLIC_APP_URL = "staging.example.test";
@@ -197,6 +197,57 @@ test("all setup failures are reported to admins and none create an OAuth attempt
     false,
   );
   assert.ok(operations.every((o) => o.mode === "read"));
+});
+
+test("a company owner is told FLAS is finishing setup, never shown FLAS's server details", async () => {
+  // Company owners are admins of their workspace, not of FLAS. Env-variable
+  // names and migrations read as "set this up yourself".
+  rows.profiles[0].staff_role = "company_admin";
+  delete process.env.META_APP_ID;
+  delete process.env.META_APP_SECRET;
+  const result = await getIntegrationReadiness({
+    data: { origin: "https://staging.example.test" },
+    context,
+  });
+  const row = result.rows.find((r) => r.id === "facebook");
+  assert.equal(row.status, "ADMIN_SETUP_REQUIRED");
+  assert.equal(row.setupOwner, "flas");
+  assert.ok(row.blockers.length > 0);
+  for (const b of row.blockers) {
+    assert.equal(b.code, "SETUP_REQUIRED");
+    assert.equal(b.technical, undefined);
+  }
+  assert.match(row.blockers[0].userMessage, /FLAS is finishing setup for Facebook/);
+  assert.deepEqual(row.missing, []);
+  assert.equal(row.callbackUri, null);
+  assert.equal(result.canDiagnose, false);
+  const everything = JSON.stringify(result);
+  for (const name of ["META_APP_ID", "META_APP_SECRET", "TOKEN_ENCRYPTION_KEYS", "PUBLIC_APP_URL"])
+    assert.ok(!everything.includes(name), name);
+});
+
+test("a company that brought its own Meta app sees how to configure that app", async () => {
+  rows.profiles[0].staff_role = "company_admin";
+  rows.platform_apps = [
+    {
+      tenant_id: tenant,
+      provider: "meta",
+      client_id: "workspace-app",
+      client_secret: "legacy-test-secret",
+    },
+  ];
+  const result = await getIntegrationReadiness({
+    data: { origin: process.env.PUBLIC_APP_URL },
+    context,
+  });
+  const row = result.rows.find((r) => r.id === "facebook");
+  assert.equal(row.source, "workspace");
+  assert.equal(row.setupOwner, null);
+  assert.equal(row.callbackUri, "https://staging.example.test/api/public/oauth-callback");
+  const domain = row.blockers.find((b) => b.code === "META_DOMAIN_REGISTRATION_UNVERIFIED");
+  assert.equal(domain.owner, "WORKSPACE_ADMIN");
+  assert.match(domain.technical, /api\/public\/oauth-callback/);
+  assert.ok(!JSON.stringify(result).includes("legacy-test-secret"));
 });
 
 test("unreadable workspace credentials fail closed instead of silently switching apps", async () => {

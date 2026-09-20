@@ -39,7 +39,13 @@ export type IntegrationReadinessRow = {
     storage: boolean;
   };
   blockers: ReadinessBlocker[];
-  /** Safe technical key names for admins only. Empty for normal members. */
+  /**
+   * Who has to act before this can connect: "flas" for FLAS's shared provider
+   * apps and server setup, "workspace" for a step the company takes itself.
+   * Null when nothing is blocking.
+   */
+  setupOwner: "flas" | "workspace" | null;
+  /** Safe technical key names, for FLAS staff only. Empty for everyone else. */
   missing: string[];
 };
 
@@ -77,7 +83,15 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
       .maybeSingle();
 
     const tenantId = profile?.tenant_id ?? null;
-    const isAdmin = ["company_admin", "super_admin"].includes(String(profile?.staff_role ?? ""));
+    const role = String(profile?.staff_role ?? "");
+    // Every company connects through FLAS's shared provider apps, so those apps
+    // and the server behind them are FLAS's to fix, and only FLAS staff see
+    // how. Company owners used to get the same env-variable and migration
+    // details, which read as "set this up yourself" -- the opposite of a
+    // Continue with Facebook button. A company that brought its own provider
+    // app does own that app, so its admins still see how to configure it.
+    const seesPlatform = role === "super_admin";
+    const isCompanyAdmin = role === "company_admin";
     const { providerEnvNames, resolveAllowedOrigin } = await import("@/lib/oauth.server");
     const { oauthPreflight, publicAppOrigin } = await import("@/lib/oauth-preflight.server");
     const publicOrigin = publicAppOrigin();
@@ -156,7 +170,7 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
               "This connection is temporarily unavailable while FLAS setup is completed.",
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
-            ...(isAdmin
+            ...(seesPlatform
               ? {
                   technical:
                     "Apply the repository migrations and verify server database access, OAuth state columns and social account state columns.",
@@ -178,7 +192,7 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
             userMessage: "This connection is temporarily unavailable.",
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
-            ...(isAdmin
+            ...(seesPlatform
               ? {
                   technical:
                     "Check platform_apps migration, server database access and the credential encryption keyring.",
@@ -195,20 +209,20 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
           blockers.push({
             code: "PROVIDER_ID_MISSING",
             title: `${labels.id} is missing`,
-            userMessage: `${connector.name} is waiting for administrator setup.`,
+            userMessage: `FLAS is finishing setup for ${connector.name}. It will be available to connect soon.`,
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
-            ...(isAdmin && envNames[0] ? { technical: `Missing ${envNames[0]}` } : {}),
+            ...(seesPlatform && envNames[0] ? { technical: `Missing ${envNames[0]}` } : {}),
           });
         }
         if (!secretPresent) {
           blockers.push({
             code: "PROVIDER_SECRET_MISSING",
             title: `${labels.secret} is missing`,
-            userMessage: `${connector.name} is waiting for administrator setup.`,
+            userMessage: `FLAS is finishing setup for ${connector.name}. It will be available to connect soon.`,
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
-            ...(isAdmin && envNames[1] ? { technical: `Missing ${envNames[1]}` } : {}),
+            ...(seesPlatform && envNames[1] ? { technical: `Missing ${envNames[1]}` } : {}),
           });
         }
         if (!publicOrigin) {
@@ -219,7 +233,9 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
               "This connection is temporarily unavailable while FLAS setup is completed.",
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
-            ...(isAdmin ? { technical: "Set PUBLIC_APP_URL to the deployed HTTPS origin." } : {}),
+            ...(seesPlatform
+              ? { technical: "Set PUBLIC_APP_URL to the deployed HTTPS origin." }
+              : {}),
           });
         }
         if (!allowedOrigin) {
@@ -230,7 +246,7 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
               "This connection is temporarily unavailable while FLAS setup is completed.",
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
-            ...(isAdmin
+            ...(seesPlatform
               ? {
                   technical: `Add ${new URL(data.origin).origin} to OAUTH_ALLOWED_ORIGINS and redeploy.`,
                 }
@@ -245,18 +261,23 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
               "This connection is temporarily unavailable while secure storage is configured.",
             severity: "BLOCKING",
             owner: "FLAS_ADMIN",
-            ...(isAdmin
+            ...(seesPlatform
               ? { technical: "Configure TOKEN_ENCRYPTION_KEYS before storing provider tokens." }
               : {}),
           });
         }
-        if (allowedOrigin && connector.provider === "meta" && isAdmin) {
+        const ownsApp = isCompanyAdmin && source === "workspace";
+        const appOwner = source === "workspace" ? "WORKSPACE_ADMIN" : "FLAS_ADMIN";
+        if (allowedOrigin && connector.provider === "meta" && (seesPlatform || ownsApp)) {
           blockers.push({
             code: "META_DOMAIN_REGISTRATION_UNVERIFIED",
             title: "Check Meta domain registration",
-            userMessage: "Meta app domain registration must be checked by a FLAS administrator.",
+            userMessage:
+              source === "workspace"
+                ? "Your Meta app must list the FLAS domain and sign-in return address."
+                : "Meta app domain registration must be checked by a FLAS administrator.",
             severity: "INFO",
-            owner: "FLAS_ADMIN",
+            owner: appOwner,
             technical: `In the ${source === "workspace" ? "workspace-owned" : "shared FLAS"} Meta app: Settings > Basic > App Domains: ${new URL(allowedOrigin).hostname}; Website URL: ${allowedOrigin}; Facebook Login > Settings > Valid OAuth Redirect URIs: ${allowedOrigin}/api/public/oauth-callback. Confirm these belong to the same app used by FLAS.`,
           });
         }
@@ -266,8 +287,8 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
             title: "Provider redirect registration must match",
             userMessage: "The provider app must allow the FLAS callback address.",
             severity: "INFO",
-            owner: "FLAS_ADMIN",
-            ...(isAdmin
+            owner: appOwner,
+            ...(seesPlatform || ownsApp
               ? {
                   technical: `${allowedOrigin}/api/public/oauth-callback must be registered in the provider console.`,
                 }
@@ -286,7 +307,7 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
             title: "No WhatsApp Business number is connected",
             userMessage: "Add a WhatsApp Business number to start using the inbox.",
             severity: "BLOCKING",
-            owner: "FLAS_ADMIN",
+            owner: "WORKSPACE_ADMIN",
           });
         }
       }
@@ -300,6 +321,15 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
           : blockers.some((b) => b.severity === "WARNING")
             ? "LIMITED"
             : "READY";
+      const stillBlocking = blockers.filter((b) => b.severity === "BLOCKING");
+      const setupOwner: IntegrationReadinessRow["setupOwner"] =
+        comingSoon || stillBlocking.length === 0
+          ? null
+          : stillBlocking.every((b) => b.owner === "WORKSPACE_ADMIN")
+            ? "workspace"
+            : "flas";
+      const workspaceStep = (b: ReadinessBlocker) =>
+        isCompanyAdmin && b.owner === "WORKSPACE_ADMIN";
 
       const labels = connector.provider ? CredentialLabels[connector.provider] : undefined;
       rows.push({
@@ -315,7 +345,9 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
         status,
         source,
         callbackUri:
-          isAdmin && allowedOrigin && connector.oauth
+          (seesPlatform || (isCompanyAdmin && source === "workspace")) &&
+          allowedOrigin &&
+          connector.oauth
             ? `${allowedOrigin}/api/public/oauth-callback`
             : null,
         credentials: {
@@ -331,22 +363,32 @@ export const getIntegrationReadiness = createServerFn({ method: "GET" })
           encryption: connector.oauth ? encryptionOk : true,
           storage: connector.oauth ? storageOk : true,
         },
-        blockers: isAdmin
+        setupOwner,
+        blockers: seesPlatform
           ? blockers
-          : blockers
-              .filter((b) => b.severity === "BLOCKING")
-              .map((b) => ({
-                code: "SETUP_REQUIRED",
-                title: "Temporarily unavailable",
-                userMessage: b.userMessage,
-                severity: b.severity,
-                owner: b.owner,
-              })),
-        missing: isAdmin
+          : [
+              // A company admin sees the steps that are theirs in full.
+              ...blockers.filter(workspaceStep),
+              ...blockers
+                .filter((b) => b.severity === "BLOCKING" && !workspaceStep(b))
+                .map((b) => ({
+                  code: "SETUP_REQUIRED",
+                  title: "Temporarily unavailable",
+                  userMessage: b.userMessage,
+                  severity: b.severity,
+                  owner: b.owner,
+                })),
+            ],
+        missing: seesPlatform
           ? blockers.filter((b) => b.severity !== "INFO").map((b) => b.technical ?? b.title)
           : [],
       });
     }
 
-    return { rows, isAdmin, publicOrigin: isAdmin ? publicOrigin : null };
+    return {
+      rows,
+      isAdmin: seesPlatform || isCompanyAdmin,
+      canDiagnose: seesPlatform,
+      publicOrigin: seesPlatform ? publicOrigin : null,
+    };
   });

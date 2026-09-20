@@ -33,6 +33,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CheckCircle2, FileDown, RefreshCw, Stethoscope } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { credentialsNote } from "@/lib/credentials-note";
 import { toast } from "sonner";
 
 const TONE: Record<string, string> = {
@@ -46,6 +48,7 @@ const TONE: Record<string, string> = {
 
 export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const { isSuperAdmin } = useAuth();
   const qc = useQueryClient();
   const retry = useServerFn(retryConnections);
 
@@ -136,11 +139,7 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
 
             {data.credentials ? (
               <p className="text-xs text-muted-foreground">
-                {!data.credentials.configured
-                  ? "Stored credentials are not encrypted: add TOKEN_ENCRYPTION_KEYS to the server's secrets."
-                  : data.credentials.plaintext > 0
-                    ? `${data.credentials.plaintext} stored credential(s) are not encrypted yet.`
-                    : "Stored credentials are encrypted."}
+                {credentialsNote(data.credentials, isSuperAdmin)}
                 {data.credentials.configured && data.credentials.plaintext > 0 ? (
                   <Button
                     variant="link"
