@@ -55,11 +55,26 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
       let analyticsOk = false;
       let analyticsSent7d = 0;
 
+      // Stored tokens may be encrypted; sending the stored value as-is sent
+      // ciphertext to Meta. Opened here, and sent as a header rather than in
+      // the URL.
+      let token: string | null = null;
       if (n.active && n.access_token && n.phone_number_id) {
+        try {
+          const { openSecret } = await import("@/lib/secret-box.server");
+          token = await openSecret(n.access_token);
+        } catch {
+          apiError = "The stored access token could not be read. Reconnect this number.";
+        }
+      }
+
+      if (token) {
+        const auth = { headers: { Authorization: `Bearer ${token}` } };
         try {
           const res = await fetch(
             `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
-              `?fields=verified_name,quality_rating&access_token=${encodeURIComponent(n.access_token)}`,
+              `?fields=verified_name,quality_rating`,
+            auth,
           );
           const json = (await res.json()) as {
             quality_rating?: string;
@@ -79,8 +94,8 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
           try {
             const res = await fetch(
               `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
-                `?fields=analytics.start(${start}).end(${end}).granularity(DAY)` +
-                `&access_token=${encodeURIComponent(n.access_token)}`,
+                `?fields=analytics.start(${start}).end(${end}).granularity(DAY)`,
+              auth,
             );
             const json = (await res.json()) as {
               analytics?: { data_points?: Array<{ sent?: number }> };
