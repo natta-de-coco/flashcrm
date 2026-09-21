@@ -131,7 +131,7 @@ function SuperAdminEmailLog() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold">Email delivery log</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Email delivery log</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Every mail dispatched across every tenant. Super-admin only. Use this to troubleshoot
           missing OTPs, bounced verification emails, or complaints.

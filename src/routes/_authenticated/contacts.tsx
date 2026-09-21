@@ -260,7 +260,7 @@ function ContactsPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Contacts & leads</h1>
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Contacts & leads</h1>
           <p className="text-sm text-muted-foreground">
             Every WhatsApp and website contact, organised by pipeline stage.
           </p>

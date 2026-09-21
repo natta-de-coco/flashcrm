@@ -103,7 +103,7 @@ function CatalogPage() {
   return (
     <main className="flex-1 space-y-6 p-6">
       <header>
-        <h1 className="text-2xl font-bold">Product Catalog</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Product Catalog</h1>
         <p className="text-sm text-muted-foreground">
           The products your team quotes, pitches and attaches to portfolio outreach.
         </p>

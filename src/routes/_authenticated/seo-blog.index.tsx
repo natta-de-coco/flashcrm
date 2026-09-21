@@ -54,7 +54,7 @@ function SeoBlogHub() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">SEO Studio</h1>
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">SEO Studio</h1>
           <p className="text-sm text-muted-foreground">
             Turn product images into ranked articles and publish them straight to WordPress.
           </p>
@@ -73,8 +73,8 @@ function SeoBlogHub() {
               <FileText className="size-5" />
             </span>
             <div>
-              <p className="text-2xl font-bold leading-none">{rows.length}</p>
-              <p className="text-xs text-muted-foreground">Articles drafted</p>
+              <p className="stat-label">Articles drafted</p>
+              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{rows.length}</p>
             </div>
           </CardContent>
         </Card>
@@ -84,8 +84,8 @@ function SeoBlogHub() {
               <Globe className="size-5" />
             </span>
             <div>
-              <p className="text-2xl font-bold leading-none">{published}</p>
-              <p className="text-xs text-muted-foreground">Published to WordPress</p>
+              <p className="stat-label">Published to WordPress</p>
+              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{published}</p>
             </div>
           </CardContent>
         </Card>
@@ -95,8 +95,8 @@ function SeoBlogHub() {
               <Sparkles className="size-5" />
             </span>
             <div>
-              <p className="text-2xl font-bold leading-none">{avgScore}</p>
-              <p className="text-xs text-muted-foreground">Average SEO score</p>
+              <p className="stat-label">Average SEO score</p>
+              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{avgScore}</p>
             </div>
           </CardContent>
         </Card>
