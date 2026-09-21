@@ -87,14 +87,17 @@ export function AiKeysCard() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">
+                  {/* A Badge renders a div, and a div inside a p is invalid
+                      HTML that React reports as a hydration error on every
+                      render of this page. */}
+                  <div className="text-sm font-medium">
                     {AI_PROVIDERS.find((p) => p.id === k.provider)?.name ?? k.provider}
                     {k.active && (
                       <Badge variant="secondary" className="ml-2 text-[10px]">
                         in use
                       </Badge>
                     )}
-                  </p>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Added {new Date(k.created_at).toLocaleDateString()} · key hidden for safety
                   </p>

@@ -364,15 +364,18 @@ export function IntegrationsAuditFixed({
             connecting.
           </p>
         )}
+        {/* A page that failed to load is not a connection that needs setup. */}
         {connections.isError && (
           <Problem
-            message="We could not load your integrations. Please refresh and try again."
+            title="We could not load your integrations"
+            message="Please refresh the page. If it keeps happening, tell your administrator."
             onAdmin={undefined}
           />
         )}
         {readiness.isError && (
           <Problem
-            message="We could not check connection availability. Please refresh and try again."
+            title="We could not check which integrations are available"
+            message="Please refresh the page. If it keeps happening, tell your administrator."
             onAdmin={undefined}
           />
         )}
@@ -767,9 +770,12 @@ function Problem({
   onAdmin,
   blockers = [],
   calm = false,
+  title,
 }: {
   message: string;
   onAdmin: (() => void) | undefined;
+  /** Overrides the heading when the trouble is not a connection's setup. */
+  title?: string | undefined;
   /** FLAS staff see exactly what is missing; companies never do. */
   blockers?: ReadinessBlocker[];
   /** Nothing for this person to do: say so without a warning. */
@@ -793,7 +799,9 @@ function Problem({
       <div className="flex gap-3">
         <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
         <div>
-          <p className="font-medium">This connection needs setup before it can continue</p>
+          <p className="font-medium">
+            {title ?? "This connection needs setup before it can continue"}
+          </p>
           <p className="mt-1 text-sm text-muted-foreground">{message}</p>
           {blockers.length > 0 && (
             <ul className="mt-2 space-y-1.5 text-sm">
