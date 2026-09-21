@@ -206,7 +206,7 @@ export async function generateBotReply(
   const [{ data: conversationRow }, { data: business }] = await Promise.all([
     supabaseAdmin
       .from("conversations")
-      .select("contact_id, contacts(name, preferred_language)")
+      .select("contact_id, contacts(name)")
       .eq("id", conversationId)
       .eq("tenant_id", tenantId)
       .maybeSingle(),
