@@ -30,7 +30,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { credentialSpec, OAUTH_REDIRECT_PATH } from "@/lib/connection-setup";
 import { actionableBlockers, continueTarget } from "@/lib/credential-handoff";
-import { handoffNote, pickerNoun, plainPermissions } from "@/lib/connect-consent";
+import { connectSteps, handoffNote, pickerNoun, plainPermissions } from "@/lib/connect-consent";
 import type { ReadinessBlocker } from "@/lib/integration-readiness.functions";
 import { connectionStatus } from "@/lib/connection-status";
 import { disconnectConnection, getConnections, startConnect } from "@/lib/connections.functions";
@@ -85,6 +85,9 @@ const GROUP_LABELS: Record<ConnectorGroup, string> = {
   analytics: "Analytics",
   commerce: "Website & Commerce",
 };
+
+/** The channels a company thinks of as "my channels", each with its own page. */
+const CHANNELS = ["whatsapp", "facebook", "instagram"];
 
 const POPULAR = new Set([
   "facebook",
@@ -154,6 +157,8 @@ export function IntegrationsAuditFixed({
   // Nobody is sent to a provider's consent screen without being told, in plain
   // words, what FLAS is about to ask for and what they will choose there.
   const [confirming, setConfirming] = useState<string | null>(null);
+  // One channel at a time: its own steps, its own state, its own buttons.
+  const [channel, setChannel] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -226,12 +231,16 @@ export function IntegrationsAuditFixed({
 
   function openDiagnostics(returnTo: string | null) {
     setSetupReturnTo(returnTo);
+    // Two dialogs stacked on top of each other otherwise.
+    setMarketplaceOpen(false);
+    setChannel(null);
     setProviderSetupOpen(true);
   }
 
   function beginConnect(platform: string) {
     if (starting.current || connect.isPending) return;
     starting.current = true;
+    setChannel(null);
     setSetupReturnTo(null);
     setCredentialsFor(null);
     setConfirming(null);
@@ -290,6 +299,7 @@ export function IntegrationsAuditFixed({
   }
 
   const confirmConnector = confirming ? CONNECTORS.find((c) => c.id === confirming) : undefined;
+  const channelConnector = channel ? CONNECTORS.find((c) => c.id === channel) : undefined;
   const credentialConnector = credentialsFor
     ? CONNECTORS.find((c) => c.id === credentialsFor)
     : undefined;
@@ -354,15 +364,18 @@ export function IntegrationsAuditFixed({
             connecting.
           </p>
         )}
+        {/* A page that failed to load is not a connection that needs setup. */}
         {connections.isError && (
           <Problem
-            message="We could not load your integrations. Please refresh and try again."
+            title="We could not load your integrations"
+            message="Please refresh the page. If it keeps happening, tell your administrator."
             onAdmin={undefined}
           />
         )}
         {readiness.isError && (
           <Problem
-            message="We could not check connection availability. Please refresh and try again."
+            title="We could not check which integrations are available"
+            message="Please refresh the page. If it keeps happening, tell your administrator."
             onAdmin={undefined}
           />
         )}
@@ -453,6 +466,32 @@ export function IntegrationsAuditFixed({
             })}
           </section>
         )}
+
+        <section className="space-y-3">
+          <SectionHeading
+            title="Channels"
+            description="Each channel connects on its own. Open one to see exactly what to do."
+          />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {CHANNELS.map((id) => {
+              const connector = CONNECTORS.find((c) => c.id === id);
+              if (!connector) return null;
+              return (
+                <ChannelCard
+                  key={id}
+                  connector={connector}
+                  readiness={readinessMap.get(id) ?? null}
+                  connected={accounts.filter((a) => a.platform === id)}
+                  isSuperAdmin={isSuperAdmin}
+                  onOpen={() => {
+                    setBlocked(null);
+                    setChannel(id);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </section>
 
         <section className="space-y-3">
           <SectionHeading
@@ -639,6 +678,28 @@ export function IntegrationsAuditFixed({
       )}
 
       <Dialog
+        open={Boolean(channelConnector)}
+        onOpenChange={(open) => {
+          if (!open) setChannel(null);
+        }}
+      >
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+          {channelConnector && (
+            <ChannelSetup
+              connector={channelConnector}
+              readiness={readinessMap.get(channelConnector.id) ?? null}
+              connected={accounts.filter((a) => a.platform === channelConnector.id)}
+              busy={connect.isPending}
+              isAdmin={isAdmin}
+              isSuperAdmin={isSuperAdmin}
+              onConnect={() => openConnector(channelConnector)}
+              onDisconnect={(id) => remove.mutate(id)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={Boolean(confirming)}
         onOpenChange={(open) => {
           if (!open) setConfirming(null);
@@ -709,9 +770,12 @@ function Problem({
   onAdmin,
   blockers = [],
   calm = false,
+  title,
 }: {
   message: string;
   onAdmin: (() => void) | undefined;
+  /** Overrides the heading when the trouble is not a connection's setup. */
+  title?: string | undefined;
   /** FLAS staff see exactly what is missing; companies never do. */
   blockers?: ReadinessBlocker[];
   /** Nothing for this person to do: say so without a warning. */
@@ -735,7 +799,9 @@ function Problem({
       <div className="flex gap-3">
         <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
         <div>
-          <p className="font-medium">This connection needs setup before it can continue</p>
+          <p className="font-medium">
+            {title ?? "This connection needs setup before it can continue"}
+          </p>
           <p className="mt-1 text-sm text-muted-foreground">{message}</p>
           {blockers.length > 0 && (
             <ul className="mt-2 space-y-1.5 text-sm">
@@ -842,20 +908,48 @@ function ReadinessCard({
               ? `${row.credentials.idLabel} + ${row.credentials.secretLabel}`
               : "Credentials"
           }
+          hint={credentialHint(row)}
         />
         <CheckLine ok={row.checks.allowedOrigin} label="OAuth return address" />
         <CheckLine ok={row.checks.publicAppUrl} label="Public app URL" />
         <CheckLine ok={row.checks.encryption} label="Token encryption" />
         <CheckLine ok={row.checks.storage} label="OAuth database schema" />
         {row.callbackUri && <CopyRow label="Callback" value={row.callbackUri} />}
-        {row.blockers.map((b) => (
-          <div key={b.code} className="rounded-md border border-amber-300/50 p-2">
-            <p className="font-medium">{b.title}</p>
-            {b.technical && (
-              <p className="mt-1 break-words text-xs text-muted-foreground">{b.technical}</p>
-            )}
-          </div>
-        ))}
+        {row.blockers
+          .filter((b) => b.severity !== "INFO" && !CREDENTIAL_CODES.has(b.code))
+          .map((b) => (
+            <div
+              key={b.code}
+              className={`rounded-md border p-2 ${
+                b.severity === "BLOCKING" ? "border-amber-300/50" : "border-border"
+              }`}
+            >
+              <p className="font-medium">{b.title}</p>
+              {b.userMessage && <p className="mt-0.5 text-xs">{b.userMessage}</p>}
+              {b.technical && (
+                <p className="mt-1 break-words text-xs text-muted-foreground">{b.technical}</p>
+              )}
+            </div>
+          ))}
+        {row.blockers.some((b) => b.severity === "INFO") && (
+          <details className="rounded-md border p-2">
+            <summary className="cursor-pointer text-xs font-medium">
+              Provider setup notes ({row.blockers.filter((b) => b.severity === "INFO").length})
+            </summary>
+            <div className="mt-2 grid gap-2">
+              {row.blockers
+                .filter((b) => b.severity === "INFO")
+                .map((b) => (
+                  <div key={b.code}>
+                    <p className="text-xs font-medium">{b.title}</p>
+                    <p className="break-words text-xs text-muted-foreground">
+                      {b.technical ?? b.userMessage}
+                    </p>
+                  </div>
+                ))}
+            </div>
+          </details>
+        )}
         <div className="flex flex-wrap gap-2">
           {row.oauth && (row.status === "READY" || row.status === "LIMITED") && onConnect && (
             <Button size="sm" onClick={onConnect} disabled={connecting}>
@@ -880,16 +974,34 @@ function ReadinessCard({
   );
 }
 
-function CheckLine({ ok, label }: { ok: boolean; label: string }) {
+/** The two blockers that only repeat a failed credentials check. */
+const CREDENTIAL_CODES = new Set(["PROVIDER_ID_MISSING", "PROVIDER_SECRET_MISSING"]);
+
+/** What to set when a provider's keys are missing, said once. */
+function credentialHint(row: IntegrationReadinessRow): string | undefined {
+  if (row.checks.credentials) return undefined;
+  const names = row.blockers
+    .filter((b) => CREDENTIAL_CODES.has(b.code))
+    .map((b) => b.technical?.replace(/^Missing /, ""))
+    .filter((name): name is string => Boolean(name));
+  return names.length > 0
+    ? `Set ${names.join(" and ")} in the server secrets, then reload this page.`
+    : undefined;
+}
+
+function CheckLine({ ok, label, hint }: { ok: boolean; label: string; hint?: string | undefined }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-start gap-2">
       {ok ? (
-        <CheckCircle2 className="size-4 text-emerald-600" />
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
       ) : (
-        <XCircle className="size-4 text-amber-600" />
+        <XCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />
       )}
-      <span>
+      <span className="min-w-0">
         {label}: {ok ? "Ready" : "Missing"}
+        {hint && (
+          <span className="mt-0.5 block break-words text-xs text-muted-foreground">{hint}</span>
+        )}
       </span>
     </div>
   );
@@ -1157,8 +1269,8 @@ function StatCard({
     <Card>
       <CardContent className="flex items-center justify-between p-4">
         <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+          <p className="stat-label">{label}</p>
+          <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{value}</p>
         </div>
         <span
           className={`size-2.5 rounded-full ${
@@ -1314,6 +1426,167 @@ function ConnectConsent({
           {busy ? "Opening secure sign-in…" : signInLabel(connector.provider, connector.name)}
         </Button>
       </div>
+    </>
+  );
+}
+
+/** How one channel stands right now, in a word a company uses. */
+function channelState(
+  readiness: IntegrationReadinessRow | null,
+  connected: Account[],
+  isSuperAdmin: boolean,
+): { label: string; tone: "good" | "warn" | "muted" } {
+  if (connected.length > 0)
+    return {
+      label: connected.length > 1 ? `${connected.length} connected` : "Connected",
+      tone: "good",
+    };
+  if (!readiness) return { label: "Checking…", tone: "muted" };
+  if (readiness.status === "COMING_SOON") return { label: "Coming soon", tone: "muted" };
+  if (readiness.status === "ADMIN_SETUP_REQUIRED")
+    return {
+      label:
+        isSuperAdmin || readiness.setupOwner === "workspace" ? "Setup needed" : "Available soon",
+      tone: "warn",
+    };
+  return { label: "Not connected", tone: "muted" };
+}
+
+function ChannelCard({
+  connector,
+  readiness,
+  connected,
+  isSuperAdmin,
+  onOpen,
+}: {
+  connector: Connector;
+  readiness: IntegrationReadinessRow | null;
+  connected: Account[];
+  isSuperAdmin: boolean;
+  onOpen: () => void;
+}) {
+  const { icon: Icon, tint } = connectorIcon(connector.id);
+  const state = channelState(readiness, connected, isSuperAdmin);
+  return (
+    <Card>
+      <CardContent className="flex items-center justify-between gap-3 p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border">
+            <Icon className={`size-5 ${tint}`} />
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold">{connector.name}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {connected[0]?.label || state.label}
+            </p>
+          </div>
+        </div>
+        <Button size="sm" variant={connected.length > 0 ? "outline" : "default"} onClick={onOpen}>
+          {connected.length > 0 ? "Manage" : "Set up"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** One channel's own page: what it does, what to do, and where it stands. */
+function ChannelSetup({
+  connector,
+  readiness,
+  connected,
+  busy,
+  isAdmin,
+  isSuperAdmin,
+  onConnect,
+  onDisconnect,
+}: {
+  connector: Connector;
+  readiness: IntegrationReadinessRow | null;
+  connected: Account[];
+  busy: boolean;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+  onConnect: () => void;
+  onDisconnect: (id: string) => void;
+}) {
+  const { icon: Icon, tint } = connectorIcon(connector.id);
+  const state = channelState(readiness, connected, isSuperAdmin);
+  const steps = connectSteps(connector.id, connector.name, connector.provider);
+  const waitingOnFlas =
+    readiness?.status === "ADMIN_SETUP_REQUIRED" && readiness.setupOwner !== "workspace";
+  const comingSoon = readiness?.status === "COMING_SOON";
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Icon className={`size-5 ${tint}`} /> {connector.name}
+          <Badge variant={state.tone === "good" ? "default" : "secondary"}>{state.label}</Badge>
+        </DialogTitle>
+        <DialogDescription>{connector.blurb}</DialogDescription>
+      </DialogHeader>
+
+      {connected.length > 0 && (
+        <div className="grid gap-2">
+          {connected.map((account) => (
+            <div
+              key={account.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"
+            >
+              <span className="font-medium">{account.label || connector.name}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => onDisconnect(account.id)}
+              >
+                <Unplug className="mr-1 size-3.5" /> Disconnect
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          How to connect
+        </p>
+        <ol className="grid gap-2 text-sm">
+          {steps.map((step, i) => (
+            <li key={step} className="flex gap-3">
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full border text-xs font-medium">
+                {i + 1}
+              </span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      {comingSoon && connector.unavailableReason && (
+        <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+          {connector.unavailableReason}
+          {isAdmin && connector.id === "whatsapp"
+            ? " An administrator adds numbers from Advanced admin settings on this page."
+            : ""}
+        </p>
+      )}
+      {waitingOnFlas && !comingSoon && (
+        <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+          {notYetMessage(connector.name)}
+        </p>
+      )}
+
+      {connector.oauth && !comingSoon && (
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button onClick={onConnect} disabled={busy || waitingOnFlas}>
+            {busy
+              ? "Opening secure sign-in…"
+              : connected.length > 0
+                ? `Reconnect ${connector.name}`
+                : signInLabel(connector.provider, connector.name)}
+          </Button>
+        </div>
+      )}
     </>
   );
 }

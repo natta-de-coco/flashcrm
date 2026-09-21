@@ -104,3 +104,26 @@ export function pickerNoun(platform: string): string {
 export function handoffNote(providerName: string, pickerNoun: string): string {
   return `You'll be sent to ${providerName} to sign in and choose the ${pickerNoun}. FLAS never sees your ${providerName} password.`;
 }
+
+/**
+ * The three steps a company takes for one channel, in order, written for the
+ * person doing them rather than for the platform they are doing them on.
+ *
+ * WhatsApp is deliberately different: there is no one-click sign-in for it
+ * yet, so its steps say who does the work instead of pretending otherwise.
+ */
+export function connectSteps(platform: string, name: string, provider?: string | null): string[] {
+  if (platform === "whatsapp")
+    return [
+      "Have your WhatsApp Business number and the Meta business that owns it ready.",
+      "A FLAS administrator connects the number for you, from Advanced admin settings.",
+      "Send a message to that number and check it arrives in your inbox.",
+    ];
+  const signIn = provider === "meta" ? "Facebook" : provider === "google" ? "Google" : name;
+  const noun = pickerNoun(platform);
+  return [
+    `Press Continue with ${signIn}.`,
+    `Sign in with the ${signIn} account that manages your ${noun}.`,
+    `Choose the ${noun} and allow access.`,
+  ];
+}
