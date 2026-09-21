@@ -26,6 +26,7 @@ function loadLib(relative) {
 
 const credentialHandoff = loadLib("../src/lib/credential-handoff.ts");
 const { credentialsNote } = loadLib("../src/lib/credentials-note.ts");
+const connectConsent = loadLib("../src/lib/connect-consent.ts");
 
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -135,8 +136,12 @@ function harness({
     "@/components/integrations/connector-icons": {
       connectorIcon: () => ({ icon: "Icon", tint: "" }),
     },
+    "@/lib/connect-consent": connectConsent,
     "@/lib/social-connector-definitions": {
-      connectorDefinition: () => null,
+      connectorDefinition: (id) =>
+        id === "facebook"
+          ? { requestedScopes: ["pages_show_list", "pages_read_engagement", "not_a_real_scope"] }
+          : null,
       resolveAllCapabilities: () => [],
       CAPABILITY_LABELS: {},
     },
@@ -372,6 +377,7 @@ test("a new company owner gets Continue with Facebook and never sees FLAS's setu
   assert.equal(text(button), "Continue with Facebook");
   assert.equal(button.props.disabled, false);
   button.props.onClick();
+  h.find(h.render(), "ConnectConsent").props.onContinue();
   await h.flush();
   assert.equal(h.requests[0].data.platform, "facebook");
   assert.deepEqual(h.redirects, ["https://provider.example/login"]);
@@ -412,6 +418,7 @@ test("a refused start reads as calm for a company owner", async () => {
     result: { ready: false },
   });
   cardButton(h, "facebook").props.onClick();
+  h.find(h.render(), "ConnectConsent").props.onContinue();
   await h.flush();
   const problem = h.find(h.render(), "Problem");
   assert.equal(problem.props.calm, true);
@@ -497,4 +504,49 @@ test("the Health report names FLAS's encryption setting to FLAS staff only", () 
     credentialsNote({ configured: true, plaintext: 0 }, false),
     "Stored credentials are encrypted.",
   );
+});
+
+test("no provider is contacted until the company has seen what it is agreeing to", async () => {
+  const h = harness({ status: "READY", connectors: [FACEBOOK], auth: COMPANY_OWNER });
+  cardButton(h, "facebook").props.onClick();
+  const consent = h.find(h.render(), "ConnectConsent");
+  assert.ok(consent, "the consent screen comes first");
+  assert.equal(h.requests.length, 0, "nothing is sent to the provider yet");
+
+  const shown = nodes(consent.type(consent.props))
+    .filter((n) => n.type === "li")
+    .map((li) =>
+      nodes(li)
+        .filter((n) => n.type === "span")
+        .map(text)
+        .join(""),
+    );
+  assert.deepEqual(shown, [
+    "See the list of Pages you manage",
+    "Read your Page's posts and their comments",
+  ]);
+  assert.equal(
+    JSON.stringify(shown).includes("pages_"),
+    false,
+    "developer permission names are never shown",
+  );
+
+  consent.props.onCancel();
+  await h.flush();
+  assert.equal(h.requests.length, 0, "cancelling contacts nobody");
+  assert.equal(h.find(h.render(), "ConnectConsent"), undefined);
+  assert.deepEqual(h.redirects, []);
+});
+
+test("permission wording skips anything it has no plain words for", () => {
+  const { plainPermissions, pickerNoun, handoffNote } = connectConsent;
+  // Built inside the sandbox realm, so copy before comparing.
+  assert.deepEqual(
+    [...plainPermissions(["instagram_basic", "wat", "instagram_basic"])],
+    ["See the Instagram professional account linked to your Page"],
+  );
+  assert.equal(plainPermissions(undefined).length, 0);
+  assert.equal(pickerNoun("facebook"), "Page");
+  assert.equal(pickerNoun("something_new"), "account");
+  assert.match(handoffNote("Facebook", "Page"), /never sees your Facebook password/);
 });

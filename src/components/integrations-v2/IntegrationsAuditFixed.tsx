@@ -30,6 +30,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { credentialSpec, OAUTH_REDIRECT_PATH } from "@/lib/connection-setup";
 import { actionableBlockers, continueTarget } from "@/lib/credential-handoff";
+import { handoffNote, pickerNoun, plainPermissions } from "@/lib/connect-consent";
 import type { ReadinessBlocker } from "@/lib/integration-readiness.functions";
 import { connectionStatus } from "@/lib/connection-status";
 import { disconnectConnection, getConnections, startConnect } from "@/lib/connections.functions";
@@ -150,6 +151,9 @@ export function IntegrationsAuditFixed({
   // that product rather than whichever row the credentials were typed into.
   const [setupReturnTo, setSetupReturnTo] = useState<string | null>(null);
   const [credentialsFor, setCredentialsFor] = useState<string | null>(null);
+  // Nobody is sent to a provider's consent screen without being told, in plain
+  // words, what FLAS is about to ask for and what they will choose there.
+  const [confirming, setConfirming] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -230,6 +234,7 @@ export function IntegrationsAuditFixed({
     starting.current = true;
     setSetupReturnTo(null);
     setCredentialsFor(null);
+    setConfirming(null);
     setProviderSetupOpen(false);
     setMarketplaceOpen(false);
     // startConnect rechecks all prerequisites server-side. Do not rely on
@@ -274,7 +279,7 @@ export function IntegrationsAuditFixed({
     }
     if (row?.status === "COMING_SOON") return;
     if (connector.oauth) {
-      beginConnect(connector.id);
+      setConfirming(connector.id);
       return;
     }
     if (connector.internalHref && connector.internalHref !== "/connect") {
@@ -284,6 +289,7 @@ export function IntegrationsAuditFixed({
     toast.info(`${connector.name} setup is managed from this Integrations page.`);
   }
 
+  const confirmConnector = confirming ? CONNECTORS.find((c) => c.id === confirming) : undefined;
   const credentialConnector = credentialsFor
     ? CONNECTORS.find((c) => c.id === credentialsFor)
     : undefined;
@@ -631,6 +637,24 @@ export function IntegrationsAuditFixed({
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog
+        open={Boolean(confirming)}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          {confirmConnector && (
+            <ConnectConsent
+              connector={confirmConnector}
+              busy={connect.isPending}
+              onCancel={() => setConfirming(null)}
+              onContinue={() => beginConnect(confirmConnector.id)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={isAdmin && Boolean(credentialsFor)}
@@ -1230,5 +1254,66 @@ function WorkspaceApps({
         ))}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Shown before a provider's own consent screen: what FLAS will ask for, what
+ * the person chooses next, and a way out that contacts nobody.
+ */
+function ConnectConsent({
+  connector,
+  busy,
+  onCancel,
+  onContinue,
+}: {
+  connector: Connector;
+  busy: boolean;
+  onCancel: () => void;
+  onContinue: () => void;
+}) {
+  const provider = connector.provider === "meta" ? "Facebook" : (connector.name ?? "the provider");
+  const permissions = plainPermissions(connectorDefinition(connector.id)?.requestedScopes);
+  const { icon: Icon, tint } = connectorIcon(connector.id);
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Icon className={`size-5 ${tint}`} /> Connect {connector.name}
+        </DialogTitle>
+        <DialogDescription>
+          FLAS will ask {provider} for permission to do the following for your business. You choose
+          the exact {pickerNoun(connector.id)} on {provider}&apos;s screen.
+        </DialogDescription>
+      </DialogHeader>
+      {permissions.length > 0 ? (
+        <ul className="grid gap-2 rounded-xl border bg-muted/30 p-4 text-sm">
+          {permissions.map((line) => (
+            <li key={line} className="flex items-start gap-2">
+              <Check className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="rounded-xl border bg-muted/30 p-4 text-sm">
+          You&apos;ll be asked to allow FLAS to work with your {connector.name} account.
+        </p>
+      )}
+      {connector.limitedReason && (
+        <p className="text-xs text-muted-foreground">{connector.limitedReason}</p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {handoffNote(provider, pickerNoun(connector.id))}
+      </p>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button onClick={onContinue} disabled={busy}>
+          {busy ? "Opening secure sign-in…" : signInLabel(connector.provider, connector.name)}
+        </Button>
+      </div>
+    </>
   );
 }
