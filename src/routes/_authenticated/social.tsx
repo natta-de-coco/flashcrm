@@ -924,8 +924,10 @@ function ReachTab({
         {tiles.map((t) => (
           <Card key={t.label}>
             <CardContent className="pt-6">
-              <p className="text-2xl font-bold leading-none">{t.value.toLocaleString()}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t.label}</p>
+              <p className="stat-label">{t.label}</p>
+              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">
+                {t.value.toLocaleString()}
+              </p>
             </CardContent>
           </Card>
         ))}

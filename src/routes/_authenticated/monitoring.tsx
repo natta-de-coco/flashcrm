@@ -189,7 +189,7 @@ function MonitoringPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Webhook monitoring</h1>
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Webhook monitoring</h1>
           <p className="text-sm text-muted-foreground">
             Live delivery status for every WhatsApp event — refreshed automatically every 10
             seconds.

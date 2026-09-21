@@ -453,8 +453,9 @@ test("bot uses only this tenant's catalog and latest conversation messages in ch
     const result = await generateBotReply(tenant, "chat", botSettings);
     assert.equal(result.handoff, false);
     assert.equal(request.messages.length, 31);
-    assert.equal(request.messages[1].content, "message-5");
-    assert.equal(request.messages.at(-1).content, "message-34");
+    // Each message now carries how long ago it was sent, ahead of its text.
+    assert.match(request.messages[1].content, /message-5$/);
+    assert.match(request.messages.at(-1).content, /message-34$/);
     assert.match(request.messages[0].content, /Coffee/);
     assert.match(request.messages[0].content, /Never pretend to be a human/);
     assert.ok(!JSON.stringify(request).includes("PRIVATE"));

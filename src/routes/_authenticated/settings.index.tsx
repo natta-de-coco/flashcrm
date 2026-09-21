@@ -34,7 +34,7 @@ function SettingsPage() {
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Settings</h1>
         <p className="text-sm text-muted-foreground">
           Your company&apos;s own preferences: region and currency, billing, security, data and
           teammates. Anything that connects Flas to an outside system lives under{" "}

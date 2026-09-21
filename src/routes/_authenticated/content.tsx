@@ -157,7 +157,7 @@ function ContentPage() {
   return (
     <main className="flex-1 space-y-6 p-6">
       <header>
-        <h1 className="text-2xl font-bold">Content & SEO</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Content & SEO</h1>
         <p className="text-sm text-muted-foreground">
           Write once, schedule to multiple platforms, and keep SEO metadata attached to every post.
         </p>

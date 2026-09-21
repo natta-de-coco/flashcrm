@@ -348,7 +348,9 @@ function MarketingPage() {
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold">Leads &amp; marketing</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+          Leads &amp; marketing
+        </h1>
         <p className="text-sm text-muted-foreground">
           Capture emails from your WordPress or Shopify store and market to them from one place.
         </p>

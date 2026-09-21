@@ -169,7 +169,7 @@ function EmailSettingsPage() {
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold">Email delivery</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Email delivery</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Pick a provider for your company's outbound email — verification codes, password resets,
           invoice notifications, invite messages, etc. Raw SMTP is not supported (serverless
