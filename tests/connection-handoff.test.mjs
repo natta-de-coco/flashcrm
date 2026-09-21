@@ -137,6 +137,9 @@ function harness({
       connectorIcon: () => ({ icon: "Icon", tint: "" }),
     },
     "@/lib/connect-consent": connectConsent,
+    "@/lib/connection-status": {
+      connectionStatus: () => ({ tone: "good", label: "Connected", reason: "" }),
+    },
     "@/lib/social-connector-definitions": {
       connectorDefinition: (id) =>
         id === "facebook"
@@ -549,4 +552,139 @@ test("permission wording skips anything it has no plain words for", () => {
   assert.equal(pickerNoun("facebook"), "Page");
   assert.equal(pickerNoun("something_new"), "account");
   assert.match(handoffNote("Facebook", "Page"), /never sees your Facebook password/);
+});
+
+const WHATSAPP = {
+  id: "whatsapp",
+  name: "WhatsApp Business",
+  provider: null,
+  oauth: false,
+  group: "messaging",
+  blurb: "Numbers, templates, chatbot and conversations.",
+  unavailableReason: "Simple WhatsApp onboarding is coming soon.",
+};
+
+/** The card for one channel in the Channels section, rendered. */
+function channelCard(h, id) {
+  const card = nodes(h.render()).find(
+    (n) => n.type?.name === "ChannelCard" && n.props.connector.id === id,
+  );
+  return card;
+}
+
+test("each channel has its own card, state and setup page", () => {
+  const h = harness({
+    status: "READY",
+    connectors: [WHATSAPP, FACEBOOK, INSTAGRAM],
+    auth: COMPANY_OWNER,
+    accounts: [
+      {
+        id: "acc-1",
+        platform: "facebook",
+        label: "Mubasher Pizza",
+        active: true,
+        external_id: "page-1",
+        connect_method: "oauth",
+      },
+    ],
+  });
+  for (const id of ["whatsapp", "facebook", "instagram"])
+    assert.ok(channelCard(h, id), `${id} has its own card`);
+
+  // A connected channel names the account and offers Manage, not Set up.
+  const facebook = channelCard(h, "facebook");
+  assert.equal(
+    text(nodes(facebook.type(facebook.props)).find((n) => n.type === "Button")),
+    "Manage",
+  );
+  assert.ok(
+    nodes(facebook.type(facebook.props)).some((n) => text(n).includes("Mubasher Pizza")),
+    "the connected Page is named",
+  );
+  const instagram = channelCard(h, "instagram");
+  assert.equal(
+    text(nodes(instagram.type(instagram.props)).find((n) => n.type === "Button")),
+    "Set up",
+  );
+
+  // Opening one opens that channel's page only.
+  instagram.props.onOpen();
+  const setup = h.find(h.render(), "ChannelSetup");
+  assert.equal(setup.props.connector.id, "instagram");
+  const steps = nodes(setup.type(setup.props))
+    .filter((n) => n.type === "li")
+    .map((li) =>
+      nodes(li)
+        .filter((n) => n.type === "span")
+        .map(text)
+        .join(" ")
+        .trim(),
+    );
+  assert.equal(steps.length, 3);
+  assert.match(steps[0], /^1 Press Continue with Facebook\./);
+  assert.match(steps[2], /Instagram account/);
+});
+
+test("connecting from a channel page still goes through the consent screen", async () => {
+  const h = harness({ status: "READY", connectors: [FACEBOOK], auth: COMPANY_OWNER });
+  channelCard(h, "facebook").props.onOpen();
+  h.find(h.render(), "ChannelSetup").props.onConnect();
+  assert.equal(h.requests.length, 0, "the provider is not contacted yet");
+  h.find(h.render(), "ConnectConsent").props.onContinue();
+  await h.flush();
+  assert.equal(h.requests[0].data.platform, "facebook");
+  assert.equal(h.find(h.render(), "ChannelSetup"), undefined, "the channel page closes");
+});
+
+test("a channel FLAS has not finished setting up cannot be connected from its page", () => {
+  const h = harness({ connectors: [FACEBOOK], auth: COMPANY_OWNER });
+  channelCard(h, "facebook").props.onOpen();
+  const setup = h.find(h.render(), "ChannelSetup");
+  const rendered = nodes(setup.type(setup.props));
+  const connect = rendered.find((n) => n.type === "Button" && text(n).includes("Continue with"));
+  assert.equal(connect.props.disabled, true);
+  assert.ok(
+    rendered.some((n) => text(n).includes("nothing you need to do")),
+    "it says FLAS is finishing setup",
+  );
+});
+
+test("WhatsApp says who connects it instead of offering a sign-in it does not have", () => {
+  const h = harness({
+    status: "COMING_SOON",
+    connectors: [WHATSAPP],
+    auth: COMPANY_OWNER,
+  });
+  channelCard(h, "whatsapp").props.onOpen();
+  const setup = h.find(h.render(), "ChannelSetup");
+  const rendered = nodes(setup.type(setup.props));
+  assert.equal(
+    rendered.some((n) => n.type === "Button" && text(n).includes("Continue with")),
+    false,
+    "no sign-in button for a channel that has none",
+  );
+  const steps = nodes(setup.type(setup.props))
+    .filter((n) => n.type === "li")
+    .map((li) =>
+      nodes(li)
+        .filter((n) => n.type === "span")
+        .map(text)
+        .join(" "),
+    );
+  assert.match(steps.join(" "), /A FLAS administrator connects the number for you/);
+});
+
+test("channel steps are written for the person doing them", () => {
+  const { connectSteps } = connectConsent;
+  const facebook = [...connectSteps("facebook", "Facebook", "meta")];
+  assert.deepEqual(facebook, [
+    "Press Continue with Facebook.",
+    "Sign in with the Facebook account that manages your Page.",
+    "Choose the Page and allow access.",
+  ]);
+  assert.match([...connectSteps("youtube", "YouTube", "google")][1], /Google account .* channel/);
+  assert.match(
+    [...connectSteps("whatsapp", "WhatsApp Business", null)][2],
+    /arrives in your inbox/,
+  );
 });
