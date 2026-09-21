@@ -1269,8 +1269,8 @@ function StatCard({
     <Card>
       <CardContent className="flex items-center justify-between p-4">
         <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+          <p className="stat-label">{label}</p>
+          <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{value}</p>
         </div>
         <span
           className={`size-2.5 rounded-full ${

@@ -329,8 +329,8 @@ function DashboardPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
       <header className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Dashboard</h1>
+          <p className="mt-1.5 text-[0.9375rem] text-muted-foreground">
             Everything happening across WhatsApp, your website widget and your pipeline.
           </p>
         </div>
@@ -363,16 +363,16 @@ function DashboardPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((s) => (
-            <Card key={s.label}>
-              <CardContent className="flex items-center gap-4 pt-6">
-                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
-                  <s.icon className="size-5" />
-                </span>
+            <Card key={s.label} className="border-border/70 shadow-none">
+              <CardContent className="flex items-start justify-between gap-3 p-5">
                 <div className="min-w-0">
-                  <p className="text-2xl font-bold leading-none">{s.value}</p>
-                  <p className="truncate text-xs text-muted-foreground">{s.label}</p>
+                  <p className="stat-label truncate">{s.label}</p>
+                  <p className="stat-figure mt-2 text-[2rem] font-bold">{s.value}</p>
                   <TrendPill trend={s.trend} label={s.trendLabel} />
                 </div>
+                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+                  <s.icon className="size-[1.125rem]" />
+                </span>
               </CardContent>
             </Card>
           ))}
