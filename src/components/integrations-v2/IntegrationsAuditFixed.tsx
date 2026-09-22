@@ -30,7 +30,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { CONNECTORS, type Connector, type ConnectorGroup } from "@/lib/connections-catalog";
 import { credentialSpec, OAUTH_REDIRECT_PATH } from "@/lib/connection-setup";
 import { actionableBlockers, continueTarget } from "@/lib/credential-handoff";
-import { connectSteps, handoffNote, pickerNoun, plainPermissions } from "@/lib/connect-consent";
+import {
+  accountIdLabel,
+  connectSteps,
+  handoffNote,
+  pickerNoun,
+  plainPermissions,
+} from "@/lib/connect-consent";
 import type { ReadinessBlocker } from "@/lib/integration-readiness.functions";
 import { connectionStatus } from "@/lib/connection-status";
 import { disconnectConnection, getConnections, startConnect } from "@/lib/connections.functions";
@@ -76,6 +82,18 @@ type Account = {
   permissions: string[] | null;
   profile_url: string | null;
   connect_method: string;
+  created_at?: string | null;
+};
+
+/** A WhatsApp number as the browser may read it: never its token or secret. */
+type WaNumber = {
+  id: string;
+  label: string;
+  active: boolean;
+  phone_number_id: string;
+  display_phone: string | null;
+  is_default: boolean;
+  created_at: string | null;
 };
 
 const GROUP_LABELS: Record<ConnectorGroup, string> = {
@@ -171,6 +189,9 @@ export function IntegrationsAuditFixed({
   } | null>(null);
 
   const allAccounts = (connections.data?.accounts ?? []) as Account[];
+  const waNumbers = (
+    (connections.data as { whatsappNumbers?: WaNumber[] } | undefined)?.whatsappNumbers ?? []
+  ).filter((n) => n.active);
   const accounts = allAccounts.filter((a) => a.active && a.external_id);
   const pendingAccounts = allAccounts.filter(
     (a) => a.active && !a.external_id && a.connect_method === "oauth",
@@ -228,6 +249,19 @@ export function IntegrationsAuditFixed({
       });
     },
   });
+
+  /** The manual WhatsApp route: the number form in Advanced admin settings. */
+  function openWhatsAppNumberSetup() {
+    setChannel(null);
+    if (typeof document === "undefined") return;
+    const details = document.getElementById("channel-setup");
+    if (details instanceof HTMLDetailsElement) details.open = true;
+    window.setTimeout(
+      () =>
+        document.getElementById("whatsapp")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      150,
+    );
+  }
 
   function openDiagnostics(returnTo: string | null) {
     setSetupReturnTo(returnTo);
@@ -481,7 +515,11 @@ export function IntegrationsAuditFixed({
                   key={id}
                   connector={connector}
                   readiness={readinessMap.get(id) ?? null}
-                  connected={accounts.filter((a) => a.platform === id)}
+                  connected={
+                    id === "whatsapp"
+                      ? waNumbers.map((n) => ({ id: n.id, label: n.display_phone || n.label }))
+                      : accounts.filter((a) => a.platform === id)
+                  }
                   isSuperAdmin={isSuperAdmin}
                   onOpen={() => {
                     setBlocked(null);
@@ -694,6 +732,19 @@ export function IntegrationsAuditFixed({
               isSuperAdmin={isSuperAdmin}
               onConnect={() => openConnector(channelConnector)}
               onDisconnect={(id) => remove.mutate(id)}
+              waNumbers={channelConnector.id === "whatsapp" ? waNumbers : []}
+              onUseOwnApp={
+                isAdmin && channelConnector.oauth && channelConnector.provider
+                  ? () => {
+                      setChannel(null);
+                      setSetupReturnTo(channelConnector.id);
+                      setCredentialsFor(channelConnector.id);
+                    }
+                  : undefined
+              }
+              onAddNumber={
+                isAdmin && channelConnector.id === "whatsapp" ? openWhatsAppNumberSetup : undefined
+              }
             />
           )}
         </DialogContent>
@@ -1433,7 +1484,7 @@ function ConnectConsent({
 /** How one channel stands right now, in a word a company uses. */
 function channelState(
   readiness: IntegrationReadinessRow | null,
-  connected: Account[],
+  connected: ReadonlyArray<{ id: string }>,
   isSuperAdmin: boolean,
 ): { label: string; tone: "good" | "warn" | "muted" } {
   if (connected.length > 0)
@@ -1461,7 +1512,7 @@ function ChannelCard({
 }: {
   connector: Connector;
   readiness: IntegrationReadinessRow | null;
-  connected: Account[];
+  connected: ReadonlyArray<{ id: string; label: string }>;
   isSuperAdmin: boolean;
   onOpen: () => void;
 }) {
@@ -1499,6 +1550,9 @@ function ChannelSetup({
   isSuperAdmin,
   onConnect,
   onDisconnect,
+  waNumbers = [],
+  onUseOwnApp,
+  onAddNumber,
 }: {
   connector: Connector;
   readiness: IntegrationReadinessRow | null;
@@ -1508,10 +1562,21 @@ function ChannelSetup({
   isSuperAdmin: boolean;
   onConnect: () => void;
   onDisconnect: (id: string) => void;
+  /** Connected WhatsApp numbers, for the WhatsApp page. */
+  waNumbers?: WaNumber[];
+  /** Admins: connect through the company's own provider app instead. */
+  onUseOwnApp?: (() => void) | undefined;
+  /** Admins: add a WhatsApp number by hand. */
+  onAddNumber?: (() => void) | undefined;
 }) {
   const { icon: Icon, tint } = connectorIcon(connector.id);
-  const state = channelState(readiness, connected, isSuperAdmin);
+  const state = channelState(
+    readiness,
+    connector.id === "whatsapp" ? waNumbers : connected,
+    isSuperAdmin,
+  );
   const steps = connectSteps(connector.id, connector.name, connector.provider);
+  const providerName = readiness?.providerName ?? connector.name;
   const waitingOnFlas =
     readiness?.status === "ADMIN_SETUP_REQUIRED" && readiness.setupOwner !== "workspace";
   const comingSoon = readiness?.status === "COMING_SOON";
@@ -1528,19 +1593,39 @@ function ChannelSetup({
       {connected.length > 0 && (
         <div className="grid gap-2">
           {connected.map((account) => (
-            <div
-              key={account.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm"
-            >
-              <span className="font-medium">{account.label || connector.name}</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => onDisconnect(account.id)}
-              >
-                <Unplug className="mr-1 size-3.5" /> Disconnect
-              </Button>
+            <div key={account.id} className="grid gap-2 rounded-lg border p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium">{account.label || connector.name}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive"
+                  onClick={() => onDisconnect(account.id)}
+                >
+                  <Unplug className="mr-1 size-3.5" /> Disconnect
+                </Button>
+              </div>
+              {account.external_id && (
+                <CopyRow label={accountIdLabel(connector.id)} value={account.external_id} />
+              )}
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">Connected by</dt>
+                <dd>
+                  {account.connect_method === "oauth" ? `${providerName} sign-in` : "Manual setup"}
+                </dd>
+                {account.created_at && (
+                  <>
+                    <dt className="text-muted-foreground">Connected on</dt>
+                    <dd>{new Date(account.created_at).toLocaleDateString()}</dd>
+                  </>
+                )}
+                {account.token_expires_at && (
+                  <>
+                    <dt className="text-muted-foreground">Access valid until</dt>
+                    <dd>{new Date(account.token_expires_at).toLocaleDateString()}</dd>
+                  </>
+                )}
+              </dl>
             </div>
           ))}
         </div>
@@ -1574,6 +1659,53 @@ function ChannelSetup({
         <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
           {notYetMessage(connector.name)}
         </p>
+      )}
+
+      {waNumbers.length > 0 && (
+        <div className="grid gap-2">
+          {waNumbers.map((number) => (
+            <div key={number.id} className="grid gap-2 rounded-lg border p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{number.display_phone || number.label}</span>
+                {number.is_default && <Badge variant="secondary">Default</Badge>}
+              </div>
+              <CopyRow label="Phone number ID" value={number.phone_number_id} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(onUseOwnApp || onAddNumber) && (
+        <div className="grid gap-2 rounded-lg border border-dashed p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Another way to connect
+          </p>
+          {onUseOwnApp && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <p className="min-w-0 flex-1 text-muted-foreground">
+                Connect through a {providerName} app your company owns. It works before FLAS&apos;s
+                shared app is approved; you&apos;ll need that app&apos;s ID and secret.
+              </p>
+              <Button
+                size="sm"
+                variant={waitingOnFlas ? "default" : "outline"}
+                onClick={onUseOwnApp}
+              >
+                <KeyRound className="mr-1.5 size-3.5" /> Use your own {providerName} app
+              </Button>
+            </div>
+          )}
+          {onAddNumber && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <p className="min-w-0 flex-1 text-muted-foreground">
+                Add a WhatsApp Business number by hand, with its phone number ID and access token.
+              </p>
+              <Button size="sm" onClick={onAddNumber}>
+                Add a number manually
+              </Button>
+            </div>
+          )}
+        </div>
       )}
 
       {connector.oauth && !comingSoon && (

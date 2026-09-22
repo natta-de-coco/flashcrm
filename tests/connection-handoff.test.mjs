@@ -45,6 +45,7 @@ function harness({
   setupOwner = status === "ADMIN_SETUP_REQUIRED" ? "flas" : null,
   source = "shared",
   callbackUri = null,
+  whatsappNumbers = [],
 } = {}) {
   const state = [],
     requests = [],
@@ -101,7 +102,7 @@ function harness({
     "@tanstack/react-query": {
       useQueryClient: () => ({ invalidateQueries: async () => {} }),
       useQuery: ({ queryKey }) => ({
-        data: queryKey[0] === "connections" ? { accounts } : { rows },
+        data: queryKey[0] === "connections" ? { accounts, whatsappNumbers } : { rows },
       }),
       useMutation(options) {
         const index = mutationCursor++;
@@ -687,4 +688,87 @@ test("channel steps are written for the person doing them", () => {
     [...connectSteps("whatsapp", "WhatsApp Business", null)][2],
     /arrives in your inbox/,
   );
+});
+
+const FACEBOOK_META = { ...FACEBOOK, providerName: "Meta" };
+const WA_NUMBER = {
+  id: "n1",
+  label: "Main line",
+  active: true,
+  phone_number_id: "109876543210",
+  display_phone: "+971 50 000 0000",
+  is_default: true,
+  created_at: "2026-09-01T10:00:00Z",
+};
+const rendered = (h, name) => {
+  const node = h.find(h.render(), name);
+  return node ? nodes(node.type(node.props)) : [];
+};
+
+test("an admin whose shared app is not ready is offered their own app, on the channel page", () => {
+  const h = harness({ connectors: [FACEBOOK_META], auth: COMPANY_OWNER });
+  channelCard(h, "facebook").props.onOpen();
+  const page = rendered(h, "ChannelSetup");
+  const own = page.find((n) => n.type === "Button" && text(n) === "Use your own Meta app");
+  assert.ok(own, "the second way is on the channel page, not buried in Advanced settings");
+  own.props.onClick();
+  assert.equal(h.find(h.render(), "ChannelSetup"), undefined, "the channel page closes");
+  const credentials = h.find(h.render(), "CredentialsStep");
+  assert.ok(credentials, "the app form opens");
+  assert.equal(credentials.props.platformName, "Facebook");
+});
+
+test("a member is not offered to bring an app of their own", () => {
+  const h = harness({ connectors: [FACEBOOK_META], auth: MEMBER });
+  channelCard(h, "facebook").props.onOpen();
+  const page = rendered(h, "ChannelSetup");
+  assert.equal(
+    page.some((n) => n.type === "Button" && text(n).startsWith("Use your own")),
+    false,
+  );
+});
+
+test("a connected Page shows its ID, how it was connected and when", () => {
+  const h = harness({
+    status: "LIMITED",
+    connectors: [FACEBOOK_META],
+    auth: COMPANY_OWNER,
+    accounts: [
+      {
+        id: "acc-1",
+        platform: "facebook",
+        label: "Tau Italia Page",
+        active: true,
+        external_id: "1234567890",
+        connect_method: "oauth",
+        created_at: "2026-09-10T08:00:00Z",
+        token_expires_at: null,
+      },
+    ],
+  });
+  channelCard(h, "facebook").props.onOpen();
+  const page = rendered(h, "ChannelSetup");
+  const id = page.find((n) => n.type?.name === "CopyRow");
+  assert.equal(id.props.label, "Page ID");
+  assert.equal(id.props.value, "1234567890");
+  assert.ok(page.some((n) => n.type === "dd" && text(n) === "Meta sign-in"));
+});
+
+test("WhatsApp counts its connected numbers and shows each one's phone number ID", () => {
+  const h = harness({
+    status: "COMING_SOON",
+    connectors: [WHATSAPP],
+    auth: COMPANY_OWNER,
+    whatsappNumbers: [WA_NUMBER],
+  });
+  const card = channelCard(h, "whatsapp");
+  const cardNodes = nodes(card.type(card.props));
+  assert.equal(text(cardNodes.find((n) => n.type === "Button")), "Manage");
+  assert.ok(cardNodes.some((n) => text(n) === "+971 50 000 0000"));
+
+  card.props.onOpen();
+  const page = rendered(h, "ChannelSetup");
+  const id = page.find((n) => n.type?.name === "CopyRow" && n.props.label === "Phone number ID");
+  assert.equal(id.props.value, "109876543210");
+  assert.ok(page.some((n) => n.type === "Button" && text(n) === "Add a number manually"));
 });

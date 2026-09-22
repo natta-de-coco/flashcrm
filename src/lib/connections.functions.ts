@@ -36,7 +36,10 @@ export const getConnections = createServerFn({ method: "GET" })
         .select("id, account_id, overall, scores, findings, suggestions, created_at")
         .order("created_at", { ascending: false })
         .limit(60),
-      supabase.from("wa_numbers").select("id, label, active").limit(20),
+      supabase
+        .from("wa_numbers")
+        .select("id, label, active, phone_number_id, display_phone, is_default, created_at")
+        .limit(20),
       supabase.from("lead_sites").select("id, name, platform, active").limit(50),
     ]);
     if (accounts.error) throw accounts.error;
