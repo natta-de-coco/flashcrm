@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { repliesFor, replyDelivery } from "@/lib/social-thread";
 import {
   Archive,
   AtSign,
@@ -35,6 +36,8 @@ type Interaction = {
   status: "open" | "replied" | "archived";
   ai_suggestion: string | null;
   created_at: string;
+  external_id?: string | null;
+  replied_at?: string | null;
 };
 
 type Account = { id: string; platform: string; label: string };
@@ -108,7 +111,11 @@ export function SocialInbox() {
     },
     onSuccess: (res) => {
       setReply("");
-      toast.success(res.metaDelivered ? "Reply published" : "Reply saved to the thread");
+      toast.success(
+        res.metaDelivered
+          ? "Reply published"
+          : "Saved in FLAS, but not sent: Messenger replies aren't available yet. Reply from Facebook for now.",
+      );
       refresh();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -272,27 +279,31 @@ export function SocialInbox() {
           </header>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-            <div className="max-w-[85%] rounded-2xl rounded-tl-sm border bg-card p-3 text-sm">
-              {active.body}
+            <div className="max-w-[75%] space-y-1">
+              <div className="rounded-2xl rounded-tl-sm border bg-card p-3 text-sm leading-relaxed">
+                {active.body}
+              </div>
+              <p className="px-1 text-[11px] text-muted-foreground">
+                {active.author_name ?? "Customer"} · {new Date(active.created_at).toLocaleString()}
+              </p>
             </div>
-            {all
-              .filter(
-                (i) =>
-                  i.direction === "out" &&
-                  i.account_id === active.account_id &&
-                  i.kind === active.kind &&
-                  new Date(i.created_at) >= new Date(active.created_at),
-              )
-              .slice(0, 5)
-              .reverse()
-              .map((i) => (
-                <div
-                  key={i.id}
-                  className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-primary p-3 text-sm text-primary-foreground"
-                >
-                  {i.body}
+            {repliesFor(active, all).map((i) => {
+              const delivery = replyDelivery(i);
+              return (
+                <div key={i.id} className="ml-auto max-w-[75%] space-y-1">
+                  <div className="rounded-2xl rounded-tr-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
+                    {i.body}
+                  </div>
+                  <p className="px-1 text-right text-[11px] text-muted-foreground">
+                    You · {new Date(i.created_at).toLocaleString()}
+                    {delivery === "sent" ? " · Sent" : ""}
+                    {delivery === "not_sent"
+                      ? " · Saved in FLAS, not sent. Reply from Facebook for now."
+                      : ""}
+                  </p>
                 </div>
-              ))}
+              );
+            })}
             {active.status === "replied" ? (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Check className="size-3.5" /> Replied

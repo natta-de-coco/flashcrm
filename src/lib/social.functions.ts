@@ -237,18 +237,27 @@ export const sendSocialReply = createServerFn({ method: "POST" })
       }
     }
 
-    await context.supabase
-      .from("social_interactions")
-      .update({ status: "replied", replied_at: new Date().toISOString() })
-      .eq("id", row.id);
-    await context.supabase.from("social_interactions").insert({
+    // Only a reply the platform accepted answers the customer. A Messenger
+    // reply is saved in FLAS but never sent, so marking the message "replied"
+    // told the team it was handled while the customer heard nothing.
+    if (metaDelivered) {
+      await context.supabase
+        .from("social_interactions")
+        .update({ status: "replied", replied_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }
+    const { replyMarker } = await import("@/lib/social-thread");
+    const { error: saveError } = await context.supabase.from("social_interactions").insert({
       tenant_id: row.tenant_id,
       account_id: row.account_id,
       kind: row.kind,
       direction: "out",
       author_name: "You",
       body: data.reply,
+      // Names the message this answers, so it shows in that thread only.
+      external_id: replyMarker(row.id, metaDelivered),
     });
+    if (saveError) throw new Error(`The reply could not be saved: ${saveError.message}`);
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
