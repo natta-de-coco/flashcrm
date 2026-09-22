@@ -127,3 +127,21 @@ export function connectSteps(platform: string, name: string, provider?: string |
     `Choose the ${noun} and allow access.`,
   ];
 }
+
+/** What each platform calls the ID of the account that was connected. */
+const ACCOUNT_ID_LABEL: Record<string, string> = {
+  facebook: "Page ID",
+  instagram: "Instagram account ID",
+  threads: "Threads user ID",
+  youtube: "Channel ID",
+  google_business: "Location ID",
+  linkedin: "Organization ID",
+  tiktok: "TikTok user ID",
+  twitter: "X user ID",
+  pinterest: "Pinterest user ID",
+  meta_ads: "Ad account ID",
+};
+
+export function accountIdLabel(platform: string): string {
+  return ACCOUNT_ID_LABEL[platform] ?? "Account ID";
+}
