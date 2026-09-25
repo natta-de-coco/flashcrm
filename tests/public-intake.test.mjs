@@ -12,7 +12,13 @@ import { ingestLead } from "../node_modules/.cache/flas-leads.mjs";
 import { requestSiteActivation } from "../node_modules/.cache/flas-plugin-activation.mjs";
 import { Route as activateRoute } from "../node_modules/.cache/flas-plugin-activate-route.mjs";
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+// Windows checkouts of this repo have CRLF line endings (core.autocrlf), so a
+// pattern describing two lines of source would not match the very file it
+// describes. The source is normalized here, once, not in every pattern below.
+const read = (path) =>
+  readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+    .split("\r\n")
+    .join("\n");
 
 let rows;
 const db = createDb();
