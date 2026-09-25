@@ -3,6 +3,7 @@
 // plus the same X-Flas-Signature scheme used by the theme snippet.
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  acceptPlatformEvent,
   ingestPlatformLead,
   json,
   resolveSite,
@@ -39,6 +40,9 @@ export const Route = createFileRoute("/api/public/webhooks/shopify")({
         } catch {
           return json({ error: "Invalid payload" }, 400);
         }
+
+        const gate = await acceptPlatformEvent({ site, platform: "shopify", rawBody, request });
+        if (!gate.ok) return gate.response;
 
         try {
           await ingestPlatformLead(site, "shopify", payload);

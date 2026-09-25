@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 
+import { createDb } from "./support/db-double.mjs";
+
 import { checkSendPermission } from "../node_modules/.cache/flas-safety.mjs";
 import { ingestLead } from "../node_modules/.cache/flas-leads.mjs";
 import { requestSiteActivation } from "../node_modules/.cache/flas-plugin-activation.mjs";
@@ -12,104 +14,17 @@ import { Route as activateRoute } from "../node_modules/.cache/flas-plugin-activ
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-let rows, faults, ids;
-
-class Query {
-  constructor(table) {
-    this.table = table;
-    this.filters = [];
-    this.mode = "read";
-  }
-  select(_columns, options) {
-    if (options?.count) this.counting = true;
-    return this;
-  }
-  eq(key, value) {
-    this.filters.push((r) => r[key] === value);
-    return this;
-  }
-  gte(key, value) {
-    this.filters.push((r) => String(r[key] ?? "") >= value);
-    return this;
-  }
-  not(key, operator, value) {
-    if (operator === "is" && value === null) this.filters.push((r) => r[key] != null);
-    return this;
-  }
-  order() {
-    return this;
-  }
-  limit(n) {
-    this.take = n;
-    return this;
-  }
-  maybeSingle() {
-    this.one = true;
-    return this;
-  }
-  single() {
-    this.one = true;
-    this.required = true;
-    return this;
-  }
-  insert(payload) {
-    this.mode = "insert";
-    this.payload = payload;
-    return this;
-  }
-  update(patch) {
-    this.mode = "update";
-    this.patch = patch;
-    return this;
-  }
-  upsert(payload, { onConflict } = {}) {
-    this.mode = "upsert";
-    this.payload = payload;
-    this.conflict = (onConflict ?? "id").split(",").map((k) => k.trim());
-    return this;
-  }
-  then(resolve, reject) {
-    const fault = faults[`${this.table}:${this.mode}`];
-    if (fault) {
-      return Promise.resolve({ data: null, error: { message: fault }, count: null }).then(
-        resolve,
-        reject,
-      );
-    }
-    const table = (rows[this.table] ??= []);
-    let found = table.filter((r) => this.filters.every((f) => f(r)));
-    if (this.mode === "update") for (const r of found) Object.assign(r, this.patch);
-    if (this.mode === "insert") {
-      const row = { id: `${this.table}-${++ids}`, ...this.payload };
-      table.push(row);
-      found = [row];
-    }
-    if (this.mode === "upsert") {
-      const existing = table.find((r) => this.conflict.every((k) => r[k] === this.payload[k]));
-      if (existing) Object.assign(existing, this.payload);
-      else table.push({ id: `${this.table}-${++ids}`, ...this.payload });
-      found = [existing ?? table.at(-1)];
-    }
-    if (this.take) found = found.slice(0, this.take);
-    const error = this.required && !found[0] ? { message: "no rows returned" } : null;
-    return Promise.resolve({
-      data: this.one ? (found[0] ?? null) : found,
-      error,
-      count: this.counting ? found.length : null,
-    }).then(resolve, reject);
-  }
-}
+let rows;
+const db = createDb();
 
 globalThis.publicIntake = {
-  db: { from: (table) => new Query(table) },
+  db: db.client,
   audits: [],
   emails: [],
   emailResult: { ok: true },
 };
 
 beforeEach(() => {
-  ids = 0;
-  faults = {};
   rows = {
     organizations: [{ id: "company-1", suspended: false, subscription_status: "active" }],
     wa_numbers: [{ id: "num-1", label: "Sales line", active: true, tenant_id: "company-1" }],
@@ -120,6 +35,7 @@ beforeEach(() => {
     lead_sites: [],
     audit_log: [],
   };
+  db.reset(rows);
   globalThis.publicIntake.audits = [];
   globalThis.publicIntake.emails = [];
   globalThis.publicIntake.emailResult = { ok: true };
@@ -177,7 +93,7 @@ describe("a lead is never stored without the contact it belongs to", () => {
   it("refuses the lead when the contact cannot be created", async () => {
     // Reported: the contact insert failed, the lead was written anyway with no
     // contact_id, and the website was told the submission had succeeded.
-    faults["contacts:insert"] = "duplicate key value violates unique constraint";
+    db.fail("contacts:insert", "duplicate key value violates unique constraint");
     await assert.rejects(ingestLead(lead), /Could not save the contact for this lead/);
     assert.equal(rows.leads.length, 0);
   });

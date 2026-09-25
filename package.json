@@ -30,7 +30,7 @@
     "test:stale-chunk": "node --test tests/stale-chunk.test.mjs",
     "test:onboarding": "node scripts/build-onboarding-bundle.mjs && node --test tests/onboarding.test.mjs",
     "test:bot-context": "node scripts/build-onboarding-bundle.mjs && node --test tests/bot-context.test.mjs",
-    "test:public-intake": "node scripts/build-public-intake-bundle.mjs && node --test tests/public-intake.test.mjs",
+    "test:public-intake": "node scripts/build-public-intake-bundle.mjs && node --test tests/public-intake.test.mjs tests/public-abuse.test.mjs",
     "test:whatsapp-numbers": "node scripts/build-onboarding-bundle.mjs && node --test tests/whatsapp-numbers.test.mjs"
   },
   "overrides": {

@@ -2,6 +2,7 @@
 // HMAC-SHA256 signature (hex) in X-Flas-Signature over the raw body.
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  acceptPlatformEvent,
   ingestPlatformLead,
   json,
   resolveSite,
@@ -31,6 +32,9 @@ export const Route = createFileRoute("/api/public/webhooks/wordpress")({
         } catch {
           return json({ error: "Invalid payload" }, 400);
         }
+
+        const gate = await acceptPlatformEvent({ site, platform: "wordpress", rawBody, request });
+        if (!gate.ok) return gate.response;
 
         try {
           await ingestPlatformLead(site, "wordpress", payload);

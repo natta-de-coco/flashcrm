@@ -359,8 +359,17 @@ export async function ingestInboundMessage(args: IngestArgs) {
     conversationId: conversationId as string,
     reply: null as string | null,
     replyMessageId: null as string | null,
+    contactId: null as string | null,
+    contactCreated: false,
     duplicate: true,
   });
+
+  // Who the sender is, is only as trustworthy as the channel they arrived on.
+  // A WhatsApp message's number was verified by Meta before it reached us. A
+  // website visitor types whatever they like into the widget, including
+  // somebody else's phone number, so their claim may create a contact but may
+  // never rewrite one that already exists.
+  const verifiedSender = channel !== "web";
   if (waMessageId) {
     const { data: seen } = await supabaseAdmin
       .from("messages")
@@ -380,6 +389,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
   // resolve every number a customer has onto the one contact, and say which
   // branch it belongs to when they have several.
   let contactId: string | null = null;
+  let contactCreated = false;
   let branchId: string | null = null;
   if (phone) {
     // Normalization lives in the database so the webhook, the widget and any
@@ -408,8 +418,11 @@ export async function ingestInboundMessage(args: IngestArgs) {
     }
 
     if (contactId) {
-      if (name) await supabaseAdmin.from("contacts").update({ name }).eq("id", contactId);
+      if (name && verifiedSender) {
+        await supabaseAdmin.from("contacts").update({ name }).eq("id", contactId);
+      }
     } else {
+      contactCreated = true;
       const digits = phone.replace(/[^0-9]/g, "");
       const storedPhone = digits ? `+${digits}` : phone;
       const { data: created, error } = await supabaseAdmin
@@ -461,6 +474,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
           .single();
         if (error) throw error;
         contactId = created.id;
+        contactCreated = true;
       }
       const { data: created, error } = await supabaseAdmin
         .from("conversations")
@@ -543,31 +557,39 @@ export async function ingestInboundMessage(args: IngestArgs) {
       .eq("id", contactId);
   }
 
+  // Every exit from here reports which contact this message belongs to and
+  // whether it was created just now, because the widget may only fill in
+  // details for a contact its own chat created.
+  const conv = conversation;
+  const result = (reply: string | null, replyMessageId: string | null) => ({
+    conversationId: conv.id,
+    reply,
+    replyMessageId,
+    contactId,
+    contactCreated,
+  });
+
   // 4. Bot reply / handoff
   const settings = await getBotSettings(tenantId);
-  if (!settings || !settings.enabled || !conversation.bot_enabled || !botIsConfigured(settings)) {
-    return {
-      conversationId: conversation.id,
-      reply: null as string | null,
-      replyMessageId: null as string | null,
-    };
+  if (!settings || !settings.enabled || !conv.bot_enabled || !botIsConfigured(settings)) {
+    return result(null, null);
   }
 
   if (needsHumanHandoff(text, settings.handoff_keywords ?? [])) {
     const { error } = await supabaseAdmin
       .from("conversations")
       .update({ bot_enabled: false, status: "pending" })
-      .eq("id", conversation.id)
+      .eq("id", conv.id)
       .eq("tenant_id", tenantId);
-    if (error) return { conversationId: conversation.id, reply: null, replyMessageId: null };
+    if (error) return result(null, null);
     const handoff = "I’ve passed this to the team. They’ll reply here when they’re available.";
-    const replyMessageId = await storeOutbound(tenantId, conversation.id, handoff, "bot");
-    return { conversationId: conversation.id, reply: handoff, replyMessageId };
+    const replyMessageId = await storeOutbound(tenantId, conv.id, handoff, "bot");
+    return result(handoff, replyMessageId);
   }
 
   let generated: Awaited<ReturnType<typeof generateBotReply>> = null;
   try {
-    generated = await generateBotReply(tenantId, conversation.id, settings);
+    generated = await generateBotReply(tenantId, conv.id, settings);
   } catch {
     console.error("[bot] Reply generation unavailable");
   }
@@ -575,15 +597,15 @@ export async function ingestInboundMessage(args: IngestArgs) {
     const { error } = await supabaseAdmin
       .from("conversations")
       .update({ bot_enabled: false, status: "pending" })
-      .eq("id", conversation.id)
+      .eq("id", conv.id)
       .eq("tenant_id", tenantId);
-    if (error) return { conversationId: conversation.id, reply: null, replyMessageId: null };
+    if (error) return result(null, null);
   }
   const reply =
     generated?.text ??
     "I’ll leave this with the team so they can help. They’ll reply here when they’re available.";
-  const replyMessageId = await storeOutbound(tenantId, conversation.id, reply, "bot");
-  return { conversationId: conversation.id, reply, replyMessageId };
+  const replyMessageId = await storeOutbound(tenantId, conv.id, reply, "bot");
+  return result(reply, replyMessageId);
 }
 
 /** Returns the id of the inserted message row, so callers can later attach a
