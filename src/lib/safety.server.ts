@@ -113,13 +113,29 @@ export async function checkSendPermission(args: {
       }
     }
 
-    // 3. Routing: a lead routed to a specific number must be answered from it
-    const { data: lead } = await supabaseAdmin
+    // 3. Routing: a lead routed to a specific number must be answered from it.
+    //
+    // Scoped to the contact's own workspace, and limited to one row: a contact
+    // with two routed leads (one per email they have used) made maybeSingle()
+    // fail, and the failure was ignored -- so the rule quietly stopped applying
+    // for exactly the busiest customers. Oldest lead wins, because that is the
+    // routing decision the team has been working to.
+    let leadQuery = supabaseAdmin
       .from("leads")
       .select("assigned_wa_number_id")
-      .eq("contact_id", contact.id)
+      .eq("contact_id", contact.id);
+    // A contact with no workspace is a broken row, not a reason to read another
+    // workspace's leads -- but an empty string is not a uuid, so the filter is
+    // added only when there is a workspace to filter by.
+    if (contact.tenant_id) leadQuery = leadQuery.eq("tenant_id", contact.tenant_id);
+    const { data: lead, error: leadError } = await leadQuery
       .not("assigned_wa_number_id", "is", null)
+      .order("created_at", { ascending: true })
+      .limit(1)
       .maybeSingle();
+    if (leadError) {
+      console.error("[safety] could not read lead routing", leadError.message);
+    }
     if (lead?.assigned_wa_number_id && waNumberId && lead.assigned_wa_number_id !== waNumberId) {
       reasons.push(
         "Routing rules assign this lead to a different WhatsApp number — reply from that line.",

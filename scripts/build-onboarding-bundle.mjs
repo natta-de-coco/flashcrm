@@ -15,6 +15,8 @@ await build({
       export * from './src/lib/social-doctor.functions';
       export * from './src/lib/connections.server';
       export * from './src/lib/wa-numbers.functions';
+      export * from './src/lib/flash-ai.server';
+      export * from './src/lib/contact-resolve.server';
       export * from './src/lib/meta-health.functions';`,
     resolveDir: process.cwd(),
   },
@@ -33,8 +35,6 @@ await build({
           "auth-middleware": "export const requireSupabaseAuth = {};",
           "@tanstack/react-start":
             "export function createServerFn() { return {middleware(){return this},inputValidator(){return this},handler(fn){return fn}}; }",
-          "flash-ai.server":
-            "export function callFlashAi() { throw new Error('Unexpected AI call'); }",
           "audit.server": "export async function logAudit() {}",
           "social-doctor.server":
             "export async function runConnectionTest({account}) { return {accountId: account.id}; }",

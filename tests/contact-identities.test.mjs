@@ -117,20 +117,35 @@ describe("contact identities migration", () => {
 
 describe("the inbound resolver uses identities", () => {
   const wa = fs.readFileSync(path.join(process.cwd(), "src/lib/wa.server.ts"), "utf8");
+  // Resolution moved out of the webhook into one shared module, because the
+  // template send resolved the same number differently and so could not find a
+  // contact the webhook had already matched.
+  const resolver = fs.readFileSync(
+    path.join(process.cwd(), "src/lib/contact-resolve.server.ts"),
+    "utf8",
+  );
 
   it("asks the database who owns the number", () => {
-    assert.match(wa, /resolve_contact_by_identity/);
+    assert.match(resolver, /resolve_contact_by_identity/);
   });
 
   it("still falls back to the legacy phone column", () => {
     // A contact created between the migration and this deploy has no identity
     // row yet; dropping the fallback would make them a stranger again.
-    const block = wa.slice(wa.indexOf("resolve_contact_by_identity"));
-    assert.match(block.slice(0, 1600), /\.eq\("phone", phone\)/);
+    const block = resolver.slice(resolver.indexOf("resolve_contact_by_identity"));
+    assert.match(block, /\.eq\("phone", phone\)/);
+  });
+
+  it("is the only way the inbound path resolves a number", () => {
+    assert.match(wa, /resolveContactByPhone/);
+    assert.ok(
+      !wa.includes("resolve_contact_by_identity"),
+      "the webhook must not keep a second copy of the resolution rules",
+    );
   });
 
   it("records the number so the next message resolves directly", () => {
-    const block = wa.slice(wa.indexOf("resolve_contact_by_identity"));
+    const block = wa.slice(wa.indexOf("resolveContactByPhone"));
     assert.match(block.slice(0, 2600), /from\("contact_identities"\)\s*\.insert/);
   });
 });

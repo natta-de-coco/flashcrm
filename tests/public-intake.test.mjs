@@ -79,6 +79,83 @@ describe("a WhatsApp template needs recorded consent, whoever it is addressed to
   });
 });
 
+describe("the routed WhatsApp line is read from this workspace's own leads", () => {
+  const consented = { id: "c-1", tenant_id: "company-1", consent_given: true };
+
+  it("applies the routing rule even when the contact has several leads", async () => {
+    // A contact who used two email addresses has two leads. maybeSingle() then
+    // failed, the failure was ignored, and the rule quietly stopped applying --
+    // for exactly the customers who deal with a company most.
+    rows.contacts.push(consented);
+    rows.leads.push(
+      {
+        id: "l-1",
+        contact_id: "c-1",
+        tenant_id: "company-1",
+        assigned_wa_number_id: "num-2",
+        created_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "l-2",
+        contact_id: "c-1",
+        tenant_id: "company-1",
+        assigned_wa_number_id: "num-3",
+        created_at: "2026-06-01T00:00:00Z",
+      },
+    );
+    const check = await checkSendPermission({
+      contactId: "c-1",
+      waNumberId: "num-1",
+      isTemplate: false,
+    });
+    assert.equal(check.allowed, false);
+    assert.match(check.reasons.join(" "), /assign this lead to a different WhatsApp number/);
+  });
+
+  it("answers from the line the oldest lead was routed to", async () => {
+    rows.contacts.push(consented);
+    rows.leads.push(
+      {
+        id: "l-2",
+        contact_id: "c-1",
+        tenant_id: "company-1",
+        assigned_wa_number_id: "num-3",
+        created_at: "2026-06-01T00:00:00Z",
+      },
+      {
+        id: "l-1",
+        contact_id: "c-1",
+        tenant_id: "company-1",
+        assigned_wa_number_id: "num-1",
+        created_at: "2026-01-01T00:00:00Z",
+      },
+    );
+    const check = await checkSendPermission({
+      contactId: "c-1",
+      waNumberId: "num-1",
+      isTemplate: false,
+    });
+    assert.deepEqual([...check.reasons], []);
+  });
+
+  it("ignores a lead that belongs to another workspace", async () => {
+    rows.contacts.push(consented);
+    rows.leads.push({
+      id: "l-other",
+      contact_id: "c-1",
+      tenant_id: "company-2",
+      assigned_wa_number_id: "num-9",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    const check = await checkSendPermission({
+      contactId: "c-1",
+      waNumberId: "num-1",
+      isTemplate: false,
+    });
+    assert.equal(check.allowed, true);
+  });
+});
+
 describe("a lead is never stored without the contact it belongs to", () => {
   const lead = {
     tenantId: "company-1",

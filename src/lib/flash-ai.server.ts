@@ -29,6 +29,17 @@ export type FlashAiOptions = {
   /** For the usage ledger, so a tenant can see what spent their quota. */
   feature?: string;
   userId?: string | null;
+  /**
+   * Earlier turns of a conversation, oldest first. The WhatsApp assistant needs
+   * them: it answers the thread, not a single question. Without this it had to
+   * call the gateway itself, which is how the busiest AI feature in the product
+   * ended up outside the ceiling, the usage ledger and bring-your-own-key.
+   */
+  turns?: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Ask for a JSON object rather than prose, where the provider supports it. */
+  json?: boolean;
+  /** Model for the platform gateway. A workspace's own key uses its provider's default. */
+  platformModel?: string;
 };
 
 /**
@@ -63,6 +74,8 @@ export async function aiOptionsFor(
 
 type ResolvedProvider = {
   provider: string;
+  /** Which request/response shape `url` speaks. */
+  shape?: "responses" | "chat";
   apiKey: string;
   url: string;
   headers: Record<string, string>;
@@ -134,7 +147,14 @@ export async function callFlashAi(
   user: string,
   options: FlashAiOptions = {},
 ): Promise<string> {
-  const { tenantId = null, feature = "ai", userId = null } = options;
+  const {
+    tenantId = null,
+    feature = "ai",
+    userId = null,
+    turns = [],
+    json: wantsJson = false,
+    platformModel,
+  } = options;
   const startedAt = Date.now();
 
   // Ceiling per tenant. Without this, one authenticated user in a loop is an
@@ -160,36 +180,67 @@ export async function callFlashAi(
 
   const chosen = await resolveProvider(tenantId);
 
+  // The platform gateway's Responses endpoint takes one instruction and one
+  // question. A conversation, or a required JSON object, needs its chat
+  // endpoint instead -- same key, same account, same accounting.
+  if (chosen.provider === "platform" && (turns.length > 0 || wantsJson)) {
+    chosen.shape = "chat";
+    chosen.url = "https://ai.gateway.lovable.dev/v1/chat/completions";
+  }
+
+  const jsonFormat = wantsJson ? { response_format: { type: "json_object" } } : {};
+
   const body =
     chosen.provider === "openai"
       ? {
           model: "gpt-4o",
           messages: [
             { role: "system", content: system },
+            ...turns,
             { role: "user", content: user },
           ],
+          ...jsonFormat,
         }
       : chosen.provider === "anthropic"
         ? {
             model: "claude-sonnet-5",
             max_tokens: 4096,
             system,
-            messages: [{ role: "user", content: user }],
+            // Anthropic has no JSON mode; the instruction carries the rule, and
+            // every caller that asks for JSON validates what comes back.
+            messages: [...turns, { role: "user", content: user }],
           }
         : chosen.provider === "google"
           ? {
               // Gemini has no system role; the instruction is a separate field,
               // and the model is already in the URL.
               systemInstruction: { parts: [{ text: system }] },
-              contents: [{ role: "user", parts: [{ text: user }] }],
-            }
-          : {
-              model: FLASH_MODEL,
-              input: [
-                { role: "system", content: system },
-                { role: "user", content: user },
+              contents: [
+                ...turns.map((turn) => ({
+                  role: turn.role === "assistant" ? "model" : "user",
+                  parts: [{ text: turn.content }],
+                })),
+                { role: "user", parts: [{ text: user }] },
               ],
-            };
+              ...(wantsJson ? { generationConfig: { responseMimeType: "application/json" } } : {}),
+            }
+          : chosen.shape === "chat"
+            ? {
+                model: platformModel || FLASH_MODEL,
+                messages: [
+                  { role: "system", content: system },
+                  ...turns,
+                  { role: "user", content: user },
+                ],
+                ...jsonFormat,
+              }
+            : {
+                model: FLASH_MODEL,
+                input: [
+                  { role: "system", content: system },
+                  { role: "user", content: user },
+                ],
+              };
 
   const recordUsage = async (ok: boolean) => {
     if (!tenantId) return;
@@ -276,7 +327,7 @@ export async function callFlashAi(
   };
 
   let text = "";
-  if (chosen.provider === "openai") {
+  if (chosen.provider === "openai" || chosen.shape === "chat") {
     text = (json.choices?.[0]?.message?.content ?? "").trim();
   } else if (chosen.provider === "anthropic") {
     text = (json.content ?? [])

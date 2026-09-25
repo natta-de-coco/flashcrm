@@ -42,7 +42,10 @@ export function createDb() {
       if (operator === "is" && value === null) this.filters.push((r) => r[key] != null);
       return this;
     }
-    order() {
+    order(column, options = {}) {
+      // Really sorts: code that says "the oldest row wins" has to be tested
+      // against an order, not against insertion sequence.
+      this.sort = { column, ascending: options.ascending !== false };
       return this;
     }
     limit(n) {
@@ -117,10 +120,29 @@ export function createDb() {
         else table.push(this.row(this.payload));
         found = [existing ?? table.at(-1)];
       }
+      if (this.sort) {
+        const { column, ascending } = this.sort;
+        found = [...found].sort((a, b) => {
+          const left = String(a[column] ?? "");
+          const right = String(b[column] ?? "");
+          return ascending ? left.localeCompare(right) : right.localeCompare(left);
+        });
+      }
       if (this.take) found = found.slice(0, this.take);
-      const error = this.required && !found[0] ? { message: "no rows returned" } : null;
+      // PostgREST's single-row reads are not "the first row": asking for one
+      // row and getting several is an error, and code that ignores that error
+      // silently stops doing whatever it asked the row for.
+      let error = null;
+      if (this.one && found.length > 1) {
+        error = {
+          code: "PGRST116",
+          message: "JSON object requested, multiple (or no) rows returned",
+        };
+      } else if (this.required && !found[0]) {
+        error = { message: "no rows returned" };
+      }
       return Promise.resolve({
-        data: this.one ? (found[0] ?? null) : found,
+        data: error ? null : this.one ? (found[0] ?? null) : found,
         error,
         count: this.counting ? found.length : null,
       }).then(resolve, reject);
