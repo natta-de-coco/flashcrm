@@ -18,7 +18,12 @@ import {
   resolveContactByPhone,
 } from "../node_modules/.cache/flas-onboarding.mjs";
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+// Normalized, because these files are checked out with CRLF on Windows and a
+// pattern describing two lines of source would not match them.
+const read = (path) =>
+  readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+    .split("\r\n")
+    .join("\n");
 
 const TENANT = "tenant-a";
 let rows, rpc, requests, responder;
