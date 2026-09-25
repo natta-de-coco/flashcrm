@@ -79,6 +79,17 @@ export async function checkSendPermission(args: {
     }
   }
 
+  // A template sent to a raw phone number that belongs to no contact used to
+  // pass every check: the consent rule lived inside "if (contact)", so having
+  // no contact meant having nothing to check. WhatsApp requires recorded
+  // opt-in for template and marketing messages, so no contact is a block, not
+  // a free pass.
+  if (args.isTemplate && !contact) {
+    reasons.push(
+      "This number is not saved as a contact with recorded opt-in consent — WhatsApp requires consent before a template message.",
+    );
+  }
+
   if (contact) {
     if (args.isTemplate) {
       if (!contact.consent_given) {

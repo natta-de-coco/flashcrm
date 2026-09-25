@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  AlertTriangle,
   Bell,
   Bot,
   Check,
@@ -927,6 +928,13 @@ function InboxPage() {
                             minute: "2-digit",
                           })}
                         </span>
+                        {/* A message WhatsApp refused must never read as one the
+                            customer received. */}
+                        {m.direction === "outbound" && m.status === "failed" && (
+                          <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
+                            <AlertTriangle className="size-3" /> Not delivered
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

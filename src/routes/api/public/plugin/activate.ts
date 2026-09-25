@@ -71,8 +71,13 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
       GET: async ({ request }) => {
         const url = new URL(request.url);
         const token = url.searchParams.get("token") ?? "";
-        const html = (title: string, message: string, ok: boolean) =>
-          new Response(
+        // Everything below is a value someone else typed (a site name, a
+        // provider's message), printed into hand-written HTML.
+        const { escapeHtml } = await import("@/lib/html-escape");
+        const html = (rawTitle: string, rawMessage: string, ok: boolean) => {
+          const title = escapeHtml(rawTitle);
+          const message = escapeHtml(rawMessage);
+          return new Response(
             `<!doctype html><html lang="en"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${title}</title></head>
@@ -83,6 +88,7 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
 </main></body></html>`,
             { status: ok ? 200 : 400, headers: { "Content-Type": "text/html; charset=utf-8" } },
           );
+        };
 
         if (token.length < 20)
           return html("Invalid link", "This activation link is not valid.", false);
