@@ -1175,7 +1175,7 @@ export type Database = {
           scheduled_at: string | null
           seo_metadata: Json
           status: string
-          tenant_id: string | null
+          tenant_id: string
           title: string | null
           updated_at: string
         }
@@ -1189,7 +1189,7 @@ export type Database = {
           scheduled_at?: string | null
           seo_metadata?: Json
           status?: string
-          tenant_id?: string | null
+          tenant_id?: string
           title?: string | null
           updated_at?: string
         }
@@ -1203,7 +1203,7 @@ export type Database = {
           scheduled_at?: string | null
           seo_metadata?: Json
           status?: string
-          tenant_id?: string | null
+          tenant_id?: string
           title?: string | null
           updated_at?: string
         }
@@ -2882,7 +2882,7 @@ export type Database = {
           price: number | null
           sku: string | null
           specs: Json
-          tenant_id: string | null
+          tenant_id: string
           title: string
           updated_at: string
         }
@@ -2894,7 +2894,7 @@ export type Database = {
           price?: number | null
           sku?: string | null
           specs?: Json
-          tenant_id?: string | null
+          tenant_id?: string
           title: string
           updated_at?: string
         }
@@ -2906,7 +2906,7 @@ export type Database = {
           price?: number | null
           sku?: string | null
           specs?: Json
-          tenant_id?: string | null
+          tenant_id?: string
           title?: string
           updated_at?: string
         }
