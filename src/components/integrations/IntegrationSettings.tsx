@@ -1,5 +1,5 @@
 import { WordPressSitesCard } from "@/components/WordPressSitesCard";
-import { addWhatsAppNumber } from "@/lib/wa-numbers.functions";
+import { addWhatsAppNumber, setDefaultWhatsAppNumber } from "@/lib/wa-numbers.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { Badge } from "@/components/ui/badge";
@@ -109,10 +109,22 @@ export function IntegrationSettings() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Making a number the default is a server function, not a field: the previous
+  // default has to be cleared in the same breath, inside this workspace, or the
+  // unique index refuses the change.
+  const setDefault = useServerFn(setDefaultWhatsAppNumber);
+  const makeDefault = useMutation({
+    mutationFn: async (id: string) => setDefault({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Default number updated");
+      void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   async function updateNumber(
     id: string,
     patch: {
-      is_default?: boolean;
       active?: boolean;
       label?: string;
       alerts_enabled?: boolean;
@@ -503,7 +515,8 @@ export function IntegrationSettings() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => updateNumber(n.id, { is_default: true })}
+                      disabled={makeDefault.isPending}
+                      onClick={() => makeDefault.mutate(n.id)}
                     >
                       <Star className="size-3.5" /> Make default
                     </Button>

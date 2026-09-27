@@ -236,13 +236,13 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
     const { logAudit } = await import("@/lib/audit.server");
     let contactId: string | null = null;
     if (!conversationId) {
-      const { data: byPhone } = await supabaseAdmin
-        .from("contacts")
-        .select("id")
-        .eq("phone", phone)
-        .eq("tenant_id", tenantId)
-        .maybeSingle();
-      contactId = byPhone?.id ?? null;
+      // Through the shared resolver, so a contact saved as "+971 50 123 4567"
+      // is found when the number is typed as "971501234567". Comparing the raw
+      // strings made that contact invisible here, and an invisible contact now
+      // means a refused template.
+      const { resolveContactByPhone } = await import("@/lib/contact-resolve.server");
+      const resolved = await resolveContactByPhone(tenantId as string, phone);
+      contactId = resolved?.contactId ?? null;
     }
     const safety = await checkSendPermission({
       conversationId,

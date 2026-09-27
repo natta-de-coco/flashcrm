@@ -67,19 +67,36 @@ export const addWhatsAppNumber = createServerFn({ method: "POST" })
       .eq("tenant_id", tenantId);
     if (countError) throw new Error("Could not check this workspace's numbers.");
 
-    const { data: row, error } = await supabaseAdmin
+    const numberRow = {
+      tenant_id: tenantId,
+      label: data.label,
+      display_phone: data.displayPhone || null,
+      phone_number_id: data.phoneNumberId,
+      access_token: accessToken,
+      ...(appSecret ? { app_secret: appSecret } : {}),
+    };
+    const firstForThisWorkspace = (count ?? 0) === 0;
+
+    let { data: row, error } = await supabaseAdmin
       .from("wa_numbers")
-      .insert({
-        tenant_id: tenantId,
-        label: data.label,
-        display_phone: data.displayPhone || null,
-        phone_number_id: data.phoneNumberId,
-        access_token: accessToken,
-        ...(appSecret ? { app_secret: appSecret } : {}),
-        is_default: (count ?? 0) === 0,
-      })
+      .insert({ ...numberRow, is_default: firstForThisWorkspace })
       .select("id")
       .single();
+
+    // The original unique index on is_default had no tenant_id in it, so only
+    // one row in the whole database could be the default: the first workspace
+    // to connect a number took the slot and every other workspace's first
+    // number was refused here. 20260925121000_default_wa_number_is_per_workspace
+    // makes that index per workspace. Until it has been applied, save the number
+    // without the default flag rather than refusing to connect WhatsApp at all.
+    if (error?.code === "23505" && firstForThisWorkspace) {
+      console.error("[whatsapp] default-number index is not per workspace yet; saving without it");
+      ({ data: row, error } = await supabaseAdmin
+        .from("wa_numbers")
+        .insert({ ...numberRow, is_default: false })
+        .select("id")
+        .single());
+    }
     if (error || !row) throw new Error("The number could not be saved.");
 
     const { logAudit } = await import("@/lib/audit.server");
@@ -92,4 +109,59 @@ export const addWhatsAppNumber = createServerFn({ method: "POST" })
       details: { phoneNumberId: data.phoneNumberId, appSecretSaved: Boolean(appSecret) },
     });
     return { id: row.id };
+  });
+
+/**
+ * Makes one number this workspace's default.
+ *
+ * A bare update could not do this: the unique index allows one default, so
+ * setting a second one fails until the first is cleared. The browser used to
+ * send exactly that bare update, which is why "Make default" reported a raw
+ * database error instead of switching.
+ */
+export const setDefaultWhatsAppNumber = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const tenantId = await requireCompanyAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // The number has to be this workspace's own, whatever id the browser sent.
+    const { data: number } = await supabaseAdmin
+      .from("wa_numbers")
+      .select("id")
+      .eq("id", data.id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!number) throw new Error("That number is not connected to this workspace.");
+
+    const { error: clearError } = await supabaseAdmin
+      .from("wa_numbers")
+      .update({ is_default: false })
+      .eq("tenant_id", tenantId)
+      .eq("is_default", true);
+    if (clearError) throw new Error("Could not change the default number. Try again.");
+
+    const { error } = await supabaseAdmin
+      .from("wa_numbers")
+      .update({ is_default: true })
+      .eq("id", number.id)
+      .eq("tenant_id", tenantId);
+    if (error) {
+      throw new Error(
+        error.code === "23505"
+          ? "The default WhatsApp number setting needs a database update from your Flas administrator before it can be changed."
+          : "Could not set that number as the default. Try again.",
+      );
+    }
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "whatsapp.default_number_set",
+      tenantId,
+      actorId: context.userId,
+      entityType: "wa_number",
+      entityId: number.id,
+    });
+    return { ok: true };
   });

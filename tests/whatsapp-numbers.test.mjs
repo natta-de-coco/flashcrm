@@ -12,6 +12,7 @@ import { describe, it } from "node:test";
 import {
   WhatsAppNumberSchema,
   addWhatsAppNumber,
+  setDefaultWhatsAppNumber,
 } from "../node_modules/.cache/flas-onboarding.mjs";
 
 const TOKEN = "EAAG-test-whatsapp-access-token-0123456789";
@@ -53,9 +54,12 @@ function context(role = "company_admin", tenant = "tenant-a") {
   };
 }
 
-// Service-role double for wa_numbers: filtered reads, counts and one insert.
-function database(rows = []) {
+// Service-role double for wa_numbers: filtered reads, counts, updates, and
+// inserts that can fail the way the database does.
+function database(rows = [], { failInsertOnce = null } = {}) {
   const inserted = [];
+  const updates = [];
+  let pendingFailure = failInsertOnce;
   globalThis.onboardingDb = {
     from(table) {
       assert.equal(table, "wa_numbers");
@@ -73,13 +77,33 @@ function database(rows = []) {
           q.row = row;
           return q;
         },
+        maybeSingle() {
+          q.one = true;
+          return q;
+        },
+        update(patch) {
+          q.patch = patch;
+          return q;
+        },
         single: async () => {
+          if (pendingFailure) {
+            const error = pendingFailure;
+            pendingFailure = null;
+            return { data: null, error };
+          }
           const id = `wa-${inserted.length + 1}`;
           inserted.push({ id, ...q.row });
           return { data: { id }, error: null };
         },
         then(resolve, reject) {
           const match = rows.filter((r) => filters.every(([c, v]) => r[c] === v));
+          if (q.patch) {
+            updates.push({ filters: [...filters], patch: q.patch });
+            for (const row of match) Object.assign(row, q.patch);
+          }
+          if (q.one) {
+            return Promise.resolve({ data: match[0] ?? null, error: null }).then(resolve, reject);
+          }
           return Promise.resolve(
             q.options?.head ? { count: match.length, error: null } : { data: match, error: null },
           ).then(resolve, reject);
@@ -88,13 +112,13 @@ function database(rows = []) {
       return q;
     },
   };
-  return inserted;
+  return { inserted, updates, rows };
 }
 
 describe("adding a WhatsApp number", () => {
   it("stores the token and app secret encrypted, never as typed", () =>
     withKeys(async () => {
-      const inserted = database();
+      const { inserted } = database();
       await addWhatsAppNumber({ data: INPUT, context: context() });
       const row = inserted[0];
       assert.match(row.access_token, /^enc:v1:/);
@@ -105,7 +129,7 @@ describe("adding a WhatsApp number", () => {
 
   it("saves into the caller's own workspace, first number as the default", () =>
     withKeys(async () => {
-      const inserted = database();
+      const { inserted } = database();
       await addWhatsAppNumber({ data: INPUT, context: context("company_admin", "tenant-a") });
       assert.equal(inserted[0].tenant_id, "tenant-a");
       assert.equal(inserted[0].is_default, true);
@@ -113,7 +137,7 @@ describe("adding a WhatsApp number", () => {
 
   it("does not make a second number the default", () =>
     withKeys(async () => {
-      const inserted = database([
+      const { inserted } = database([
         { id: "old", tenant_id: "tenant-a", phone_number_id: "999", active: true },
       ]);
       await addWhatsAppNumber({ data: INPUT, context: context() });
@@ -129,7 +153,7 @@ describe("adding a WhatsApp number", () => {
 
   it("refuses anyone who is not a company admin", () =>
     withKeys(async () => {
-      const inserted = database();
+      const { inserted } = database();
       await assert.rejects(
         addWhatsAppNumber({ data: INPUT, context: context("agent") }),
         /Only company admins/,
@@ -142,7 +166,7 @@ describe("adding a WhatsApp number", () => {
     delete process.env.TOKEN_ENCRYPTION_KEYS;
     delete process.env.TOKEN_ENCRYPTION_KEY;
     try {
-      const inserted = database();
+      const { inserted } = database();
       await assert.rejects(
         addWhatsAppNumber({ data: INPUT, context: context() }),
         /secure token storage/,
@@ -155,7 +179,7 @@ describe("adding a WhatsApp number", () => {
 
   it("refuses a number that is already connected, here or in another workspace", () =>
     withKeys(async () => {
-      const here = database([
+      const { inserted: here } = database([
         { id: "x", tenant_id: "tenant-a", phone_number_id: INPUT.phoneNumberId, active: true },
       ]);
       await assert.rejects(
@@ -164,7 +188,7 @@ describe("adding a WhatsApp number", () => {
       );
       assert.equal(here.length, 0);
 
-      const elsewhere = database([
+      const { inserted: elsewhere } = database([
         { id: "y", tenant_id: "tenant-b", phone_number_id: INPUT.phoneNumberId, active: true },
       ]);
       await assert.rejects(
@@ -173,6 +197,77 @@ describe("adding a WhatsApp number", () => {
       );
       assert.equal(elsewhere.length, 0);
     }));
+});
+
+describe("the default WhatsApp number belongs to a workspace, not the database", () => {
+  const conflict = { code: "23505", message: "duplicate key value violates unique constraint" };
+
+  it("connects a workspace's first number even while the old global index is live", () =>
+    withKeys(async () => {
+      // The index had no tenant_id in it, so the first workspace in the database
+      // took the only "default" slot and every other workspace's first number
+      // was refused outright. Saving it without the flag beats not connecting.
+      const { inserted } = database([], { failInsertOnce: conflict });
+      const result = await addWhatsAppNumber({ data: INPUT, context: context() });
+      assert.ok(result.id);
+      assert.equal(inserted.length, 1);
+      assert.equal(inserted[0].is_default, false);
+      assert.equal(inserted[0].tenant_id, "tenant-a");
+      assert.match(inserted[0].access_token, /^enc:v1:/);
+    }));
+
+  it("clears the workspace's previous default before setting the new one", async () => {
+    const { updates, rows } = database([
+      { id: "wa-1", tenant_id: "tenant-a", is_default: true },
+      { id: "wa-2", tenant_id: "tenant-a", is_default: false },
+    ]);
+    await setDefaultWhatsAppNumber({ data: { id: "wa-2" }, context: context() });
+    assert.equal(updates.length, 2, "clear, then set");
+    assert.deepEqual(updates[0].patch, { is_default: false });
+    assert.deepEqual(updates[1].patch, { is_default: true });
+    assert.equal(rows.find((r) => r.id === "wa-1").is_default, false);
+    assert.equal(rows.find((r) => r.id === "wa-2").is_default, true);
+  });
+
+  it("every write names the workspace, so another workspace's default is untouched", async () => {
+    const { updates } = database([{ id: "wa-2", tenant_id: "tenant-a", is_default: false }]);
+    await setDefaultWhatsAppNumber({ data: { id: "wa-2" }, context: context() });
+    for (const update of updates) {
+      assert.ok(
+        update.filters.some(([column, value]) => column === "tenant_id" && value === "tenant-a"),
+        "a default is set within one workspace",
+      );
+    }
+  });
+
+  it("refuses a number that is not this workspace's", async () => {
+    const { updates } = database([{ id: "wa-9", tenant_id: "tenant-b", is_default: false }]);
+    await assert.rejects(
+      setDefaultWhatsAppNumber({ data: { id: "wa-9" }, context: context() }),
+      /not connected to this workspace/,
+    );
+    assert.equal(updates.length, 0);
+  });
+
+  it("refuses anyone who is not a company admin", async () => {
+    database([{ id: "wa-2", tenant_id: "tenant-a", is_default: false }]);
+    await assert.rejects(
+      setDefaultWhatsAppNumber({ data: { id: "wa-2" }, context: context("agent") }),
+      /Only company admins/,
+    );
+  });
+
+  it("no screen writes is_default from the browser any more", () => {
+    const settings = readFileSync(
+      new URL("../src/components/integrations/IntegrationSettings.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.match(settings, /setDefaultWhatsAppNumber/);
+    assert.ok(
+      !/is_default:\s*true/.test(settings),
+      "a bare update cannot clear the previous default, so it failed the unique index",
+    );
+  });
 });
 
 describe("what the browser may send", () => {
