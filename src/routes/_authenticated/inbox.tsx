@@ -39,6 +39,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-parameters";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
@@ -80,6 +81,11 @@ function InboxPage() {
   const [reminderNote, setReminderNote] = useState("");
   const [reminderDue, setReminderDue] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  useEffect(() => {
+    setTemplateId("");
+    setTemplateVariables([]);
+  }, [activeId]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
@@ -130,6 +136,19 @@ function InboxPage() {
       return data ?? [];
     },
   });
+
+  const selectedTemplate = templates.data?.find((t) => t.id === templateId);
+  let parameterCount = 0;
+  let templatePreview = "";
+  let templateProblem = "";
+  if (selectedTemplate) {
+    try {
+      parameterCount = templateParameterCount(selectedTemplate.body);
+      templatePreview = renderTemplateBody(selectedTemplate.body, templateVariables);
+    } catch (error) {
+      templateProblem = error instanceof Error ? error.message : "Check template variables.";
+    }
+  }
 
   const products = useQuery({
     queryKey: ["products"],
@@ -327,7 +346,9 @@ function InboxPage() {
 
   const templateMutation = useMutation({
     mutationFn: async () =>
-      sendTemplate({ data: { templateId, conversationId: activeId!, variables: [] } }),
+      sendTemplate({
+        data: { templateId, conversationId: activeId!, variables: templateVariables },
+      }),
     onSuccess: (res) => {
       if (res.blockedReasons?.length) {
         toast.error("Template blocked by safety rules", {
@@ -336,7 +357,8 @@ function InboxPage() {
         return;
       }
       setTemplateId("");
-      toast.success("Template sent");
+      setTemplateVariables([]);
+      toast.success("Template accepted by WhatsApp. Delivery confirmation is pending.");
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
@@ -717,19 +739,28 @@ function InboxPage() {
                 <select
                   className="h-8 rounded-md border bg-background px-2 text-xs"
                   value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
+                  aria-label="Approved WhatsApp template"
+                  onChange={(e) => {
+                    setTemplateId(e.target.value);
+                    setTemplateVariables([]);
+                  }}
                 >
                   <option value="">Send approved template…</option>
                   {(templates.data ?? []).map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name}
+                      {t.name} ({t.language})
                     </option>
                   ))}
                 </select>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!templateId || templateMutation.isPending}
+                  disabled={
+                    !selectedTemplate ||
+                    Boolean(templateProblem) ||
+                    active.channel !== "whatsapp" ||
+                    templateMutation.isPending
+                  }
                   onClick={() => templateMutation.mutate()}
                 >
                   {templateMutation.isPending ? (
@@ -740,6 +771,40 @@ function InboxPage() {
                   Send template
                 </Button>
               </div>
+
+              {selectedTemplate && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <p className="text-sm font-medium">Personalize your template</p>
+                  {Array.from({ length: parameterCount }, (_, index) => (
+                    <label key={index} className="block text-sm">
+                      Variable {index + 1}
+                      <Input
+                        maxLength={500}
+                        value={templateVariables[index] ?? ""}
+                        onChange={(event) =>
+                          setTemplateVariables((previous) =>
+                            Array.from({ length: parameterCount }, (_, i) =>
+                              i === index ? event.target.value : (previous[i] ?? ""),
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                  {templateProblem ? (
+                    <p role="status" className="text-sm text-destructive">
+                      {templateProblem}
+                    </p>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm" aria-label="Message preview">
+                      {templatePreview}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Review the message before pressing Send template.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">

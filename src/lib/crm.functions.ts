@@ -1,6 +1,7 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { renderTemplateBody } from "@/lib/wa-template-parameters";
 
 const SendSchema = z.object({
   conversationId: z.string().uuid(),
@@ -208,6 +209,7 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       .single();
     if (error || !template) throw new Error("Template not found");
     if (template.status !== "approved") throw new Error("Only approved templates can be sent");
+    const rendered = renderTemplateBody(template.body, data.variables);
 
     let phone = data.phone ?? null;
     const conversationId = data.conversationId ?? null;
@@ -272,11 +274,6 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       data.variables,
       await resolveWaCredentials(tenantId as string, waNumberId),
     );
-
-    let rendered = template.body;
-    data.variables.forEach((value, index) => {
-      rendered = rendered.replaceAll(`{{${index + 1}}}`, value);
-    });
 
     if (conversationId) {
       await storeOutbound(
