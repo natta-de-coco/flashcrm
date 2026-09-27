@@ -86,9 +86,23 @@ export const Route = createFileRoute("/api/public/widget/chat")({
           return reject();
         }
 
+        // A chat costs an AI call and database writes, and nobody signed in
+        // for it, so the two ways to abuse it are both capped.
+        const { widgetChatAllowed } = await import("@/lib/public-limits.server");
+        const limit = await widgetChatAllowed({
+          tenantId: site.tenant_id,
+          sessionId: parsed.sessionId,
+        });
+        if (!limit.ok) {
+          return new Response(JSON.stringify({ error: limit.error }), {
+            status: 429,
+            headers: { ...corsHeaders, "retry-after": String(limit.retryAfterSeconds) },
+          });
+        }
+
         try {
           const { ingestInboundMessage } = await import("@/lib/wa.server");
-          const { reply } = await ingestInboundMessage({
+          const { reply, contactId, contactCreated } = await ingestInboundMessage({
             tenantId: site.tenant_id,
             channel: "web",
             sessionId: parsed.sessionId,
@@ -97,32 +111,67 @@ export const Route = createFileRoute("/api/public/widget/chat")({
             text: parsed.message,
           });
 
-          // Attach the rest of the identity to the contact the ingest just
-          // matched or created. Done here rather than inside ingestInboundMessage
-          // because that function is also the WhatsApp webhook's path, where
-          // there is no web form and no consent to record.
-          if (parsed.phone && (parsed.email || parsed.marketingConsent)) {
-            try {
-              const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-              const patch: {
-                email?: string;
-                consent_given?: boolean;
-                consent_at?: string;
-              } = {};
-              if (parsed.email) patch.email = parsed.email;
-              if (parsed.marketingConsent) {
-                patch.consent_given = true;
-                patch.consent_at = new Date().toISOString();
+          // Attach the rest of the identity to the contact this chat created.
+          //
+          // It used to be written to whichever contact had this phone number in
+          // this workspace, which meant a visitor who typed somebody else's
+          // number could replace that person's email address and record
+          // marketing consent in their name. Nobody signs in to a widget, so a
+          // typed-in number proves nothing: details are only filled in for a
+          // contact this chat itself created, and a claim about an existing
+          // contact is recorded for the team to look at instead of applied.
+          if (parsed.email || parsed.marketingConsent) {
+            const { logAudit } = await import("@/lib/audit.server");
+            const claim = {
+              sessionId: parsed.sessionId,
+              siteKey: parsed.siteKey.slice(0, 6),
+              hasEmail: Boolean(parsed.email),
+              marketingConsent: parsed.marketingConsent === true,
+            };
+            if (contactId && contactCreated) {
+              try {
+                const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+                const patch: {
+                  email?: string;
+                  consent_given?: boolean;
+                  consent_at?: string;
+                } = {};
+                if (parsed.email) patch.email = parsed.email;
+                if (parsed.marketingConsent) {
+                  patch.consent_given = true;
+                  patch.consent_at = new Date().toISOString();
+                }
+                await supabaseAdmin
+                  .from("contacts")
+                  .update(patch)
+                  .eq("tenant_id", site.tenant_id)
+                  .eq("id", contactId);
+                if (parsed.marketingConsent) {
+                  // Consent has to be evidenced, not just stored.
+                  await logAudit({
+                    action: "consent.capture",
+                    tenantId: site.tenant_id,
+                    entityType: "contact",
+                    entityId: contactId,
+                    details: { ...claim, source: "website widget" },
+                  });
+                }
+              } catch (error) {
+                // The message is already delivered; failing to annotate the
+                // contact must not turn that into an error for the visitor.
+                console.error("[widget] could not record identity", error);
               }
-              await supabaseAdmin
-                .from("contacts")
-                .update(patch)
-                .eq("tenant_id", site.tenant_id)
-                .eq("phone", parsed.phone);
-            } catch (error) {
-              // The message is already delivered; failing to annotate the
-              // contact must not turn that into an error for the visitor.
-              console.error("[widget] could not record identity", error);
+            } else {
+              await logAudit({
+                action: "widget.identity_claim_ignored",
+                tenantId: site.tenant_id,
+                entityType: "contact",
+                entityId: contactId ?? parsed.sessionId,
+                details: {
+                  ...claim,
+                  reason: "the contact already existed, so the widget may not change it",
+                },
+              });
             }
           }
 

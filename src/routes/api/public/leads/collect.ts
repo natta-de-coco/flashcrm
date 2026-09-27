@@ -69,6 +69,17 @@ export const Route = createFileRoute("/api/public/leads/collect")({
             return reject();
           }
 
+          // A valid site key is public, so it is not a licence to write an
+          // unlimited number of leads.
+          const { leadIntakeAllowed } = await import("@/lib/public-limits.server");
+          const limit = await leadIntakeAllowed({ tenantId: site.tenant_id, siteId: site.id });
+          if (!limit.ok) {
+            return new Response(JSON.stringify({ error: limit.error }), {
+              status: 429,
+              headers: { ...corsHeaders, "retry-after": String(limit.retryAfterSeconds) },
+            });
+          }
+
           const { ingestLead } = await import("@/lib/leads.server");
           await ingestLead({
             tenantId: site.tenant_id,
