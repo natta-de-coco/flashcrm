@@ -6,3 +6,9 @@ pnpm-lock.yaml
 package-lock.json
 bun.lock
 routeTree.gen.ts
+# Generated and Lovable-owned. Lovable rewrites both on its own schedule without
+# running prettier, so formatting them here only holds until its next commit --
+# it has already undone one such fix (see PR #26 and f15c7ff). Same reasoning as
+# routeTree.gen.ts above.
+src/integrations/supabase/types.ts
+src/integrations/supabase/previewAuthStorage.ts
