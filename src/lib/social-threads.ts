@@ -5,6 +5,13 @@
 // thread view showed one bubble with no history. Comments have no conversation
 // id, so they group by the customer on that account instead — which is what a
 // person reading the inbox would do anyway.
+//
+// A reply Flas saved is the exception: its author is "You" and it has no
+// thread_id, so keying it by its author put every reply to every customer into
+// one "You" thread. It carries the id of the message it answers, and that is
+// what decides which conversation it belongs to.
+
+import { replyParentId } from "@/lib/social-thread";
 
 export type ThreadItem = {
   id: string;
@@ -59,9 +66,31 @@ const byOldest = (a: ThreadItem, b: ThreadItem) =>
  * if nobody ever answered, which is how the same reply got sent twice.
  */
 export function groupThreads<T extends ThreadItem>(interactions: T[]): Thread<T>[] {
+  const byId = new Map(interactions.map((i) => [i.id, i] as const));
+
+  /**
+   * The conversation an item belongs to. For one of our saved replies that is
+   * the conversation of the message it answers, not its own — an answer with no
+   * question in front of it is not a conversation. A reply whose message is not
+   * in the window read here stands alone rather than joining another customer's.
+   */
+  const keyFor = (item: T): string => {
+    let current: ThreadItem = item;
+    // A reply to a reply is possible, so the parent is followed rather than read
+    // once; the bound stops a marker that names itself from spinning.
+    for (let hop = 0; hop < 5; hop++) {
+      const parentId = replyParentId(current.external_id);
+      if (!parentId) return threadKey(current);
+      const parent = byId.get(parentId);
+      if (!parent || parent.id === current.id) break;
+      current = parent;
+    }
+    return `i:${item.id}`;
+  };
+
   const byKey = new Map<string, T[]>();
   for (const i of interactions) {
-    const key = threadKey(i);
+    const key = keyFor(i);
     const bucket = byKey.get(key);
     if (bucket) bucket.push(i);
     else byKey.set(key, [i]);

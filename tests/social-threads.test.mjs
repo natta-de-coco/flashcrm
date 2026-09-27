@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
-function loadLib(relative) {
+function loadLib(relative, modules = {}) {
   const compiled = ts.transpileModule(readFileSync(new URL(relative, import.meta.url), "utf8"), {
     // ES2020, not the default: without it Map iteration is downlevelled into
     // something that silently yields nothing, and every grouping test "fails"
@@ -19,11 +19,16 @@ function loadLib(relative) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   const exports = {};
-  runInNewContext(compiled, { exports, require: () => ({}) });
+  // The real module, not a stub: grouping depends on reading a reply's marker,
+  // and a stub would make every reply look like an ordinary message -- which is
+  // precisely the bug being tested for.
+  runInNewContext(compiled, { exports, require: (id) => modules[id] ?? {} });
   return exports;
 }
+const threadMarkers = loadLib("../src/lib/social-thread.ts");
 const { groupThreads, threadKey, threadMatches, threadStatus } = loadLib(
   "../src/lib/social-threads.ts",
+  { "@/lib/social-thread": threadMarkers },
 );
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
@@ -203,11 +208,136 @@ describe("the sync stores direction, attachments and history correctly", () => {
   });
 });
 
+describe("a reply we saved belongs to the customer it answers", () => {
+  // Review of this PR: a reply carries no thread_id and its author is "You", so
+  // keying it by its author put every reply to every customer into one "You"
+  // thread -- a cross-customer duplicate that could then be replied to as if our
+  // own message were the question.
+  const { replyMarker } = threadMarkers;
+  const reply = (parentId, over = {}) =>
+    msg({
+      direction: "out",
+      author_name: "You",
+      author_handle: null,
+      status: "replied",
+      external_id: replyMarker(parentId, true),
+      created_at: "2026-09-20T12:00:00Z",
+      ...over,
+    });
+
+  it("does not put two customers' replies in one thread", () => {
+    const ali = msg({ author_name: "Ali", created_at: "2026-09-20T10:00:00Z" });
+    const sara = msg({ author_name: "Sara", created_at: "2026-09-20T11:00:00Z" });
+    const threads = groupThreads([
+      ali,
+      sara,
+      reply(ali.id, { body: "yours, Ali" }),
+      reply(sara.id, { body: "yours, Sara" }),
+    ]);
+    assert.equal(threads.length, 2, "one thread per customer, not a shared 'You' thread");
+    const forAli = threads.find((t) => t.items.some((i) => i.id === ali.id));
+    // Spread first: the array comes from the sandbox realm, where deepEqual
+    // compares prototypes and not just contents.
+    assert.deepEqual(
+      [...forAli.items].map((i) => i.body),
+      ["hello", "yours, Ali"],
+    );
+    assert.equal(forAli.latestInbound.id, ali.id);
+  });
+
+  it("puts the reply in the conversation even when that thread has a provider id", () => {
+    const inbound = msg({ thread_id: "conv-a", created_at: "2026-09-20T10:00:00Z" });
+    const [t] = groupThreads([inbound, reply(inbound.id)]);
+    assert.equal(t.key, `t:${ACCOUNT}:conv-a`);
+    assert.equal(t.items.length, 2);
+    assert.equal(t.waiting, false, "the customer has been answered");
+  });
+
+  it("keeps an orphan reply on its own rather than merging it with someone else", () => {
+    // The message it answers is outside the window the inbox read.
+    const threads = groupThreads([reply("gone-1"), reply("gone-2")]);
+    assert.equal(threads.length, 2);
+    for (const t of threads) assert.equal(t.latestInbound, null);
+  });
+
+  it("follows a reply written to a reply", () => {
+    const inbound = msg({ author_name: "Ali", created_at: "2026-09-20T10:00:00Z" });
+    const first = reply(inbound.id, { created_at: "2026-09-20T12:00:00Z" });
+    const second = reply(first.id, { created_at: "2026-09-20T13:00:00Z", body: "and one more" });
+    const threads = groupThreads([inbound, first, second]);
+    assert.equal(threads.length, 1);
+    assert.equal(threads[0].items.length, 3);
+  });
+});
+
+describe("a thread of only our own messages cannot be answered", () => {
+  const inbox = read("src/components/inbox/SocialInbox.tsx");
+
+  it("does not treat our own message as the one being replied to", () => {
+    assert.ok(
+      !inbox.includes("active?.latestInbound ?? active?.latest"),
+      "falling back to the newest message of either side aims a reply at ourselves",
+    );
+    assert.match(inbox, /const activeInbound = active\?\.latestInbound \?\? null;/);
+  });
+
+  it("disables the composer and says why", () => {
+    assert.match(inbox, /disabled=\{submit\.isPending \|\| !activeInbound\}/);
+    assert.match(inbox, /disabled=\{draft\.isPending \|\| !activeInbound\}/);
+    assert.match(inbox, /disabled=\{archive\.isPending \|\| !activeInbound\}/);
+    assert.match(inbox, /Nothing to reply to/);
+  });
+});
+
+describe("our own Instagram comments are recognized as ours", () => {
+  const server = read("src/lib/social.server.ts");
+
+  it("compares the Instagram handle with the Instagram account's own handle", () => {
+    // Review of this PR: the comments request does not include `from`, and the
+    // handle was compared against `/me`'s display name -- which, for a
+    // Page-derived token, is the Page's name. They agree only by coincidence.
+    assert.match(server, /fields=id,username`/);
+    assert.match(server, /handles\.add\(handle\)/);
+    assert.match(server, /sentByUs\(\{ id: c\.from\?\.id, handle: c\.username \}, self\)/);
+    assert.ok(
+      !server.includes("sentByUs({ id: c.from?.id, name: c.username }, self)"),
+      "an Instagram handle is not a display name",
+    );
+  });
+
+  it("compares handles without @ or case getting in the way", () => {
+    assert.match(server, /function normalizeHandle\(/);
+    assert.match(server, /replace\(\/\^@\/, ""\)\.toLowerCase\(\)/);
+    assert.match(server, /self\.handles\.has\(handle\)/);
+  });
+});
+
 describe("the migration that adds the thread column", () => {
   const sql = read("supabase/migrations/20260927120000_social_interactions_thread_id.sql");
 
   it("is additive and re-runnable", () => {
     assert.match(sql, /ADD COLUMN IF NOT EXISTS thread_id text/);
     assert.match(sql, /CREATE INDEX IF NOT EXISTS social_interactions_thread_idx/);
+  });
+
+  it("files the history that was already imported, which no code path reaches", () => {
+    // Review of this PR: firstSync is `!last_synced_at`, so the accounts that
+    // actually have two years of "Open" history are exactly the ones the code
+    // rule can never help -- importing that history set last_synced_at.
+    assert.match(sql, /UPDATE public\.social_interactions AS si/);
+    assert.match(sql, /SET status = 'archived'/);
+    assert.match(sql, /si\.direction = 'in'/);
+    assert.match(sql, /si\.status = 'open'/);
+    assert.match(sql, /si\.created_at < now\(\) - interval '30 days'/);
+  });
+
+  it("leaves a conversation alone when it has spoken in the last 30 days", () => {
+    // A customer who wrote 45 days ago and again yesterday is a live
+    // conversation; archiving the old half of it would hide real work.
+    assert.match(sql, /NOT EXISTS \(/);
+    assert.match(sql, /recent\.created_at >= now\(\) - interval '30 days'/);
+    assert.match(sql, /recent\.account_id = si\.account_id/);
+    assert.match(sql, /recent\.kind = si\.kind/);
+    assert.ok(!/DELETE FROM public\.social_interactions/.test(sql), "nothing is deleted");
   });
 });

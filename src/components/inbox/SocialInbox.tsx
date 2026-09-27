@@ -82,8 +82,12 @@ export function SocialInbox() {
   );
 
   const active = threads.find((t) => t.key === activeId) ?? null;
-  /** The customer message a reply answers — never one of our own. */
-  const activeInbound = active?.latestInbound ?? active?.latest ?? null;
+  /**
+   * The customer message a reply answers — never one of our own. Falling back
+   * to the newest message of either side meant a thread holding only our own
+   * messages offered to reply to, draft an answer to, and archive our own words.
+   */
+  const activeInbound = active?.latestInbound ?? null;
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["social_hub_inbox"] });
     void qc.invalidateQueries({ queryKey: ["social_hub"] });
@@ -264,7 +268,11 @@ export function SocialInbox() {
           <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-3">
             <div className="min-w-0">
               <h2 className="truncate font-semibold">
-                {activeInbound?.author_name ?? activeInbound?.author_handle ?? "Unknown"}
+                {activeInbound?.author_name ??
+                  activeInbound?.author_handle ??
+                  active.latest.author_name ??
+                  active.latest.author_handle ??
+                  "Unknown"}
               </h2>
               <p className="truncate text-xs text-muted-foreground">
                 {accountById.get(active.latest.account_id)?.platform ?? "social"} ·{" "}
@@ -281,7 +289,7 @@ export function SocialInbox() {
                 variant="outline"
                 size="sm"
                 onClick={() => activeInbound && archive.mutate(activeInbound.id)}
-                disabled={archive.isPending}
+                disabled={archive.isPending || !activeInbound}
               >
                 <Archive className="size-4" /> Archive
               </Button>
@@ -344,18 +352,27 @@ export function SocialInbox() {
           </div>
 
           <div className="space-y-2 border-t bg-card p-4">
+            {/* Nothing to answer: every message here is one of ours. Replying
+                would name our own message as the one being answered. */}
+            {!activeInbound ? (
+              <p className="text-xs text-muted-foreground">
+                Nothing to reply to — this conversation holds only messages you sent. It will accept
+                a reply once the customer writes back.
+              </p>
+            ) : null}
             <Textarea
               rows={3}
               placeholder="Write your reply…"
               value={reply}
               onChange={(e) => setReply(e.target.value)}
+              disabled={!activeInbound}
             />
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => activeInbound && draft.mutate(activeInbound.id)}
-                disabled={draft.isPending}
+                disabled={draft.isPending || !activeInbound}
               >
                 {draft.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -364,7 +381,11 @@ export function SocialInbox() {
                 )}
                 Flas AI reply
               </Button>
-              <Button size="sm" onClick={() => submit.mutate()} disabled={submit.isPending}>
+              <Button
+                size="sm"
+                onClick={() => submit.mutate()}
+                disabled={submit.isPending || !activeInbound}
+              >
                 {submit.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (

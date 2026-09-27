@@ -157,8 +157,9 @@ function missingCreds(message: string): SyncResult {
 async function selfIdentity(
   account: SocialAccountSecret,
   token: string,
-): Promise<{ ids: Set<string>; name: string | null }> {
+): Promise<{ ids: Set<string>; name: string | null; handles: Set<string> }> {
   const ids = new Set<string>();
+  const handles = new Set<string>();
   if (account.external_id) ids.add(String(account.external_id));
   let name: string | null = null;
   try {
@@ -168,16 +169,38 @@ async function selfIdentity(
   } catch {
     // Not fatal: the stored id still identifies us for the common case.
   }
-  return { ids, name };
+  // An Instagram comment names its author by handle and carries no id we ask
+  // for, while `/me` on a Page-derived token answers with the Page. So the
+  // Page's display name was being compared against an Instagram handle, which
+  // agree only by coincidence, and our own Instagram comments went on being
+  // filed as the customer's. Ask the Instagram account what it is called.
+  if (account.platform === "instagram" && account.external_id) {
+    try {
+      const ig = await graphGet(`/${account.external_id}?fields=id,username`, token);
+      if (ig?.id) ids.add(String(ig.id));
+      const handle = normalizeHandle(ig?.username);
+      if (handle) handles.add(handle);
+    } catch {
+      // Without it, an own comment is still recognized whenever Meta sends an id.
+    }
+  }
+  return { ids, name, handles };
+}
+
+/** A handle as it compares: no leading @, no case, no surrounding space. */
+function normalizeHandle(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/^@/, "").toLowerCase() : "";
 }
 
 /** True when this comment or message was sent by the business, not the customer. */
 function sentByUs(
-  from: { id?: unknown; name?: unknown } | null | undefined,
-  self: { ids: Set<string>; name: string | null },
+  from: { id?: unknown; name?: unknown; handle?: unknown } | null | undefined,
+  self: { ids: Set<string>; name: string | null; handles: Set<string> },
 ): boolean {
   if (!from) return false;
   if (from.id != null && self.ids.has(String(from.id))) return true;
+  const handle = normalizeHandle(from.handle);
+  if (handle && self.handles.has(handle)) return true;
   return Boolean(
     self.name && typeof from.name === "string" && from.name.trim() === self.name.trim(),
   );
@@ -258,7 +281,7 @@ async function syncMeta(account: SocialAccountSecret, firstSync = false): Promis
           token,
         );
         for (const c of comments.data ?? []) {
-          const ours = sentByUs({ id: c.from?.id, name: c.username }, self);
+          const ours = sentByUs({ id: c.from?.id, handle: c.username }, self);
           if (
             await saveInteraction(account, {
               external_id: c.id,
