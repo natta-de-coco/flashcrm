@@ -19,6 +19,7 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { requestedConversationId } from "@/lib/inbox-link";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
@@ -50,13 +51,21 @@ export const Route = createFileRoute("/_authenticated/inbox")({
       { property: "og:description", content: "Live shared inbox for WhatsApp and website chats." },
     ],
   }),
+  // A contact's "Message in Inbox" button links here with the conversation it
+  // wants opened. Without this the parameter was accepted and ignored, so the
+  // button dropped the user on the inbox and left them to find the thread.
+  validateSearch: (search: Record<string, unknown>): { conversation?: string } => {
+    const id = requestedConversationId(search);
+    return id ? { conversation: id } : {};
+  },
   component: InboxPage,
 });
 
 function InboxPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const { conversation: requested } = Route.useSearch();
+  const [activeId, setActiveId] = useState<string | null>(requested ?? null);
   const [showTools, setShowTools] = useState(false);
   const [channel, setChannel] = useState<"chats" | "social">("chats");
   // Badge count of social DMs/comments still waiting for a reply.

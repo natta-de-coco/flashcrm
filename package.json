@@ -19,7 +19,7 @@
     "test:authorize-params": "node scripts/build-state-bundle.mjs && node --test tests/oauth-authorize-params.test.mjs",
     "test:qa": "node scripts/build-state-bundle.mjs && node --test tests/qa-regressions.test.mjs",
     "test:forms": "node scripts/build-state-bundle.mjs && node --test tests/form-validation.test.mjs",
-    "test:contacts": "node --test tests/contact-identities.test.mjs",
+    "test:contacts": "node --test tests/contact-identities.test.mjs tests/inbox-link.test.mjs",
     "test:providers": "node scripts/build-state-bundle.mjs && node scripts/build-registry-bundle.mjs && node --test tests/provider-protocol.test.mjs",
     "test:secrets": "node scripts/build-state-bundle.mjs && node --test tests/secret-box.test.mjs",
     "test:targets": "node scripts/build-state-bundle.mjs && node --test tests/connection-targets.test.mjs",
