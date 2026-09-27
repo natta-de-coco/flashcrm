@@ -17,6 +17,7 @@ await build({
       export * from './src/lib/wa-numbers.functions';
       export * from './src/lib/flash-ai.server';
       export * from './src/lib/contact-resolve.server';
+      export * from './src/lib/onboarding.functions';
       export * from './src/lib/meta-health.functions';`,
     resolveDir: process.cwd(),
   },
