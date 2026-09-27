@@ -24,7 +24,20 @@ export type SocialAccountSecret = {
   connect_method: string | null;
 };
 
-export type SyncResult = { ok: boolean; posts: number; interactions: number; error?: string };
+import type { SkippedSection } from "@/lib/sync-report";
+
+export type SyncResult = {
+  ok: boolean;
+  posts: number;
+  interactions: number;
+  error?: string;
+  /**
+   * Sections the provider refused. A sync that read the posts but not the
+   * comments is not a success: without this the product reported
+   * "synced, 0 interactions" and threw the reason away.
+   */
+  skipped?: SkippedSection[];
+};
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -119,6 +132,12 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
   let posts = 0;
   let interactions = 0;
   let stats: Record<string, number> | undefined;
+  const skipped: SkippedSection[] = [];
+  const { skipReason } = await import("@/lib/sync-report");
+  const note = (what: string, error: unknown) => {
+    skipped.push({ what, reason: skipReason(what, error) });
+    console.error(`[social] ${account.platform} sync could not read ${what}:`, error);
+  };
 
   if (account.platform === "instagram") {
     const media = await graphGet(
@@ -155,16 +174,19 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
           )
             interactions++;
         }
-      } catch {
-        // Token lacks instagram_manage_comments — skip comments for this media.
+      } catch (error) {
+        // Almost always a missing instagram_manage_comments. Reported, not swallowed.
+        if (!skipped.some((s) => s.what === "Instagram comments")) {
+          note("Instagram comments", error);
+        }
       }
     }
     try {
       const profile = await graphGet(`/${account.external_id}?fields=followers_count`, token);
       if (typeof profile?.followers_count === "number")
         stats = { followers: profile.followers_count };
-    } catch {
-      // followers_count unavailable for this token — fine.
+    } catch (error) {
+      note("Instagram profile", error);
     }
   } else {
     const feed = await graphGet(
@@ -219,8 +241,8 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
             interactions++;
         }
       }
-    } catch {
-      // Messaging permission missing — comments/posts still synced.
+    } catch (error) {
+      note("Messenger conversations", error);
     }
 
     try {
@@ -230,13 +252,13 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
       );
       const followers = page?.followers_count ?? page?.fan_count;
       if (typeof followers === "number") stats = { followers };
-    } catch {
-      // ignore
+    } catch (error) {
+      note("Facebook page details", error);
     }
   }
 
   await finishSync(account.id, stats);
-  return { ok: true, posts, interactions };
+  return { ok: true, posts, interactions, ...(skipped.length ? { skipped } : {}) };
 }
 
 /* ---------- YouTube (Data API v3 — API key + channel ID) ---------- */
