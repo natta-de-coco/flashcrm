@@ -1,6 +1,6 @@
 /** Body-only positional templates. Unsupported formats fail before delivery. */
 export function templateParameterCount(body: string): number {
-  const placeholders = [...body.matchAll(/{{\s*([^{}]+?)\s*}}/g)].map((m) => m[1].trim());
+  const placeholders = [...body.matchAll(/{{\s*([^{}]+?)\s*}}/g)].map((m) => (m[1] ?? "").trim());
   if (placeholders.some((value) => !/^[1-9]\d*$/.test(value))) {
     throw new Error(
       "This template uses named variables, which this composer does not support yet.",
@@ -18,5 +18,5 @@ export function renderTemplateBody(body: string, variables: string[]): string {
   if (variables.length !== count || variables.some((v) => !v.trim() || v.length > 500)) {
     throw new Error(`Fill all ${count} template variables before sending.`);
   }
-  return body.replace(/{{\s*([1-9]\d*)\s*}}/g, (_, index: string) => variables[Number(index) - 1]);
+  return body.replace(/{{\s*([1-9]\d*)\s*}}/g, (_, index: string) => variables[Number(index) - 1]!);
 }
