@@ -42,7 +42,7 @@ Two-workspace authorization tests; mocked provider rejection/timeouts; webhook r
 
 ## Verification for this branch (2026-09-27)
 
-- Full npm regression suite passed locally (552 tests across its commands).
+- Full npm regression suite passed locally (492 tests across its commands).
 - Eight focused recipient-binding and template-personalization tests passed.
 - TypeScript passed; production build passed.
 - Full lint passed with zero errors and 17 existing warnings after normalizing Windows checkout line endings.
