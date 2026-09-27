@@ -57,6 +57,7 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
         .from("contacts")
         .select("phone")
         .eq("id", conversation.contact_id)
+        .eq("tenant_id", tenantId)
         .single();
       if (contact?.phone) {
         try {

@@ -1,3 +1,5 @@
+import { openContactWhatsApp } from "@/lib/whatsapp-conversations.functions";
+import { useNavigate } from "@tanstack/react-router";
 // Every way one customer reaches you, and every place they trade from.
 //
 // The old model held a single phone per contact, so a customer messaging from
@@ -44,6 +46,17 @@ type Props = {
 
 export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Props) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const openWhatsApp = useServerFn(openContactWhatsApp);
+  const startChat = useMutation({
+    mutationFn: () => openWhatsApp({ data: { contactId: contactId! } }),
+    onSuccess: async ({ conversationId }) => {
+      await qc.invalidateQueries({ queryKey: ["conversations"] });
+      onOpenChange(false);
+      await navigate({ to: "/inbox", search: { conversation: conversationId } });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const load = useServerFn(getContactDetail);
   const addIdentity = useServerFn(addContactIdentity);
   const dropIdentity = useServerFn(removeContactIdentity);
@@ -139,6 +152,15 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
           </DialogDescription>
         </DialogHeader>
 
+        <div className="grid gap-2">
+          <Button onClick={() => startChat.mutate()} disabled={!contactId || startChat.isPending}>
+            {startChat.isPending ? "Opening WhatsApp…" : "Open WhatsApp conversation"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Review your message in the inbox before sending. A new conversation needs an approved
+            template.
+          </p>
+        </div>
         {detail.isLoading && <Skeleton className="h-40 w-full" />}
 
         {!detail.isLoading && (

@@ -496,8 +496,22 @@ export async function ingestInboundMessage(args: IngestArgs) {
         })
         .select("id, bot_enabled")
         .single();
-      if (error) throw error;
-      conversation = created;
+      if (error?.code === "23505") {
+        // A lead opening the inbox and an inbound webhook can arrive together.
+        // The unique index chooses the thread; keep the inbound message on it.
+        const { data: existing, error: lookupError } = await supabaseAdmin
+          .from("conversations")
+          .select("id, bot_enabled, wa_number_id")
+          .eq("tenant_id", tenantId)
+          .eq("contact_id", contactId!)
+          .eq("channel", "whatsapp")
+          .single();
+        if (lookupError || !existing) throw lookupError ?? error;
+        conversation = existing;
+      } else {
+        if (error) throw error;
+        conversation = created;
+      }
     }
   }
 

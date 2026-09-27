@@ -43,6 +43,13 @@ import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-pa
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
+  validateSearch: (search: Record<string, unknown>): { conversation?: string } => {
+    const id = search["conversation"];
+    return typeof id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ? { conversation: id }
+      : {};
+  },
   head: () => ({
     meta: [
       { title: "Inbox — Flas CRM" },
@@ -57,7 +64,11 @@ export const Route = createFileRoute("/_authenticated/inbox")({
 function InboxPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const { conversation: requestedConversation } = Route.useSearch();
+  const [activeId, setActiveId] = useState<string | null>(requestedConversation ?? null);
+  useEffect(() => {
+    if (requestedConversation) setActiveId(requestedConversation);
+  }, [requestedConversation]);
   const [showTools, setShowTools] = useState(false);
   const [channel, setChannel] = useState<"chats" | "social">("chats");
   // Badge count of social DMs/comments still waiting for a reply.
@@ -85,6 +96,7 @@ function InboxPage() {
   useEffect(() => {
     setTemplateId("");
     setTemplateVariables([]);
+    setDraft("");
   }, [activeId]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
@@ -163,7 +175,7 @@ function InboxPage() {
   });
 
   const conversations = useQuery({
-    queryKey: ["conversations"],
+    queryKey: ["conversations", requestedConversation],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conversations")
@@ -171,6 +183,17 @@ function InboxPage() {
         .order("last_message_at", { ascending: false })
         .limit(200);
       if (error) throw error;
+      // A linked thread may be older than the most recent 200 conversations.
+      // Fetch it through the same RLS-scoped client, never a privileged lookup.
+      if (requestedConversation && !data.some((row) => row.id === requestedConversation)) {
+        const linked = await supabase
+          .from("conversations")
+          .select("*, contacts(id, name, phone, company, stage), wa_numbers(label, display_phone)")
+          .eq("id", requestedConversation)
+          .maybeSingle();
+        if (linked.error) throw linked.error;
+        if (linked.data) data.unshift(linked.data);
+      }
       return data as unknown as Conversation[];
     },
   });
