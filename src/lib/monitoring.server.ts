@@ -411,11 +411,24 @@ export async function processWaPayload(body: WaWebhookBody) {
             }
           } catch (sendError) {
             const detail = sendError instanceof Error ? sendError.message : "Delivery failed";
+            // The bot's reply is written before the send is attempted, so a
+            // refused send used to leave the conversation showing a reply the
+            // customer never received. Mark that row failed, and the notice
+            // beside it, so the thread tells the truth.
+            if (replyMessageId) {
+              await supabaseAdmin
+                .from("messages")
+                .update({ status: "failed" })
+                .eq("id", replyMessageId);
+            }
             await storeOutbound(
               tenantId,
               conversationId,
               "(delivery failed — check WhatsApp credentials)",
               "bot",
+              null,
+              null,
+              "failed",
             );
             await raiseAlert({
               title: "WhatsApp reply could not be delivered",

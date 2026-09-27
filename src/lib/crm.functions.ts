@@ -72,6 +72,8 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
       }
     }
 
+    // A message WhatsApp refused is recorded as failed, so the conversation
+    // never shows it as if the customer had received it.
     await storeOutbound(
       tenantId as string,
       conversation.id,
@@ -79,6 +81,7 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
       "agent",
       context.userId,
       waId,
+      deliveryError ? "failed" : "sent",
     );
     await logAudit({
       action: "message.send",

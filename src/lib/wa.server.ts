@@ -597,6 +597,12 @@ export async function storeOutbound(
   sender: "bot" | "agent",
   senderId?: string | null,
   waMessageId?: string | null,
+  /**
+   * What actually happened to this message. A refused send used to be stored
+   * like any other outbound message, so the conversation showed it as if the
+   * customer had received it.
+   */
+  status: "sent" | "failed" = "sent",
 ): Promise<string | null> {
   const { data } = await supabaseAdmin
     .from("messages")
@@ -608,6 +614,7 @@ export async function storeOutbound(
       body,
       wa_message_id: waMessageId ?? null,
       tenant_id: tenantId,
+      status,
     })
     .select("id")
     .single();
