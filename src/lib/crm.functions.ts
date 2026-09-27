@@ -174,12 +174,16 @@ export const retryWebhookEvent = createServerFn({ method: "POST" })
     }
   });
 
-const TemplateSchema = z.object({
-  templateId: z.string().uuid(),
-  conversationId: z.string().uuid().optional(),
-  phone: z.string().min(6).max(24).optional(),
-  variables: z.array(z.string().max(500)).max(10).default([]),
-});
+const TemplateSchema = z
+  .object({
+    templateId: z.string().uuid(),
+    conversationId: z.string().uuid().optional(),
+    phone: z.string().min(6).max(24).optional(),
+    variables: z.array(z.string().max(500)).max(10).default([]),
+  })
+  .refine((value) => Boolean(value.conversationId) !== Boolean(value.phone), {
+    message: "Choose a conversation or a phone number, not both.",
+  });
 
 /** Sends an approved WhatsApp template to a conversation or a raw phone number. */
 export const sendTemplateMessage = createServerFn({ method: "POST" })
@@ -210,23 +214,23 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
     let waNumberId: string | null = null;
 
     if (conversationId) {
-      const { data: conv } = await supabaseAdmin
+      const { data: conv, error: conversationError } = await supabaseAdmin
         .from("conversations")
-        .select("contact_id, wa_number_id")
+        .select("contact_id, wa_number_id, channel")
         .eq("id", conversationId)
         .eq("tenant_id", tenantId)
         .single();
-      if (conv) {
-        waNumberId = conv.wa_number_id ?? null;
-        if (!phone) {
-          const { data: contact } = await supabaseAdmin
-            .from("contacts")
-            .select("phone")
-            .eq("id", conv.contact_id)
-            .single();
-          phone = contact?.phone ?? null;
-        }
-      }
+      if (conversationError || !conv) throw new Error("Conversation not found");
+      if (conv.channel !== "whatsapp") throw new Error("Choose a WhatsApp conversation");
+      waNumberId = conv.wa_number_id ?? null;
+      const { data: contact, error: contactError } = await supabaseAdmin
+        .from("contacts")
+        .select("phone")
+        .eq("id", conv.contact_id)
+        .eq("tenant_id", tenantId)
+        .single();
+      if (contactError || !contact) throw new Error("Contact not found");
+      phone = contact.phone;
     }
     if (!phone) throw new Error("No WhatsApp number available for this recipient");
 
