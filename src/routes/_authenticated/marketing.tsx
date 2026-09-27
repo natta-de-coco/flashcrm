@@ -7,9 +7,10 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { draftCampaignMessage } from "@/lib/flash-ai.functions";
+import { audienceBlockedReason, type CampaignAudience } from "@/lib/campaign-audience";
+import { draftCampaignForAudience, getCampaignAudience } from "@/lib/campaign-audience.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Copy, Download, Loader2, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -94,6 +95,62 @@ type Campaign = {
   created_at: string;
 };
 
+/**
+ * Who a campaign on this channel can actually reach, in one sentence.
+ *
+ * Shown wherever the page implies reach, and driven by the same resolved
+ * audience as the AI writer and `campaigns.recipients_count`, so the page
+ * cannot advertise an audience a sender would not have (H8).
+ */
+function AudienceNote({
+  audience,
+  loading,
+  error,
+}: {
+  audience: CampaignAudience | null;
+  loading: boolean;
+  error?: Error | null;
+}) {
+  if (loading) {
+    return <p className="text-xs text-muted-foreground">Checking who has opted in…</p>;
+  }
+  // Say so rather than showing nothing: without this the writer's button is
+  // disabled with no explanation when the audience lookup itself fails.
+  if (error) {
+    return (
+      <p className="text-xs text-destructive">Could not check who has opted in: {error.message}</p>
+    );
+  }
+  if (!audience) return null;
+
+  const channelLabel = audience.channel === "email" ? "email" : "WhatsApp";
+  const addressLabel = audience.channel === "email" ? "email address" : "phone number";
+  const blocked = audienceBlockedReason(audience);
+  if (blocked) {
+    return (
+      <p className="rounded-lg border border-dashed bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+        <strong className="text-foreground">No {channelLabel} audience yet.</strong> {blocked}
+      </p>
+    );
+  }
+
+  return (
+    <p className="rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+      <strong className="text-foreground">
+        {audience.truncated ? "At least " : ""}
+        {audience.total} opted-in {channelLabel} {audience.total === 1 ? "recipient" : "recipients"}
+      </strong>{" "}
+      — {audience.fromContacts} from contacts, {audience.fromLeads} from website leads.
+      {audience.optedInUnreachable > 0
+        ? ` ${audience.optedInUnreachable} more consented but have no ${addressLabel} on file.`
+        : ""}
+      {audience.withoutConsent > 0
+        ? ` ${audience.withoutConsent} excluded until consent is recorded.`
+        : ""}
+    </p>
+  );
+}
+
 function MarketingPage() {
   const { isAdmin, user } = useAuth();
   const qc = useQueryClient();
@@ -115,7 +172,8 @@ function MarketingPage() {
     channel: "whatsapp" as "whatsapp" | "email",
   });
   const [aiDraft, setAiDraft] = useState("");
-  const draftWithFlashAi = useServerFn(draftCampaignMessage);
+  const draftWithFlashAi = useServerFn(draftCampaignForAudience);
+  const loadAudience = useServerFn(getCampaignAudience);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -131,6 +189,17 @@ function MarketingPage() {
       return data as unknown as Lead[];
     },
   });
+
+  // The consent-checked audience, from `contacts` AND `leads`. Everything the
+  // page tells the user about reach comes from here, so the figure on screen,
+  // the figure the AI writer is given and campaigns.recipients_count are one
+  // number (H8: they used to be three different ones, all of them wrong).
+  const audience = useQuery({
+    queryKey: ["campaign-audience"],
+    queryFn: () => loadAudience(),
+  });
+  const emailAudience = audience.data?.email ?? null;
+  const channelAudience = audience.data?.[aiForm.channel] ?? null;
 
   const sites = useQuery({
     queryKey: ["lead_sites"],
@@ -247,7 +316,11 @@ function MarketingPage() {
         name: campaignForm.name,
         subject: campaignForm.subject,
         body: campaignForm.body,
-        recipients_count: (leads.data ?? []).filter((l) => l.subscribed).length,
+        // Was `leads.filter(l => l.subscribed).length`: `subscribed` defaults to
+        // true, so every captured lead was counted as a recipient whether or not
+        // they had consented, and contacts were never counted at all. This is the
+        // same number the card displays above the form.
+        recipients_count: emailAudience?.total ?? 0,
         created_by: user?.id ?? null,
       });
       if (error) throw error;
@@ -271,8 +344,20 @@ function MarketingPage() {
         },
       }),
     onSuccess: (res) => {
+      // A refusal used to arrive here and get a green "drafted your message"
+      // toast, with the refusal text sitting in the draft box as if it were
+      // copy (H8). The server now says which it is, and an empty audience is
+      // reported as the reason it is empty, not as a draft.
+      if (!res.ok) {
+        toast.error(res.reason);
+        return;
+      }
       setAiDraft(res.draft);
-      toast.success("Flas AI drafted your message");
+      toast.success(
+        `Flas AI drafted your message for ${res.audience.total} opted-in ${
+          res.audience.total === 1 ? "recipient" : "recipients"
+        }`,
+      );
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -295,7 +380,10 @@ function MarketingPage() {
       .eq("id", id);
     if (error) toast.error(error.message);
     else {
-      toast.success("Campaign queued. It sends once your email sending domain is verified.");
+      // M13: this used to promise the campaign "sends once your email sending
+      // domain is verified". Nothing in Flas CRM reads a queued campaign and
+      // nothing verifies a domain, so queueing only marks it ready — say that.
+      toast.success("Marked as queued. Flas CRM does not send campaigns itself yet.");
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     }
   }
@@ -528,8 +616,9 @@ function MarketingPage() {
               <Sparkles className="size-4 text-primary" /> Flas AI campaign writer
             </CardTitle>
             <CardDescription>
-              Tell Flas AI your goal — it studies your business profile and lead data, then drafts a
-              compliant, ready-to-send message. Review it, then drop it into a campaign below.
+              Tell Flas AI your goal — it studies your business profile and your consented audience
+              (contacts and website leads alike), then drafts a compliant, ready-to-send message.
+              Review it, then drop it into a campaign below.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -584,9 +673,22 @@ function MarketingPage() {
                 </select>
               </div>
             </div>
+            <AudienceNote
+              audience={channelAudience}
+              loading={audience.isLoading}
+              error={audience.error}
+            />
             <div>
               <Button
-                disabled={aiForm.goal.trim().length < 3 || generateDraft.isPending}
+                // Nothing to write to is not a prompt the model should be asked
+                // to answer — it answered it with a refusal that the page then
+                // showed as a success (H8). AudienceNote above says why.
+                disabled={
+                  aiForm.goal.trim().length < 3 ||
+                  generateDraft.isPending ||
+                  audience.isLoading ||
+                  (channelAudience?.total ?? 0) === 0
+                }
                 onClick={() => generateDraft.mutate()}
               >
                 {generateDraft.isPending ? (
@@ -620,8 +722,8 @@ function MarketingPage() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Campaigns only send to leads who gave consent — Flas AI already includes the
-                  required opt-out line.
+                  Campaigns only go to people whose consent is recorded — contacts and website leads
+                  alike — and Flas AI already includes the required opt-out line.
                 </p>
               </div>
             )}
@@ -633,7 +735,11 @@ function MarketingPage() {
             <CardTitle className="text-base">
               Leads <Badge variant="secondary">{(leads.data ?? []).length}</Badge>
             </CardTitle>
-            <CardDescription>Every email captured from your sites and chat widget.</CardDescription>
+            <CardDescription>
+              Every email captured from your sites and chat widget. Leads are a separate list from
+              your CRM contacts — a campaign audience is drawn from both, so a consented contact
+              counts even when this list is empty.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {(leads.data ?? []).length === 0 && (
@@ -820,12 +926,36 @@ function MarketingPage() {
           <CardHeader>
             <CardTitle className="text-base">Marketing campaigns</CardTitle>
             <CardDescription>
-              Write a campaign for your subscribed leads. Campaigns only ever go to leads who ticked
-              the consent box — that keeps you out of spam folders and on the right side of WhatsApp
-              and email regulations. Sending activates once your email domain is verified.
+              Write a campaign for the people who have recorded consent — contacts and website leads
+              alike. That keeps you out of spam folders and on the right side of WhatsApp and email
+              regulations.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
+            {/*
+              M13: this card used to say "Sending activates once your email domain is
+              verified", next to no domain-verification UI. There is no domain
+              verification anywhere in Flas CRM — that happens at your email
+              provider — and nothing in Flas CRM reads a queued campaign and sends
+              it. Saying so is the honest version; the link goes to the one place
+              outbound email really is configured.
+            */}
+            <div className="rounded-lg border border-dashed bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
+              <strong className="text-foreground">Sending is not automated yet.</strong> Flas CRM
+              saves a campaign and marks it queued, but it does not deliver it for you — you or your
+              provider sends it. Outbound email for this workspace is set up by a company admin in{" "}
+              <Link to="/settings/email" className="font-medium text-brand hover:underline">
+                Settings → Email
+              </Link>
+              , where you pick a provider and send a test. Authenticating your sending domain
+              (SPF/DKIM) is done in that provider's dashboard — Flas CRM has no domain-verification
+              step of its own.
+            </div>
+            <AudienceNote
+              audience={emailAudience}
+              loading={audience.isLoading}
+              error={audience.error}
+            />
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="c_name">Campaign name</Label>
@@ -871,7 +1001,10 @@ function MarketingPage() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{campaign.name}</p>
                     <p className="truncate text-xs text-muted-foreground">
+                      {/* A snapshot taken when the campaign was saved, not a live
+                          count — labelled so it cannot be read as today's reach. */}
                       {campaign.subject || "No subject"} · {campaign.recipients_count} recipients
+                      when saved
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
