@@ -1,4 +1,5 @@
 import { ChannelReportDialog, REPORT_PLATFORMS } from "@/components/social/ChannelReportDialog";
+import { syncSummary } from "@/lib/sync-report";
 import { useTenant } from "@/hooks/useTenant";
 import { PageHeader } from "@/components/PageHeader";
 import {
@@ -360,11 +361,14 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
     setSyncingId(id);
     try {
       const result = await sync({ data: { id } });
-      if (result.ok) {
-        toast.success(`Synced ${result.posts} posts and ${result.interactions} comments/DMs`);
-      } else {
-        toast.error(result.error ?? "Sync failed");
-      }
+      // A sync that read the posts but not the comments is not a success. Saying
+      // which section was refused, and why, is how a workspace finds out that a
+      // permission is missing instead of concluding the product is broken.
+      const summary = syncSummary(result);
+      if (summary.tone === "success") toast.success(summary.text);
+      else if (summary.tone === "warning")
+        toast.warning(summary.text, { description: summary.detail });
+      else toast.error(summary.text);
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Sync failed");
@@ -523,14 +527,25 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                   <span className="truncate">{a.label}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {audienceStat(a.stats) ? `${audienceStat(a.stats)} · ` : ""}
-                  {a.last_synced_at ? `Synced ${timeAgo(a.last_synced_at)}` : "Never synced"}
+                  {!a.external_id
+                    ? "Sign-in done — choose which Page or account to use"
+                    : `${audienceStat(a.stats) ? `${audienceStat(a.stats)} · ` : ""}${
+                        a.last_synced_at ? `Synced ${timeAgo(a.last_synced_at)}` : "Never synced"
+                      }`}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {/* Analytics and ads connections report rather than sync:
                     Sync pulls posts and comments, which they do not have. */}
-                {REPORT_PLATFORMS.has(a.platform) ? (
+                {!a.external_id ? (
+                  // The sign-in finished but no Page was chosen, so there is
+                  // nothing to sync -- pressing Sync could only ever fail with
+                  // "Add the Meta account ID and access token first", which is
+                  // nonsense for a connection made by signing in.
+                  <Button size="sm" variant="outline" asChild>
+                    <Link to="/connect">Finish connecting</Link>
+                  </Button>
+                ) : REPORT_PLATFORMS.has(a.platform) ? (
                   <ChannelReportDialog accountId={a.id} label={a.label} />
                 ) : (
                   <Button
