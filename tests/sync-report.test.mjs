@@ -19,7 +19,9 @@ function loadLib(relative) {
 }
 const { skipReason, syncSummary } = loadLib("../src/lib/sync-report.ts");
 const read = (path) =>
-  readFileSync(new URL(`../${path}`, import.meta.url), "utf8").split("\r\n").join("\n");
+  readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+    .split("\r\n")
+    .join("\n");
 
 describe("a refused section says which permission is missing", () => {
   it("repeats the permission Meta itself named", () => {
@@ -47,7 +49,10 @@ describe("a refused section says which permission is missing", () => {
   });
 
   it("does not blame a permission for a rate limit", () => {
-    const reason = skipReason("Facebook comments", new Error("(#80001) There have been too many calls"));
+    const reason = skipReason(
+      "Facebook comments",
+      new Error("(#80001) There have been too many calls"),
+    );
     assert.match(reason, /rate-limit/i);
     assert.ok(!/pages_read_user_content/.test(reason), "a throttle is not a missing permission");
   });
