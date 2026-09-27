@@ -25,7 +25,7 @@
     "test:targets": "node scripts/build-state-bundle.mjs && node --test tests/connection-targets.test.mjs",
     "test:reports": "node scripts/build-state-bundle.mjs && node --test tests/reports.test.mjs",
     "test:subscriptions": "node scripts/build-state-bundle.mjs && node scripts/build-payments-bundle.mjs && node --test tests/manager-subscriptions.test.mjs tests/payments-webhook.test.mjs",
-    "test:audit-punchlist": "node --test tests/audit-punchlist.test.mjs tests/document-numbering.test.mjs tests/sync-report.test.mjs",
+    "test:audit-punchlist": "node --test tests/audit-punchlist.test.mjs tests/document-numbering.test.mjs tests/sync-report.test.mjs tests/social-hub.test.mjs",
     "test:homepage-widget": "node --test tests/homepage-widget.test.mjs",
     "test:stale-chunk": "node --test tests/stale-chunk.test.mjs",
     "test:onboarding": "node scripts/build-onboarding-bundle.mjs && node --test tests/onboarding.test.mjs tests/team-roles.test.mjs",

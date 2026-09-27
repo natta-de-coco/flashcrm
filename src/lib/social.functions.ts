@@ -335,6 +335,46 @@ export const saveSocialPost = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+const UpdatePostSchema = z.object({
+  id: z.string().uuid(),
+  caption: z.string().min(1).max(4000),
+  accountId: z.string().uuid().nullable().optional(),
+  scheduledAt: z.string().datetime().nullable().optional(),
+});
+
+/**
+ * Rewrites a draft or planned post in place.
+ *
+ * A saved draft used to be unreachable: the composer cleared itself after
+ * saving and the only trace was a row in "Reach & audience" with a delete icon
+ * (QA, 26 Sep). A published post is read back from the platform and is never
+ * edited here — changing the caption in Flas would not change the post, so the
+ * update refuses it rather than pretending.
+ */
+export const updateSocialPost = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => UpdatePostSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: changed, error } = await context.supabase
+      .from("social_posts")
+      .update({
+        caption: data.caption,
+        account_id: data.accountId ?? null,
+        scheduled_at: data.scheduledAt ?? null,
+        status: data.scheduledAt ? "scheduled" : "draft",
+      })
+      .eq("id", data.id)
+      .neq("status", "published")
+      .select("id");
+    if (error) throw error;
+    if (!changed?.[0]) {
+      throw new Error(
+        "That post could not be edited. A published post is read from the platform and cannot be changed here.",
+      );
+    }
+    return { ok: true };
+  });
+
 export const deleteSocialPost = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
