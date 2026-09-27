@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { recordAuditEvent } from "@/lib/audit.functions";
 import { parseContactImport, validRows } from "@/lib/contact-import";
+import { formatStageMoney, stageTotal } from "@/lib/contacts-view";
 import { STAGES, type Contact, type LeadStage } from "@/lib/crm-types";
 import { useTenant } from "@/hooks/useTenant";
 import { downloadCsv, toCsv } from "@/lib/csv";
@@ -485,13 +486,25 @@ function ContactsPage() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {STAGES.map((stage) => {
           const rows = filtered.filter((c) => c.stage === stage.id);
+          // L1: the column showed a card count and nothing else, so the only way
+          // to answer "how much is sitting in Negotiation?" was to add the cards
+          // up by eye. Totalled over the filtered rows, not all contacts, so the
+          // figure always matches the cards actually on screen.
+          const { total } = stageTotal(rows, stage.id);
           return (
             <section key={stage.id} className="rounded-xl bg-muted/50 p-3">
-              <div className="mb-3 flex items-center justify-between px-1">
+              <div className="mb-3 flex items-center justify-between gap-2 px-1">
                 <h2 className="text-sm font-semibold">{stage.label}</h2>
-                <Badge variant="secondary" className="text-[10px]">
-                  {rows.length}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {rows.length > 0 && (
+                    <span className="text-xs font-semibold text-brand">
+                      {formatStageMoney(total, tenant?.currency)}
+                    </span>
+                  )}
+                  <Badge variant="secondary" className="text-[10px]">
+                    {rows.length}
+                  </Badge>
+                </div>
               </div>
               <div className="space-y-2">
                 {rows.length === 0 && (
@@ -501,7 +514,20 @@ function ContactsPage() {
                   <Card key={c.id}>
                     <CardContent className="space-y-2 p-3">
                       <div>
-                        <p className="text-sm font-semibold">{c.name}</p>
+                        {/* H13: the card was not openable at all — only the small
+                            "Numbers & branches" link below it was, which nobody
+                            found. The name is the button now, so clicking the
+                            contact opens the contact. Kept as a button rather
+                            than wrapping the whole card, because the card also
+                            holds a stage select and a consent action that must
+                            stay independently clickable. */}
+                        <button
+                          type="button"
+                          onClick={() => setDetailFor({ id: c.id, name: c.name })}
+                          className="text-left text-sm font-semibold underline-offset-2 hover:underline"
+                        >
+                          {c.name}
+                        </button>
                         <p className="text-xs text-muted-foreground">
                           {c.phone ?? c.email ?? "No contact details"}
                           {c.company ? ` · ${c.company}` : ""}
@@ -511,7 +537,7 @@ function ContactsPage() {
                           onClick={() => setDetailFor({ id: c.id, name: c.name })}
                           className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                         >
-                          Numbers &amp; branches
+                          Open contact
                         </button>
                         {c.consent_given ? (
                           <Badge variant="outline" className="mt-1 text-[10px]">
@@ -533,12 +559,11 @@ function ContactsPage() {
                         )}
                       </div>
                       <div className="flex items-center justify-between gap-2">
+                        {/* Same formatter as the column total, so a card and the
+                            heading above it can never disagree about currency
+                            or rounding. */}
                         <span className="text-xs font-semibold text-brand">
-                          {Number(c.value ?? 0).toLocaleString(undefined, {
-                            style: "currency",
-                            currency: tenant?.currency || "USD",
-                            maximumFractionDigits: 0,
-                          })}
+                          {formatStageMoney(Number(c.value ?? 0), tenant?.currency)}
                         </span>
                         <Select
                           value={c.stage}

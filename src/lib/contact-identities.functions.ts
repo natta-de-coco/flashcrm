@@ -26,12 +26,33 @@ async function callerTenantId(context: {
   return data.tenant_id as string;
 }
 
-/** Every number, email and branch for one customer. */
+/**
+ * Everything one contact's detail view shows: the record itself, its numbers,
+ * emails, branches and its conversation threads.
+ *
+ * The contact row is read here and not only in the board's own query because of
+ * H12. `contact_identities` is backfilled by its migration, but the New contact
+ * form and the CSV import write `contacts.phone` / `contacts.email` and nothing
+ * else, so a contact added through the UI has a number that no identity row
+ * mentions — and the dialog, reading identities alone, said "Nothing recorded
+ * yet" about a contact plainly holding +971509630506. reachLines() in
+ * src/lib/contacts-view.ts folds the two together.
+ *
+ * Conversations come back with it so the dialog can offer a way through to the
+ * thread in the inbox rather than making the user go and find it.
+ */
 export const getContactDetail = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ contactId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const [identities, branches] = await Promise.all([
+    const [contact, identities, branches, conversations] = await Promise.all([
+      context.supabase
+        .from("contacts")
+        .select(
+          "id, name, phone, email, company, tags, stage, value, notes, consent_given, consent_at, last_message_at, created_at",
+        )
+        .eq("id", data.contactId)
+        .maybeSingle(),
       context.supabase
         .from("contact_identities")
         .select("id, kind, value, label, is_primary, branch_id, created_at")
@@ -44,10 +65,40 @@ export const getContactDetail = createServerFn({ method: "GET" })
         .eq("contact_id", data.contactId)
         .order("is_primary", { ascending: false })
         .order("name", { ascending: true }),
+      context.supabase
+        .from("conversations")
+        .select("id, channel, status, unread_count, last_message_at, last_message_preview")
+        .eq("contact_id", data.contactId)
+        .order("last_message_at", { ascending: false })
+        .limit(20),
     ]);
+    if (contact.error) throw contact.error;
     if (identities.error) throw identities.error;
     if (branches.error) throw branches.error;
-    return { identities: identities.data ?? [], branches: branches.data ?? [] };
+    if (conversations.error) throw conversations.error;
+    return {
+      contact: contact.data ?? null,
+      identities: identities.data ?? [],
+      branches: branches.data ?? [],
+      conversations: conversations.data ?? [],
+    };
+  });
+
+/** Free-text notes on a contact, saved from the detail dialog. */
+export const saveContactNotes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ contactId: z.string().uuid(), notes: z.string().max(4000) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    // Blank clears the field rather than storing an empty string, so the
+    // "no notes yet" state stays a single condition everywhere that reads it.
+    const { error } = await context.supabase
+      .from("contacts")
+      .update({ notes: data.notes.trim() || null })
+      .eq("id", data.contactId);
+    if (error) throw error;
+    return { ok: true };
   });
 
 export const addContactIdentity = createServerFn({ method: "POST" })
