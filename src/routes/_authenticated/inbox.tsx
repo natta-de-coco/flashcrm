@@ -39,9 +39,17 @@ import {
   Settings2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-parameters";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
+  validateSearch: (search: Record<string, unknown>): { conversation?: string } => {
+    const id = search["conversation"];
+    return typeof id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ? { conversation: id }
+      : {};
+  },
   head: () => ({
     meta: [
       { title: "Inbox — Flas CRM" },
@@ -56,7 +64,11 @@ export const Route = createFileRoute("/_authenticated/inbox")({
 function InboxPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const { conversation: requestedConversation } = Route.useSearch();
+  const [activeId, setActiveId] = useState<string | null>(requestedConversation ?? null);
+  useEffect(() => {
+    if (requestedConversation) setActiveId(requestedConversation);
+  }, [requestedConversation]);
   const [showTools, setShowTools] = useState(false);
   const [channel, setChannel] = useState<"chats" | "social">("chats");
   // Badge count of social DMs/comments still waiting for a reply.
@@ -80,6 +92,12 @@ function InboxPage() {
   const [reminderNote, setReminderNote] = useState("");
   const [reminderDue, setReminderDue] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  useEffect(() => {
+    setTemplateId("");
+    setTemplateVariables([]);
+    setDraft("");
+  }, [activeId]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
@@ -131,6 +149,19 @@ function InboxPage() {
     },
   });
 
+  const selectedTemplate = templates.data?.find((t) => t.id === templateId);
+  let parameterCount = 0;
+  let templatePreview = "";
+  let templateProblem = "";
+  if (selectedTemplate) {
+    try {
+      parameterCount = templateParameterCount(selectedTemplate.body);
+      templatePreview = renderTemplateBody(selectedTemplate.body, templateVariables);
+    } catch (error) {
+      templateProblem = error instanceof Error ? error.message : "Check template variables.";
+    }
+  }
+
   const products = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
@@ -144,7 +175,7 @@ function InboxPage() {
   });
 
   const conversations = useQuery({
-    queryKey: ["conversations"],
+    queryKey: ["conversations", requestedConversation],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conversations")
@@ -152,6 +183,17 @@ function InboxPage() {
         .order("last_message_at", { ascending: false })
         .limit(200);
       if (error) throw error;
+      // A linked thread may be older than the most recent 200 conversations.
+      // Fetch it through the same RLS-scoped client, never a privileged lookup.
+      if (requestedConversation && !data.some((row) => row.id === requestedConversation)) {
+        const linked = await supabase
+          .from("conversations")
+          .select("*, contacts(id, name, phone, company, stage), wa_numbers(label, display_phone)")
+          .eq("id", requestedConversation)
+          .maybeSingle();
+        if (linked.error) throw linked.error;
+        if (linked.data) data.unshift(linked.data);
+      }
       return data as unknown as Conversation[];
     },
   });
@@ -327,7 +369,9 @@ function InboxPage() {
 
   const templateMutation = useMutation({
     mutationFn: async () =>
-      sendTemplate({ data: { templateId, conversationId: activeId!, variables: [] } }),
+      sendTemplate({
+        data: { templateId, conversationId: activeId!, variables: templateVariables },
+      }),
     onSuccess: (res) => {
       if (res.blockedReasons?.length) {
         toast.error("Template blocked by safety rules", {
@@ -336,7 +380,8 @@ function InboxPage() {
         return;
       }
       setTemplateId("");
-      toast.success("Template sent");
+      setTemplateVariables([]);
+      toast.success("Template accepted by WhatsApp. Delivery confirmation is pending.");
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
@@ -717,19 +762,28 @@ function InboxPage() {
                 <select
                   className="h-8 rounded-md border bg-background px-2 text-xs"
                   value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
+                  aria-label="Approved WhatsApp template"
+                  onChange={(e) => {
+                    setTemplateId(e.target.value);
+                    setTemplateVariables([]);
+                  }}
                 >
                   <option value="">Send approved template…</option>
                   {(templates.data ?? []).map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name}
+                      {t.name} ({t.language})
                     </option>
                   ))}
                 </select>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!templateId || templateMutation.isPending}
+                  disabled={
+                    !selectedTemplate ||
+                    Boolean(templateProblem) ||
+                    active.channel !== "whatsapp" ||
+                    templateMutation.isPending
+                  }
                   onClick={() => templateMutation.mutate()}
                 >
                   {templateMutation.isPending ? (
@@ -740,6 +794,40 @@ function InboxPage() {
                   Send template
                 </Button>
               </div>
+
+              {selectedTemplate && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <p className="text-sm font-medium">Personalize your template</p>
+                  {Array.from({ length: parameterCount }, (_, index) => (
+                    <label key={index} className="block text-sm">
+                      Variable {index + 1}
+                      <Input
+                        maxLength={500}
+                        value={templateVariables[index] ?? ""}
+                        onChange={(event) =>
+                          setTemplateVariables((previous) =>
+                            Array.from({ length: parameterCount }, (_, i) =>
+                              i === index ? event.target.value : (previous[i] ?? ""),
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                  {templateProblem ? (
+                    <p role="status" className="text-sm text-destructive">
+                      {templateProblem}
+                    </p>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm" aria-label="Message preview">
+                      {templatePreview}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Review the message before pressing Send template.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">

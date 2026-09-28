@@ -4973,6 +4973,7 @@ export type Database = {
       }
     }
     Functions: {
+      open_contact_whatsapp: { Args: { p_contact_id: string }; Returns: string }
       _is_locked_super_admin_email: {
         Args: { _email: string }
         Returns: boolean

@@ -35,6 +35,9 @@ jobs:
       - name: Full unit/integration test suite
         run: npm run test
 
+      - name: WhatsApp recipient and template safety
+        run: node --experimental-strip-types --test tests/whatsapp-recipient-binding.test.mjs tests/wa-template-parameters.test.mjs
+
       - name: Lint
         run: npm run lint
 
@@ -58,3 +61,6 @@ jobs:
         run: node supabase/verify/verify-oauth-security.mjs
       - name: Social tenant isolation
         run: node supabase/verify/verify-social-tenant-isolation.mjs
+
+      - name: WhatsApp conversation isolation and concurrent opening
+        run: node supabase/verify/verify-whatsapp-conversations.mjs

@@ -49,7 +49,9 @@ import {
   reachSummary,
 } from "@/lib/contacts-view";
 import { STAGES } from "@/lib/crm-types";
+import { openContactWhatsApp } from "@/lib/whatsapp-conversations.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Building2, Globe, Mail, MessageSquare, Phone, Star, Tag, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -64,6 +66,17 @@ type Props = {
 export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Props) {
   const qc = useQueryClient();
   const { tenant } = useTenant();
+  const navigate = useNavigate();
+  const openWhatsApp = useServerFn(openContactWhatsApp);
+  const startChat = useMutation({
+    mutationFn: () => openWhatsApp({ data: { contactId: contactId! } }),
+    onSuccess: async ({ conversationId }) => {
+      await qc.invalidateQueries({ queryKey: ["conversations"] });
+      onOpenChange(false);
+      await navigate({ to: "/inbox", search: { conversation: conversationId } });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const load = useServerFn(getContactDetail);
   const addIdentity = useServerFn(addContactIdentity);
   const dropIdentity = useServerFn(removeContactIdentity);
@@ -193,6 +206,15 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
           </DialogDescription>
         </DialogHeader>
 
+        <div className="grid gap-2">
+          <Button onClick={() => startChat.mutate()} disabled={!contactId || startChat.isPending}>
+            {startChat.isPending ? "Opening WhatsApp…" : "Open WhatsApp conversation"}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Review your message in the inbox before sending. A new conversation needs an approved
+            template.
+          </p>
+        </div>
         {detail.isLoading && <Skeleton className="h-40 w-full" />}
 
         {!detail.isLoading && (
