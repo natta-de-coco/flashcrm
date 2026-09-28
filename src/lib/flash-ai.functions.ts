@@ -41,7 +41,7 @@ export const draftCampaignMessage = createServerFn({ method: "POST" })
       `Business: ${business?.business_name ?? "unknown"} (${business?.industry ?? "general"})`,
       business?.description ? `About the business: ${business.description}` : "",
       business?.learned_facts ? `Learned facts: ${business.learned_facts}` : "",
-      `Audience data: ${leads.totalLeads} leads (${leads.consentedLeads} consented), sources: ${
+      `Audience data: ${leads.totalLeads} website leads plus your contacts, ${leads.consentedLeads} opted in (${leads.consentedContacts} of them contacts), sources: ${
         Object.entries(leads.bySource)
           .map(([k, v]) => `${k}=${v}`)
           .join(", ") || "none"
