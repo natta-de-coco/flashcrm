@@ -92,20 +92,39 @@ async function saveInteraction(
     author_handle?: string | null;
     body: string;
     created_at?: string | null;
+    /** "out" for something the business sent. Shown as ours, not the customer's. */
+    direction?: "in" | "out";
+    /** Meta's conversation id, so a DM belongs to a thread rather than standing alone. */
+    thread_id?: string | null;
+    /** Old history imported on a first sync is not work waiting to be done. */
+    status?: "open" | "replied" | "archived";
   },
 ): Promise<boolean> {
-  const { error } = await supabaseAdmin.from("social_interactions").upsert(
-    {
-      tenant_id: account.tenant_id,
-      account_id: account.id,
-      direction: "in",
-      author_handle: null,
-      ...i,
-      created_at: i.created_at ?? new Date().toISOString(),
-    },
-    { onConflict: "account_id,external_id" },
-  );
-  return !error;
+  const row = {
+    tenant_id: account.tenant_id,
+    account_id: account.id,
+    direction: "in" as "in" | "out",
+    author_handle: null as string | null,
+    ...i,
+    created_at: i.created_at ?? new Date().toISOString(),
+  };
+  const { error } = await supabaseAdmin
+    .from("social_interactions")
+    .upsert(row, { onConflict: "account_id,external_id" });
+  if (!error) return true;
+
+  // thread_id is added by 20260927120000. Until that migration runs, PostgREST
+  // rejects the whole row with 42703 rather than ignoring the unknown column, so
+  // a sync would stop working between this deploy and the SQL. Retry without it:
+  // threads group by author until the column exists.
+  if (error.code === "42703" && "thread_id" in row) {
+    const { thread_id: _dropped, ...withoutThread } = row;
+    const retry = await supabaseAdmin
+      .from("social_interactions")
+      .upsert(withoutThread, { onConflict: "account_id,external_id" });
+    return !retry.error;
+  }
+  return false;
 }
 
 async function finishSync(accountId: string, stats?: Record<string, number>) {
@@ -124,11 +143,111 @@ function missingCreds(message: string): SyncResult {
 
 /* ---------- Meta (Instagram / Facebook) ---------- */
 
-async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
+/**
+ * Every id and name that means "us" for this account.
+ *
+ * A Page's own replies were being stored as inbound messages under the
+ * customer's name, because the only check was `from.id === external_id` and the
+ * id Meta reports does not always equal the id stored on the row -- a Page
+ * connected through a different route, or an Instagram row pointed at the Page,
+ * both break that single comparison. Asking the token who it belongs to, and
+ * keeping the name as a second signal, means a reply we sent is recognized as
+ * ours whichever id it arrives under.
+ */
+async function selfIdentity(
+  account: SocialAccountSecret,
+  token: string,
+): Promise<{ ids: Set<string>; name: string | null; handles: Set<string> }> {
+  const ids = new Set<string>();
+  const handles = new Set<string>();
+  if (account.external_id) ids.add(String(account.external_id));
+  let name: string | null = null;
+  try {
+    const me = await graphGet(`/me?fields=id,name`, token);
+    if (me?.id) ids.add(String(me.id));
+    if (typeof me?.name === "string") name = me.name;
+  } catch {
+    // Not fatal: the stored id still identifies us for the common case.
+  }
+  // An Instagram comment names its author by handle and carries no id we ask
+  // for, while `/me` on a Page-derived token answers with the Page. So the
+  // Page's display name was being compared against an Instagram handle, which
+  // agree only by coincidence, and our own Instagram comments went on being
+  // filed as the customer's. Ask the Instagram account what it is called.
+  if (account.platform === "instagram" && account.external_id) {
+    try {
+      const ig = await graphGet(`/${account.external_id}?fields=id,username`, token);
+      if (ig?.id) ids.add(String(ig.id));
+      const handle = normalizeHandle(ig?.username);
+      if (handle) handles.add(handle);
+    } catch {
+      // Without it, an own comment is still recognized whenever Meta sends an id.
+    }
+  }
+  return { ids, name, handles };
+}
+
+/** A handle as it compares: no leading @, no case, no surrounding space. */
+function normalizeHandle(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/^@/, "").toLowerCase() : "";
+}
+
+/** True when this comment or message was sent by the business, not the customer. */
+function sentByUs(
+  from: { id?: unknown; name?: unknown; handle?: unknown } | null | undefined,
+  self: { ids: Set<string>; name: string | null; handles: Set<string> },
+): boolean {
+  if (!from) return false;
+  if (from.id != null && self.ids.has(String(from.id))) return true;
+  const handle = normalizeHandle(from.handle);
+  if (handle && self.handles.has(handle)) return true;
+  return Boolean(
+    self.name && typeof from.name === "string" && from.name.trim() === self.name.trim(),
+  );
+}
+
+/** What an attachment-only message says, so the thread is never a blank bubble. */
+function describeAttachments(msg: {
+  message?: unknown;
+  attachments?: { data?: Array<{ mime_type?: unknown; name?: unknown; image_data?: unknown }> };
+  sticker?: unknown;
+}): string {
+  const text = typeof msg.message === "string" ? msg.message.trim() : "";
+  if (text) return text;
+  if (msg.sticker) return "(sticker)";
+  const parts = msg.attachments?.data ?? [];
+  if (parts.length === 0) return "(no text)";
+  const described = parts.map((a) => {
+    const mime = typeof a?.mime_type === "string" ? a.mime_type : "";
+    const name = typeof a?.name === "string" && a.name ? `: ${a.name}` : "";
+    if (a?.image_data || mime.startsWith("image/")) return `(photo${name})`;
+    if (mime.startsWith("video/")) return `(video${name})`;
+    if (mime.startsWith("audio/")) return `(voice message${name})`;
+    return `(attachment${name})`;
+  });
+  return described.join(" ");
+}
+
+/**
+ * How old an item has to be, on a FIRST sync, to be filed as history rather
+ * than as work waiting for a reply. Importing two years of DMs as "Open" told
+ * the team they had 27 conversations to answer when most were from 2025.
+ */
+const HISTORY_CUTOFF_DAYS = 30;
+
+function olderThanCutoff(at: string | null | undefined, firstSync: boolean): boolean {
+  if (!firstSync || !at) return false;
+  const when = Date.parse(at);
+  if (!Number.isFinite(when)) return false;
+  return Date.now() - when > HISTORY_CUTOFF_DAYS * 86_400_000;
+}
+
+async function syncMeta(account: SocialAccountSecret, firstSync = false): Promise<SyncResult> {
   if (!account.access_token || !account.external_id) {
     return missingCreds("Add the Meta account ID and access token first.");
   }
   const token = account.access_token;
+  const self = await selfIdentity(account, token);
   let posts = 0;
   let interactions = 0;
   let stats: Record<string, number> | undefined;
@@ -203,6 +322,7 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
           token,
         );
         for (const c of comments.data ?? []) {
+          const ours = sentByUs({ id: c.from?.id, handle: c.username }, self);
           if (
             await saveInteraction(account, {
               external_id: c.id,
@@ -211,6 +331,10 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
               author_handle: c.username ?? null,
               body: c.text ?? "",
               created_at: c.timestamp,
+              direction: ours ? "out" : "in",
+              ...(ours || olderThanCutoff(c.timestamp, firstSync)
+                ? { status: ours ? ("replied" as const) : ("archived" as const) }
+                : {}),
             })
           )
             interactions++;
@@ -240,7 +364,9 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
         posts++;
 
       for (const c of p.comments?.data ?? []) {
-        if (c.from?.id === account.external_id) continue;
+        // Our own comments are stored as ours rather than skipped, so a thread
+        // reads as a conversation instead of a list of unanswered customers.
+        const ours = sentByUs(c.from, self);
         if (
           await saveInteraction(account, {
             external_id: c.id,
@@ -248,6 +374,12 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
             author_name: c.from?.name ?? "Facebook user",
             body: c.message ?? "",
             created_at: c.created_time,
+            direction: ours ? "out" : "in",
+            ...(ours
+              ? { status: "replied" as const }
+              : olderThanCutoff(c.created_time, firstSync)
+                ? { status: "archived" as const }
+                : {}),
           })
         )
           interactions++;
@@ -257,19 +389,29 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
     // Messenger DMs — requires pages_messaging permission; best-effort.
     try {
       const convs = await graphGet(
-        `/${account.external_id}/conversations?fields=messages.limit(10){id,message,from,created_time}&limit=10`,
+        `/${account.external_id}/conversations?fields=messages.limit(10){id,message,from,created_time,attachments{mime_type,name,image_data},sticker}&limit=10`,
         token,
       );
       for (const conv of convs.data ?? []) {
         for (const msg of conv.messages?.data ?? []) {
-          if (msg.from?.id === account.external_id) continue; // our own replies
+          // Both directions are stored now. Our replies used to be skipped
+          // entirely when the id matched and, when it did not, stored as if the
+          // customer had sent them.
+          const ours = sentByUs(msg.from, self);
           if (
             await saveInteraction(account, {
               external_id: msg.id,
               kind: "dm",
-              author_name: msg.from?.name ?? "Messenger user",
-              body: msg.message ?? "",
+              author_name: ours ? (self.name ?? "You") : (msg.from?.name ?? "Messenger user"),
+              body: describeAttachments(msg),
               created_at: msg.created_time,
+              direction: ours ? "out" : "in",
+              thread_id: conv.id ?? null,
+              ...(ours
+                ? { status: "replied" as const }
+                : olderThanCutoff(msg.created_time, firstSync)
+                  ? { status: "archived" as const }
+                  : {}),
             })
           )
             interactions++;
@@ -665,7 +807,15 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
 /* ---------- entry point ---------- */
 
 /** Pulls recent posts, comments/DMs/reviews and audience stats for one account. */
-export async function syncSocialAccount(stored: SocialAccountSecret): Promise<SyncResult> {
+export async function syncSocialAccount(
+  stored: SocialAccountSecret,
+  /**
+   * True when this account has never synced. Its whole history arrives at once,
+   * and filing two years of it as "Open" told the team they had dozens of
+   * conversations to answer.
+   */
+  firstSync = false,
+): Promise<SyncResult> {
   try {
     // Opened here as well as by the callers, so one that passes the stored
     // column straight through cannot hand a provider ciphertext. Plaintext is
@@ -674,7 +824,7 @@ export async function syncSocialAccount(stored: SocialAccountSecret): Promise<Sy
     switch (account.platform) {
       case "instagram":
       case "facebook":
-        return await syncMeta(account);
+        return await syncMeta(account, firstSync);
       case "youtube":
         return await syncYouTube(account);
       case "twitter":

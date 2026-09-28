@@ -1,10 +1,22 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { META_ANALYTICS_UNAVAILABLE } from "@/lib/plain-error";
 import { createServerFn } from "@tanstack/react-start";
 
 /**
  * Dashboard widget: per-number Meta sync health — credential presence, Meta API
- * reachability, quality rating, and whether Meta analytics data is available.
- * Never returns tokens or secrets.
+ * reachability and quality rating. Never returns tokens or secrets.
+ *
+ * QA H11: this used to also ask Meta for `analytics` on the phone-number node,
+ * which always answers `(#100) Tried accessing nonexisting field (analytics) on
+ * node type (WhatsAppBusinessPhoneNumber)`. Meta keeps that field on the
+ * WhatsApp Business Account, and no WABA id is stored anywhere in this schema
+ * (wa_numbers has phone_number_id, access_token, app_secret and nothing else
+ * identifying the business account), so the request could never succeed. The
+ * call is gone — it cost a Graph round-trip per number per minute to produce a
+ * guaranteed error — and the gap is reported once, as the permanent, explained
+ * limitation it is, instead of a red "analytics missing" badge per number that
+ * nobody could act on. Storing a WABA id is a schema change and a re-consent,
+ * which is a larger piece of work than this fix; see the PR.
  */
 export const getMetaSyncHealth = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -16,7 +28,12 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
     // labels, phone numbers, quality ratings and 24h message volumes for
     // every other company. Fail closed rather than falling back to "all".
     const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
-    if (!tenantId) return { numbers: [], checkedAt: new Date().toISOString() };
+    if (!tenantId)
+      return {
+        numbers: [],
+        checkedAt: new Date().toISOString(),
+        metaAnalytics: { available: false, reason: META_ANALYTICS_UNAVAILABLE },
+      };
 
     const { data: numbers } = await supabaseAdmin
       .from("wa_numbers")
@@ -27,8 +44,6 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
       .order("created_at", { ascending: true });
 
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const end = Math.floor(Date.now() / 1000);
-    const start = end - 7 * 24 * 60 * 60;
 
     const results = [];
     for (const n of numbers ?? []) {
@@ -52,8 +67,6 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
       let apiOk = false;
       let apiError: string | null = null;
       let qualityRating: string | null = null;
-      let analyticsOk = false;
-      let analyticsSent7d = 0;
 
       // Stored tokens may be encrypted; sending the stored value as-is sent
       // ciphertext to Meta. Opened here, and sent as a header rather than in
@@ -89,27 +102,6 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
         } catch (e) {
           apiError = e instanceof Error ? e.message : "Meta API unreachable";
         }
-
-        if (apiOk) {
-          try {
-            const res = await fetch(
-              `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
-                `?fields=analytics.start(${start}).end(${end}).granularity(DAY)`,
-              auth,
-            );
-            const json = (await res.json()) as {
-              analytics?: { data_points?: Array<{ sent?: number }> };
-            };
-            if (res.ok && json.analytics) {
-              analyticsOk = true;
-              for (const p of json.analytics.data_points ?? []) {
-                analyticsSent7d += p.sent ?? 0;
-              }
-            }
-          } catch {
-            analyticsOk = false;
-          }
-        }
       }
 
       results.push({
@@ -125,11 +117,15 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
         apiOk,
         apiError,
         qualityRating,
-        analyticsOk,
-        analyticsMissing: apiOk && !analyticsOk,
-        analyticsSent7d,
       });
     }
 
-    return { numbers: results, checkedAt: new Date().toISOString() };
+    return {
+      numbers: results,
+      checkedAt: new Date().toISOString(),
+      // One honest, workspace-wide statement instead of a per-number error the
+      // reader cannot act on. `available` stays in the payload so the day a
+      // WABA id is stored the widget only has to flip it.
+      metaAnalytics: { available: false, reason: META_ANALYTICS_UNAVAILABLE },
+    };
   });

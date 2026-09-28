@@ -39,7 +39,18 @@ import {
 } from "@/lib/connect-consent";
 import type { ReadinessBlocker } from "@/lib/integration-readiness.functions";
 import { connectionStatus } from "@/lib/connection-status";
-import { disconnectConnection, getConnections, startConnect } from "@/lib/connections.functions";
+import {
+  connectedChannelCount,
+  identifiedAccounts,
+  pendingConnectionPrompts,
+} from "@/lib/integration-counts";
+import { plainErrorMessage } from "@/lib/plain-error";
+import {
+  disconnectConnection,
+  getConnections,
+  getIntegrationHealthReport,
+  startConnect,
+} from "@/lib/connections.functions";
 import {
   getIntegrationReadiness,
   type IntegrationReadinessRow,
@@ -192,10 +203,12 @@ export function IntegrationsAuditFixed({
   const waNumbers = (
     (connections.data as { whatsappNumbers?: WaNumber[] } | undefined)?.whatsappNumbers ?? []
   ).filter((n) => n.active);
-  const accounts = allAccounts.filter((a) => a.active && a.external_id);
-  const pendingAccounts = allAccounts.filter(
-    (a) => a.active && !a.external_id && a.connect_method === "oauth",
-  );
+  const accounts = identifiedAccounts(allAccounts);
+  // M1: a platform that is already connected is not asked to "finish
+  // connecting". An abandoned second sign-in leaves an unidentified row behind
+  // for ever, and that row kept the banner on screen beside the very account it
+  // was asking for.
+  const pendingAccounts = pendingConnectionPrompts(allAccounts);
   const [resume, setResume] = useState<ConnectionOutcomeSearch | null>(null);
   const rows = readiness.data?.rows ?? [];
   const readinessMap = new Map(rows.map((r) => [r.id, r]));
@@ -205,6 +218,29 @@ export function IntegrationsAuditFixed({
   });
   const available = rows.filter((r) => r.status === "READY" || r.status === "LIMITED").length;
   const comingSoon = rows.filter((r) => r.status === "COMING_SOON").length;
+  // M2: until each query has answered, its tiles show a skeleton. They used to
+  // render 0/0/0/0 — readiness is not even enabled until the effect above sets
+  // the origin — and then jumped to 2/0/8/7, so the first thing the page said
+  // about a working workspace was that nothing was connected.
+  const connectionsPending = connections.isPending;
+  const readinessPending = !readiness.data && !readiness.isError;
+  // M4: WhatsApp numbers live in wa_numbers, not social_accounts, so the tile
+  // counted 2 while WhatsApp's own panel said Connected.
+  const connectedTotal = connectedChannelCount({
+    accounts: allAccounts,
+    whatsappNumbers: waNumbers,
+  });
+
+  // M3: the Health report dialog has no error state of its own, so a failed
+  // report left an empty panel, no toast and nothing to act on. This observer
+  // never fetches (enabled: false) — it watches the cache the dialog fills, so
+  // when that fetch fails the page itself says what happened.
+  const healthReportFn = useServerFn(getIntegrationHealthReport);
+  const healthReport = useQuery({
+    queryKey: ["integration-health"],
+    queryFn: () => healthReportFn(),
+    enabled: false,
+  });
 
   const marketplaceItems = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -455,15 +491,38 @@ export function IntegrationsAuditFixed({
             ))}
           </section>
         )}
+        {healthReport.isError && (
+          <Problem
+            title="We couldn't build your health report"
+            message={`${plainErrorMessage(healthReport.error)} Open Health report again to retry.`}
+            onAdmin={undefined}
+          />
+        )}
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Connected" value={accounts.length} tone="good" />
+          <StatCard
+            label="Connected"
+            value={connectedTotal}
+            tone="good"
+            loading={connectionsPending}
+          />
           <StatCard
             label="Needs attention"
             value={attention.length}
             tone={attention.length ? "warn" : "muted"}
+            loading={connectionsPending}
           />
-          <StatCard label="Ready to connect" value={available} tone="muted" />
-          <StatCard label="Coming soon" value={comingSoon} tone="muted" />
+          <StatCard
+            label="Ready to connect"
+            value={available}
+            tone="muted"
+            loading={readinessPending}
+          />
+          <StatCard
+            label="Coming soon"
+            value={comingSoon}
+            tone="muted"
+            loading={readinessPending}
+          />
         </section>
 
         {attention.length > 0 && (
@@ -1311,17 +1370,24 @@ function StatCard({
   label,
   value,
   tone,
+  loading = false,
 }: {
   label: string;
   value: number;
   tone: "good" | "warn" | "muted";
+  /** A zero we have not verified is a wrong answer, so show nothing instead. */
+  loading?: boolean;
 }) {
   return (
     <Card>
       <CardContent className="flex items-center justify-between p-4">
         <div>
           <p className="stat-label">{label}</p>
-          <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{value}</p>
+          {loading ? (
+            <Skeleton className="mt-2 h-7 w-10" />
+          ) : (
+            <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{value}</p>
+          )}
         </div>
         <span
           className={`size-2.5 rounded-full ${
