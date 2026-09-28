@@ -21,6 +21,17 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { manualSocialFormError } from "@/lib/form-validation";
+import { connector } from "@/lib/connections-catalog";
+import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
+import { plannedPostNote, publishReality } from "@/lib/social-publishing";
+import {
+  groupPostsByState,
+  humanizePlatformId,
+  isEditablePost,
+  postAttribution,
+  postStatusLabel,
+  sortPostsByDateDesc,
+} from "@/lib/social-posts";
 import {
   composeSocialPost,
   connectSocialAccount,
@@ -32,6 +43,7 @@ import {
   suggestSocialReply,
   syncSocialAccountFn,
   updateInteractionStatus,
+  updateSocialPost,
 } from "@/lib/social.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -39,11 +51,14 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   Archive,
   Facebook,
+  Globe,
+  Info,
   Instagram,
   Linkedin,
   Loader2,
   MessageCircle,
   Music2,
+  Pencil,
   PenSquare,
   RefreshCw,
   Send,
@@ -54,7 +69,7 @@ import {
   Youtube,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/social")({
@@ -198,8 +213,37 @@ const PLATFORMS: {
   },
 ];
 
-function platformMeta(id: string) {
-  return PLATFORMS.find((p) => p.id === id) ?? PLATFORMS[0]!;
+/** The entry for a platform this screen has form metadata for, if any. */
+function platformEntry(id: string | null) {
+  return id ? PLATFORMS.find((p) => p.id === id) : undefined;
+}
+
+/**
+ * Form metadata for the paste-a-token form, whose select only ever holds one of
+ * the ids above. Display code must use `platformDisplayName` / `PlatformIcon`
+ * instead: falling back to `PLATFORMS[0]` here is how a connected Pinterest or
+ * Meta Ads account came to be drawn with the Instagram icon.
+ */
+function platformMeta(id: PlatformId) {
+  return platformEntry(id) ?? PLATFORMS[0]!;
+}
+
+/** The platform's own name, never another platform's. */
+function platformDisplayName(id: string | null): string {
+  if (!id) return "No account";
+  return platformEntry(id)?.label ?? connector(id)?.name ?? humanizePlatformId(id);
+}
+
+/** What Flas can actually do with a post on this platform. */
+function publishTruth(platform: string) {
+  const definition = connectorDefinition(platform);
+  const capability = definition ? resolveCapability(definition, "publish") : null;
+  return publishReality({
+    platform,
+    displayName: platformDisplayName(platform),
+    publishStatus: capability?.status ?? null,
+    missingScopes: capability?.missingScopes ?? [],
+  });
 }
 
 /** First useful audience number from a sync, if any. */
@@ -239,6 +283,7 @@ type Post = {
   status: "draft" | "scheduled" | "published";
   scheduled_at: string | null;
   published_at: string | null;
+  created_at: string;
   reach: number;
   likes: number;
   comments_count: number;
@@ -254,9 +299,37 @@ function timeAgo(iso: string) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-function PlatformIcon({ platform }: { platform: string }) {
-  const Icon = platformMeta(platform).icon;
+/** A neutral globe for anything this screen has no icon for — never a guess. */
+function PlatformIcon({ platform }: { platform: string | null }) {
+  const Icon = platformEntry(platform)?.icon ?? Globe;
   return <Icon className="size-3.5" />;
+}
+
+/**
+ * Which platform a row belongs to, always spelled out.
+ *
+ * The posts list showed neither, so the Instagram post and the Facebook copy of
+ * the same caption were two identical-looking rows (QA, 26 Sep).
+ */
+function PlatformBadge({ platform, label }: { platform: string | null; label?: string }) {
+  return (
+    <Badge variant="secondary" className="gap-1 whitespace-nowrap text-[10px]">
+      <PlatformIcon platform={platform} />
+      {label ?? platformDisplayName(platform)}
+    </Badge>
+  );
+}
+
+/** ISO instant → the value a `datetime-local` input expects, in local time. */
+function toLocalInputValue(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
 }
 
 function SocialHubPage() {
@@ -272,6 +345,15 @@ function SocialHubPage() {
     (i) => i.direction === "in",
   );
   const posts = (hub.data?.posts ?? []) as Post[];
+  // The composer is where a draft is written, so it is where a draft has to be
+  // editable. "Edit" on a draft anywhere else brings it back here rather than
+  // leaving it stranded in a list with only a delete icon (QA, 26 Sep).
+  const [tab, setTab] = useState("inbox");
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const editPost = (post: Post) => {
+    setEditingPost(post);
+    setTab("composer");
+  };
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -289,7 +371,7 @@ function SocialHubPage() {
 
       <AccountsCard accounts={accounts} onChanged={refresh} />
 
-      <Tabs defaultValue="inbox" className="mt-6">
+      <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList>
           <TabsTrigger value="inbox" className="gap-1.5">
             <MessageCircle className="size-3.5" /> Comments & DMs
@@ -311,13 +393,20 @@ function SocialHubPage() {
           <InboxTab interactions={interactions} accounts={accounts} onChanged={refresh} />
         </TabsContent>
         <TabsContent value="composer" className="mt-4">
-          <ComposerTab onChanged={refresh} />
+          <ComposerTab
+            accounts={accounts}
+            posts={posts}
+            editing={editingPost}
+            onEdit={setEditingPost}
+            onChanged={refresh}
+          />
         </TabsContent>
         <TabsContent value="reach" className="mt-4">
           <ReachTab
             posts={posts}
             interactions={interactions}
             accounts={accounts}
+            onEdit={editPost}
             onChanged={refresh}
           />
         </TabsContent>
@@ -756,100 +845,234 @@ function InboxTab({
 
 /* ---------------- AI Composer ---------------- */
 
-function ComposerTab({ onChanged }: { onChanged: () => void }) {
+function ComposerTab({
+  accounts,
+  posts,
+  editing,
+  onEdit,
+  onChanged,
+}: {
+  accounts: Account[];
+  posts: Post[];
+  editing: Post | null;
+  onEdit: (post: Post | null) => void;
+  onChanged: () => void;
+}) {
   const compose = useServerFn(composeSocialPost);
   const save = useServerFn(saveSocialPost);
+  const update = useServerFn(updateSocialPost);
+  const remove = useServerFn(deleteSocialPost);
   const [form, setForm] = useState({
     topic: "",
     tone: "friendly" as "friendly" | "professional" | "bold" | "playful",
-    platform: "instagram" as "instagram" | "facebook",
   });
-  const [caption, setCaption] = useState("");
-  const [scheduleAt, setScheduleAt] = useState("");
+  // One piece of work in the composer: a new caption, or the draft being
+  // rewritten. `id` is what tells the two apart on save.
+  const [draft, setDraft] = useState<{
+    id: string | null;
+    caption: string;
+    platform: PlatformId;
+    accountId: string | null;
+    plannedAt: string;
+  }>({ id: null, caption: "", platform: "instagram", accountId: null, plannedAt: "" });
+
+  // Accounts a post can be written for. The composer's own platform list is
+  // what the server accepts (ComposeSchema / SavePostSchema), so an analytics or
+  // ads connection is not offered a caption it could never carry.
+  const writableAccounts = accounts.filter((a) => PLATFORMS.some((p) => p.id === a.platform));
+  const accountPlatform = (id: string | null) =>
+    (writableAccounts.find((a) => a.id === id)?.platform as PlatformId | undefined) ?? null;
+
+  useEffect(() => {
+    if (!editing) return;
+    setDraft((d) => ({
+      id: editing.id,
+      caption: editing.caption,
+      accountId: editing.account_id,
+      platform:
+        ((writableAccounts.find((a) => a.id === editing.account_id)?.platform as PlatformId) ??
+          d.platform) ||
+        "instagram",
+      plannedAt: toLocalInputValue(editing.scheduled_at),
+    }));
+    // Only the identity of the post being edited should reload the form —
+    // re-running on every account refetch would throw away typing in progress.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing?.id]);
+
+  const reality = publishTruth(draft.platform);
+  const groups = groupPostsByState(posts);
+  const saved = [...groups.planned, ...groups.drafts];
+
+  const resetDraft = () => {
+    setDraft({ id: null, caption: "", platform: draft.platform, accountId: null, plannedAt: "" });
+    onEdit(null);
+  };
 
   const composeMutation = useMutation({
     mutationFn: () =>
-      compose({ data: { topic: form.topic.trim(), tone: form.tone, platform: form.platform } }),
+      compose({ data: { topic: form.topic.trim(), tone: form.tone, platform: draft.platform } }),
     onSuccess: (res) => {
-      setCaption(res.caption);
+      setDraft((d) => ({ ...d, caption: res.caption }));
       toast.success("Flas AI wrote your caption");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const saveMutation = useMutation({
-    mutationFn: (scheduledAt?: string) =>
-      save({
+    mutationFn: async (plan: boolean) => {
+      const caption = draft.caption.trim();
+      const scheduledAt =
+        plan && draft.plannedAt ? new Date(draft.plannedAt).toISOString() : undefined;
+      if (draft.id) {
+        return update({
+          data: {
+            id: draft.id,
+            caption,
+            accountId: draft.accountId,
+            scheduledAt: scheduledAt ?? null,
+          },
+        });
+      }
+      return save({
         data: {
-          caption: caption.trim(),
-          platform: form.platform,
-          scheduledAt,
+          caption,
+          platform: draft.platform,
+          ...(draft.accountId ? { accountId: draft.accountId } : {}),
+          ...(scheduledAt ? { scheduledAt } : {}),
         },
-      }),
-    onSuccess: (_res, scheduledAt) => {
-      toast.success(scheduledAt ? "Post scheduled" : "Draft saved");
-      setCaption("");
-      setScheduleAt("");
+      });
+    },
+    onSuccess: (_res, plan) => {
+      toast.success(
+        draft.id
+          ? "Draft updated"
+          : plan
+            ? "Saved with a planned date — Flas will not post it for you"
+            : "Draft saved",
+      );
+      resetDraft();
       onChanged();
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   return (
-    <Card className="max-w-4xl">
-      <CardHeader>
-        <CardTitle className="text-base">Flas AI content writer</CardTitle>
-        <CardDescription>
-          Describe the post goal — Flas AI knows the business profile and writes an on-brand caption
-          with hashtags and a call to action.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="grid gap-1.5 sm:col-span-2">
-            <Label htmlFor="topic">Post topic or goal</Label>
-            <Input
-              id="topic"
-              placeholder="e.g. Announce weekend brunch menu, 20% off for WhatsApp subscribers"
-              value={form.topic}
-              onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
-            />
+    <div className="grid max-w-4xl gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            {draft.id ? "Edit draft" : "Flas AI content writer"}
+          </CardTitle>
+          <CardDescription>
+            Describe the post goal — Flas AI knows the business profile and writes an on-brand
+            caption with hashtags and a call to action. Flas saves what you write; posting it is
+            still done in the platform&apos;s own app.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-1.5 sm:col-span-2">
+              <Label htmlFor="topic">Post topic or goal</Label>
+              <Input
+                id="topic"
+                placeholder="e.g. Announce weekend brunch menu, 20% off for WhatsApp subscribers"
+                value={form.topic}
+                onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Tone</Label>
+              <Select
+                value={form.tone}
+                onValueChange={(v) => setForm((f) => ({ ...f, tone: v as typeof form.tone }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="friendly">Friendly</SelectItem>
+                  <SelectItem value="professional">Professional</SelectItem>
+                  <SelectItem value="bold">Bold</SelectItem>
+                  <SelectItem value="playful">Playful</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="grid gap-1.5">
-            <Label>Tone</Label>
-            <Select
-              value={form.tone}
-              onValueChange={(v) => setForm((f) => ({ ...f, tone: v as typeof form.tone }))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="friendly">Friendly</SelectItem>
-                <SelectItem value="professional">Professional</SelectItem>
-                <SelectItem value="bold">Bold</SelectItem>
-                <SelectItem value="playful">Playful</SelectItem>
-              </SelectContent>
-            </Select>
+
+          {/* Which account this is for. The save already accepted an account id;
+              nothing ever sent one, so every draft was filed against whichever
+              account of that platform happened to be found first. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label>Account</Label>
+              <Select
+                value={draft.accountId ?? "none"}
+                onValueChange={(v) =>
+                  setDraft((d) => {
+                    const accountId = v === "none" ? null : v;
+                    return {
+                      ...d,
+                      accountId,
+                      platform: accountPlatform(accountId) ?? d.platform,
+                    };
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account — keep as a draft</SelectItem>
+                  {writableAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      <span className="flex items-center gap-2">
+                        <PlatformIcon platform={a.platform} /> {a.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {writableAccounts.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  No account can carry a post yet.{" "}
+                  <Link to="/connect" className="underline underline-offset-2">
+                    Connect one
+                  </Link>
+                  .
+                </p>
+              ) : null}
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Platform</Label>
+              <Select
+                value={draft.platform}
+                disabled={draft.accountId !== null}
+                onValueChange={(v) => setDraft((d) => ({ ...d, platform: v as PlatformId }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLATFORMS.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="flex items-center gap-2">
+                        <p.icon className="size-3.5" /> {p.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {draft.accountId !== null ? (
+                <p className="text-xs text-muted-foreground">
+                  Set by the account you picked: {platformDisplayName(draft.platform)}.
+                </p>
+              ) : null}
+            </div>
           </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={form.platform}
-            onValueChange={(v) =>
-              setForm((f) => ({ ...f, platform: v as "instagram" | "facebook" }))
-            }
-          >
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="instagram">Instagram</SelectItem>
-              <SelectItem value="facebook">Facebook</SelectItem>
-            </SelectContent>
-          </Select>
+
           <Button
-            className="gap-1.5"
+            className="w-fit gap-1.5"
             disabled={form.topic.trim().length < 3 || composeMutation.isPending}
             onClick={() => composeMutation.mutate()}
           >
@@ -858,41 +1081,181 @@ function ComposerTab({ onChanged }: { onChanged: () => void }) {
             ) : (
               <Sparkles className="size-4" />
             )}
-            Draft with Flas AI
+            {draft.caption ? "Rewrite with Flas AI" : "Draft with Flas AI"}
           </Button>
-        </div>
 
-        {caption && (
           <div className="grid gap-2">
-            <Textarea rows={7} value={caption} onChange={(e) => setCaption(e.target.value)} />
-            <p className="text-xs text-muted-foreground">{caption.length} characters</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={saveMutation.isPending}
-                onClick={() => saveMutation.mutate(undefined)}
-              >
-                Save as draft
-              </Button>
+            <Label htmlFor="social-caption">Caption</Label>
+            <Textarea
+              id="social-caption"
+              rows={7}
+              placeholder="Write the caption here, or let Flas AI draft one above."
+              value={draft.caption}
+              onChange={(e) => setDraft((d) => ({ ...d, caption: e.target.value }))}
+            />
+            <p className="text-xs text-muted-foreground">{draft.caption.length} characters</p>
+          </div>
+
+          {/* The honest state of publishing, per platform. Nothing in Flas sends
+              a saved post, so no control here claims it will. */}
+          <div className="flex gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+            <Info className="mt-0.5 size-3.5 shrink-0" />
+            <span>
+              {reality.reason} Save it here and post it in {platformDisplayName(draft.platform)}
+              &apos;s own app when you are ready.
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <Button
+              size="sm"
+              disabled={draft.caption.trim().length === 0 || saveMutation.isPending}
+              onClick={() => saveMutation.mutate(false)}
+            >
+              {saveMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              {draft.id ? "Save changes" : "Save as draft"}
+            </Button>
+            <div className="grid gap-1.5">
+              <Label htmlFor="social-planned-at" className="text-xs font-normal">
+                Planned date (optional)
+              </Label>
               <Input
+                id="social-planned-at"
                 type="datetime-local"
                 className="w-56"
-                value={scheduleAt}
-                onChange={(e) => setScheduleAt(e.target.value)}
+                value={draft.plannedAt}
+                onChange={(e) => setDraft((d) => ({ ...d, plannedAt: e.target.value }))}
               />
-              <Button
-                size="sm"
-                disabled={!scheduleAt || saveMutation.isPending}
-                onClick={() => saveMutation.mutate(new Date(scheduleAt).toISOString())}
-              >
-                Schedule post
-              </Button>
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                !draft.plannedAt || draft.caption.trim().length === 0 || saveMutation.isPending
+              }
+              onClick={() => saveMutation.mutate(true)}
+            >
+              {draft.id ? "Save with this plan" : "Save with a planned date"}
+            </Button>
+            {draft.id || draft.caption ? (
+              <Button size="sm" variant="ghost" onClick={resetDraft}>
+                {draft.id ? "Stop editing" : "Clear"}
+              </Button>
+            ) : null}
           </div>
+          <p className="text-xs text-muted-foreground">{plannedPostNote(reality.canSchedule)}</p>
+        </CardContent>
+      </Card>
+
+      {/* A saved draft used to vanish from here and reappear only in "Reach &
+          audience" with a delete icon, where it could not be edited. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Your drafts</CardTitle>
+          <CardDescription>
+            Everything written here and not yet posted. Planned dates are for your team — Flas does
+            not post for you.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-2">
+          {saved.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No drafts yet. Anything you save above appears here, ready to edit.
+            </p>
+          )}
+          {saved.map((p) => (
+            <PostRow
+              key={p.id}
+              post={p}
+              accounts={accounts}
+              highlighted={p.id === draft.id}
+              onEdit={() => onEdit(p)}
+              onDeleted={onChanged}
+              remove={remove}
+            />
+          ))}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ---------------- Post row (shared by the composer and Reach) ---------------- */
+
+function PostRow({
+  post,
+  accounts,
+  highlighted,
+  onEdit,
+  onDeleted,
+  remove,
+}: {
+  post: Post;
+  accounts: Account[];
+  highlighted?: boolean;
+  onEdit: () => void;
+  onDeleted: () => void;
+  remove: (args: { data: { id: string } }) => Promise<unknown>;
+}) {
+  const who = postAttribution(post, accounts);
+  const editable = isEditablePost(post);
+  return (
+    <div
+      className={`flex items-start justify-between gap-3 rounded-lg border p-3 ${
+        highlighted ? "border-primary bg-primary/5" : ""
+      }`}
+    >
+      <div className="min-w-0">
+        <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          <PlatformBadge platform={who.platform} />
+          <span className="truncate text-xs text-muted-foreground">{who.label}</span>
+        </div>
+        <p className="line-clamp-2 text-sm">{post.caption}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {post.published_at
+            ? `Published ${timeAgo(post.published_at)}`
+            : post.scheduled_at
+              ? `Planned for ${new Date(post.scheduled_at).toLocaleString()} — not posted by Flas`
+              : "Draft — not posted by Flas"}
+          {post.status === "published" ? (
+            <>
+              {" · "}
+              {post.likes} likes · {post.comments_count} comments
+            </>
+          ) : null}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Badge
+          variant={post.status === "published" ? "default" : "secondary"}
+          className="text-[10px]"
+        >
+          {postStatusLabel(post.status)}
+        </Badge>
+        {editable && (
+          <>
+            <Button size="icon" variant="ghost" title="Edit this draft" onClick={onEdit}>
+              <Pencil className="size-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              title="Delete this draft"
+              onClick={() => {
+                void remove({ data: { id: post.id } })
+                  .then(() => {
+                    toast.success("Post deleted");
+                    onDeleted();
+                  })
+                  .catch((e: Error) => toast.error(e.message));
+              }}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -902,11 +1265,13 @@ function ReachTab({
   posts,
   interactions,
   accounts,
+  onEdit,
   onChanged,
 }: {
   posts: Post[];
   interactions: Interaction[];
   accounts: Account[];
+  onEdit: (post: Post) => void;
   onChanged: () => void;
 }) {
   const remove = useServerFn(deleteSocialPost);
@@ -917,6 +1282,11 @@ function ReachTab({
 
   const open = interactions.filter((i) => i.status === "open").length;
   const replied = interactions.filter((i) => i.status === "replied").length;
+
+  // Newest first by the post's own date. The query sorts by `created_at`, which
+  // is when a sync wrote the row, so a first sync landed a decade of posts in
+  // effectively one instant and the list read at random (QA, 26 Sep).
+  const ordered = sortPostsByDateDesc(posts);
 
   const authorCounts = new Map<string, number>();
   for (const i of interactions) {
@@ -953,57 +1323,25 @@ function ReachTab({
           <CardHeader>
             <CardTitle className="text-base">Posts</CardTitle>
             <CardDescription>
-              Drafts, scheduled posts and everything synced from the connected platforms.
+              Drafts, planned posts and everything synced from the connected platforms — newest
+              first, labelled with the account each one belongs to.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2">
-            {posts.length === 0 && (
+            {ordered.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No posts yet — draft one in the AI Composer or sync a connected account.
               </p>
             )}
-            {posts.map((p) => (
-              <div
+            {ordered.map((p) => (
+              <PostRow
                 key={p.id}
-                className="flex items-start justify-between gap-3 rounded-lg border p-3"
-              >
-                <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm">{p.caption}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {p.published_at
-                      ? `Published ${timeAgo(p.published_at)}`
-                      : p.scheduled_at
-                        ? `Scheduled ${new Date(p.scheduled_at).toLocaleString()}`
-                        : "Draft"}
-                    {" · "}
-                    {p.likes} likes · {p.comments_count} comments
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Badge
-                    variant={p.status === "published" ? "default" : "secondary"}
-                    className="text-[10px] capitalize"
-                  >
-                    {p.status}
-                  </Badge>
-                  {p.status !== "published" && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => {
-                        void remove({ data: { id: p.id } })
-                          .then(() => {
-                            toast.success("Post deleted");
-                            onChanged();
-                          })
-                          .catch((e: Error) => toast.error(e.message));
-                      }}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  )}
-                </div>
-              </div>
+                post={p}
+                accounts={accounts}
+                onEdit={() => onEdit(p)}
+                onDeleted={onChanged}
+                remove={remove}
+              />
             ))}
           </CardContent>
         </Card>

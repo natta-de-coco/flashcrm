@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { reconcileSocialPending, summariseHealth } from "@/lib/dashboard-figures";
 
 export type DayBucket = { day: string; received: number; sent: number };
 
@@ -40,7 +41,11 @@ export type HealthFactor = {
 };
 
 export type BusinessHealth = {
-  /** Weighted 0-100 overall score. */
+  /**
+   * 0-100. The mean of the factor scores below — five equal weights, no hidden
+   * ones. Computed by summariseHealth so the card, the type and the number
+   * cannot describe different things (QA M7).
+   */
   score: number;
   grade: "Excellent" | "Good" | "Needs work" | "At risk";
   factors: HealthFactor[];
@@ -58,7 +63,15 @@ export type DashboardOverview = {
   health: BusinessHealth;
   social: {
     accounts: SocialPulseAccount[];
+    /**
+     * Incoming social messages and comments still waiting for a reply. Counted
+     * with exactly the Inbox badge's filters, so the two agree (QA M7).
+     */
     pendingTotal: number;
+    /** True when the per-account breakdown covers only part of pendingTotal. */
+    pendingPartial: boolean;
+    /** How many of pendingTotal the per-account breakdown accounts for. */
+    pendingCounted: number;
     interactions7d: number;
     totalAudience: number;
   };
@@ -109,6 +122,8 @@ export async function getDashboardOverviewData(
   const priorStart = new Date(weekStart);
   priorStart.setDate(priorStart.getDate() - 7);
 
+  const weekAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
   const [
     convs,
     contactCount,
@@ -117,6 +132,8 @@ export async function getDashboardOverviewData(
     weekMsgs,
     accounts,
     interactions,
+    pendingCount,
+    weekInteractionCount,
     leadRows,
   ] = await Promise.all([
     supabase
@@ -137,11 +154,30 @@ export async function getDashboardOverviewData(
       .gte("created_at", priorStart.toISOString())
       .limit(10000),
     supabase.from("social_accounts").select("id, platform, label, active, last_synced_at, stats"),
+    // Only incoming, still-open interactions, newest first, for the per-account
+    // breakdown. `direction` matters: sending a reply inserts an outbound row
+    // (social.functions.ts) and social_interactions.status defaults to 'open',
+    // so counting both directions made the dashboard's "to reply" grow by one
+    // with every reply sent — 27 here against 22 in the Inbox (QA M7).
     supabase
       .from("social_interactions")
       .select("id, account_id, kind, status, created_at")
+      .eq("direction", "in")
+      .eq("status", "open")
       .order("created_at", { ascending: false })
       .limit(500),
+    // The totals themselves are database-side counts, like contacts above: a
+    // capped sample stops being the truth as soon as a workspace outgrows it.
+    supabase
+      .from("social_interactions")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "in")
+      .eq("status", "open"),
+    supabase
+      .from("social_interactions")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "in")
+      .gte("created_at", weekAgoIso),
     supabase
       .from("leads")
       .select("id, created_at, consent_given")
@@ -158,6 +194,8 @@ export async function getDashboardOverviewData(
     weekMsgs,
     accounts,
     interactions,
+    pendingCount,
+    weekInteractionCount,
     leadRows,
   ]) {
     if (result.error) console.error("[dashboard] partial failure", result.error.message);
@@ -204,17 +242,23 @@ export async function getDashboardOverviewData(
   const todayTotal = (last?.received ?? 0) + (last?.sent ?? 0);
 
   // ---- Social pulse aggregates ----
-  const pendingByAccount = new Map<string, number>();
-  let pendingTotal = 0;
-  let interactions7d = 0;
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  // The sample is already filtered to incoming + open by the query above, so
+  // every row here is one interaction waiting for a reply.
+  const sampledByAccount = new Map<string, number>();
   for (const i of interactionRows) {
-    if (i.status === "open") {
-      pendingTotal += 1;
-      pendingByAccount.set(i.account_id, (pendingByAccount.get(i.account_id) ?? 0) + 1);
-    }
-    if (new Date(i.created_at).getTime() >= weekAgo) interactions7d += 1;
+    sampledByAccount.set(i.account_id, (sampledByAccount.get(i.account_id) ?? 0) + 1);
   }
+  const pending = reconcileSocialPending({
+    // The head count failing must not invent a number: fall back to what the
+    // sample actually holds.
+    exactTotal: pendingCount.count ?? interactionRows.length,
+    sampledByAccount,
+  });
+  const pendingByAccount = pending.perAccount;
+  // Incoming interactions in the last 7 days, counted in the database. Our own
+  // replies are not "interactions this week": including them made a busy team
+  // look twice as engaged with as it was.
+  const interactions7d = weekInteractionCount.count ?? 0;
 
   const pulseAccounts: SocialPulseAccount[] = accountRows.map((a) => ({
     id: a.id,
@@ -305,9 +349,8 @@ export async function getDashboardOverviewData(
     },
   ];
 
-  const score = Math.round(factors.reduce((sum, f) => sum + f.score, 0) / factors.length);
-  const grade: BusinessHealth["grade"] =
-    score >= 85 ? "Excellent" : score >= 70 ? "Good" : score >= 50 ? "Needs work" : "At risk";
+  // One implementation of the score, shared with the tests that pin it down.
+  const { score, grade } = summariseHealth(factors);
 
   return {
     stats: {
@@ -321,7 +364,9 @@ export async function getDashboardOverviewData(
     health: { score, grade, factors },
     social: {
       accounts: pulseAccounts,
-      pendingTotal,
+      pendingTotal: pending.total,
+      pendingPartial: pending.partial,
+      pendingCounted: pending.counted,
       interactions7d,
       totalAudience,
     },
