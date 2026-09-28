@@ -103,7 +103,7 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     // Tenant membership is proven by reading the account through RLS first.
     const { data: account, error } = await context.supabase
       .from("social_accounts")
-      .select("id, tenant_id, platform, external_id, connect_method")
+      .select("id, tenant_id, platform, external_id, connect_method, last_synced_at")
       .eq("id", data.id)
       .single();
     if (error || !account) throw new Error("Account not found");
@@ -138,14 +138,20 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     }
 
     const { syncSocialAccount } = await import("@/lib/social.server");
-    const result = await syncSocialAccount({
-      id: account.id,
-      tenant_id: account.tenant_id,
-      platform: account.platform as SocialPlatform,
-      external_id: account.external_id,
-      access_token: secret?.access_token ?? null,
-      connect_method: account.connect_method ?? null,
-    });
+    // A first sync brings the whole history at once. Filing two years of it as
+    // "Open" reported dozens of conversations waiting for a reply that nobody
+    // was ever going to send.
+    const result = await syncSocialAccount(
+      {
+        id: account.id,
+        tenant_id: account.tenant_id,
+        platform: account.platform as SocialPlatform,
+        external_id: account.external_id,
+        access_token: secret?.access_token ?? null,
+        connect_method: account.connect_method ?? null,
+      },
+      !account.last_synced_at,
+    );
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({

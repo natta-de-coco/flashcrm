@@ -37,6 +37,15 @@ function parseMarker(
 }
 
 /**
+ * The incoming message a stored reply answers, or null when this row is not one
+ * of our saved replies. A reply carries no thread_id and no customer name, so
+ * this marker is the only thing that ties it to the conversation it belongs to.
+ */
+export function replyParentId(externalId: string | null | undefined): string | null {
+  return parseMarker(externalId)?.inboundId ?? null;
+}
+
+/**
  * The replies to one incoming message, oldest first. A reply written before
  * the marker existed counts only if it was saved in the same moment the
  * message was marked replied -- the same action, never "anything later".
