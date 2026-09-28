@@ -379,7 +379,18 @@ export async function getBusinessContext(supabase: RlsClient): Promise<BusinessC
 
 export type LeadSummary = {
   totalLeads: number;
+  /**
+   * People who actually opted in, across website leads AND contacts.
+   *
+   * This used to count `consent_given || subscribed` over leads alone. Nothing
+   * in the product ever sets `subscribed` to false and it defaults to true, so
+   * every lead counted as consented -- while a workspace whose only consented
+   * person was a contact was told nobody had opted in, and the campaign writer
+   * refused to write. Both halves of that are wrong in opposite directions.
+   */
   consentedLeads: number;
+  /** Consented people who are contacts rather than website leads. */
+  consentedContacts: number;
   bySource: Record<string, number>;
   topTags: string[];
   contactsByStage: Record<string, number>;
@@ -412,11 +423,13 @@ export async function gatherLeadSummary(supabase: RlsClient): Promise<LeadSummar
   const { data: contacts } = await (
     supabase.from("contacts") as never as {
       select: (cols: string) => {
-        limit: (n: number) => Promise<{ data: Array<{ stage: string }> | null }>;
+        limit: (n: number) => Promise<{
+          data: Array<{ stage: string; consent_given: boolean | null }> | null;
+        }>;
       };
     }
   )
-    .select("stage")
+    .select("stage, consent_given")
     .limit(500);
 
   const bySource: Record<string, number> = {};
@@ -424,20 +437,26 @@ export async function gatherLeadSummary(supabase: RlsClient): Promise<LeadSummar
   let consented = 0;
   for (const lead of leads ?? []) {
     bySource[lead.source] = (bySource[lead.source] ?? 0) + 1;
-    if (lead.consent_given || lead.subscribed) consented += 1;
+    // consent_given is the record of consent. `subscribed` is a suppression
+    // flag that defaults to true and has no writer anywhere in the product, so
+    // counting it as consent marked everyone opted in.
+    if (lead.consent_given === true && lead.subscribed !== false) consented += 1;
     for (const tag of lead.tags ?? []) {
       tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
     }
   }
 
   const contactsByStage: Record<string, number> = {};
+  let consentedContacts = 0;
   for (const c of contacts ?? []) {
     contactsByStage[c.stage] = (contactsByStage[c.stage] ?? 0) + 1;
+    if (c.consent_given === true) consentedContacts += 1;
   }
 
   return {
     totalLeads: (leads ?? []).length,
-    consentedLeads: consented,
+    consentedLeads: consented + consentedContacts,
+    consentedContacts,
     bySource,
     topTags: [...tagCounts.entries()]
       .sort((a, b) => b[1] - a[1])
