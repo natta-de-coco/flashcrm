@@ -16,6 +16,11 @@ import { getDashboardOverview } from "@/lib/dashboard.functions";
 import { getDailyBrief } from "@/lib/brief.functions";
 import type { BusinessHealth, Trend } from "@/lib/dashboard.server";
 import { getMetaSyncHealth } from "@/lib/meta-health.functions";
+import {
+  HEALTH_METHOD_NOTE,
+  briefSnapshotNote,
+  pendingBreakdownNote,
+} from "@/lib/dashboard-figures";
 import { usePersistentTimestamp } from "@/hooks/usePersistentTimestamp";
 import { logWidgetError } from "@/lib/widget-error-log";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -172,7 +177,7 @@ function TrendPill({ trend, label }: { trend?: Trend | undefined; label?: string
   );
 }
 
-/** Business Health Score: one weighted number plus the factors behind it. */
+/** Business Health Score: one number plus every factor that makes it up. */
 function HealthCard({ health }: { health: BusinessHealth }) {
   const tone =
     health.score >= 85
@@ -187,9 +192,10 @@ function HealthCard({ health }: { health: BusinessHealth }) {
       <CardHeader className="flex-row items-start justify-between">
         <div>
           <CardTitle className="text-base">Business health score</CardTitle>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Responsiveness, inbox, leads, social and compliance combined.
-          </p>
+          {/* Says how the number is made, because the AI brief quotes a score
+              taken earlier in the day and the two used to differ with no
+              explanation anywhere on the page (QA M7). */}
+          <p className="mt-0.5 text-xs text-muted-foreground">{HEALTH_METHOD_NOTE}</p>
         </div>
         <div className="shrink-0 text-right">
           <p className={`text-3xl font-bold leading-none ${tone}`}>{health.score}</p>
@@ -294,6 +300,10 @@ function DashboardPage() {
   );
 
   const data = overview.data;
+  // H11: the one thing Meta will not give us, said once for the whole card.
+  const metaAnalyticsGap = metaHealth.data?.metaAnalytics.available
+    ? null
+    : (metaHealth.data?.metaAnalytics.reason ?? null);
   const stats = [
     {
       label: "Open conversations",
@@ -388,7 +398,8 @@ function DashboardPage() {
                 <Sparkles className="size-4 text-brand" /> Flas AI daily brief
               </CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                What changed this week and the three things worth doing today.
+                What changed this week and the three things worth doing today — written once a day
+                from the figures at that moment.
               </p>
             </div>
             <Button
@@ -426,10 +437,21 @@ function DashboardPage() {
                     ))}
                   </ul>
                 )}
+                {/* The brief is generated once per UTC day and reused
+                    (brief.server.ts), while every card around it refetches
+                    every 30 seconds. Saying so is the honest fix for the brief
+                    quoting health 62 beside a card reading 60 (QA M7):
+                    regenerating is the only way to make them one number. */}
                 <p className="text-[11px] text-muted-foreground">
-                  {brief.data.cached ? "Today's brief, generated" : "Generated"}{" "}
-                  {new Date(brief.data.generatedAt).toLocaleTimeString()}
-                  {brief.data.cached ? " · reused until tomorrow" : ""}
+                  {briefSnapshotNote({
+                    generatedAtTime: new Date(brief.data.generatedAt).toLocaleTimeString(),
+                    cached: brief.data.cached,
+                    ageMs: Math.max(
+                      0,
+                      (overview.dataUpdatedAt || Date.now()) -
+                        new Date(brief.data.generatedAt).getTime(),
+                    ),
+                  })}
                 </p>
               </div>
             ) : (
@@ -505,7 +527,7 @@ function DashboardPage() {
               <CardTitle className="text-base">Social pulse</CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {data
-                  ? `${data.social.totalAudience > 0 ? `${data.social.totalAudience.toLocaleString()} audience · ` : ""}${data.social.interactions7d} interactions this week`
+                  ? `${data.social.totalAudience > 0 ? `${data.social.totalAudience.toLocaleString()} audience · ` : ""}${data.social.interactions7d} incoming this week · ${data.social.pendingTotal} to reply`
                   : "Connected accounts and replies"}
               </p>
             </div>
@@ -572,6 +594,20 @@ function DashboardPage() {
                     for a reply.
                   </p>
                 )}
+                {/* The badges above come from a capped sample of the newest
+                    rows; the total is a database count with the Inbox badge's
+                    own filters. When they cannot match, say so rather than
+                    leaving the parts short of the whole (QA M7). */}
+                {data?.social.pendingPartial &&
+                  (() => {
+                    const note = pendingBreakdownNote({
+                      total: data.social.pendingTotal,
+                      counted: data.social.pendingCounted,
+                    });
+                    return note ? (
+                      <p className="pt-1 text-[11px] text-muted-foreground">{note}</p>
+                    ) : null;
+                  })()}
               </>
             )}
           </CardContent>
@@ -661,14 +697,17 @@ function DashboardPage() {
                         <XCircle className="size-3" /> Meta unreachable
                       </Badge>
                     )}
-                    {n.analyticsMissing && (
-                      <Badge variant="secondary" className="gap-1 text-[10px]">
-                        <AlertTriangle className="size-3" /> analytics missing
-                      </Badge>
-                    )}
                   </div>
                 </div>
               ))}
+              {/* H11: said once, as a plain limitation, instead of a red
+                  "analytics missing" badge per number. The figures live on the
+                  WhatsApp Business Account and no WABA id is stored, so this
+                  cannot be fixed by the reader — and must not look as if a
+                  retry would help. */}
+              {(metaHealth.data?.numbers.length ?? 0) > 0 && metaAnalyticsGap && (
+                <p className="pt-1 text-[11px] text-muted-foreground">{metaAnalyticsGap}</p>
+              )}
             </>
           )}
         </CardContent>
