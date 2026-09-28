@@ -68,8 +68,24 @@ describe("the route is wired to it", () => {
 
   it("opens that conversation instead of the newest one", () => {
     assert.match(route, /Route\.useSearch\(\)/);
-    assert.match(route, /useState<string \| null>\(requested \?\? null\)/);
+    assert.match(route, /useState<string \| null>\(requestedConversation \?\? null\)/);
     // The auto-open effect must not override a requested thread.
     assert.match(route, /if \(activeId \|\| !list\.length\) return;/);
+  });
+
+  it("follows the parameter after the page is already open", () => {
+    // Opening a contact's WhatsApp chat navigates here without remounting, so
+    // seeding the initial state alone would leave the previous thread on screen.
+    assert.match(route, /if \(requestedConversation\) setActiveId\(requestedConversation\);/);
+  });
+
+  it("keeps one parser for the parameter, not a second copy in the route", () => {
+    // Two implementations of "is this a conversation id" drift apart; the route
+    // had picked up an inlined uuid regex of its own.
+    assert.equal(route.split("validateSearch").length - 1, 1, "exactly one validateSearch");
+    assert.ok(
+      !/\[0-9a-f\]\{8\}-\[0-9a-f\]\{4\}/.test(route),
+      "the uuid shape belongs in inbox-link.ts, which is tested against the link builder",
+    );
   });
 });

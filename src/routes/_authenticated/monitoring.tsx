@@ -2,9 +2,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { IncidentsCard } from "@/components/monitoring/IncidentsCard";
+import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { retryWebhookEvent } from "@/lib/crm.functions";
 import { getAnalyticsInsights, getWhatsAppAnalytics } from "@/lib/flash-ai.functions";
+import { META_ANALYTICS_UNAVAILABLE, plainErrorMessage, toPlainError } from "@/lib/plain-error";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -18,8 +20,22 @@ import {
   RotateCcw,
   Sparkles,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
+/**
+ * What to tell the reader when Meta returns no figures for a number (QA H11
+ * and §5). The raw text — `(#100) Tried accessing nonexisting field (analytics)
+ * on node type (WhatsAppBusinessPhoneNumber)` — was printed in a badge exactly
+ * as Meta wrote it. It reads like a broken connection; it is in fact a field
+ * Flas asks for on the wrong node, because Meta keeps message analytics on the
+ * WhatsApp Business Account and no WABA id is stored in this schema.
+ */
+function metaUnavailableReason(raw: string | null | undefined): string {
+  if (!raw) return META_ANALYTICS_UNAVAILABLE;
+  const plain = toPlainError(raw);
+  return plain.kind === "provider_unsupported" ? META_ANALYTICS_UNAVAILABLE : plain.message;
+}
 
 export const Route = createFileRoute("/_authenticated/monitoring")({
   head: () => ({
@@ -83,8 +99,22 @@ function MonitoringPage() {
   const insightsMutation = useMutation({
     mutationFn: () => fetchInsights(),
     onSuccess: (res) => setInsights(res.insights),
-    onError: (e: Error) => toast.error(e.message),
+    // A model or provider failure used to be toasted verbatim (QA §5).
+    onError: (e: Error) => {
+      console.error("[monitoring] analytics insights failed", e);
+      toast.error(plainErrorMessage(e, { action: "prepare those recommendations" }));
+    },
   });
+
+  // The provider's own words are kept where an engineer can find them, and out
+  // of the page. Logged once per distinct message, not once per render.
+  const metaErrors = (waAnalytics.data?.perNumber ?? [])
+    .map((n) => n.meta.error)
+    .filter((message): message is string => Boolean(message))
+    .join(" | ");
+  useEffect(() => {
+    if (metaErrors) console.warn("[monitoring] Meta analytics unavailable:", metaErrors);
+  }, [metaErrors]);
 
   const events = useQuery({
     queryKey: ["webhook_events", filter],
@@ -266,8 +296,22 @@ function MonitoringPage() {
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">
+          {/* M10: a line of text for five seconds reads as a stuck page. The
+              skeleton has the shape of the six tiles that are coming. */}
           {waAnalytics.isLoading && (
-            <p className="text-sm text-muted-foreground">Crunching your messaging stats…</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-lg border p-3">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="mt-2 h-6 w-16" />
+                </div>
+              ))}
+            </div>
+          )}
+          {waAnalytics.isError && (
+            <p className="text-sm text-muted-foreground">
+              {plainErrorMessage(waAnalytics.error, { action: "load your messaging stats" })}
+            </p>
           )}
           {waAnalytics.data && (
             <>
@@ -345,9 +389,14 @@ function MonitoringPage() {
                           <Badge variant="secondary">Meta delivered: {n.meta.delivered}</Badge>
                         </div>
                       ) : (
-                        <Badge variant="outline" className="text-[10px]">
-                          Meta analytics unavailable{n.meta.error ? ` — ${n.meta.error}` : ""}
-                        </Badge>
+                        <div className="max-w-md sm:text-right">
+                          <Badge variant="outline" className="text-[10px]">
+                            Meta&apos;s own totals unavailable
+                          </Badge>
+                          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                            {metaUnavailableReason(n.meta.error)}
+                          </p>
+                        </div>
                       )}
                     </div>
                   ))}

@@ -27,6 +27,10 @@ function loadLib(relative) {
 const credentialHandoff = loadLib("../src/lib/credential-handoff.ts");
 const { credentialsNote } = loadLib("../src/lib/credentials-note.ts");
 const connectConsent = loadLib("../src/lib/connect-consent.ts");
+// The tiles and the "finish connecting" banner derive their numbers here, so the
+// real implementations are loaded rather than stubbed away (QA M1, M2, M4).
+const integrationCounts = loadLib("../src/lib/integration-counts.ts");
+const plainError = loadLib("../src/lib/plain-error.ts");
 
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -128,7 +132,12 @@ function harness({
     "@/hooks/useAuth": { useAuth: () => auth },
     "@/lib/connections-catalog": { CONNECTORS: catalog },
     "@/lib/credential-handoff": credentialHandoff,
-    "@/lib/connections.functions": { startConnect: start },
+    "@/lib/integration-counts": integrationCounts,
+    "@/lib/plain-error": plainError,
+    "@/lib/connections.functions": {
+      startConnect: start,
+      getIntegrationHealthReport: async () => ({ rows: [] }),
+    },
     "@/lib/connection-setup": {
       credentialSpec: () => ({ scope: "provider", fields: [] }),
       OAUTH_REDIRECT_PATH: "/api/public/oauth-callback",

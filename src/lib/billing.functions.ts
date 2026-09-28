@@ -103,7 +103,22 @@ export const saveSalesDocument = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => DocSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { saveDraftDocument } = await import("@/lib/billing.server");
-    return saveDraftDocument(context.supabase, context.userId, data as never);
+    // Raw Postgres text used to be toasted at the customer: saving a quotation
+    // showed `column reference "period" is ambiguous`, from the document
+    // numbering function (QA §5). The original is logged; the reader gets a
+    // sentence that says whether anything was saved and what to do.
+    try {
+      return await saveDraftDocument(context.supabase, context.userId, data as never);
+    } catch (error) {
+      const { toPlainError } = await import("@/lib/plain-error");
+      const plain = toPlainError(error, { action: "save this document" });
+      // Only machine text is rewritten. billing.server.ts also throws sentences
+      // written for this reader ("This document is finalized…") and replacing
+      // one of those with a generic line would lose information.
+      if (!plain.recognised) throw error;
+      console.error("[billing] saveSalesDocument failed", plain.technical);
+      throw new Error(plain.message);
+    }
   });
 
 /** Locks the document, mints its number, verification QR and public share link. */
