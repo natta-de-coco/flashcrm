@@ -259,6 +259,47 @@ async function syncMeta(account: SocialAccountSecret, firstSync = false): Promis
   };
 
   if (account.platform === "instagram") {
+    // Who this id actually belongs to, before anything is written under the
+    // Instagram label. A Facebook Page answers `followers_count` with the
+    // Page's followers, so an Instagram row pinned to a Page id used to show a
+    // Facebook number as its audience with nothing saying so (QA, 26 Sep).
+    // `media_count` exists only on an Instagram user node, so asking for it
+    // makes Meta name the node type when the id is something else.
+    const { readInstagramIdentity } = await import("@/lib/instagram-identity");
+    let identityProfile: Record<string, unknown> | null = null;
+    let identityError: string | null = null;
+    try {
+      identityProfile = await graphGet(
+        `/${account.external_id}?fields=id,username,followers_count,media_count`,
+        token,
+      );
+    } catch (error) {
+      identityError = (error as { message?: unknown } | null)?.message
+        ? String((error as { message?: unknown }).message)
+        : String(error);
+    }
+    const identity = readInstagramIdentity({
+      storedId: account.external_id,
+      profile: identityProfile,
+      errorMessage: identityError,
+    });
+    if (identity.kind === "wrong_account") {
+      // Refused outright: the posts and comments read with this id would be
+      // saved against the wrong account, which is worse than not syncing.
+      console.error(
+        `[social] instagram sync refused: ${identity.message}`,
+        identity.nodeType ? `node type ${identity.nodeType}` : "",
+      );
+      return { ok: false, posts: 0, interactions: 0, error: identity.message };
+    }
+    if (identity.kind === "instagram" && identity.followers !== null) {
+      stats = { followers: identity.followers };
+    } else if (identity.kind === "unconfirmed") {
+      // No number is stored when Meta would not confirm the account — the old
+      // stat stays as it was and the reason is reported.
+      note("Instagram profile", new Error(identity.message));
+    }
+
     const media = await graphGet(
       `/${account.external_id}/media?fields=id,caption,like_count,comments_count,timestamp&limit=20`,
       token,
@@ -304,13 +345,6 @@ async function syncMeta(account: SocialAccountSecret, firstSync = false): Promis
           note("Instagram comments", error);
         }
       }
-    }
-    try {
-      const profile = await graphGet(`/${account.external_id}?fields=followers_count`, token);
-      if (typeof profile?.followers_count === "number")
-        stats = { followers: profile.followers_count };
-    } catch (error) {
-      note("Instagram profile", error);
     }
   } else {
     const feed = await graphGet(
