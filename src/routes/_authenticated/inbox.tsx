@@ -19,6 +19,7 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { requestedConversationId } from "@/lib/inbox-link";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
@@ -43,13 +44,6 @@ import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-pa
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
-  validateSearch: (search: Record<string, unknown>): { conversation?: string } => {
-    const id = search["conversation"];
-    return typeof id === "string" &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-      ? { conversation: id }
-      : {};
-  },
   head: () => ({
     meta: [
       { title: "Inbox — Flas CRM" },
@@ -58,12 +52,24 @@ export const Route = createFileRoute("/_authenticated/inbox")({
       { property: "og:description", content: "Live shared inbox for WhatsApp and website chats." },
     ],
   }),
+  // A contact's "Message in Inbox" button, and the WhatsApp chat a contact
+  // opens, both link here with the conversation they want. Without this the
+  // parameter was accepted and ignored, so the button dropped the user on the
+  // inbox and left them to find the thread. The parser is shared with the
+  // function that builds the link, so the two halves cannot drift apart.
+  validateSearch: (search: Record<string, unknown>): { conversation?: string } => {
+    const id = requestedConversationId(search);
+    return id ? { conversation: id } : {};
+  },
   component: InboxPage,
 });
 
 function InboxPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
+  // Seeded from the link, and followed afterwards: opening a contact's chat
+  // while the inbox is already mounted changes the parameter without remounting,
+  // so the initial state alone would leave the old thread on screen.
   const { conversation: requestedConversation } = Route.useSearch();
   const [activeId, setActiveId] = useState<string | null>(requestedConversation ?? null);
   useEffect(() => {
