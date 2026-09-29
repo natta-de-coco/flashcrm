@@ -26,24 +26,31 @@ const HostSchema = z.object({
 export const getHomepageWidgetKey = createServerFn({ method: "GET" })
   .inputValidator((input: unknown) => HostSchema.parse(input))
   .handler(async ({ data }): Promise<{ siteKey: string | null }> => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // The widget is optional: any backend problem (including a missing server
+    // key in a preview environment) hides it instead of crashing the page.
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: owners, error: ownerError } = await supabaseAdmin
-      .from("profiles")
-      .select("tenant_id")
-      .eq("staff_role", "super_admin")
-      .not("tenant_id", "is", null);
-    if (ownerError) return { siteKey: null };
-    const ownerTenantIds = [
-      ...new Set((owners ?? []).map((o) => o.tenant_id).filter((t): t is string => Boolean(t))),
-    ];
-    if (ownerTenantIds.length === 0) return { siteKey: null };
+      const { data: owners, error: ownerError } = await supabaseAdmin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("staff_role", "super_admin")
+        .not("tenant_id", "is", null);
+      if (ownerError) return { siteKey: null };
+      const ownerTenantIds = [
+        ...new Set((owners ?? []).map((o) => o.tenant_id).filter((t): t is string => Boolean(t))),
+      ];
+      if (ownerTenantIds.length === 0) return { siteKey: null };
 
-    const { data: sites, error } = await supabaseAdmin
-      .from("lead_sites")
-      .select("site_key, domain, active, status, tenant_id, created_at")
-      .in("tenant_id", ownerTenantIds);
-    if (error) return { siteKey: null };
+      const { data: sites, error } = await supabaseAdmin
+        .from("lead_sites")
+        .select("site_key, domain, active, status, tenant_id, created_at")
+        .in("tenant_id", ownerTenantIds);
+      if (error) return { siteKey: null };
 
-    return { siteKey: pickHomepageSite((sites ?? []) as OwnerSite[], ownerTenantIds, data.host) };
+      return { siteKey: pickHomepageSite((sites ?? []) as OwnerSite[], ownerTenantIds, data.host) };
+    } catch (err) {
+      console.warn("homepage widget key unavailable:", err instanceof Error ? err.message : err);
+      return { siteKey: null };
+    }
   });

@@ -3876,6 +3876,7 @@ export type Database = {
           replied_at: string | null
           status: string
           tenant_id: string
+          thread_id: string | null
         }
         Insert: {
           account_id: string
@@ -3891,6 +3892,7 @@ export type Database = {
           replied_at?: string | null
           status?: string
           tenant_id?: string
+          thread_id?: string | null
         }
         Update: {
           account_id?: string
@@ -3906,6 +3908,7 @@ export type Database = {
           replied_at?: string | null
           status?: string
           tenant_id?: string
+          thread_id?: string | null
         }
         Relationships: [
           {
@@ -4973,7 +4976,6 @@ export type Database = {
       }
     }
     Functions: {
-      open_contact_whatsapp: { Args: { p_contact_id: string }; Returns: string }
       _is_locked_super_admin_email: {
         Args: { _email: string }
         Returns: boolean
@@ -5130,6 +5132,7 @@ export type Database = {
         Args: { _kind: string; _value: string }
         Returns: string
       }
+      open_contact_whatsapp: { Args: { p_contact_id: string }; Returns: string }
       purge_expired_oauth_states: { Args: never; Returns: number }
       record_ai_usage: {
         Args: {
