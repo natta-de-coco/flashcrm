@@ -108,7 +108,10 @@ function InboxPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
+  const [autoTranslate, setAutoTranslate] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const autoTranslatedMessageIds = useRef(new Set<string>());
+  const autoTranslateStartedAt = useRef<number | null>(null);
 
   const send = useServerFn(sendAgentMessage);
   const suggest = useServerFn(draftBotReply);
@@ -261,6 +264,33 @@ function InboxPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.data?.length, activeId]);
+
+  // Opt-in and limited to messages received while this inbox is open. This
+  // avoids silently sending a customer's entire past chat to the translation
+  // provider when an agent only wants help with new messages.
+  useEffect(() => {
+    if (!autoTranslate || !activeId || !messages.data?.length) return;
+    for (const message of messages.data) {
+      if (
+        message.direction !== "inbound" ||
+        message.translated_body ||
+        new Date(message.created_at).getTime() < (autoTranslateStartedAt.current ?? Infinity) ||
+        autoTranslatedMessageIds.current.has(message.id)
+      ) {
+        continue;
+      }
+      autoTranslatedMessageIds.current.add(message.id);
+      void translate({ data: { messageId: message.id, targetLanguage: "English" } })
+        .then(() => {
+          setExpandedTranslations((previous) => new Set(previous).add(message.id));
+          void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+        })
+        .catch(() => {
+          // Let a transient provider failure retry after the next refresh.
+          autoTranslatedMessageIds.current.delete(message.id);
+        });
+    }
+  }, [activeId, autoTranslate, messages.data, qc, translate]);
 
   const list = useMemo(() => {
     const all = conversations.data ?? [];
@@ -708,6 +738,17 @@ function InboxPage() {
                     onCheckedChange={(v) => void updateConversation({ bot_enabled: v })}
                   />
                   AI auto-reply
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium">
+                  <Switch
+                    checked={autoTranslate}
+                    onCheckedChange={(enabled) => {
+                      autoTranslateStartedAt.current = enabled ? Date.now() : null;
+                      setAutoTranslate(enabled);
+                    }}
+                    aria-label="Auto-translate new incoming messages"
+                  />
+                  Auto-translate new
                 </label>
                 <div className="flex gap-1">
                   {(["open", "pending", "closed"] as const).map((s) => (
