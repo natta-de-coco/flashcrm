@@ -278,6 +278,20 @@ function InboxPage() {
 
   const active = list.find((c) => c.id === activeId) ?? null;
 
+  // WhatsApp permits a free-form reply only during the 24 hours after the
+  // customer's last inbound message. The server remains the authority for
+  // this rule, but exposing it here prevents an agent from writing a reply,
+  // pressing Send, and only then discovering why it could not leave FLAS.
+  const whatsappReplyWindowOpen = useMemo(() => {
+    if (active?.channel !== "whatsapp" || !messages.isSuccess) return true;
+    const newestInbound = (messages.data ?? [])
+      .filter((message) => message.direction === "inbound")
+      .map((message) => new Date(message.created_at).getTime())
+      .filter(Number.isFinite)
+      .reduce((newest, timestamp) => Math.max(newest, timestamp), 0);
+    return newestInbound > 0 && newestInbound >= Date.now() - 24 * 60 * 60 * 1000;
+  }, [active?.channel, messages.data, messages.isSuccess]);
+
   // Auto-open the newest thread on desktop only. On mobile the list is a full
   // screen of its own, so auto-selecting would trap the user inside a chat.
   useEffect(() => {
@@ -1035,16 +1049,31 @@ function InboxPage() {
             <div className="space-y-2 border-t bg-card p-4">
               <Textarea
                 rows={2}
-                placeholder="Write a reply…"
+                placeholder={
+                  whatsappReplyWindowOpen
+                    ? "Write a reply…"
+                    : "Use an approved template to re-open this WhatsApp conversation…"
+                }
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && draft.trim()) {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    draft.trim() &&
+                    whatsappReplyWindowOpen
+                  ) {
                     e.preventDefault();
                     sendMutation.mutate(draft.trim());
                   }
                 }}
               />
+              {!whatsappReplyWindowOpen && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  This customer has not messaged in the past 24 hours. WhatsApp requires an
+                  approved template before you can send a normal reply.
+                </p>
+              )}
               <div className="flex items-center justify-between">
                 <Button
                   variant="outline"
@@ -1061,7 +1090,7 @@ function InboxPage() {
                 </Button>
                 <Button
                   onClick={() => draft.trim() && sendMutation.mutate(draft.trim())}
-                  disabled={sendMutation.isPending || !draft.trim()}
+                  disabled={sendMutation.isPending || !draft.trim() || !whatsappReplyWindowOpen}
                 >
                   <Send className="size-4" />
                   Send
