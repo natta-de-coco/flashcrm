@@ -322,6 +322,12 @@ function InboxPage() {
     return newestInbound > 0 && newestInbound >= Date.now() - 24 * 60 * 60 * 1000;
   }, [active?.channel, messages.data, messages.isSuccess]);
 
+  // Tools should stay out of the way while an agent is reading a thread, but
+  // a closed WhatsApp window has one clear next step: an approved template.
+  useEffect(() => {
+    if (active?.channel === "whatsapp" && !whatsappReplyWindowOpen) setShowTools(true);
+  }, [active?.channel, whatsappReplyWindowOpen]);
+
   // Auto-open the newest thread on desktop only. On mobile the list is a full
   // screen of its own, so auto-selecting would trap the user inside a chat.
   useEffect(() => {
@@ -614,6 +620,7 @@ function InboxPage() {
             <Input
               className="pl-9"
               placeholder="Search chats"
+              aria-label="Search conversations"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -726,9 +733,9 @@ function InboxPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="lg:hidden"
                   onClick={() => setShowTools((v) => !v)}
                   aria-expanded={showTools}
+                  aria-label="Show message tools"
                 >
                   <Settings2 className="size-4" /> Tools
                 </Button>
@@ -792,7 +799,7 @@ function InboxPage() {
             {/* Thread tools: tags, templates, follow-up reminders */}
             <div
               className={cn(
-                "space-y-3 border-b bg-card px-4 py-3 lg:block lg:px-5",
+                "space-y-3 border-b bg-card px-4 py-3 lg:px-5",
                 showTools ? "block" : "hidden",
               )}
             >
@@ -809,6 +816,7 @@ function InboxPage() {
                 <Input
                   className="h-8 w-40"
                   placeholder="Add tag"
+                  aria-label="Add conversation tag"
                   value={tagDraft}
                   onChange={(e) => setTagDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -897,6 +905,7 @@ function InboxPage() {
                   <Input
                     className="h-8 w-48"
                     placeholder="Search products"
+                    aria-label="Search catalog products"
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                   />
@@ -967,6 +976,7 @@ function InboxPage() {
                 <Input
                   className="h-8 w-56"
                   placeholder="Follow-up note"
+                  aria-label="Follow-up note"
                   value={reminderNote}
                   onChange={(e) => setReminderNote(e.target.value)}
                 />
@@ -1090,6 +1100,7 @@ function InboxPage() {
             <div className="space-y-2 border-t bg-card p-4">
               <Textarea
                 rows={2}
+                aria-label="Reply to conversation"
                 placeholder={
                   whatsappReplyWindowOpen
                     ? "Write a reply…"
