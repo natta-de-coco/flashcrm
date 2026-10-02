@@ -26,6 +26,7 @@ import {
   Bell,
   Bot,
   Check,
+  CheckCheck,
   Download,
   Globe,
   Languages,
@@ -1022,13 +1023,7 @@ function InboxPage() {
                             minute: "2-digit",
                           })}
                         </span>
-                        {/* A message WhatsApp refused must never read as one the
-                            customer received. */}
-                        {m.direction === "outbound" && m.status === "failed" && (
-                          <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
-                            <AlertTriangle className="size-3" /> Not delivered
-                          </span>
-                        )}
+                        {m.direction === "outbound" && <DeliveryState status={m.status} />}
                       </div>
                     </div>
                   </div>
@@ -1078,6 +1073,39 @@ function InboxPage() {
       </div>
     </div>
   );
+}
+
+/** Shows what Meta has actually reported for an outbound WhatsApp message. */
+function DeliveryState({ status }: { status: string | null | undefined }) {
+  if (status === "failed") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
+        <AlertTriangle className="size-3" /> Not delivered
+      </span>
+    );
+  }
+  if (status === "read") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold text-brand">
+        <CheckCheck className="size-3" /> Read
+      </span>
+    );
+  }
+  if (status === "delivered") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold opacity-70">
+        <CheckCheck className="size-3" /> Delivered
+      </span>
+    );
+  }
+  if (status === "sent") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold opacity-70">
+        <Check className="size-3" /> Sent
+      </span>
+    );
+  }
+  return null;
 }
 
 /** Toggle between WhatsApp/website chats and social DMs & comments. */

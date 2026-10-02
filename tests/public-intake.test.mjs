@@ -294,7 +294,7 @@ describe("a WhatsApp message the provider refused is not shown as delivered", ()
 
   it("shows a failed message as not delivered in the inbox", () => {
     const inbox = read("src/routes/_authenticated/inbox.tsx");
-    assert.match(inbox, /m\.status === "failed"/);
+    assert.match(inbox, /status === "failed"/);
     assert.match(inbox, /Not delivered/);
   });
 });
