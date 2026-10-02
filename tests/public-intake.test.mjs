@@ -275,12 +275,15 @@ describe("the activation page prints no markup that was typed into a site name",
   });
 });
 
-describe("a WhatsApp message the provider refused is not shown as delivered", () => {
-  it("stores an agent's message with the status the send actually had", () => {
+describe("a WhatsApp message has an honest, durable CRM record", () => {
+  it("stores an agent's message before Meta is called, then records the outcome", () => {
     const wa = read("src/lib/wa.server.ts");
-    assert.match(wa, /status: "sent" \| "failed" = "sent"/);
+    assert.match(wa, /status: "sending" \| "sent" \| "failed" = "sent"/);
     assert.match(wa, /tenant_id: tenantId,\n\s+status,/);
-    assert.match(read("src/lib/crm.functions.ts"), /deliveryError \? "failed" : "sent"/);
+    assert.match(wa, /export async function completeOutboundDelivery/);
+    const crm = read("src/lib/crm.functions.ts");
+    assert.match(crm, /null,\n\s+"sending",/);
+    assert.match(crm, /completeOutboundDelivery\(outboundId, waId, deliveryError \? "failed" : "sent"\)/);
   });
 
   it("marks the bot's already-stored reply failed when the send is refused", () => {

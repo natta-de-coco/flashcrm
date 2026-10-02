@@ -650,7 +650,7 @@ export async function storeOutbound(
    * like any other outbound message, so the conversation showed it as if the
    * customer had received it.
    */
-  status: "sent" | "failed" = "sent",
+  status: "sending" | "sent" | "failed" = "sent",
 ): Promise<string | null> {
   const { data, error } = await supabaseAdmin
     .from("messages")
@@ -677,6 +677,25 @@ export async function storeOutbound(
     })
     .eq("id", conversationId);
   return data.id;
+}
+
+/**
+ * Marks a message already durably stored in FLAS with the outcome returned by
+ * Meta. Senders call this after their provider request finishes, so a message
+ * cannot leave the business number without a CRM row first existing.
+ */
+export async function completeOutboundDelivery(
+  messageId: string,
+  waMessageId: string | null,
+  status: "sent" | "failed",
+) {
+  const { error } = await supabaseAdmin
+    .from("messages")
+    .update({ wa_message_id: waMessageId, status })
+    .eq("id", messageId);
+  if (error) {
+    throw new Error("Could not update the saved WhatsApp message status in the CRM.");
+  }
 }
 
 /** Sends an approved WhatsApp message template. */

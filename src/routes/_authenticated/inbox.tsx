@@ -1106,6 +1106,9 @@ function InboxPage() {
 
 /** Shows what Meta has actually reported for an outbound WhatsApp message. */
 function DeliveryState({ status }: { status: string | null | undefined }) {
+  if (status === "sending") {
+    return <span className="text-[10px] text-muted-foreground">Sending…</span>;
+  }
   if (status === "failed") {
     return (
       <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
