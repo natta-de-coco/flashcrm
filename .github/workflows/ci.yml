@@ -67,3 +67,6 @@ jobs:
 
       - name: Profile privilege trigger and identity resolver permissions
         run: node supabase/verify/verify-sql-security-guards.mjs
+
+      - name: Broadcast recipient evidence is server-written
+        run: node supabase/verify/verify-broadcast-recipients.mjs

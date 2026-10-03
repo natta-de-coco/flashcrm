@@ -31,11 +31,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS whatsapp_campaign_recipients_wa_message_id_key
   ON public.whatsapp_campaign_recipients (wa_message_id) WHERE wa_message_id IS NOT NULL;
 
 ALTER TABLE public.whatsapp_campaign_recipients ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "whatsapp_campaign_recipients_tenant_all" ON public.whatsapp_campaign_recipients
-  FOR ALL TO authenticated
-  USING (tenant_id = public.current_tenant_id())
-  WITH CHECK (tenant_id = public.current_tenant_id());
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.whatsapp_campaign_recipients TO authenticated;
+
+-- This table is evidence of what was sent, so the browser may read its own
+-- workspace's rows and nothing more. Status, wa_message_id and the delivery
+-- timestamps are written by the server from the provider's answer; a browser
+-- that could write them could mark a message "delivered" or delete the record
+-- of having sent it. The earlier FOR ALL policy, if a previous copy of this
+-- file ran, is dropped, and its write grants are revoked.
+DROP POLICY IF EXISTS "whatsapp_campaign_recipients_tenant_all" ON public.whatsapp_campaign_recipients;
+DROP POLICY IF EXISTS "whatsapp_campaign_recipients_tenant_read" ON public.whatsapp_campaign_recipients;
+CREATE POLICY "whatsapp_campaign_recipients_tenant_read" ON public.whatsapp_campaign_recipients
+  FOR SELECT TO authenticated
+  USING (tenant_id = public.current_tenant_id());
+REVOKE INSERT, UPDATE, DELETE ON public.whatsapp_campaign_recipients FROM authenticated, anon;
+GRANT SELECT ON public.whatsapp_campaign_recipients TO authenticated;
 GRANT ALL ON public.whatsapp_campaign_recipients TO service_role;
 
 COMMIT;
