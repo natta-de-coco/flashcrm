@@ -316,10 +316,13 @@ Relevant website excerpts: ${JSON.stringify(websiteExcerpts)}`;
       platformModel: settings.model,
     });
   } catch (error) {
-    // An exhausted quota, a rejected key or an unreachable provider all end the
-    // same way: no automatic reply, and the caller hands the thread to a human.
-    console.error("[bot] no reply:", error instanceof Error ? error.message : "unknown");
-    return null;
+    // For an inbound automatic reply, the caller catches this and hands the
+    // thread to a person. For an agent clicking "Suggest reply", preserve the
+    // provider's safe, actionable message instead of replacing it with the
+    // misleading generic "could not generate" toast.
+    const message = error instanceof Error ? error.message : "The AI provider could not generate a reply.";
+    console.error("[bot] no reply:", message);
+    throw new Error(message);
   }
 
   try {
