@@ -71,6 +71,29 @@ const MATCH_FIELDS = [
   { id: "email_domain", label: "Email domain", hint: "e.g. bigcompany.com" },
 ] as const;
 
+const AI_CAMPAIGN_STARTERS = [
+  {
+    title: "New product launch",
+    goal: "Introduce our new product with a clear benefit and an easy next step.",
+    audience: "Opted-in past customers and warm leads",
+  },
+  {
+    title: "Bring back quiet leads",
+    goal: "Re-engage opted-in leads who have been quiet for at least 7 days with a helpful, low-pressure reason to reply.",
+    audience: "Opted-in leads who have not replied recently",
+  },
+  {
+    title: "Follow up after an ad",
+    goal: "Follow up with opted-in people who contacted us from an ad or website and invite them to continue the conversation.",
+    audience: "Opted-in ad and website-chat leads",
+  },
+  {
+    title: "Reward active customers",
+    goal: "Thank recent customers and offer a relevant next product, service, or referral reason.",
+    audience: "Opted-in recent customers",
+  },
+] as const;
+
 type Site = {
   id: string;
   name: string;
@@ -622,6 +645,33 @@ function MarketingPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label>Start with a growth idea</Label>
+              <div className="flex flex-wrap gap-2">
+                {AI_CAMPAIGN_STARTERS.map((starter) => (
+                  <Button
+                    key={starter.title}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setAiForm((current) => ({
+                        ...current,
+                        goal: starter.goal,
+                        audience: starter.audience,
+                        channel: "whatsapp",
+                      }));
+                      setAiDraft("");
+                    }}
+                  >
+                    {starter.title}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These create a draft only. FLAS checks consent, opt-outs, template approval, and campaign frequency before anyone can be selected.
+              </p>
+            </div>
             <div className="grid gap-1.5">
               <Label htmlFor="ai_goal">Campaign goal</Label>
               <Textarea
