@@ -93,7 +93,7 @@ export function AiKeysCard() {
                   <div className="text-sm font-medium">
                     {AI_PROVIDERS.find((p) => p.id === k.provider)?.name ?? k.provider}
                     {k.active && (
-                      <Badge variant="secondary" className="ml-2 text-[10px]">
+                      <Badge variant="secondary" className="ms-2 text-[10px]">
                         in use
                       </Badge>
                     )}

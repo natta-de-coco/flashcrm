@@ -111,7 +111,7 @@ export function BillingCard() {
           {!hasSubscription && (
             <>
               <Button onClick={() => subscribe("flash_monthly")} disabled={checkoutLoading}>
-                <Sparkles className="mr-2 h-4 w-4" />
+                <Sparkles className="me-2 h-4 w-4" />
                 {checkoutLoading
                   ? "Opening checkout…"
                   : tenant.subscription_status === "canceled"
@@ -129,7 +129,7 @@ export function BillingCard() {
           )}
           {hasSubscription && (
             <Button variant="outline" onClick={openPortal} disabled={portalLoading}>
-              <ExternalLink className="mr-2 h-4 w-4" />
+              <ExternalLink className="me-2 h-4 w-4" />
               {portalLoading ? "Opening…" : "Manage or cancel subscription"}
             </Button>
           )}

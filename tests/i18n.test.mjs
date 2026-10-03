@@ -217,3 +217,55 @@ describe("the page is rendered in the chosen language and direction", () => {
     }
   });
 });
+
+describe("a page not yet translated is not laid out backwards", () => {
+  // Arabic turns the whole document right-to-left. A page whose text is still
+  // English would read backwards, so until it is translated it marks itself
+  // English and left-to-right, while the translated frame keeps the reader's
+  // direction.
+  it("knows which pages are translated", () => {
+    assert.equal(i18n.isTranslatedPath("/dashboard"), true);
+    assert.equal(i18n.isTranslatedPath("/dashboard/"), true, "a trailing slash is the same page");
+    assert.equal(i18n.isTranslatedPath("/settings"), false);
+    assert.equal(i18n.isTranslatedPath("/"), false);
+  });
+
+  it("lists only pages that exist", () => {
+    for (const path of i18n.TRANSLATED_PATHS) {
+      const name = path.replace(/^\//, "");
+      const candidates = [`src/routes/${name}.tsx`, `src/routes/_authenticated/${name}.tsx`];
+      assert.ok(
+        candidates.some((file) => {
+          try {
+            read(file);
+            return true;
+          } catch {
+            return false;
+          }
+        }),
+        `${path} has no route file`,
+      );
+    }
+  });
+
+  it("marks untranslated content English and left-to-right, and only then", () => {
+    const wrapper = read("src/components/PageLanguage.tsx");
+    assert.match(
+      wrapper,
+      /if \(language === "en" \|\| isTranslatedPath\(pathname\)\) return <>\{children\}<\/>;/,
+    );
+    assert.match(wrapper, /<div lang="en" dir="ltr" className="contents" data-untranslated>/);
+  });
+
+  it("wraps public pages at the root and app pages inside the shell, never the sidebar", () => {
+    const root = read("src/routes/__root.tsx");
+    assert.match(root, /m\.routeId === "\/_authenticated"/);
+    assert.match(root, /<PageLanguage pathname=\{pathname\}>\s*<Outlet \/>\s*<\/PageLanguage>/);
+    const shell = read("src/routes/_authenticated/route.tsx");
+    assert.equal(
+      shell.split("<PageLanguage pathname={pathname}>").length - 1,
+      2,
+      "both content outlets",
+    );
+  });
+});

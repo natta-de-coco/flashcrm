@@ -201,7 +201,7 @@ function HealthCard({ health }: { health: BusinessHealth }) {
               explanation anywhere on the page (QA M7). */}
           <p className="mt-0.5 text-xs text-muted-foreground">{t("dashboard.health.method")}</p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 text-end">
           <p className={`text-3xl font-bold leading-none ${tone}`}>{health.score}</p>
           <p className="text-[11px] text-muted-foreground">
             {GRADE_KEY[health.grade] ? t(GRADE_KEY[health.grade]!) : health.grade}
@@ -705,7 +705,7 @@ function DashboardPage() {
                     <p className="text-sm font-semibold">
                       {n.label}
                       {n.isDefault && (
-                        <Badge variant="secondary" className="ml-2 text-[10px]">
+                        <Badge variant="secondary" className="ms-2 text-[10px]">
                           {t("dashboard.meta.default")}
                         </Badge>
                       )}

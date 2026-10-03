@@ -17,7 +17,7 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Link to="/" className="flex min-w-0 items-center gap-3">
             <FlasWordmark className="h-16 max-w-56 sm:h-[4.5rem] sm:max-w-72" />
-            <span className="hidden border-l border-border pl-3 text-xs font-medium leading-tight text-muted-foreground sm:block">
+            <span className="hidden border-s border-border ps-3 text-xs font-medium leading-tight text-muted-foreground sm:block">
               CRM by
               <br />
               Mobi Digital Solutions

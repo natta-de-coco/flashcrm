@@ -342,7 +342,7 @@ export function InvoiceBuilder({
             variant="outline"
             onClick={() => patch({ items: [...state.items, emptyItem()] })}
           >
-            <Plus className="mr-1 h-4 w-4" /> Add line
+            <Plus className="me-1 h-4 w-4" /> Add line
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">

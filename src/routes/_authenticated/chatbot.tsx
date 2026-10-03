@@ -181,7 +181,7 @@ function ChatbotPage() {
             <AlertDescription className="text-amber-800/90 dark:text-amber-300/90 text-xs sm:text-sm">
               Even though the auto-reply switch is turned on, your assistant will not reply to
               incoming chats until configuration requirements are met:
-              <ul className="mt-1.5 list-disc pl-4 space-y-0.5">
+              <ul className="mt-1.5 list-disc ps-4 space-y-0.5">
                 {!instructionsValid && (
                   <li>
                     Instructions must be at least 20 characters (currently{" "}

@@ -156,7 +156,7 @@ export function CredentialsStep({
             spellCheck={false}
             onChange={(e) => set(field.key, e.target.value)}
           />
-          <ul className="ml-1 space-y-1">
+          <ul className="ms-1 space-y-1">
             {field.help.map((h) => (
               <li key={h} className="flex gap-2 text-xs text-muted-foreground">
                 <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-current" />
@@ -179,7 +179,7 @@ export function CredentialsStep({
 
       <div className="flex items-center gap-3 border-t pt-4">
         <Button disabled={!complete || save.isPending} onClick={() => save.mutate()}>
-          {save.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+          {save.isPending ? <Loader2 className="me-1.5 size-3.5 animate-spin" /> : null}
           {continueLabel}
         </Button>
         {!complete && (

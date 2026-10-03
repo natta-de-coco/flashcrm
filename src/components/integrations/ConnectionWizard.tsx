@@ -216,7 +216,7 @@ export function ConnectionWizard({
               {guide?.steps ? (
                 <div className="rounded-md border bg-muted/40 p-3">
                   <p className="mb-1 font-medium">What happens, in order</p>
-                  <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
+                  <ol className="ms-4 list-decimal space-y-1 text-muted-foreground">
                     {guide.steps.map((s) => (
                       <li key={s}>{s}</li>
                     ))}
@@ -386,7 +386,7 @@ export function ConnectionWizard({
                 Flas opens the platform's official login in a new browser tab. Your password stays
                 with the provider; Flas receives only the OAuth authorization result.
               </p>
-              <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
+              <ol className="ms-4 list-decimal space-y-1 text-muted-foreground">
                 <li>Press Connect below and sign in on the provider's own page.</li>
                 <li>
                   Approve every permission Flas shows. If you manage several assets, choose the
@@ -402,13 +402,13 @@ export function ConnectionWizard({
                 {meta?.oauth ? (
                   <Button disabled={connecting} onClick={onConnect}>
                     {connecting ? "Opening…" : "Connect securely"}{" "}
-                    <ArrowRight className="ml-1 size-4" />
+                    <ArrowRight className="ms-1 size-4" />
                   </Button>
                 ) : null}
                 {meta?.manageUrl ? (
                   <Button asChild variant="outline">
                     <a href={meta.manageUrl} target="_blank" rel="noreferrer noopener">
-                      Platform settings <ExternalLink className="ml-1 size-3" />
+                      Platform settings <ExternalLink className="ms-1 size-3" />
                     </a>
                   </Button>
                 ) : null}
@@ -443,7 +443,7 @@ export function ConnectionWizard({
               {guide?.gotchas?.length ? (
                 <div className="rounded-md border bg-muted/40 p-3">
                   <p className="mb-1 font-medium">Platform limits worth knowing</p>
-                  <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+                  <ul className="ms-4 list-disc space-y-1 text-muted-foreground">
                     {guide.gotchas.map((g) => (
                       <li key={g}>{g}</li>
                     ))}

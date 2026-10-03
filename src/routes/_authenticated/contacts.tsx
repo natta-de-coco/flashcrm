@@ -272,9 +272,9 @@ function ContactsPage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="w-56 pl-9"
+              className="w-56 ps-9"
               placeholder={t("contacts.search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -415,7 +415,7 @@ function ContactsPage() {
                   <div key={key} className="grid gap-1.5">
                     <Label htmlFor={key}>
                       {t(label)}
-                      {required && <span className="ml-0.5 text-destructive">*</span>}
+                      {required && <span className="ms-0.5 text-destructive">*</span>}
                     </Label>
                     <Input
                       id={key}
@@ -469,7 +469,7 @@ function ContactsPage() {
               </div>
               <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
                 {contactProblem && (
-                  <p className="text-xs text-muted-foreground sm:mr-auto">{contactProblem}</p>
+                  <p className="text-xs text-muted-foreground sm:me-auto">{contactProblem}</p>
                 )}
                 <Button
                   onClick={() => create.mutate()}
@@ -530,7 +530,7 @@ function ContactsPage() {
                         <button
                           type="button"
                           onClick={() => setDetailFor({ id: c.id, name: c.name })}
-                          className="text-left text-sm font-semibold underline-offset-2 hover:underline"
+                          className="text-start text-sm font-semibold underline-offset-2 hover:underline"
                         >
                           {c.name}
                         </button>

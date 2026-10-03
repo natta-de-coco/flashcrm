@@ -103,7 +103,7 @@ function ErrorsPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 mb-1 h-7 gap-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="-ms-2 mb-1 h-7 gap-1 text-xs">
             <Link to="/companies">
               <ArrowLeft className="size-3.5" /> Companies
             </Link>
@@ -204,7 +204,7 @@ function ErrorsPage() {
                 <div key={id} className="rounded-lg border p-3">
                   <button
                     type="button"
-                    className="flex w-full items-start justify-between gap-3 text-left"
+                    className="flex w-full items-start justify-between gap-3 text-start"
                     onClick={() => setOpen(expanded ? null : id)}
                     aria-expanded={expanded}
                   >
@@ -282,7 +282,7 @@ function ErrorsPage() {
                 <div key={e.id} className="rounded-lg border p-3">
                   <button
                     type="button"
-                    className="flex w-full items-start justify-between gap-3 text-left"
+                    className="flex w-full items-start justify-between gap-3 text-start"
                     onClick={() => setOpen(expanded ? null : id)}
                     aria-expanded={expanded}
                   >

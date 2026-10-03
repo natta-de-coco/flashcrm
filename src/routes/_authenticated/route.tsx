@@ -7,6 +7,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { QuickCreate } from "@/components/QuickCreate";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { PageLanguage } from "@/components/PageLanguage";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/hooks/useI18n";
@@ -362,11 +363,15 @@ function AuthenticatedLayout() {
 
           {shellOwnsMain ? (
             <main id="content" className="min-h-0 flex-1 overflow-y-auto p-6">
-              <Outlet />
+              <PageLanguage pathname={pathname}>
+                <Outlet />
+              </PageLanguage>
             </main>
           ) : (
             <div id="content" className="contents">
-              <Outlet />
+              <PageLanguage pathname={pathname}>
+                <Outlet />
+              </PageLanguage>
             </div>
           )}
           <MobileBottomNav onMore={() => setMobileOpen(true)} />

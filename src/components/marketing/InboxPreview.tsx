@@ -150,8 +150,8 @@ export function InboxPreview() {
                 <div
                   className={
                     mine
-                      ? "max-w-[82%] rounded-2xl rounded-br-sm bg-brand px-3 py-2 text-[13px] leading-snug text-brand-foreground shadow-sm"
-                      : "max-w-[82%] rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-[13px] leading-snug shadow-sm"
+                      ? "max-w-[82%] rounded-2xl rounded-ee-sm bg-brand px-3 py-2 text-[13px] leading-snug text-brand-foreground shadow-sm"
+                      : "max-w-[82%] rounded-2xl rounded-es-sm bg-muted px-3 py-2 text-[13px] leading-snug shadow-sm"
                   }
                 >
                   {turn.from === "bot" && (
@@ -205,13 +205,13 @@ export function InboxPreview() {
 
       {/* Two floating chips that say what just happened in the thread. */}
       <span
-        className="flas-drift absolute -left-20 top-1/3 hidden items-center gap-1.5 rounded-full border border-white/40 bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-lg backdrop-blur-md lg:flex dark:border-white/10"
+        className="flas-drift absolute -start-20 top-1/3 hidden items-center gap-1.5 rounded-full border border-white/40 bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-lg backdrop-blur-md lg:flex dark:border-white/10"
         style={{ animationDelay: "-2s" }}
       >
         <Bot className="size-3.5 text-brand" /> AI replied in 2s
       </span>
       <span
-        className="flas-drift absolute -right-16 bottom-12 hidden items-center gap-1.5 rounded-full border border-white/40 bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-lg backdrop-blur-md lg:flex dark:border-white/10"
+        className="flas-drift absolute -end-16 bottom-12 hidden items-center gap-1.5 rounded-full border border-white/40 bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-lg backdrop-blur-md lg:flex dark:border-white/10"
         style={{ animationDelay: "-5s" }}
       >
         <span className="size-1.5 rounded-full bg-brand" /> Quotation sent

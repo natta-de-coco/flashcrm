@@ -119,3 +119,17 @@ export function workspaceDefaultLanguage(
   if (!isSupportedUiLanguage(workspaceLocale)) return null;
   return workspaceLocale === current ? null : workspaceLocale;
 }
+
+/**
+ * The pages whose own text is translated. Screens are translated one by one,
+ * and a page not yet done must not be laid out right-to-left in Arabic -- that
+ * puts English sentences backwards. Until a page is listed here its content
+ * declares itself English and left-to-right, while the translated frame
+ * around it (sidebar, header) follows the reader's language.
+ */
+export const TRANSLATED_PATHS: readonly string[] = ["/auth", "/dashboard", "/contacts"];
+
+export function isTranslatedPath(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  return TRANSLATED_PATHS.includes(path);
+}

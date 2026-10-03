@@ -60,7 +60,7 @@ export function AuditLogCard() {
                   {e.actor_label ?? "system"}
                   {e.entity_id ? ` · ${e.entity_id.slice(0, 18)}` : ""}
                 </span>
-                <span className="ml-auto shrink-0 text-muted-foreground">
+                <span className="ms-auto shrink-0 text-muted-foreground">
                   {new Date(e.created_at).toLocaleString()}
                 </span>
                 {e.action === "message.blocked" && (

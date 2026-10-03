@@ -109,11 +109,11 @@ function PayPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-muted-foreground">
+                <tr className="border-b text-start text-muted-foreground">
                   <th className="py-2">Item</th>
-                  <th className="py-2 text-right">Qty</th>
-                  <th className="py-2 text-right">Price</th>
-                  <th className="py-2 text-right">Total</th>
+                  <th className="py-2 text-end">Qty</th>
+                  <th className="py-2 text-end">Price</th>
+                  <th className="py-2 text-end">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -125,9 +125,9 @@ function PayPage() {
                         <div className="text-xs text-muted-foreground">{item.description}</div>
                       ) : null}
                     </td>
-                    <td className="py-2 text-right">{item.quantity}</td>
-                    <td className="py-2 text-right">{money(item.unit_price)}</td>
-                    <td className="py-2 text-right">{money(item.line_total)}</td>
+                    <td className="py-2 text-end">{item.quantity}</td>
+                    <td className="py-2 text-end">{money(item.unit_price)}</td>
+                    <td className="py-2 text-end">{money(item.line_total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -174,7 +174,7 @@ function PayPage() {
           <div className="flex flex-wrap gap-2">
             <Button asChild>
               <a href={`/api/public/documents/${token}`} target="_blank" rel="noreferrer">
-                <Download className="mr-1 h-4 w-4" /> Download PDF
+                <Download className="me-1 h-4 w-4" /> Download PDF
               </a>
             </Button>
             {doc.online_payment_url && doc.balance > 0 ? (
@@ -207,7 +207,7 @@ function PayPage() {
                   disabled={tellSeller.isPending}
                   onClick={() => tellSeller.mutate()}
                 >
-                  <CheckCircle2 className="mr-1 h-4 w-4" /> I have paid
+                  <CheckCircle2 className="me-1 h-4 w-4" /> I have paid
                 </Button>
               </div>
             </div>

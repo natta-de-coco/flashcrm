@@ -76,7 +76,7 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
                 <p className="truncate text-sm font-medium">
                   {m.full_name || m.email}
                   {m.suspended && (
-                    <Badge variant="destructive" className="ml-2 align-middle text-[10px]">
+                    <Badge variant="destructive" className="ms-2 align-middle text-[10px]">
                       suspended
                     </Badge>
                   )}

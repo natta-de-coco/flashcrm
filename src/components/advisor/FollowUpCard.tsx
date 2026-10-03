@@ -155,7 +155,7 @@ export function FollowUpCard() {
                 <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <AlertTriangle className="size-3.5" /> Watch out for
                 </p>
-                <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                <ul className="list-disc ps-5 text-xs text-muted-foreground">
                   {plan.watchouts.map((w, i) => (
                     <li key={i}>{w}</li>
                   ))}

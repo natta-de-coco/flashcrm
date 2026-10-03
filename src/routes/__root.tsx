@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -19,6 +20,7 @@ import {
 } from "../lib/stale-chunk";
 import { AuthProvider } from "@/hooks/useAuth";
 import { I18nProvider } from "@/hooks/useI18n";
+import { PageLanguage } from "@/components/PageLanguage";
 import { directionOf, isRtlUiLanguage } from "@/lib/i18n";
 import { readUiLanguage } from "@/lib/i18n/read-language";
 import { Toaster } from "@/components/ui/sonner";
@@ -156,6 +158,14 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient, uiLanguage } = Route.useRouteContext();
+  // App pages mark their own language inside the shell, so the translated
+  // sidebar keeps the reader's direction; public pages are marked here.
+  const { pathname, inApp } = useRouterState({
+    select: (s) => ({
+      pathname: s.location.pathname,
+      inApp: s.matches.some((m) => m.routeId === "/_authenticated"),
+    }),
+  });
 
   // Frontend crashes, failed server actions and blank screens are captured with
   // route + session context so support can trace any incident.
@@ -169,7 +179,13 @@ function RootComponent() {
       <I18nProvider language={uiLanguage}>
         <AuthProvider>
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-          <Outlet />
+          {inApp ? (
+            <Outlet />
+          ) : (
+            <PageLanguage pathname={pathname}>
+              <Outlet />
+            </PageLanguage>
+          )}
           {/* Toasts sit on the reading-end side: top-left in Arabic. */}
           <Toaster position={isRtlUiLanguage(uiLanguage) ? "top-left" : "top-right"} richColors />
         </AuthProvider>

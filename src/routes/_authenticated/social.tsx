@@ -376,7 +376,7 @@ function SocialHubPage() {
           <TabsTrigger value="inbox" className="gap-1.5">
             <MessageCircle className="size-3.5" /> Comments & DMs
             {interactions.filter((i) => i.status === "open").length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[10px]">
+              <Badge variant="secondary" className="ms-1 text-[10px]">
                 {interactions.filter((i) => i.status === "open").length}
               </Badge>
             )}
@@ -775,7 +775,7 @@ function InboxTab({
               >
                 {i.status}
               </Badge>
-              <span className="ml-auto text-xs text-muted-foreground">{timeAgo(i.created_at)}</span>
+              <span className="ms-auto text-xs text-muted-foreground">{timeAgo(i.created_at)}</span>
             </div>
             <div>
               <p className="text-sm font-semibold">

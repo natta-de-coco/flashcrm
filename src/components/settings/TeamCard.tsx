@@ -141,7 +141,7 @@ export function TeamCard() {
             </div>
             {/* What the chosen role actually grants, said before it is granted. */}
             <p className="text-xs text-muted-foreground">
-              <ShieldCheck className="mr-1 inline size-3.5 align-[-2px]" />
+              <ShieldCheck className="me-1 inline size-3.5 align-[-2px]" />
               {ROLE_LABELS[role].hint}{" "}
               <span className="text-muted-foreground/70">
                 Sees {routesFor(role).length} of 15 sections.

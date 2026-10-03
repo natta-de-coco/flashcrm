@@ -182,20 +182,20 @@ function CompaniesPage() {
                   : "border-border hover:bg-muted"
               }`}
             >
-              {f.label} <span className="ml-1 font-semibold">{counts[f.key]}</span>
+              {f.label} <span className="ms-1 font-semibold">{counts[f.key]}</span>
             </button>
           ),
         )}
       </div>
 
       <div className="relative mb-3 max-w-md">
-        <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+        <Search className="pointer-events-none absolute start-2.5 top-2.5 size-4 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by company, country or Paddle customer ID"
           aria-label="Search companies"
-          className="pl-8"
+          className="ps-8"
         />
       </div>
 
@@ -220,7 +220,7 @@ function CompaniesPage() {
                     <TableHead>Access</TableHead>
                     <TableHead>Team</TableHead>
                     <TableHead>Activity</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-end">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -296,7 +296,7 @@ function CompaniesPage() {
                               "never"
                             )}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-end">
                             <div className="flex justify-end gap-1.5">
                               <ManageSubscriptionDialog company={c} />
                               <Button size="sm" variant="ghost" className="gap-0.5" asChild>

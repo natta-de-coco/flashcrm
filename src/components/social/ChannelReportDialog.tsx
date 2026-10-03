@@ -125,7 +125,7 @@ export function ChannelReportDialog({ accountId, label }: { accountId: string; l
                     <TableRow>
                       <TableHead>Name</TableHead>
                       {data.table.columns.map((c) => (
-                        <TableHead key={c.key} className="text-right">
+                        <TableHead key={c.key} className="text-end">
                           {c.label}
                         </TableHead>
                       ))}
@@ -136,7 +136,7 @@ export function ChannelReportDialog({ accountId, label }: { accountId: string; l
                       <TableRow key={`${row.label}-${i}`}>
                         <TableCell className="max-w-[16rem] truncate">{row.label}</TableCell>
                         {data.table.columns.map((c) => (
-                          <TableCell key={c.key} className="text-right tabular-nums">
+                          <TableCell key={c.key} className="text-end tabular-nums">
                             {formatValue(row.values[c.key] ?? 0, c.format, currency)}
                           </TableCell>
                         ))}

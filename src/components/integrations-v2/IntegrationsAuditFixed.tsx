@@ -401,7 +401,7 @@ export function IntegrationsAuditFixed({
               <HealthReportDialog
                 trigger={
                   <Button variant="outline">
-                    <Stethoscope className="mr-2 size-4" /> Health report
+                    <Stethoscope className="me-2 size-4" /> Health report
                   </Button>
                 }
               />
@@ -414,7 +414,7 @@ export function IntegrationsAuditFixed({
                   openDiagnostics(null);
                 }}
               >
-                <Settings2 className="mr-2 size-4" /> Admin diagnostics
+                <Settings2 className="me-2 size-4" /> Admin diagnostics
               </Button>
             )}
             <Button
@@ -423,7 +423,7 @@ export function IntegrationsAuditFixed({
                 setMarketplaceOpen(true);
               }}
             >
-              <Plus className="mr-2 size-4" /> Add Integration
+              <Plus className="me-2 size-4" /> Add Integration
             </Button>
           </div>
         </div>
@@ -550,7 +550,7 @@ export function IntegrationsAuditFixed({
                     </div>
                     {meta?.oauth && (
                       <Button size="sm" onClick={() => openConnector(meta)}>
-                        <RefreshCw className="mr-2 size-4" /> Reconnect
+                        <RefreshCw className="me-2 size-4" /> Reconnect
                       </Button>
                     )}
                   </CardContent>
@@ -612,7 +612,7 @@ export function IntegrationsAuditFixed({
                   </p>
                 </div>
                 <Button onClick={() => setMarketplaceOpen(true)}>
-                  <Plus className="mr-2 size-4" /> Add Integration
+                  <Plus className="me-2 size-4" /> Add Integration
                 </Button>
               </CardContent>
             </Card>
@@ -641,7 +641,7 @@ export function IntegrationsAuditFixed({
               description="Add another channel without touching developer settings."
             />
             <Button variant="ghost" size="sm" onClick={() => setMarketplaceOpen(true)}>
-              View all <ArrowRight className="ml-1 size-4" />
+              View all <ArrowRight className="ms-1 size-4" />
             </Button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -704,9 +704,9 @@ export function IntegrationsAuditFixed({
             </DialogDescription>
           </DialogHeader>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-9"
+              className="ps-9"
               placeholder="Search integrations..."
               value={query}
               onChange={(e) => {
@@ -920,7 +920,7 @@ function Problem({
                   <span className="font-medium">{b.title}</span>
                   <span className="text-muted-foreground"> - {b.userMessage}</span>
                   {b.technical ? (
-                    <code className="ml-1 rounded bg-muted px-1 text-xs">{b.technical}</code>
+                    <code className="ms-1 rounded bg-muted px-1 text-xs">{b.technical}</code>
                   ) : null}
                 </li>
               ))}
@@ -1068,13 +1068,13 @@ function ReadinessCard({
           )}
           {row.oauth && row.status !== "COMING_SOON" && (
             <Button size="sm" variant="outline" onClick={onConfigure} disabled={connecting}>
-              <KeyRound className="mr-1.5 size-3.5" /> Advanced: workspace app
+              <KeyRound className="me-1.5 size-3.5" /> Advanced: workspace app
             </Button>
           )}
           {setup?.links?.[0] && (
             <Button asChild size="sm" variant="outline">
               <a href={setup.links[0].url} target="_blank" rel="noreferrer noopener">
-                Open {setup.displayName} setup <ExternalLink className="ml-1 size-3.5" />
+                Open {setup.displayName} setup <ExternalLink className="ms-1 size-3.5" />
               </a>
             </Button>
           )}
@@ -1314,13 +1314,13 @@ function ConnectedCard({
           {account.profile_url && (
             <Button asChild size="sm" variant="outline">
               <a href={account.profile_url} target="_blank" rel="noreferrer noopener">
-                Open <ExternalLink className="ml-1 size-3.5" />
+                Open <ExternalLink className="ms-1 size-3.5" />
               </a>
             </Button>
           )}
           {meta?.oauth && (
             <Button size="sm" variant="outline" onClick={onReconnect}>
-              <RefreshCw className="mr-1 size-3.5" /> Reconnect
+              <RefreshCw className="me-1 size-3.5" /> Reconnect
             </Button>
           )}
           <Button
@@ -1330,7 +1330,7 @@ function ConnectedCard({
             disabled={disconnecting}
             onClick={onDisconnect}
           >
-            <Unplug className="mr-1 size-3.5" /> Disconnect
+            <Unplug className="me-1 size-3.5" /> Disconnect
           </Button>
         </div>
       </CardContent>
@@ -1344,7 +1344,7 @@ function MarketplacePreview({ connector, onClick }: { connector: Connector; onCl
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-3 rounded-xl border p-4 text-left transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex items-center gap-3 rounded-xl border p-4 text-start transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="flex size-10 items-center justify-center rounded-xl border">
         <Icon className={`size-5 ${tint}`} />
@@ -1460,7 +1460,7 @@ function WorkspaceApps({
                 </p>
               </div>
               <Button size="sm" variant="outline" onClick={() => onConfigure(row.id)}>
-                <KeyRound className="mr-1.5 size-3.5" />
+                <KeyRound className="me-1.5 size-3.5" />
                 {row.source === "workspace" ? "Update your app keys" : "Use your own app"}
               </Button>
             </div>
@@ -1668,7 +1668,7 @@ function ChannelSetup({
                   className="text-destructive"
                   onClick={() => onDisconnect(account.id)}
                 >
-                  <Unplug className="mr-1 size-3.5" /> Disconnect
+                  <Unplug className="me-1 size-3.5" /> Disconnect
                 </Button>
               </div>
               {account.external_id && (
@@ -1757,7 +1757,7 @@ function ChannelSetup({
                 variant={waitingOnFlas ? "default" : "outline"}
                 onClick={onUseOwnApp}
               >
-                <KeyRound className="mr-1.5 size-3.5" /> Use your own {providerName} app
+                <KeyRound className="me-1.5 size-3.5" /> Use your own {providerName} app
               </Button>
             </div>
           )}

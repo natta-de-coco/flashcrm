@@ -274,12 +274,12 @@ export function ConnectBusiness() {
         <div className="grid gap-4 lg:grid-cols-[13rem_1fr]">
           <aside className="grid h-max gap-1 lg:sticky lg:top-4">
             <div className="relative mb-2">
-              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search connectors"
-                className="h-9 pl-8 text-sm"
+                className="h-9 ps-8 text-sm"
                 aria-label="Search connectors"
               />
             </div>
@@ -701,7 +701,7 @@ function RailButton({
       }`}
     >
       <span className="truncate">{label}</span>
-      <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
+      <span className="ms-2 shrink-0 text-xs tabular-nums text-muted-foreground">{count}</span>
     </button>
   );
 }
