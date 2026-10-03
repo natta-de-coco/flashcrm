@@ -6,6 +6,11 @@
 // failed it on 3 Oct); the browser role can read its own workspace's rows
 // only; it cannot insert, update or delete one -- so it cannot mark a message
 // delivered or erase the record of a send; and the server role can write.
+//
+// The marketing suppression list is checked the same way, with one deliberate
+// asymmetry: the browser may ADD a suppression (that only stops messages) but
+// may not edit or remove one, because removing it messages someone who asked
+// not to be.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -14,10 +19,9 @@ import pg from "pg";
 
 const OWN = "aaaaaaaa-0000-0000-0000-00000000000a";
 const OTHER = "bbbbbbbb-0000-0000-0000-00000000000b";
-const migration = fs.readFileSync(
-  new URL("../migrations/20261003110000_whatsapp_broadcast_recipients.sql", import.meta.url),
-  "utf8",
-);
+const read = (name) => fs.readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8");
+const migration = read("20261003110000_whatsapp_broadcast_recipients.sql");
+const suppressions = read("20261003113000_whatsapp_marketing_safety_controls.sql");
 
 const server = new EmbeddedPostgres({
   databaseDir: path.resolve(`node_modules/.cache/pg-broadcast-${Date.now()}`),
@@ -98,8 +102,54 @@ try {
   );
   assert.equal(written.rows[0].status, "sent", "the server records the provider's answer");
 
+  // ── The opt-out list ──────────────────────────────────────────────────────
+  // It also adds columns to the recipients table, so it runs after it. Twice,
+  // for the same re-run guard.
+  await db.query(suppressions);
+  await db.query(suppressions);
+  await db.query(`INSERT INTO public.whatsapp_marketing_suppressions (tenant_id, normalized_phone, reason)
+    VALUES ('${OTHER}', '+971500000002', 'unsubscribe')`);
+
+  await db.query(`SET test.tenant = '${OWN}'; SET ROLE authenticated`);
+  // Adding one is allowed: it only ever stops messages.
+  await db.query(`INSERT INTO public.whatsapp_marketing_suppressions (tenant_id, normalized_phone, reason)
+    VALUES ('${OWN}', '+971500000001', 'unsubscribe')`);
+  const own = await db.query("SELECT tenant_id FROM public.whatsapp_marketing_suppressions");
+  assert.equal(own.rowCount, 1, "a workspace reads its own suppressions only");
+  assert.equal(own.rows[0].tenant_id, OWN);
+  await assert.rejects(
+    db.query(`INSERT INTO public.whatsapp_marketing_suppressions (tenant_id, normalized_phone, reason)
+      VALUES ('${OTHER}', '+971500000003', 'manual')`),
+    /row-level security/,
+    "the browser must not write into another workspace's list",
+  );
+  for (const [what, sql] of [
+    ["re-subscribe someone who opted out", "DELETE FROM public.whatsapp_marketing_suppressions"],
+    [
+      "rewrite why someone was suppressed",
+      "UPDATE public.whatsapp_marketing_suppressions SET reason='manual'",
+    ],
+  ]) {
+    await assert.rejects(db.query(sql), /permission denied/, `the browser must not ${what}`);
+  }
+
+  await db.query("RESET ROLE; SET ROLE service_role");
+  await db.query(
+    `DELETE FROM public.whatsapp_marketing_suppressions WHERE tenant_id='${OWN}' AND reason='unsubscribe'`,
+  );
+  await db.query("RESET ROLE");
+  assert.equal(
+    (
+      await db.query(
+        `SELECT 1 FROM public.whatsapp_marketing_suppressions WHERE tenant_id='${OWN}'`,
+      )
+    ).rowCount,
+    0,
+    "the server can still remove one, deliberately and with its own audit",
+  );
+
   console.log(
-    "PASS: broadcast recipients migration re-runs cleanly; browser reads own workspace only and cannot insert, update or delete; server writes",
+    "PASS: broadcast recipients and suppression migrations re-run cleanly; browser reads own workspace only, cannot write recipients, may add but not edit or remove a suppression; server writes",
   );
 } finally {
   if (db) await db.end();

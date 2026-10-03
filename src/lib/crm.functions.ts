@@ -86,13 +86,7 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
       }
       await completeOutboundDelivery(outboundId, waId, deliveryError ? "failed" : "sent");
     } else {
-      await storeOutbound(
-        tenantId as string,
-        conversation.id,
-        data.body,
-        "agent",
-        context.userId,
-      );
+      await storeOutbound(tenantId as string, conversation.id, data.body, "agent", context.userId);
     }
     await logAudit({
       action: "message.send",
