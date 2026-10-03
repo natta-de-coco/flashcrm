@@ -617,8 +617,8 @@ function MarketingPage() {
             </CardTitle>
             <CardDescription>
               Tell Flas AI your goal — it studies your business profile and your consented audience
-              (contacts and website leads alike), then drafts a compliant, ready-to-send message.
-              Review it, then drop it into a campaign below.
+              (contacts and website leads alike), then drafts a policy-safe message. It never sends
+              a campaign by itself: you review the audience, template, and final text first.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -696,7 +696,7 @@ function MarketingPage() {
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Draft with Flas AI
+                Draft with Flas AI (does not send)
               </Button>
             </div>
             {aiDraft && (
@@ -723,7 +723,7 @@ function MarketingPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Campaigns only go to people whose consent is recorded — contacts and website leads
-                  alike — and Flas AI already includes the required opt-out line.
+                  alike. Pasted or imported numbers stay pending until their WhatsApp opt-in is recorded.
                 </p>
               </div>
             )}

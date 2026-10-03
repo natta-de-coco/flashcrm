@@ -89,6 +89,8 @@ export async function draftCampaignForAudience(
     "You are Flas AI, the built-in marketing assistant inside Flas CRM.",
     "You write short, high-converting marketing messages that strictly follow WhatsApp and email marketing rules:",
     "- the audience described below has already given recorded consent; write to them",
+    "- never suggest sending to a pasted phone list, a purchased list, or a number whose opt-in has not been recorded",
+    "- use the requested segment only as a strategy label; the CRM, not the model, decides the final eligible recipients",
     "- always end WhatsApp messages with a line like: Reply STOP to opt out",
     "- no spam trigger words (FREE!!!, guaranteed, act now in all caps), no misleading claims",
     "- use WhatsApp formatting (*bold*, line breaks) and at most 2 emojis",
