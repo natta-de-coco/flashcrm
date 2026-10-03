@@ -6,8 +6,11 @@ import { OnboardingModal } from "@/components/OnboardingModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickCreate } from "@/components/QuickCreate";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, navMessageKey, workspaceDefaultLanguage } from "@/lib/i18n";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
 import { canReach } from "@/lib/permissions";
 import { MANAGER_SECTION, NAV_SECTIONS, type NavSection } from "@/lib/navigation";
@@ -65,6 +68,10 @@ function NavMenu({
   onNavigate?: () => void;
 }) {
   const { staffRole, loading } = useTenant();
+  const { t } = useI18n();
+  // A nav entry with no translation key keeps its English text rather than
+  // showing the key itself.
+  const text = (key: string, fallback: string) => (hasMessage(key) ? t(key) : fallback);
   const visible = sections
     .map((section) => ({
       ...section,
@@ -81,7 +88,7 @@ function NavMenu({
       {visible.map((section) => (
         <div key={section.title}>
           <p className="mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
-            {section.title}
+            {text(`nav.section.${section.title.toLowerCase()}`, section.title)}
           </p>
           <div className="flex flex-col gap-0.5">
             {section.items.map((item) => (
@@ -95,10 +102,10 @@ function NavMenu({
                 <item.icon className="mt-0.5 size-4 shrink-0" />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium leading-tight">
-                    {item.label}
+                    {text(navMessageKey(item.to, "label"), item.label)}
                   </span>
                   <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">
-                    {item.desc}
+                    {text(navMessageKey(item.to, "desc"), item.desc)}
                   </span>
                 </span>
               </Link>
@@ -110,8 +117,23 @@ function NavMenu({
   );
 }
 
+/**
+ * Applies the company's language for a teammate who has never chosen one.
+ * Renders nothing; lives inside TenantProvider to read the workspace.
+ */
+function WorkspaceLanguageDefault() {
+  const { tenant } = useTenant();
+  const { language, setLanguage } = useI18n();
+  useEffect(() => {
+    const next = workspaceDefaultLanguage(document.cookie, tenant?.locale, language);
+    if (next) setLanguage(next);
+  }, [tenant?.locale, language, setLanguage]);
+  return null;
+}
+
 function AuthenticatedLayout() {
   const { session, loading, signOut, user, isSuperAdmin } = useAuth();
+  const { t, dir } = useI18n();
   const navigate = useNavigate();
   const [sidebarW, setSidebarW] = useState(264);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -166,8 +188,10 @@ function AuthenticatedLayout() {
     e.preventDefault();
     const startX = e.clientX;
     const startW = sidebarW;
+    // In Arabic the sidebar sits on the right, so dragging its edge left widens it.
+    const grow = (ev: PointerEvent) => (dir === "rtl" ? startX - ev.clientX : ev.clientX - startX);
     const move = (ev: PointerEvent) =>
-      setSidebarW(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startW + ev.clientX - startX)));
+      setSidebarW(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startW + grow(ev))));
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -206,7 +230,7 @@ function AuthenticatedLayout() {
               ))}
             </div>
             <Skeleton className="h-64 w-full" />
-            <span className="sr-only">Loading your workspace…</span>
+            <span className="sr-only">{t("shell.loading")}</span>
           </div>
         </div>
       </div>
@@ -220,6 +244,7 @@ function AuthenticatedLayout() {
 
   return (
     <TenantProvider>
+      <WorkspaceLanguageDefault />
       <OnboardingModal />
       <div className="flex min-h-screen bg-background" data-app-shell>
         <aside
@@ -237,21 +262,23 @@ function AuthenticatedLayout() {
 
           <div className="border-t border-sidebar-border pt-3">
             <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">{user?.email}</p>
+            <LanguageSwitcher className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <Button
               variant="ghost"
               className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               onClick={() => void signOut()}
             >
-              <LogOut className="size-4" /> Sign out
+              <LogOut className="size-4" /> {t("shell.signOut")}
             </Button>
           </div>
 
+          {/* -end-1: the sidebar's inner edge, which is its left side in Arabic. */}
           <div
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize sidebar"
+            aria-label={t("shell.resizeSidebar")}
             onPointerDown={onDragStart}
-            className="absolute inset-y-0 -right-1 w-2 cursor-col-resize transition-colors hover:bg-sidebar-primary/30"
+            className="absolute inset-y-0 -end-1 w-2 cursor-col-resize transition-colors hover:bg-sidebar-primary/30"
           />
         </aside>
 
@@ -262,14 +289,15 @@ function AuthenticatedLayout() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Open menu"
+                  aria-label={t("shell.openMenu")}
                   className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
                   <Menu className="size-5" />
                 </Button>
               </SheetTrigger>
               <SheetContent
-                side="left"
+                // The menu slides in from the side the sidebar lives on.
+                side={dir === "rtl" ? "right" : "left"}
                 className="flash-scroll w-72 overflow-y-auto border-sidebar-border bg-sidebar p-4 text-sidebar-foreground [&>button]:text-sidebar-foreground/70"
               >
                 <SheetHeader className="mb-4">
@@ -284,6 +312,7 @@ function AuthenticatedLayout() {
                   <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">
                     {user?.email}
                   </p>
+                  <LanguageSwitcher className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -292,7 +321,7 @@ function AuthenticatedLayout() {
                       void signOut();
                     }}
                   >
-                    <LogOut className="size-4" /> Sign out
+                    <LogOut className="size-4" /> {t("shell.signOut")}
                   </Button>
                 </div>
               </SheetContent>
@@ -304,7 +333,7 @@ function AuthenticatedLayout() {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Search Flas"
+              aria-label={t("shell.searchLabel")}
               onClick={() => setPaletteOpen(true)}
               className="shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
@@ -320,12 +349,13 @@ function AuthenticatedLayout() {
               className="flex h-9 w-full max-w-md items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
             >
               <Search className="size-4" />
-              Search Flas…
-              <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
+              {t("shell.search")}
+              <kbd className="ms-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
                 {shortcutHint()}
               </kbd>
             </button>
-            <div className="ml-auto">
+            <div className="ms-auto flex items-center gap-2">
+              <LanguageSwitcher />
               <QuickCreate />
             </div>
           </header>
