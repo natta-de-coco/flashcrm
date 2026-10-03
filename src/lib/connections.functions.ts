@@ -95,8 +95,19 @@ export const startConnect = createServerFn({ method: "POST" })
     z.object({ platform: PlatformSchema, origin: z.string().url() }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    const tenantId = await callerTenantId(context.supabase, context.userId);
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    const tenantId = profile?.tenant_id ?? null;
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
+    // Connecting a social account changes the whole workspace, so the server
+    // must enforce the same company-admin boundary that the screen shows.
+    // A hidden button is not an authorization control.
+    if (!["company_admin", "super_admin"].includes(profile?.staff_role ?? "")) {
+      throw new Error("Only a company admin can connect Facebook, Google, or another channel.");
+    }
     const { startAuthorization } = await import("@/lib/oauth.server");
     const { logAudit } = await import("@/lib/audit.server");
 
