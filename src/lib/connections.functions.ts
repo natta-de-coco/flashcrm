@@ -105,7 +105,7 @@ export const startConnect = createServerFn({ method: "POST" })
     // Connecting a social account changes the whole workspace, so the server
     // must enforce the same company-admin boundary that the screen shows.
     // A hidden button is not an authorization control.
-    if (!['company_admin', 'super_admin'].includes(profile?.staff_role ?? '')) {
+    if (!["company_admin", "super_admin"].includes(profile?.staff_role ?? "")) {
       throw new Error("Only a company admin can connect Facebook, Google, or another channel.");
     }
     const { startAuthorization } = await import("@/lib/oauth.server");
