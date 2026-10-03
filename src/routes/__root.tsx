@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -18,6 +19,10 @@ import {
   reloadForStaleChunk,
 } from "../lib/stale-chunk";
 import { AuthProvider } from "@/hooks/useAuth";
+import { I18nProvider } from "@/hooks/useI18n";
+import { PageLanguage } from "@/components/PageLanguage";
+import { directionOf, isRtlUiLanguage } from "@/lib/i18n";
+import { readUiLanguage } from "@/lib/i18n/read-language";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -95,6 +100,9 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  // The interface language, from its cookie: on the server for the first
+  // paint, in the browser on every navigation and after a switch.
+  beforeLoad: () => ({ uiLanguage: readUiLanguage() }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -121,7 +129,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&family=Onest:wght@400;500;600;700&display=swap",
+        // Noto Sans Arabic is split by character range, so an English page
+        // downloads none of it.
+        href: "https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&family=Onest:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap",
       },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
     ],
@@ -133,8 +143,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const { uiLanguage } = Route.useRouteContext();
   return (
-    <html lang="en">
+    <html lang={uiLanguage} dir={directionOf(uiLanguage)}>
       <head>
         <HeadContent />
       </head>
@@ -147,7 +158,15 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
+  const { queryClient, uiLanguage } = Route.useRouteContext();
+  // App pages mark their own language inside the shell, so the translated
+  // sidebar keeps the reader's direction; public pages are marked here.
+  const { pathname, inApp } = useRouterState({
+    select: (s) => ({
+      pathname: s.location.pathname,
+      inApp: s.matches.some((m) => m.routeId === "/_authenticated"),
+    }),
+  });
 
   // Frontend crashes, failed server actions and blank screens are captured with
   // route + session context so support can trace any incident.
@@ -158,11 +177,20 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-        <Toaster position="top-right" richColors />
-      </AuthProvider>
+      <I18nProvider language={uiLanguage}>
+        <AuthProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          {inApp ? (
+            <Outlet />
+          ) : (
+            <PageLanguage pathname={pathname}>
+              <Outlet />
+            </PageLanguage>
+          )}
+          {/* Toasts sit on the reading-end side: top-left in Arabic. */}
+          <Toaster position={isRtlUiLanguage(uiLanguage) ? "top-left" : "top-right"} richColors />
+        </AuthProvider>
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

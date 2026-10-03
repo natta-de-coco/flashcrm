@@ -303,7 +303,7 @@ function Landing() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <span className="flex min-w-0 items-center gap-3">
             <FlasWordmark className="h-8 max-w-28 sm:h-9 sm:max-w-36" />
-            <span className="hidden border-l border-border pl-3 text-[10px] font-medium leading-tight text-muted-foreground sm:block">
+            <span className="hidden border-s border-border ps-3 text-[10px] font-medium leading-tight text-muted-foreground sm:block">
               CRM by
               <br />
               Mobi Digital Solutions
@@ -348,19 +348,19 @@ function Landing() {
             them would be noise. */}
         <section className="relative isolate overflow-hidden">
           <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-            <div className="flas-drift absolute -left-24 -top-24 size-[28rem] rounded-full bg-brand/25 blur-3xl" />
+            <div className="flas-drift absolute -start-24 -top-24 size-[28rem] rounded-full bg-brand/25 blur-3xl" />
             <div
-              className="flas-drift absolute -right-20 top-10 size-[22rem] rounded-full bg-brand/15 blur-3xl"
+              className="flas-drift absolute -end-20 top-10 size-[22rem] rounded-full bg-brand/15 blur-3xl"
               style={{ animationDelay: "-3s" }}
             />
             <div
-              className="flas-drift absolute bottom-0 left-1/3 size-[18rem] rounded-full bg-brand-deep/10 blur-3xl"
+              className="flas-drift absolute bottom-0 start-1/3 size-[18rem] rounded-full bg-brand-deep/10 blur-3xl"
               style={{ animationDelay: "-6s" }}
             />
           </div>
 
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 sm:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
-            <div className="text-center lg:text-left">
+            <div className="text-center lg:text-start">
               <span
                 data-reveal
                 className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand"
@@ -530,7 +530,7 @@ function Landing() {
                   {i < STEPS.length - 1 && (
                     <ArrowRight
                       aria-hidden
-                      className="absolute -right-3 top-1/2 hidden size-6 -translate-y-1/2 text-brand/40 lg:block"
+                      className="absolute -end-3 top-1/2 hidden size-6 -translate-y-1/2 text-brand/40 lg:block"
                     />
                   )}
                 </div>
@@ -612,7 +612,7 @@ function Landing() {
                   style={{ ["--reveal-delay" as string]: `${Math.min(i, 5) * 40}ms` }}
                   className="group rounded-2xl border bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left font-semibold [&::-webkit-details-marker]:hidden">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-start font-semibold [&::-webkit-details-marker]:hidden">
                     {f.q}
                     <ChevronDown
                       aria-hidden

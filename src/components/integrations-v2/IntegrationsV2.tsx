@@ -214,11 +214,11 @@ export function IntegrationsV2() {
           <div className="flex flex-wrap gap-2">
             {isAdmin && (
               <Button variant="outline" onClick={() => setProviderSetupOpen(true)}>
-                <Settings2 className="mr-2 size-4" /> Provider setup
+                <Settings2 className="me-2 size-4" /> Provider setup
               </Button>
             )}
             <Button onClick={() => setMarketplaceOpen(true)}>
-              <Plus className="mr-2 size-4" /> Add Integration
+              <Plus className="me-2 size-4" /> Add Integration
             </Button>
           </div>
         </div>
@@ -267,7 +267,7 @@ export function IntegrationsV2() {
                         onClick={() => meta && connect.mutate(meta.id)}
                         disabled={!meta?.oauth || connecting === meta?.id}
                       >
-                        <RefreshCw className="mr-2 size-4" /> Fix connection
+                        <RefreshCw className="me-2 size-4" /> Fix connection
                       </Button>
                     </CardContent>
                   </Card>
@@ -301,7 +301,7 @@ export function IntegrationsV2() {
                   </p>
                 </div>
                 <Button onClick={() => setMarketplaceOpen(true)}>
-                  <Plus className="mr-2 size-4" /> Add Integration
+                  <Plus className="me-2 size-4" /> Add Integration
                 </Button>
               </CardContent>
             </Card>
@@ -327,7 +327,7 @@ export function IntegrationsV2() {
               description="Add another channel without touching developer settings."
             />
             <Button variant="ghost" size="sm" onClick={() => setMarketplaceOpen(true)}>
-              View all <ArrowRight className="ml-1 size-4" />
+              View all <ArrowRight className="ms-1 size-4" />
             </Button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -366,9 +366,9 @@ export function IntegrationsV2() {
             </DialogDescription>
           </DialogHeader>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-9"
+              className="ps-9"
               placeholder="Search integrations..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -603,13 +603,13 @@ function ConnectedCard({
           {account.profile_url && (
             <Button asChild size="sm" variant="outline">
               <a href={account.profile_url} target="_blank" rel="noreferrer noopener">
-                Open <ExternalLink className="ml-1 size-3.5" />
+                Open <ExternalLink className="ms-1 size-3.5" />
               </a>
             </Button>
           )}
           {meta?.oauth && (
             <Button size="sm" variant="outline" onClick={onReconnect}>
-              <RefreshCw className="mr-1 size-3.5" /> Reconnect
+              <RefreshCw className="me-1 size-3.5" /> Reconnect
             </Button>
           )}
           <Button
@@ -619,7 +619,7 @@ function ConnectedCard({
             disabled={disconnecting}
             onClick={onDisconnect}
           >
-            <Unplug className="mr-1 size-3.5" /> Disconnect
+            <Unplug className="me-1 size-3.5" /> Disconnect
           </Button>
         </div>
       </CardContent>
@@ -633,7 +633,7 @@ function MarketplacePreview({ connector, onClick }: { connector: Connector; onCl
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-3 rounded-xl border p-4 text-left transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex items-center gap-3 rounded-xl border p-4 text-start transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="flex size-10 items-center justify-center rounded-xl border bg-background">
         <Icon className={`size-5 ${tint}`} />

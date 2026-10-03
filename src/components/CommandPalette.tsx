@@ -172,10 +172,10 @@ export function CommandPalette({
                     value={`${hit.label} ${hit.sub ?? ""} ${hit.keywords ?? ""} ${group.heading}`}
                     onSelect={() => go(hit.to)}
                   >
-                    <Icon className="mr-2 size-4 shrink-0 text-muted-foreground" />
+                    <Icon className="me-2 size-4 shrink-0 text-muted-foreground" />
                     <span className="truncate">{hit.label}</span>
                     {hit.sub ? (
-                      <span className="ml-auto truncate pl-3 text-xs text-muted-foreground">
+                      <span className="ms-auto truncate ps-3 text-xs text-muted-foreground">
                         {hit.sub}
                       </span>
                     ) : null}

@@ -328,7 +328,7 @@ function AdvisorPage() {
                 title="Local market"
                 description={[brief.city, brief.country].filter(Boolean).join(", ") || undefined}
               >
-                <ul className="list-disc space-y-1.5 pl-4">
+                <ul className="list-disc space-y-1.5 ps-4">
                   {analysis.local.map((l) => (
                     <li key={l}>{l}</li>
                   ))}
@@ -349,7 +349,7 @@ function AdvisorPage() {
 
             {analysis && analysis.pricing.length > 0 ? (
               <Section icon={Target} title="Products & pricing">
-                <ul className="list-disc space-y-1.5 pl-4">
+                <ul className="list-disc space-y-1.5 ps-4">
                   {analysis.pricing.map((p) => (
                     <li key={p}>{p}</li>
                   ))}
@@ -359,7 +359,7 @@ function AdvisorPage() {
 
             {analysis && analysis.risks.length > 0 ? (
               <Section icon={AlertTriangle} title="Risks to fix">
-                <ul className="list-disc space-y-1.5 pl-4">
+                <ul className="list-disc space-y-1.5 ps-4">
                   {analysis.risks.map((r) => (
                     <li key={r}>{r}</li>
                   ))}
@@ -374,7 +374,7 @@ function AdvisorPage() {
                     <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
                       Next 7 days
                     </p>
-                    <ol className="list-decimal space-y-1 pl-4">
+                    <ol className="list-decimal space-y-1 ps-4">
                       {analysis.next7Days.map((a) => (
                         <li key={a}>{a}</li>
                       ))}
@@ -386,7 +386,7 @@ function AdvisorPage() {
                     <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
                       Next 90 days
                     </p>
-                    <ol className="list-decimal space-y-1 pl-4">
+                    <ol className="list-decimal space-y-1 ps-4">
                       {analysis.next90Days.map((a) => (
                         <li key={a}>{a}</li>
                       ))}
@@ -450,7 +450,7 @@ function AdvisorPage() {
                       key={`${t.role}-${i}`}
                       className={
                         t.role === "user"
-                          ? "ml-auto max-w-[85%] rounded-lg bg-brand/10 px-3 py-2 text-sm"
+                          ? "ms-auto max-w-[85%] rounded-lg bg-brand/10 px-3 py-2 text-sm"
                           : "max-w-full rounded-lg border p-3 text-sm"
                       }
                     >

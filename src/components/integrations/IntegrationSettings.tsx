@@ -436,10 +436,10 @@ export function IntegrationSettings() {
                   <p className="truncate text-sm font-semibold">
                     {n.label}
                     {n.is_default && (
-                      <Badge className="ml-2 bg-brand text-brand-foreground">default</Badge>
+                      <Badge className="ms-2 bg-brand text-brand-foreground">default</Badge>
                     )}
                     {!n.active && (
-                      <Badge variant="secondary" className="ml-2">
+                      <Badge variant="secondary" className="ms-2">
                         disabled
                       </Badge>
                     )}

@@ -134,15 +134,15 @@ export function SocialInbox() {
     <div className="flex min-h-0 flex-1">
       <div
         className={cn(
-          "w-full shrink-0 flex-col border-r bg-card lg:flex lg:max-w-sm",
+          "w-full shrink-0 flex-col border-e bg-card lg:flex lg:max-w-sm",
           active ? "hidden" : "flex",
         )}
       >
         <div className="space-y-3 border-b p-4">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-9"
+              className="ps-9"
               placeholder="Search DMs and comments"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -206,7 +206,7 @@ export function SocialInbox() {
                     setReply(head.ai_suggestion ?? "");
                   }}
                   className={cn(
-                    "flex w-full flex-col gap-0.5 border-b p-4 text-left transition-colors hover:bg-muted/60",
+                    "flex w-full flex-col gap-0.5 border-b p-4 text-start transition-colors hover:bg-muted/60",
                     activeId === t.key && "bg-muted",
                   )}
                 >
@@ -302,17 +302,17 @@ export function SocialInbox() {
                 thread with history read as a single unanswered question. */}
             {active.items.map((i) =>
               i.direction === "out" ? (
-                <div key={i.id} className="ml-auto max-w-[75%] space-y-1">
-                  <div className="rounded-2xl rounded-tr-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
+                <div key={i.id} className="ms-auto max-w-[75%] space-y-1">
+                  <div className="rounded-2xl rounded-se-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
                     {i.body}
                   </div>
-                  <p className="px-1 text-right text-[11px] text-muted-foreground">
+                  <p className="px-1 text-end text-[11px] text-muted-foreground">
                     {i.author_name ?? "You"} · {new Date(i.created_at).toLocaleString()}
                   </p>
                 </div>
               ) : (
                 <div key={i.id} className="max-w-[75%] space-y-1">
-                  <div className="rounded-2xl rounded-tl-sm border bg-card p-3 text-sm leading-relaxed">
+                  <div className="rounded-2xl rounded-ss-sm border bg-card p-3 text-sm leading-relaxed">
                     {i.body}
                   </div>
                   <p className="px-1 text-[11px] text-muted-foreground">
@@ -329,11 +329,11 @@ export function SocialInbox() {
                   .map((i) => {
                     const delivery = replyDelivery(i);
                     return (
-                      <div key={i.id} className="ml-auto max-w-[75%] space-y-1">
-                        <div className="rounded-2xl rounded-tr-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
+                      <div key={i.id} className="ms-auto max-w-[75%] space-y-1">
+                        <div className="rounded-2xl rounded-se-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
                           {i.body}
                         </div>
-                        <p className="px-1 text-right text-[11px] text-muted-foreground">
+                        <p className="px-1 text-end text-[11px] text-muted-foreground">
                           You · {new Date(i.created_at).toLocaleString()}
                           {delivery === "sent" ? " · Sent" : ""}
                           {delivery === "not_sent"

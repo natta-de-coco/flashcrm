@@ -180,7 +180,7 @@ function CompanyWorkspacePage() {
                       <p className="mt-1 text-xs text-destructive">{email.provider_error}</p>
                     )}
                   </div>
-                  <div className="shrink-0 text-right">
+                  <div className="shrink-0 text-end">
                     <Badge
                       variant={email.status === "accepted" ? "secondary" : "destructive"}
                       className="capitalize"

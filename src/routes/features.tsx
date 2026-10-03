@@ -176,7 +176,7 @@ function Features() {
       <main>
         <section className="relative isolate overflow-hidden">
           <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-            <div className="flas-drift absolute -left-32 -top-32 size-[26rem] rounded-full bg-brand/20 blur-3xl" />
+            <div className="flas-drift absolute -start-32 -top-32 size-[26rem] rounded-full bg-brand/20 blur-3xl" />
           </div>
           <div className="mx-auto max-w-3xl px-6 py-20 text-center">
             <h1 data-reveal className="text-4xl font-bold tracking-tight sm:text-5xl">

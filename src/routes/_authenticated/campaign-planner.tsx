@@ -205,7 +205,7 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Risks &amp; data gaps
           </p>
-          <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+          <ul className="list-disc space-y-1 ps-4 text-xs text-muted-foreground">
             {plan.risksOrGaps.map((r, i) => (
               <li key={i}>{r}</li>
             ))}

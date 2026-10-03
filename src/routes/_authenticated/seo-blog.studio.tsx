@@ -447,7 +447,7 @@ function SeoStudioPage() {
                     />
                     <button
                       type="button"
-                      className="absolute right-1 top-1 rounded-full bg-background/80 p-1"
+                      className="absolute end-1 top-1 rounded-full bg-background/80 p-1"
                       onClick={() => setImages(images.filter((i) => i.id !== img.id))}
                       aria-label="Remove image"
                     >

@@ -389,7 +389,7 @@ function MonitoringPage() {
                           <Badge variant="secondary">Meta delivered: {n.meta.delivered}</Badge>
                         </div>
                       ) : (
-                        <div className="max-w-md sm:text-right">
+                        <div className="max-w-md sm:text-end">
                           <Badge variant="outline" className="text-[10px]">
                             Meta&apos;s own totals unavailable
                           </Badge>

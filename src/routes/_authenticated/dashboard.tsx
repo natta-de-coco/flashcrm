@@ -16,17 +16,15 @@ import { getDashboardOverview } from "@/lib/dashboard.functions";
 import { getDailyBrief } from "@/lib/brief.functions";
 import type { BusinessHealth, Trend } from "@/lib/dashboard.server";
 import { getMetaSyncHealth } from "@/lib/meta-health.functions";
-import {
-  HEALTH_METHOD_NOTE,
-  briefSnapshotNote,
-  pendingBreakdownNote,
-} from "@/lib/dashboard-figures";
+import { briefSnapshotKind, pendingBreakdownNote } from "@/lib/dashboard-figures";
 import { usePersistentTimestamp } from "@/hooks/usePersistentTimestamp";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 import { logWidgetError } from "@/lib/widget-error-log";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -78,26 +76,30 @@ const PLATFORM_ICONS: Record<string, LucideIcon> = {
   google_business: Store,
 };
 
-const activityConfig = {
-  received: { label: "Received", color: "var(--color-chart-1)" },
-  sent: { label: "Sent by you & AI", color: "var(--color-chart-2)" },
-} satisfies ChartConfig;
+/** The grade the server computes, as the key it is shown under. */
+const GRADE_KEY: Record<string, MessageKey> = {
+  Excellent: "dashboard.health.grade.excellent",
+  Good: "dashboard.health.grade.good",
+  "Needs work": "dashboard.health.grade.needsWork",
+  "At risk": "dashboard.health.grade.atRisk",
+};
 
 /** Helpful inline error state with a retry button — never a blank widget. */
 function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed p-6 text-center">
       <AlertTriangle className="size-5 text-destructive" />
-      <p className="text-sm font-medium">Couldn't load this widget</p>
+      <p className="text-sm font-medium">{t("dashboard.widgetError")}</p>
       <p className="max-w-xs text-xs text-muted-foreground">{message}</p>
       <Button
         size="sm"
         variant="outline"
         className="mt-1 gap-1.5"
         onClick={onRetry}
-        aria-label="Retry this widget"
+        aria-label={t("dashboard.retryWidget")}
       >
-        <RefreshCw className="size-3.5" /> Retry this widget
+        <RefreshCw className="size-3.5" /> {t("dashboard.retryWidget")}
       </Button>
     </div>
   );
@@ -153,11 +155,12 @@ function ListSkeleton({ rows = 4 }: { rows?: number }) {
 
 /** Week-over-week change pill: up is good, flat and unknown stay neutral. */
 function TrendPill({ trend, label }: { trend?: Trend | undefined; label?: string | undefined }) {
+  const { t } = useI18n();
   if (!trend) return null;
   if (trend.changePct === null) {
     return (
       <p className="mt-1 truncate text-[11px] text-muted-foreground">
-        {trend.current} {label ?? "this week"}
+        {trend.current} {label ?? t("dashboard.thisWeek")}
       </p>
     );
   }
@@ -172,13 +175,14 @@ function TrendPill({ trend, label }: { trend?: Trend | undefined; label?: string
       <Icon className="size-3 shrink-0" />
       {up ? "+" : ""}
       {trend.changePct}%
-      <span className="truncate text-muted-foreground">{label ?? "vs last week"}</span>
+      <span className="truncate text-muted-foreground">{label ?? t("dashboard.vsLastWeek")}</span>
     </p>
   );
 }
 
 /** Business Health Score: one number plus every factor that makes it up. */
 function HealthCard({ health }: { health: BusinessHealth }) {
+  const { t } = useI18n();
   const tone =
     health.score >= 85
       ? "text-brand"
@@ -191,22 +195,29 @@ function HealthCard({ health }: { health: BusinessHealth }) {
     <Card>
       <CardHeader className="flex-row items-start justify-between">
         <div>
-          <CardTitle className="text-base">Business health score</CardTitle>
+          <CardTitle className="text-base">{t("dashboard.health.title")}</CardTitle>
           {/* Says how the number is made, because the AI brief quotes a score
               taken earlier in the day and the two used to differ with no
               explanation anywhere on the page (QA M7). */}
-          <p className="mt-0.5 text-xs text-muted-foreground">{HEALTH_METHOD_NOTE}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t("dashboard.health.method")}</p>
         </div>
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 text-end">
           <p className={`text-3xl font-bold leading-none ${tone}`}>{health.score}</p>
-          <p className="text-[11px] text-muted-foreground">{health.grade}</p>
+          <p className="text-[11px] text-muted-foreground">
+            {GRADE_KEY[health.grade] ? t(GRADE_KEY[health.grade]!) : health.grade}
+          </p>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {health.factors.map((f) => (
           <div key={f.key}>
             <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="font-medium">{f.label}</span>
+              <span className="font-medium">
+                {(() => {
+                  const key = `dashboard.health.factor.${f.key}`;
+                  return hasMessage(key) ? t(key) : f.label;
+                })()}
+              </span>
               <span className="text-muted-foreground">{f.score}/100</span>
             </div>
             <Progress value={f.score} className="mt-1 h-1.5" />
@@ -219,6 +230,15 @@ function HealthCard({ health }: { health: BusinessHealth }) {
 }
 
 function DashboardPage() {
+  const { t } = useI18n();
+  const activityConfig = useMemo(
+    () =>
+      ({
+        received: { label: t("dashboard.activity.received"), color: "var(--color-chart-1)" },
+        sent: { label: t("dashboard.activity.sent"), color: "var(--color-chart-2)" },
+      }) satisfies ChartConfig,
+    [t],
+  );
   const overviewFn = useServerFn(getDashboardOverview);
   const overview = useQuery({
     queryKey: ["dashboard-overview"],
@@ -306,32 +326,32 @@ function DashboardPage() {
     : (metaHealth.data?.metaAnalytics.reason ?? null);
   const stats = [
     {
-      label: "Open conversations",
+      label: t("dashboard.stat.open"),
       value: data?.stats.open ?? 0,
       icon: Inbox,
       trend: data?.trends.inbound,
-      trendLabel: "inbound vs last week",
+      trendLabel: t("dashboard.stat.openTrend"),
     },
     {
-      label: "Unread messages",
+      label: t("dashboard.stat.unread"),
       value: data?.stats.unread ?? 0,
       icon: MessageSquare,
       trend: undefined,
       trendLabel: undefined,
     },
     {
-      label: "Contacts",
+      label: t("dashboard.stat.contacts"),
       value: data?.stats.contacts ?? 0,
       icon: Users,
       trend: data?.trends.leads,
-      trendLabel: "new leads vs last week",
+      trendLabel: t("dashboard.stat.contactsTrend"),
     },
     {
-      label: "Bot replies",
+      label: t("dashboard.stat.botReplies"),
       value: data?.stats.botReplies ?? 0,
       icon: Bot,
       trend: data?.trends.replies,
-      trendLabel: "replies sent vs last week",
+      trendLabel: t("dashboard.stat.botRepliesTrend"),
     },
   ];
 
@@ -339,10 +359,10 @@ function DashboardPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
       <header className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Dashboard</h1>
-          <p className="mt-1.5 text-[0.9375rem] text-muted-foreground">
-            Everything happening across WhatsApp, your website widget and your pipeline.
-          </p>
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+            {t("dashboard.title")}
+          </h1>
+          <p className="mt-1.5 text-[0.9375rem] text-muted-foreground">{t("dashboard.subtitle")}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <Button
@@ -353,10 +373,12 @@ function DashboardPage() {
             disabled={refreshing}
           >
             <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
+            {t("dashboard.refresh")}
           </Button>
           <span className="text-[11px] text-muted-foreground">
-            {overviewUpdatedAt ? `Updated ${overviewUpdatedAt}` : "Loading…"}
+            {overviewUpdatedAt
+              ? t("dashboard.updated", { time: overviewUpdatedAt })
+              : t("dashboard.loading")}
           </span>
         </div>
       </header>
@@ -395,11 +417,10 @@ function DashboardPage() {
           <CardHeader className="flex-row items-start justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Sparkles className="size-4 text-brand" /> Flas AI daily brief
+                <Sparkles className="size-4 text-brand" /> {t("dashboard.brief.title")}
               </CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                What changed this week and the three things worth doing today — written once a day
-                from the figures at that moment.
+                {t("dashboard.brief.subtitle")}
               </p>
             </div>
             <Button
@@ -410,7 +431,7 @@ function DashboardPage() {
               disabled={briefBusy}
             >
               <RefreshCw className={`size-3.5 ${briefBusy ? "animate-spin" : ""}`} />
-              {brief.data ? "Regenerate" : "Generate brief"}
+              {brief.data ? t("dashboard.brief.regenerate") : t("dashboard.brief.generate")}
             </Button>
           </CardHeader>
           <CardContent>
@@ -443,21 +464,21 @@ function DashboardPage() {
                     quoting health 62 beside a card reading 60 (QA M7):
                     regenerating is the only way to make them one number. */}
                 <p className="text-[11px] text-muted-foreground">
-                  {briefSnapshotNote({
-                    generatedAtTime: new Date(brief.data.generatedAt).toLocaleTimeString(),
-                    cached: brief.data.cached,
-                    ageMs: Math.max(
-                      0,
-                      (overview.dataUpdatedAt || Date.now()) -
-                        new Date(brief.data.generatedAt).getTime(),
-                    ),
-                  })}
+                  {t(
+                    `dashboard.brief.note.${briefSnapshotKind({
+                      cached: brief.data.cached,
+                      ageMs: Math.max(
+                        0,
+                        (overview.dataUpdatedAt || Date.now()) -
+                          new Date(brief.data.generatedAt).getTime(),
+                      ),
+                    })}`,
+                    { time: new Date(brief.data.generatedAt).toLocaleTimeString() },
+                  )}
                 </p>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                Ask Flas AI to read this week's numbers and tell you where to focus.
-              </p>
+              <p className="text-sm text-muted-foreground">{t("dashboard.brief.empty")}</p>
             )}
           </CardContent>
         </Card>
@@ -480,15 +501,18 @@ function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-base">7-day activity</CardTitle>
+              <CardTitle className="text-base">{t("dashboard.activity.title")}</CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {data
-                  ? `${data.activity.weekTotal} messages this week · ${data.activity.todayTotal} today`
-                  : "Messages across the last 7 days"}
+                  ? t("dashboard.activity.summary", {
+                      week: data.activity.weekTotal,
+                      today: data.activity.todayTotal,
+                    })
+                  : t("dashboard.activity.empty")}
               </p>
             </div>
             <Link to="/inbox" className="text-xs font-medium text-brand hover:underline">
-              Open inbox
+              {t("dashboard.openInbox")}
             </Link>
           </CardHeader>
           <CardContent>
@@ -524,15 +548,24 @@ function DashboardPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-base">Social pulse</CardTitle>
+              <CardTitle className="text-base">{t("dashboard.social.title")}</CardTitle>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {data
-                  ? `${data.social.totalAudience > 0 ? `${data.social.totalAudience.toLocaleString()} audience · ` : ""}${data.social.interactions7d} incoming this week · ${data.social.pendingTotal} to reply`
-                  : "Connected accounts and replies"}
+                  ? data.social.totalAudience > 0
+                    ? t("dashboard.social.summaryAudience", {
+                        audience: data.social.totalAudience.toLocaleString(),
+                        incoming: data.social.interactions7d,
+                        pending: data.social.pendingTotal,
+                      })
+                    : t("dashboard.social.summary", {
+                        incoming: data.social.interactions7d,
+                        pending: data.social.pendingTotal,
+                      })
+                  : t("dashboard.social.empty")}
               </p>
             </div>
             <Link to="/social" className="text-xs font-medium text-brand hover:underline">
-              Social Hub
+              {t("dashboard.social.hub")}
             </Link>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -544,10 +577,9 @@ function DashboardPage() {
               <>
                 {data?.social.accounts.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No social accounts connected yet. Link Instagram, Facebook, YouTube, X,
-                    LinkedIn, TikTok or Google Business in the{" "}
+                    {t("dashboard.social.none")}{" "}
                     <Link to="/social" className="font-medium text-brand hover:underline">
-                      Social Hub
+                      {t("dashboard.social.hub")}
                     </Link>
                     .
                   </p>
@@ -566,22 +598,22 @@ function DashboardPage() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">{a.label}</p>
                           <p className="truncate text-[11px] text-muted-foreground">
-                            {a.audience ?? "no stats yet"}
+                            {a.audience ?? t("dashboard.social.noStats")}
                             {a.lastSyncedAt
-                              ? ` · synced ${new Date(a.lastSyncedAt).toLocaleDateString()}`
-                              : " · never synced"}
+                              ? ` · ${t("dashboard.social.synced", { date: new Date(a.lastSyncedAt).toLocaleDateString() })}`
+                              : ` · ${t("dashboard.social.neverSynced")}`}
                           </p>
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {!a.active && (
                           <Badge variant="outline" className="text-[10px]">
-                            inactive
+                            {t("dashboard.inactive")}
                           </Badge>
                         )}
                         {a.pending > 0 && (
                           <Badge className="bg-brand text-[10px] text-brand-foreground">
-                            {a.pending} to reply
+                            {t("dashboard.social.toReply", { count: a.pending })}
                           </Badge>
                         )}
                       </div>
@@ -590,8 +622,8 @@ function DashboardPage() {
                 })}
                 {(data?.social.accounts.length ?? 0) > 0 && data?.social.pendingTotal === 0 && (
                   <p className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
-                    <CheckCircle2 className="size-3.5 text-brand" /> All caught up — nothing waiting
-                    for a reply.
+                    <CheckCircle2 className="size-3.5 text-brand" />{" "}
+                    {t("dashboard.social.caughtUp")}
                   </p>
                 )}
                 {/* The badges above come from a capped sample of the newest
@@ -604,8 +636,15 @@ function DashboardPage() {
                       total: data.social.pendingTotal,
                       counted: data.social.pendingCounted,
                     });
+                    // The module decides whether a note is needed; the screen
+                    // says it in the reader's language.
                     return note ? (
-                      <p className="pt-1 text-[11px] text-muted-foreground">{note}</p>
+                      <p className="pt-1 text-[11px] text-muted-foreground">
+                        {t("dashboard.social.pendingNote", {
+                          counted: data.social.pendingCounted,
+                          total: data.social.pendingTotal,
+                        })}
+                      </p>
                     ) : null;
                   })()}
               </>
@@ -618,9 +657,11 @@ function DashboardPage() {
       <Card className="mt-4">
         <CardHeader className="flex-row items-center justify-between">
           <div>
-            <CardTitle className="text-base">WhatsApp & Meta sync</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.meta.title")}</CardTitle>
             {metaUpdatedAt && (
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Updated {metaUpdatedAt}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {t("dashboard.updated", { time: metaUpdatedAt })}
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -628,14 +669,14 @@ function DashboardPage() {
               size="icon"
               variant="ghost"
               className="size-7"
-              aria-label="Refresh Meta sync health"
+              aria-label={t("dashboard.meta.refresh")}
               onClick={() => void metaHealth.refetch()}
               disabled={metaHealth.isRefetching}
             >
               <RefreshCw className={`size-3.5 ${metaHealth.isRefetching ? "animate-spin" : ""}`} />
             </Button>
             <Link to="/monitoring" className="text-xs font-medium text-brand hover:underline">
-              Full monitoring
+              {t("dashboard.meta.fullMonitoring")}
             </Link>
           </div>
         </CardHeader>
@@ -648,9 +689,9 @@ function DashboardPage() {
             <>
               {metaHealth.data?.numbers.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  No WhatsApp numbers connected yet. Add one in{" "}
+                  {t("dashboard.meta.none")}{" "}
                   <Link to="/settings" className="font-medium text-brand hover:underline">
-                    Settings
+                    {t("dashboard.meta.settings")}
                   </Link>
                   .
                 </p>
@@ -664,37 +705,47 @@ function DashboardPage() {
                     <p className="text-sm font-semibold">
                       {n.label}
                       {n.isDefault && (
-                        <Badge variant="secondary" className="ml-2 text-[10px]">
-                          default
+                        <Badge variant="secondary" className="ms-2 text-[10px]">
+                          {t("dashboard.meta.default")}
                         </Badge>
                       )}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {n.displayPhone ?? "no display number"} · {n.conversations} chats ·{" "}
-                      {n.messages24h} msgs/24h
+                      {n.displayPhone ?? t("dashboard.meta.noDisplay")} ·{" "}
+                      {t("dashboard.meta.counts", {
+                        chats: n.conversations,
+                        messages: n.messages24h,
+                      })}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {!n.active && (
                       <Badge variant="outline" className="text-[10px]">
-                        inactive
+                        {t("dashboard.inactive")}
                       </Badge>
                     )}
                     {n.active && !n.credentialsPresent && (
                       <Badge variant="destructive" className="gap-1 text-[10px]">
-                        <XCircle className="size-3" /> missing credentials
+                        <XCircle className="size-3" /> {t("dashboard.meta.missingCredentials")}
                       </Badge>
                     )}
                     {n.active && n.credentialsPresent && n.apiOk && (
                       <Badge className="gap-1 bg-brand text-[10px] text-brand-foreground">
                         <CheckCircle2 className="size-3" />
-                        Meta connected
-                        {n.qualityRating ? ` · ${n.qualityRating.toLowerCase()} quality` : ""}
+                        {t("dashboard.meta.connected")}
+                        {n.qualityRating
+                          ? ` · ${t("dashboard.meta.quality", {
+                              quality: (() => {
+                                const key = `dashboard.meta.rating.${n.qualityRating.toLowerCase()}`;
+                                return hasMessage(key) ? t(key) : n.qualityRating.toLowerCase();
+                              })(),
+                            })}`
+                          : ""}
                       </Badge>
                     )}
                     {n.active && n.credentialsPresent && !n.apiOk && (
                       <Badge variant="destructive" className="gap-1 text-[10px]">
-                        <XCircle className="size-3" /> Meta unreachable
+                        <XCircle className="size-3" /> {t("dashboard.meta.unreachable")}
                       </Badge>
                     )}
                   </div>
@@ -717,9 +768,9 @@ function DashboardPage() {
       <div className="mt-6">
         <Card>
           <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="text-base">Recent conversations</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.recent.title")}</CardTitle>
             <Link to="/inbox" className="text-xs font-medium text-brand hover:underline">
-              Open inbox
+              {t("dashboard.openInbox")}
             </Link>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -730,10 +781,7 @@ function DashboardPage() {
             ) : (
               <>
                 {data?.recentConversations.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    No conversations yet. Connect WhatsApp in Integrations or embed the website
-                    widget.
-                  </p>
+                  <p className="text-sm text-muted-foreground">{t("dashboard.recent.none")}</p>
                 )}
                 {data?.recentConversations.map((c) => (
                   <div
@@ -746,11 +794,13 @@ function DashboardPage() {
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Badge variant="secondary" className="text-[10px] capitalize">
-                        {c.channel === "web" ? "Website" : "WhatsApp"}
+                        {c.channel === "web"
+                          ? t("dashboard.channel.web")
+                          : t("dashboard.channel.whatsapp")}
                       </Badge>
                       {c.unread > 0 && (
                         <Badge className="bg-brand text-[10px] text-brand-foreground">
-                          {c.unread} new
+                          {t("dashboard.recent.new", { count: c.unread })}
                         </Badge>
                       )}
                       <span className="hidden text-[11px] text-muted-foreground sm:inline">

@@ -151,9 +151,9 @@ function WhatsAppApiPage() {
       <main>
         <section className="relative isolate overflow-hidden">
           <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-            <div className="flas-drift absolute -left-28 -top-28 size-[28rem] rounded-full bg-brand/22 blur-3xl" />
+            <div className="flas-drift absolute -start-28 -top-28 size-[28rem] rounded-full bg-brand/22 blur-3xl" />
             <div
-              className="flas-drift absolute -right-24 top-16 size-[22rem] rounded-full bg-brand/12 blur-3xl"
+              className="flas-drift absolute -end-24 top-16 size-[22rem] rounded-full bg-brand/12 blur-3xl"
               style={{ animationDelay: "-4s" }}
             />
           </div>
@@ -274,7 +274,7 @@ function WhatsAppApiPage() {
                 style={{ ["--reveal-delay" as string]: `${Math.min(i, 5) * 40}ms` }}
                 className="group rounded-2xl border bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40"
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left font-semibold [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-start font-semibold [&::-webkit-details-marker]:hidden">
                   {f.q}
                   <ChevronDown
                     aria-hidden

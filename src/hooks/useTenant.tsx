@@ -13,6 +13,8 @@ export type TenantInfo = {
   currency: string;
   /** IANA zone. Dates a customer sees must be computed in it, not in UTC. */
   timezone: string | null;
+  /** The company's language: the interface default for a teammate who has not picked one. */
+  locale: string | null;
 };
 
 type TenantState = {
@@ -62,7 +64,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     const { data: org } = await supabase
       .from("organizations")
       .select(
-        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency, timezone",
+        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency, timezone, locale",
       )
       .eq("id", profile.tenant_id)
       .maybeSingle();

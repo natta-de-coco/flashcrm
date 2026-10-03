@@ -49,7 +49,9 @@ export function RegionCard() {
   const mutation = useMutation({
     mutationFn: async () => save({ data: { country, currency, locale, timezone } }),
     onSuccess: () => {
-      toast.success("Regional settings saved — amounts, dates and AI replies now follow them.");
+      // It used to promise that AI replies follow the language. They do not:
+      // the chatbot answers in the customer's own language.
+      toast.success("Regional settings saved.");
       void qc.invalidateQueries({ queryKey: ["workspace-region"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -116,7 +118,7 @@ export function RegionCard() {
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label>Language</Label>
+                <Label>Company language</Label>
                 <Select value={locale} onValueChange={setLocale}>
                   <SelectTrigger>
                     <SelectValue />
@@ -129,6 +131,11 @@ export function RegionCard() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  The interface language for teammates who have not chosen their own. Anyone can
+                  change theirs from the language menu. English and Arabic are available; other
+                  languages show English for now.
+                </p>
               </div>
               <div className="grid gap-1.5">
                 <Label>Timezone</Label>

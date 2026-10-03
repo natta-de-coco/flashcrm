@@ -154,7 +154,7 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
               </p>
             ) : null}
 
-            <ScrollArea className="max-h-[52vh] pr-3">
+            <ScrollArea className="max-h-[52vh] pe-3">
               <div className="grid gap-2">
                 {(attention.length > 0 ? attention : data.rows).map((row) => (
                   <HealthRowCard

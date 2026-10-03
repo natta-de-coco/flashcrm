@@ -393,10 +393,10 @@ function SalesPage() {
         actions={
           <>
             <Button variant="outline" onClick={() => startNew("quotation")}>
-              <Plus className="mr-1 h-4 w-4" /> Quotation
+              <Plus className="me-1 h-4 w-4" /> Quotation
             </Button>
             <Button onClick={() => startNew("invoice")}>
-              <Plus className="mr-1 h-4 w-4" /> Invoice
+              <Plus className="me-1 h-4 w-4" /> Invoice
             </Button>
           </>
         }
@@ -447,7 +447,7 @@ function SalesPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="mr-2 text-right">
+                  <div className="me-2 text-end">
                     <div className="font-semibold">
                       {doc.currency} {Number(doc.grand_total).toFixed(2)}
                     </div>
@@ -466,14 +466,14 @@ function SalesPage() {
                     disabled={download.isPending}
                     onClick={() => download.mutate(doc.id)}
                   >
-                    <Download className="mr-1 h-4 w-4" /> PDF
+                    <Download className="me-1 h-4 w-4" /> PDF
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => setSendFor(doc)}>
-                    <Send className="mr-1 h-4 w-4" /> WhatsApp
+                    <Send className="me-1 h-4 w-4" /> WhatsApp
                   </Button>
                   {doc.kind === "quotation" ? (
                     <Button size="sm" onClick={() => convert.mutate(doc.id)}>
-                      <ArrowRight className="mr-1 h-4 w-4" /> To invoice
+                      <ArrowRight className="me-1 h-4 w-4" /> To invoice
                     </Button>
                   ) : Number(doc.balance) > 0 ? (
                     <Button

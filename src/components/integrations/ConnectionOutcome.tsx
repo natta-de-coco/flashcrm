@@ -292,7 +292,7 @@ function TargetPicker({
             <AlertDescription className="space-y-2">
               <p>{targets.data.diagnosis.message}</p>
               {targets.data.diagnosis.steps.length > 0 && (
-                <ol className="list-decimal space-y-1 pl-4 text-xs">
+                <ol className="list-decimal space-y-1 ps-4 text-xs">
                   {targets.data.diagnosis.steps.map((step) => (
                     <li key={step}>{step}</li>
                   ))}
@@ -319,7 +319,7 @@ function TargetPicker({
             aria-pressed={chosen === t.pageId}
             disabled={choose.isPending}
             onClick={() => setChosen(t.pageId)}
-            className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition ${
+            className={`flex w-full items-center gap-3 rounded-lg border p-3 text-start transition ${
               chosen === t.pageId ? "border-primary bg-primary/5" : "hover:bg-muted/50"
             }`}
           >
@@ -361,7 +361,7 @@ function TargetPicker({
             disabled={!chosen || choose.isPending}
             onClick={() => chosen && choose.mutate(chosen)}
           >
-            {choose.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+            {choose.isPending ? <Loader2 className="me-1.5 size-3.5 animate-spin" /> : null}
             Use this account
           </Button>
           <Button size="sm" variant="ghost" onClick={onDismiss}>
@@ -434,7 +434,7 @@ function ConnectedBanner({
               disabled={test.isPending}
               onClick={() => test.mutate()}
             >
-              {test.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+              {test.isPending ? <Loader2 className="me-1.5 size-3.5 animate-spin" /> : null}
               {report ? "Check again" : "Check what works"}
             </Button>
           )}
@@ -551,7 +551,7 @@ function ChannelPicker({
             disabled={!chosen || choose.isPending}
             onClick={() => chosen && choose.mutate(chosen)}
           >
-            {choose.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+            {choose.isPending ? <Loader2 className="me-1.5 size-3.5 animate-spin" /> : null}
             Use this {noun}
           </Button>
           <Button size="sm" variant="ghost" onClick={onDismiss}>

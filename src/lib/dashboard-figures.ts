@@ -91,11 +91,24 @@ export function briefSnapshotNote(input: {
   /** How long after the brief the live figures were last read, in ms. */
   ageMs: number;
 }): string {
-  if (!input.cached) {
+  const kind = briefSnapshotKind(input);
+  if (kind === "fresh") {
     return `Written just now from the same figures as the cards on this page.`;
   }
-  if (input.ageMs >= BRIEF_DIVERGENCE_MS) {
+  if (kind === "diverged") {
     return `Figures as they stood at ${input.generatedAtTime} today. The cards on this page are live and have moved since, so numbers here can differ — press Regenerate for a brief on today's current figures.`;
   }
   return `Figures as they stood at ${input.generatedAtTime} today, reused until tomorrow.`;
+}
+
+/**
+ * Which of the three notes applies, so the screen can say it in the reader's
+ * language while this module keeps the one rule for choosing it.
+ */
+export function briefSnapshotKind(input: {
+  cached: boolean;
+  ageMs: number;
+}): "fresh" | "diverged" | "cached" {
+  if (!input.cached) return "fresh";
+  return input.ageMs >= BRIEF_DIVERGENCE_MS ? "diverged" : "cached";
 }
