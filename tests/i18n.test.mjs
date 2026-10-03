@@ -1,71 +1,100 @@
 // "We need an option to change language." The Settings language field saved a
 // value nothing read, and <html lang="en"> was hard-coded. These pin the
-// translation layer: a language we offer is complete, a missing key falls back
-// to English rather than printing the key, the cookie cannot be tampered into
-// anything else, and the server and the shell honour the direction.
+// translation layer: every language we offer is complete on every screen, a
+// missing key falls back to English rather than printing the key, the cookie
+// cannot be tampered into anything else, and the server and the shell honour
+// the direction.
+//
+// define.ts already makes a missing translation a compile error; these tests
+// check what the compiler cannot -- placeholders, script, collisions.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
-import { runInNewContext } from "node:vm";
-import ts from "typescript";
 
-function loadLib(relative, modules = {}) {
-  const compiled = ts.transpileModule(readFileSync(new URL(relative, import.meta.url), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
-  }).outputText;
-  const exports = {};
-  runInNewContext(compiled, { exports, require: (id) => modules[id] ?? {} });
-  return exports;
-}
+import * as i18n from "../node_modules/.cache/flas-i18n.mjs";
+
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
     .split("\r\n")
     .join("\n");
 
-const { en } = loadLib("../src/lib/i18n/en.ts");
-const { ar } = loadLib("../src/lib/i18n/ar.ts");
-const i18n = loadLib("../src/lib/i18n/index.ts", { "./en": { en }, "./ar": { ar } });
-// Icons are irrelevant to which keys exist.
-const { NAV_SECTIONS, MANAGER_SECTION } = loadLib("../src/lib/navigation.ts", {
-  "lucide-react": new Proxy({}, { get: () => () => null }),
-});
-
+const { MESSAGES, SCREEN_LIST, TRANSLATED_LANGUAGES, NAV_SECTIONS, MANAGER_SECTION } = i18n;
+const en = MESSAGES.en;
 const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
-describe("a language we offer is a finished translation", () => {
-  it("offers only languages that have one", () => {
+describe("every language we offer is a finished translation", () => {
+  it("offers English, Arabic, Malay, Filipino and Swahili", () => {
     assert.deepEqual(
-      [...i18n.UI_LANGUAGES].map((l) => l.code),
-      ["en", "ar"],
+      i18n.UI_LANGUAGES.map((l) => l.code),
+      ["en", "ar", "ms", "fil", "sw"],
     );
   });
 
-  it("translates every English key into Arabic", () => {
-    const missing = Object.keys(en).filter((key) => !(key in ar));
-    assert.deepEqual(missing, [], `untranslated: ${missing.join(", ")}`);
+  it("offers exactly the languages every screen is translated into", () => {
+    assert.deepEqual(
+      i18n.UI_LANGUAGES.map((l) => l.code).filter((c) => c !== "en"),
+      [...TRANSLATED_LANGUAGES],
+    );
   });
 
-  it("has no Arabic key that English does not define", () => {
-    const orphans = Object.keys(ar).filter((key) => !(key in en));
-    assert.deepEqual(orphans, []);
-  });
+  for (const language of TRANSLATED_LANGUAGES) {
+    it(`${language}: every English key, and no key English lacks`, () => {
+      const text = MESSAGES[language];
+      assert.deepEqual(
+        Object.keys(en).filter((k) => !(k in text)),
+        [],
+      );
+      assert.deepEqual(
+        Object.keys(text).filter((k) => !(k in en)),
+        [],
+      );
+    });
 
-  it("keeps every {placeholder} the English text has", () => {
-    for (const key of Object.keys(ar)) {
-      assert.deepEqual(placeholders(ar[key]), placeholders(en[key]), key);
+    it(`${language}: keeps every {placeholder}`, () => {
+      for (const [key, text] of Object.entries(MESSAGES[language])) {
+        assert.deepEqual(placeholders(text), placeholders(en[key]), `${language} ${key}`);
+      }
+    });
+
+    it(`${language}: no empty string`, () => {
+      for (const [key, text] of Object.entries(MESSAGES[language])) {
+        assert.ok(text.trim().length > 0, `${language} ${key}`);
+      }
+    });
+  }
+
+  it("Arabic is written in Arabic script, not copied English", () => {
+    for (const [key, text] of Object.entries(MESSAGES.ar)) {
+      assert.match(text, /[؀-ۿ]/, `${key} has no Arabic letters`);
     }
   });
 
-  it("is written in Arabic, not copied English", () => {
-    const arabic = /[؀-ۿ]/;
-    for (const [key, text] of Object.entries(ar)) {
-      assert.match(text, arabic, `${key} has no Arabic letters`);
+  it("the Latin-script languages are translated, not copied English", () => {
+    // Product words (WhatsApp, Inbox, PDF) can rightly stay English, so this
+    // asks that most strings differ, not all.
+    for (const language of ["ms", "fil", "sw"]) {
+      const keys = Object.keys(en);
+      const same = keys.filter((k) => MESSAGES[language][k] === en[k]).length;
+      assert.ok(
+        same / keys.length < 0.25,
+        `${language}: ${same}/${keys.length} identical to English`,
+      );
     }
   });
 
-  it("marks Arabic as right-to-left", () => {
+  it("no two screens define the same key", () => {
+    const seen = new Map();
+    for (const [index, screen] of SCREEN_LIST.entries()) {
+      for (const key of Object.keys(screen.en)) {
+        assert.ok(!seen.has(key), `${key} is in screens ${seen.get(key)} and ${index}`);
+        seen.set(key, index);
+      }
+    }
+  });
+
+  it("only Arabic is right-to-left", () => {
     assert.equal(i18n.directionOf("ar"), "rtl");
-    assert.equal(i18n.directionOf("en"), "ltr");
+    for (const code of ["en", "ms", "fil", "sw"]) assert.equal(i18n.directionOf(code), "ltr");
   });
 });
 

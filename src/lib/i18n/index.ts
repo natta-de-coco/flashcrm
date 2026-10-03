@@ -7,10 +7,9 @@
 // The choice lives in a cookie rather than localStorage so the server can read
 // it and render the right language and direction on the first paint -- no
 // flash of English, and no hydration mismatch, for an Arabic reader.
-import { ar } from "./ar";
-import { en, type MessageKey } from "./en";
+import { en, MESSAGES, type MessageKey } from "./messages";
 
-export type { MessageKey } from "./en";
+export type { MessageKey } from "./messages";
 
 export type UiLanguage = {
   code: string;
@@ -20,19 +19,23 @@ export type UiLanguage = {
 };
 
 /**
- * Only languages with a translation are offered. Listing all sixteen that the
- * workspace setting knows, fourteen of which would show English, would promise
- * something the product does not do.
+ * Only languages with a full translation are offered (define.ts makes a
+ * missing string a compile error). Listing languages that would show English
+ * would promise something the product does not do.
+ *
+ * Arabic for the Gulf; Malay for Malaysia, Singapore and Brunei; Filipino for
+ * the Philippines; Swahili for Kenya, Tanzania, Uganda and Rwanda.
  */
 export const UI_LANGUAGES: readonly UiLanguage[] = [
   { code: "en", native: "English", rtl: false },
   { code: "ar", native: "العربية", rtl: true },
+  { code: "ms", native: "Bahasa Melayu", rtl: false },
+  { code: "fil", native: "Filipino", rtl: false },
+  { code: "sw", native: "Kiswahili", rtl: false },
 ];
 
 export const DEFAULT_UI_LANGUAGE = "en";
 export const LANGUAGE_COOKIE = "flas_lang";
-
-const MESSAGES: Record<string, Partial<Record<MessageKey, string>>> = { en, ar };
 
 export function isSupportedUiLanguage(code: string | null | undefined): code is string {
   return UI_LANGUAGES.some((l) => l.code === code);
