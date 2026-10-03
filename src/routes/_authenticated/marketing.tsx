@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { audienceBlockedReason, type CampaignAudience } from "@/lib/campaign-audience";
 import { draftCampaignForAudience, getCampaignAudience } from "@/lib/campaign-audience.functions";
+import { getWhatsAppGrowthSegments } from "@/lib/whatsapp-growth.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -197,6 +198,7 @@ function MarketingPage() {
   const [aiDraft, setAiDraft] = useState("");
   const draftWithFlashAi = useServerFn(draftCampaignForAudience);
   const loadAudience = useServerFn(getCampaignAudience);
+  const loadWhatsAppGrowthSegments = useServerFn(getWhatsAppGrowthSegments);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -223,6 +225,10 @@ function MarketingPage() {
   });
   const emailAudience = audience.data?.email ?? null;
   const channelAudience = audience.data?.[aiForm.channel] ?? null;
+  const whatsappGrowth = useQuery({
+    queryKey: ["whatsapp-growth-segments"],
+    queryFn: () => loadWhatsAppGrowthSegments(),
+  });
 
   const sites = useQuery({
     queryKey: ["lead_sites"],
@@ -645,6 +651,41 @@ function MarketingPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
+            <div className="grid gap-2 rounded-lg border bg-muted/30 p-3">
+              <div>
+                <p className="text-sm font-medium">WhatsApp growth opportunities</p>
+                <p className="text-xs text-muted-foreground">
+                  Real CRM activity, filtered to contacts with WhatsApp marketing consent.
+                </p>
+              </div>
+              {whatsappGrowth.isLoading ? (
+                <p className="text-xs text-muted-foreground">Checking conversations…</p>
+              ) : whatsappGrowth.isError ? (
+                <p className="text-xs text-destructive">Could not load WhatsApp opportunity groups.</p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(whatsappGrowth.data ?? []).map((segment) => (
+                    <button
+                      key={segment.id}
+                      type="button"
+                      className="rounded-md border bg-background p-3 text-left transition-colors hover:bg-accent"
+                      onClick={() => {
+                        setAiForm((current) => ({
+                          ...current,
+                          audience: segment.audienceHint,
+                          channel: "whatsapp",
+                        }));
+                        setAiDraft("");
+                      }}
+                    >
+                      <span className="text-lg font-semibold">{segment.count}</span>
+                      <span className="ml-2 text-sm font-medium">{segment.title}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">{segment.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="grid gap-1.5">
               <Label>Start with a growth idea</Label>
               <div className="flex flex-wrap gap-2">
