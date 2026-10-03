@@ -75,9 +75,9 @@
     "@supabase/supabase-js": "^2.112.3",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.101.1",
-    "@tanstack/react-router": "1.170.18",
-    "@tanstack/react-start": "1.168.32",
-    "@tanstack/router-plugin": "1.168.23",
+    "@tanstack/react-router": "1.170.41",
+    "@tanstack/react-start": "1.168.60",
+    "@tanstack/router-plugin": "1.168.42",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -87,6 +87,7 @@
     "isomorphic-dompurify": "^2.36.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.575.0",
+    "nitro": "3.0.260603-beta",
     "pdf-lib": "^1.17.1",
     "qrcode-generator": "^2.0.4",
     "react": "^19.2.0",
@@ -102,8 +103,7 @@
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
     "vite-tsconfig-paths": "^6.0.2",
-    "zod": "^3.24.2",
-    "nitro": "3.0.260603-beta"
+    "zod": "^3.24.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",

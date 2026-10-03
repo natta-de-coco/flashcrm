@@ -14,3 +14,5 @@
 - [ ] Apply pending OAuth helper grants migration so social login/health permission errors stop.
 - [ ] Make social accounts easier to connect (review ConnectBusiness UX).
 - [ ] Connect real WhatsApp access token, phone number ID and app secret — pending user entering them in Secrets.
+
+- [ ] Chatbot setup (greeting + instructions) for all 5 companies — waiting on each company's real business details
