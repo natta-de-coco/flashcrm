@@ -26,6 +26,7 @@ import { parseContactImport, validRows } from "@/lib/contact-import";
 import { formatStageMoney, stageTotal } from "@/lib/contacts-view";
 import { STAGES, type Contact, type LeadStage } from "@/lib/crm-types";
 import { useTenant } from "@/hooks/useTenant";
+import { useI18n } from "@/hooks/useI18n";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -66,6 +67,7 @@ const E164 = /^\+[1-9][0-9]{7,14}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function ContactsPage() {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const { tenant } = useTenant();
   const [search, setSearch] = useState("");
@@ -96,16 +98,16 @@ function ContactsPage() {
   });
 
   const contactProblem: string | null = (() => {
-    if (form.name.trim().length < 2) return "Enter a name.";
+    if (form.name.trim().length < 2) return t("contacts.problem.name");
     const phone = form.phone.trim();
     const email = form.email.trim();
-    if (!phone && !email) return "Add a WhatsApp number or an email.";
+    if (!phone && !email) return t("contacts.problem.reach");
     if (phone && !E164.test(phone)) {
-      return "Use international E.164 format, for example +971501234567.";
+      return t("contacts.problem.phone");
     }
-    if (email && !EMAIL.test(email)) return "That email does not look right.";
+    if (email && !EMAIL.test(email)) return t("contacts.problem.email");
     if (form.value.trim() && !(Number(form.value) >= 0)) {
-      return "Deal value must be a positive number.";
+      return t("contacts.problem.value");
     }
     return null;
   })();
@@ -127,7 +129,7 @@ function ContactsPage() {
     onSuccess: () => {
       setForm(EMPTY);
       setOpen(false);
-      toast.success("Contact added");
+      toast.success(t("contacts.added"));
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -154,7 +156,7 @@ function ContactsPage() {
       }).catch(() => undefined);
     },
     onSuccess: () => {
-      toast.success("Consent recorded — you can message this contact now.");
+      toast.success(t("contacts.consentRecorded"));
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -191,7 +193,7 @@ function ContactsPage() {
     void auditEvent({
       data: { action: "contacts.export", entityType: "contact", details: { rows: rows.length } },
     }).catch(() => {});
-    toast.success("Contacts CSV downloaded");
+    toast.success(t("contacts.exported"));
   }
 
   const bulkImport = useMutation({
@@ -201,7 +203,7 @@ function ContactsPage() {
         phone: r.phone,
         email: r.email,
       }));
-      if (rows.length === 0) throw new Error("No valid rows to import — fix the errors below");
+      if (rows.length === 0) throw new Error(t("contacts.import.none"));
 
       const phones = rows.map((r) => r.phone).filter(Boolean) as string[];
       const { data: existing } = phones.length
@@ -238,8 +240,10 @@ function ContactsPage() {
       setImportText("");
       setImportOpen(false);
       toast.success(
-        `Imported ${result.added} contact${result.added === 1 ? "" : "s"}` +
-          (result.skipped ? ` · ${result.skipped} already existed` : ""),
+        (result.added === 1
+          ? t("contacts.import.doneOne")
+          : t("contacts.import.doneMany", { count: result.added })) +
+          (result.skipped ? t("contacts.import.skipped", { count: result.skipped }) : ""),
       );
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
@@ -261,17 +265,17 @@ function ContactsPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Contacts & leads</h1>
-          <p className="text-sm text-muted-foreground">
-            Every WhatsApp and website contact, organised by pipeline stage.
-          </p>
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+            {t("contacts.title")}
+          </h1>
+          <p className="text-sm text-muted-foreground">{t("contacts.subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="w-56 pl-9"
-              placeholder="Search contacts"
+              placeholder={t("contacts.search")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -281,27 +285,26 @@ function ContactsPage() {
             onClick={exportContacts}
             disabled={(contacts.data ?? []).length === 0}
           >
-            <Download className="size-4" /> Export CSV
+            <Download className="size-4" /> {t("contacts.export")}
           </Button>
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
-                <Upload className="size-4" /> Import numbers
+                <Upload className="size-4" /> {t("contacts.import.button")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Import leads & numbers</DialogTitle>
+                <DialogTitle>{t("contacts.import.title")}</DialogTitle>
               </DialogHeader>
               <p className="text-sm text-muted-foreground">
-                Paste one contact per line — a phone number alone, or{" "}
-                <code className="rounded bg-muted px-1">name, phone, email</code>. Duplicates are
-                skipped automatically and every import is tagged{" "}
-                <code className="rounded bg-muted px-1">imported</code> so you can filter the
-                records later.
+                {tr("contacts.import.help", {
+                  format: <code className="rounded bg-muted px-1">name, phone, email</code>,
+                  tag: <code className="rounded bg-muted px-1">imported</code>,
+                })}
               </p>
               <div className="grid gap-1.5">
-                <Label htmlFor="csv_file">…or upload a CSV file</Label>
+                <Label htmlFor="csv_file">{t("contacts.import.csv")}</Label>
                 <Input
                   id="csv_file"
                   type="file"
@@ -322,10 +325,12 @@ function ContactsPage() {
               {previewRows.length > 0 && (
                 <div className="rounded-lg border">
                   <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2 text-xs font-medium">
-                    <span>Preview — check rows before importing</span>
+                    <span>{t("contacts.import.preview")}</span>
                     <span>
-                      {importableRows.length} valid · {previewRows.length - importableRows.length}{" "}
-                      with errors
+                      {t("contacts.import.counts", {
+                        valid: importableRows.length,
+                        invalid: previewRows.length - importableRows.length,
+                      })}
                     </span>
                   </div>
                   <div className="max-h-56 overflow-y-auto">
@@ -366,10 +371,9 @@ function ContactsPage() {
                   onChange={(e) => setImportConsent(e.target.checked)}
                 />
                 <span className="text-sm">
-                  <span className="font-medium">Everyone in this list agreed to be contacted.</span>
+                  <span className="font-medium">{t("contacts.import.consentTitle")}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">
-                    Leave unticked if you're not sure — you can record consent per contact later.
-                    Without it, these contacts can be stored but not messaged.
+                    {t("contacts.import.consentHelp")}
                   </span>
                 </span>
               </label>
@@ -379,8 +383,11 @@ function ContactsPage() {
                   onClick={() => bulkImport.mutate()}
                   disabled={importableRows.length === 0 || bulkImport.isPending}
                 >
-                  Import {importableRows.length > 0 ? `${importableRows.length} valid ` : ""}
-                  contact{importableRows.length === 1 ? "" : "s"}
+                  {importableRows.length === 0
+                    ? t("contacts.import.submitNone")
+                    : importableRows.length === 1
+                      ? t("contacts.import.submitOne")
+                      : t("contacts.import.submitMany", { count: importableRows.length })}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -388,26 +395,26 @@ function ContactsPage() {
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button>
-                <Plus className="size-4" /> New contact
+                <Plus className="size-4" /> {t("contacts.new")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>New contact</DialogTitle>
+                <DialogTitle>{t("contacts.new")}</DialogTitle>
               </DialogHeader>
               <div className="grid gap-3">
                 {(
                   [
-                    ["name", "Name", "text", true],
-                    ["phone", "WhatsApp number", "tel", false],
-                    ["email", "Email", "email", false],
-                    ["company", "Company", "text", false],
-                    ["value", "Deal value", "number", false],
+                    ["name", "contacts.field.name", "text", true],
+                    ["phone", "contacts.field.phone", "tel", false],
+                    ["email", "contacts.field.email", "email", false],
+                    ["company", "contacts.field.company", "text", false],
+                    ["value", "contacts.field.value", "number", false],
                   ] as const
                 ).map(([key, label, type, required]) => (
                   <div key={key} className="grid gap-1.5">
                     <Label htmlFor={key}>
-                      {label}
+                      {t(label)}
                       {required && <span className="ml-0.5 text-destructive">*</span>}
                     </Label>
                     <Input
@@ -428,13 +435,13 @@ function ContactsPage() {
                     />
                     {key === "phone" && (
                       <p id="phone-hint" className="text-xs text-muted-foreground">
-                        Use international E.164 format with country code, for example +971501234567.
+                        {t("contacts.phoneHint")}
                       </p>
                     )}
                   </div>
                 ))}
                 <div className="grid gap-1.5">
-                  <Label htmlFor="notes">Notes</Label>
+                  <Label htmlFor="notes">{t("contacts.field.notes")}</Label>
                   <Textarea
                     id="notes"
                     value={form.notes}
@@ -453,10 +460,9 @@ function ContactsPage() {
                     onChange={(e) => setForm({ ...form, consent: e.target.checked })}
                   />
                   <span className="text-sm">
-                    <span className="font-medium">This person agreed to be contacted.</span>
+                    <span className="font-medium">{t("contacts.consentTitle")}</span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
-                      Required before you can message them. Tick only if they actually opted in —
-                      the date is recorded as your proof of consent.
+                      {t("contacts.consentHelp")}
                     </span>
                   </span>
                 </label>
@@ -469,7 +475,7 @@ function ContactsPage() {
                   onClick={() => create.mutate()}
                   disabled={create.isPending || contactProblem !== null}
                 >
-                  Save contact
+                  {t("contacts.save")}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -494,7 +500,7 @@ function ContactsPage() {
           return (
             <section key={stage.id} className="rounded-xl bg-muted/50 p-3">
               <div className="mb-3 flex items-center justify-between gap-2 px-1">
-                <h2 className="text-sm font-semibold">{stage.label}</h2>
+                <h2 className="text-sm font-semibold">{t(`stage.${stage.id}`)}</h2>
                 <div className="flex items-center gap-2">
                   {rows.length > 0 && (
                     <span className="text-xs font-semibold text-brand">
@@ -508,7 +514,7 @@ function ContactsPage() {
               </div>
               <div className="space-y-2">
                 {rows.length === 0 && (
-                  <p className="px-1 text-xs text-muted-foreground">No contacts here.</p>
+                  <p className="px-1 text-xs text-muted-foreground">{t("contacts.emptyStage")}</p>
                 )}
                 {rows.map((c) => (
                   <Card key={c.id}>
@@ -529,7 +535,7 @@ function ContactsPage() {
                           {c.name}
                         </button>
                         <p className="text-xs text-muted-foreground">
-                          {c.phone ?? c.email ?? "No contact details"}
+                          {c.phone ?? c.email ?? t("contacts.noDetails")}
                           {c.company ? ` · ${c.company}` : ""}
                         </p>
                         <button
@@ -537,11 +543,11 @@ function ContactsPage() {
                           onClick={() => setDetailFor({ id: c.id, name: c.name })}
                           className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                         >
-                          Open contact
+                          {t("contacts.open")}
                         </button>
                         {c.consent_given ? (
                           <Badge variant="outline" className="mt-1 text-[10px]">
-                            Consented
+                            {t("contacts.consented")}
                             {c.consent_at
                               ? ` · ${new Date(c.consent_at).toLocaleDateString()}`
                               : ""}
@@ -552,9 +558,9 @@ function ContactsPage() {
                             onClick={() => grantConsent.mutate(c.id)}
                             disabled={grantConsent.isPending}
                             className="mt-1 inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
-                            title="You can't message this contact until they've agreed to be contacted."
+                            title={t("contacts.needsConsentTitle")}
                           >
-                            Can't message — record consent
+                            {t("contacts.needsConsent")}
                           </button>
                         )}
                       </div>
@@ -575,7 +581,7 @@ function ContactsPage() {
                           <SelectContent>
                             {STAGES.map((s) => (
                               <SelectItem key={s.id} value={s.id}>
-                                {s.label}
+                                {t(`stage.${s.id}`)}
                               </SelectItem>
                             ))}
                           </SelectContent>

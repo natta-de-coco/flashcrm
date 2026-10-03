@@ -2,11 +2,14 @@
 // and list it here. The compiler then enforces that it carries every language.
 import { TRANSLATED_LANGUAGES } from "./define";
 import auth from "./screens/auth";
+import common from "./screens/common";
+import contactCard from "./screens/contact-card";
+import contacts from "./screens/contacts";
 import dashboard from "./screens/dashboard";
 import nav from "./screens/nav";
 import shell from "./screens/shell";
 
-const SCREENS = [shell, nav, auth, dashboard] as const;
+const SCREENS = [shell, nav, auth, common, dashboard, contacts, contactCard] as const;
 
 type KeysOf<T> = T extends unknown ? keyof T : never;
 

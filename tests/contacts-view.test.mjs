@@ -235,7 +235,8 @@ describe("H13 — a contact opens into a detail view", () => {
   });
 
   it("shows stage, deal value and tags", () => {
-    assert.match(dialog, /STAGES\.find\(\(s\) => s\.id === contact\?\.stage\)/);
+    // The stage name is now the reader's language, read by the stage's id.
+    assert.match(dialog, /t\(`stage\.\$\{contact\.stage\}`\)/);
     assert.match(
       dialog,
       /formatStageMoney\(Number\(contact\?\.value \?\? 0\), tenant\?\.currency\)/,
@@ -265,6 +266,12 @@ describe("H13 — a contact opens into a detail view", () => {
   });
 
   it("says so when there is no thread yet, rather than offering a dead button", () => {
-    assert.match(dialog, /No conversation yet/);
+    // Said through a translation key; the English is still that sentence.
+    assert.match(dialog, /t\("contactCard\.noConversationYet"\)/);
+    const messages = fs.readFileSync(
+      new URL("../src/lib/i18n/screens/contact-card.ts", import.meta.url),
+      "utf8",
+    );
+    assert.match(messages, /"contactCard\.noConversationYet":\s*"No conversation yet/);
   });
 });

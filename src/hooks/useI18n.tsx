@@ -12,19 +12,34 @@ import {
   type MessageKey,
 } from "@/lib/i18n";
 import { useRouter } from "@tanstack/react-router";
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useMemo, type ReactNode } from "react";
 
 type I18n = {
   language: string;
   dir: "ltr" | "rtl";
   t: (key: MessageKey, values?: Record<string, string | number>) => string;
+  /**
+   * A sentence with elements inside it -- a link, a code sample -- as
+   * {placeholders}. Word order differs between languages, so the element goes
+   * where the translation puts it rather than where the English had it.
+   */
+  tr: (key: MessageKey, nodes: Record<string, ReactNode>) => ReactNode;
   setLanguage: (code: string) => void;
 };
+
+/** Splits translated text on {name} and puts each node where its name is. */
+export function interleave(text: string, nodes: Record<string, ReactNode>): ReactNode[] {
+  return text.split(/(\{\w+\})/g).map((part, index) => {
+    const name = /^\{(\w+)\}$/.exec(part)?.[1];
+    return name && name in nodes ? <Fragment key={index}>{nodes[name]}</Fragment> : part;
+  });
+}
 
 const I18nContext = createContext<I18n>({
   language: DEFAULT_UI_LANGUAGE,
   dir: "ltr",
   t: (key, values) => translate(DEFAULT_UI_LANGUAGE, key, values),
+  tr: (key, nodes) => interleave(translate(DEFAULT_UI_LANGUAGE, key), nodes),
   setLanguage: () => {},
 });
 
@@ -35,6 +50,7 @@ export function I18nProvider({ language, children }: { language: string; childre
       language,
       dir: directionOf(language),
       t: (key, values) => translate(language, key, values),
+      tr: (key, nodes) => interleave(translate(language, key), nodes),
       setLanguage: (code) => {
         document.cookie = languageCookie(code);
         // Re-reads the cookie in the root route, which re-renders <html> with
