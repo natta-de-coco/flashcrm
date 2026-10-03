@@ -42,18 +42,21 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
-  console.error(error);
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
+  // Router boundaries intentionally accept anything thrown by a route. Keep
+  // telemetry typed and useful even when a non-Error value was thrown.
+  const reportedError = error instanceof Error ? error : new Error(String(error));
+  console.error(reportedError);
   const router = useRouter();
-  const staleChunk = isStaleChunkError(error);
+  const staleChunk = isStaleChunkError(reportedError);
   useEffect(() => {
     // A newer version was published while this tab was open: reload once to
     // fetch it. Only if that already happened moments ago is it reported, as
     // the file is then genuinely missing.
     if (staleChunk && reloadForStaleChunk()) return;
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-    captureError(error, { kind: "error_boundary" });
-  }, [error, staleChunk]);
+    reportLovableError(reportedError, { boundary: "tanstack_root_error_component" });
+    captureError(reportedError, { kind: "error_boundary" });
+  }, [reportedError, staleChunk]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
