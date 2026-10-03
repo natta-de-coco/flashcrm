@@ -42,9 +42,9 @@ function NotFoundComponent() {
   );
 }
 
+// TanStack Router types a route error as `unknown` since 1.170.41: anything can
+// be thrown, not only an Error. Normalize it before passing it to error helpers.
 function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
-  // Router boundaries intentionally accept anything thrown by a route. Keep
-  // telemetry typed and useful even when a non-Error value was thrown.
   const reportedError = error instanceof Error ? error : new Error(String(error));
   console.error(reportedError);
   const router = useRouter();
