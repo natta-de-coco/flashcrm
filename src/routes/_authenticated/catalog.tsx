@@ -46,13 +46,44 @@ type Product = {
   created_at: string;
 };
 
+/** The solution category stored in a product's free-form specs, if any. */
+function productCategory(product: Product): string | null {
+  const value = product.specs["category"];
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * The page a product was imported from, only when it is an ordinary web
+ * address. specs are free-form, and a stored `javascript:` URL would run in
+ * the admin's session when the link is clicked.
+ */
+function productSourceUrl(product: Product): string | null {
+  const value = product.specs["source_url"];
+  return typeof value === "string" && /^https?:\/\//i.test(value) ? value : null;
+}
+
 const CATALOG_CATEGORIES = [
-  "CCTV & Surveillance", "Security Scanners", "Cash Counting Machines", "Walkie-Talkies",
-  "Access Control & Attendance", "POS & Barcode Systems", "Networking & IT",
-  "Gates & Vehicle Security", "PBX & Intercom", "Alarm, Fire & Public Address",
+  "CCTV & Surveillance",
+  "Security Scanners",
+  "Cash Counting Machines",
+  "Walkie-Talkies",
+  "Access Control & Attendance",
+  "POS & Barcode Systems",
+  "Networking & IT",
+  "Gates & Vehicle Security",
+  "PBX & Intercom",
+  "Alarm, Fire & Public Address",
 ] as const;
 
-const emptyForm = { title: "", sku: "", price: "", description: "", image: "", category: "", sourceUrl: "" };
+const emptyForm = {
+  title: "",
+  sku: "",
+  price: "",
+  description: "",
+  image: "",
+  category: "",
+  sourceUrl: "",
+};
 
 function CatalogPage() {
   const qc = useQueryClient();
@@ -100,7 +131,7 @@ function CatalogPage() {
     onError: (error: Error) => toast.error(error.message),
   });
   const visibleProducts = products.filter(
-    (product) => categoryFilter === "all" || product.specs.category === categoryFilter,
+    (product) => categoryFilter === "all" || productCategory(product) === categoryFilter,
   );
 
   const removeProduct = useMutation({
@@ -132,13 +163,24 @@ function CatalogPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button size="sm" variant={categoryFilter === "all" ? "default" : "outline"} onClick={() => setCategoryFilter("all")}>
+          <Button
+            size="sm"
+            variant={categoryFilter === "all" ? "default" : "outline"}
+            onClick={() => setCategoryFilter("all")}
+          >
             All ({products.length})
           </Button>
           {CATALOG_CATEGORIES.map((category) => {
-            const count = products.filter((product) => product.specs.category === category).length;
+            const count = products.filter(
+              (product) => productCategory(product) === category,
+            ).length;
             return (
-              <Button key={category} size="sm" variant={categoryFilter === category ? "default" : "outline"} onClick={() => setCategoryFilter(category)}>
+              <Button
+                key={category}
+                size="sm"
+                variant={categoryFilter === category ? "default" : "outline"}
+                onClick={() => setCategoryFilter(category)}
+              >
                 {category} ({count})
               </Button>
             );
@@ -187,9 +229,18 @@ function CatalogPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="p-category">Category</Label>
-              <select id="p-category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="h-9 w-full rounded-md border bg-background px-3 text-sm">
+              <select
+                id="p-category"
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              >
                 <option value="">Choose a category</option>
-                {CATALOG_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+                {CATALOG_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-1.5">
@@ -213,8 +264,16 @@ function CatalogPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="p-source">Website source page</Label>
-              <Input id="p-source" value={form.sourceUrl} onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })} placeholder="https://your-site.com/product/..." />
-              <p className="text-xs text-muted-foreground">Optional. Save the original product page so the team can verify specifications before quoting.</p>
+              <Input
+                id="p-source"
+                value={form.sourceUrl}
+                onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
+                placeholder="https://your-site.com/product/..."
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional. Save the original product page so the team can verify specifications
+                before quoting.
+              </p>
             </div>
             <Button
               className="w-full gap-2"
@@ -233,7 +292,10 @@ function CatalogPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Catalog</CardTitle>
-            <CardDescription>{visibleProducts.length} product(s){categoryFilter !== "all" ? ` in ${categoryFilter}` : ""}</CardDescription>
+            <CardDescription>
+              {visibleProducts.length} product(s)
+              {categoryFilter !== "all" ? ` in ${categoryFilter}` : ""}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoading && <p className="text-sm text-muted-foreground">Loading catalog…</p>}
@@ -263,7 +325,9 @@ function CatalogPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{product.title}</p>
                     {product.sku && <Badge variant="outline">{product.sku}</Badge>}
-                    {typeof product.specs.category === "string" && <Badge variant="outline">{product.specs.category}</Badge>}
+                    {productCategory(product) && (
+                      <Badge variant="outline">{productCategory(product)}</Badge>
+                    )}
                     {product.price !== null && (
                       <Badge variant="secondary">
                         {formatMoney(product.price, tenant?.currency ?? "AED")}
@@ -275,8 +339,13 @@ function CatalogPage() {
                       {product.description}
                     </p>
                   )}
-                  {typeof product.specs.source_url === "string" && (
-                    <a href={product.specs.source_url} target="_blank" rel="noreferrer" className="mt-1 block truncate text-xs text-primary underline">
+                  {productSourceUrl(product) && (
+                    <a
+                      href={productSourceUrl(product) ?? undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 block truncate text-xs text-primary underline"
+                    >
                       View source page
                     </a>
                   )}

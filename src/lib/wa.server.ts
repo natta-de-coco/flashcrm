@@ -651,7 +651,9 @@ export async function storeOutbound(
    * customer had received it.
    */
   status: "sending" | "sent" | "failed" = "sent",
-): Promise<string | null> {
+  // Never null: a failed insert throws, so a caller always has a row to
+  // complete after the provider answers.
+): Promise<string> {
   const { data, error } = await supabaseAdmin
     .from("messages")
     .insert({
