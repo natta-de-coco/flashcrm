@@ -42,7 +42,9 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+// TanStack Router types a route error as `unknown` since 1.170.41: anything can
+// be thrown, not only an Error. Every helper below already accepts `unknown`.
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   const staleChunk = isStaleChunkError(error);
