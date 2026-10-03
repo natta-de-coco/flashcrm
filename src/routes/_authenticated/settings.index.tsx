@@ -4,6 +4,7 @@ import { AuditLogCard } from "@/components/settings/AuditLogCard";
 import { DataPrivacyCard } from "@/components/settings/DataPrivacyCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
 import { TeamCard } from "@/components/settings/TeamCard";
+import { InvoiceBrandingCard } from "@/components/settings/InvoiceBrandingCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -49,6 +50,8 @@ function SettingsPage() {
         <RegionCard />
 
         <BillingCard />
+
+        {isAdmin && <InvoiceBrandingCard />}
 
         {isAdmin && <AuditLogCard />}
 
