@@ -15,7 +15,7 @@ const allowed = {
   consentGiven: true,
   suppressed: false,
   templateApproved: true,
-  marketingMessagesInLast7Days: 0,
+  marketingMessagesInLast3Days: 0,
   hasKnownOptInSource: true,
 };
 
@@ -25,5 +25,5 @@ test("WhatsApp marketing rejects every unsafe recipient state", () => {
   assert.equal(whatsappMarketingBlockReason({ ...allowed, consentGiven: false }), "consent_missing");
   assert.equal(whatsappMarketingBlockReason({ ...allowed, hasKnownOptInSource: false }), "opt_in_evidence_missing");
   assert.equal(whatsappMarketingBlockReason({ ...allowed, suppressed: true }), "unsubscribed");
-  assert.equal(whatsappMarketingBlockReason({ ...allowed, marketingMessagesInLast7Days: 1 }), "frequency_cap");
+  assert.equal(whatsappMarketingBlockReason({ ...allowed, marketingMessagesInLast3Days: 1 }), "frequency_cap");
 });

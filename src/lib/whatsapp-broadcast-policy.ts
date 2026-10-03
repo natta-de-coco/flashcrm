@@ -7,7 +7,7 @@ export type WhatsAppMarketingCandidate = {
   consentGiven: boolean | null;
   suppressed: boolean;
   templateApproved: boolean;
-  marketingMessagesInLast7Days: number;
+  marketingMessagesInLast3Days: number;
   hasKnownOptInSource: boolean;
 };
 
@@ -24,17 +24,17 @@ export type WhatsAppMarketingBlockReason =
  * through marketing broadcasts. Transactional/support messages use their own
  * consent and 24-hour-window checks and are not counted here.
  */
-export const DEFAULT_MARKETING_MESSAGES_PER_7_DAYS = 1;
+export const DEFAULT_MARKETING_MESSAGES_PER_3_DAYS = 1;
 
 export function whatsappMarketingBlockReason(
   candidate: WhatsAppMarketingCandidate,
-  maxMessagesPer7Days = DEFAULT_MARKETING_MESSAGES_PER_7_DAYS,
+  maxMessagesPer3Days = DEFAULT_MARKETING_MESSAGES_PER_3_DAYS,
 ): WhatsAppMarketingBlockReason | null {
   if (!candidate.templateApproved) return "template_not_approved";
   if (candidate.consentGiven !== true) return "consent_missing";
   if (!candidate.hasKnownOptInSource) return "opt_in_evidence_missing";
   if (candidate.suppressed) return "unsubscribed";
-  if (candidate.marketingMessagesInLast7Days >= maxMessagesPer7Days) return "frequency_cap";
+  if (candidate.marketingMessagesInLast3Days >= maxMessagesPer3Days) return "frequency_cap";
   return null;
 }
 
@@ -43,5 +43,5 @@ export const WHATSAPP_MARKETING_BLOCK_COPY: Record<WhatsAppMarketingBlockReason,
   consent_missing: "This person has no recorded WhatsApp marketing opt-in.",
   opt_in_evidence_missing: "Record where and when this person agreed to receive WhatsApp marketing first.",
   unsubscribed: "This person opted out of WhatsApp marketing and is suppressed.",
-  frequency_cap: "This person already received a WhatsApp marketing message in the last 7 days.",
+  frequency_cap: "This person already received a WhatsApp marketing message in the last 3 days.",
 };
