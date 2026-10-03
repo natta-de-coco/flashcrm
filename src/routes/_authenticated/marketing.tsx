@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { audienceBlockedReason, type CampaignAudience } from "@/lib/campaign-audience";
 import { draftCampaignForAudience, getCampaignAudience } from "@/lib/campaign-audience.functions";
+import { getWhatsAppGrowthSegments } from "@/lib/whatsapp-growth.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -69,6 +70,29 @@ const MATCH_FIELDS = [
   { id: "platform", label: "Platform", hint: "wordpress, shopify or other" },
   { id: "source", label: "Source URL contains", hint: "e.g. /wholesale or dubai" },
   { id: "email_domain", label: "Email domain", hint: "e.g. bigcompany.com" },
+] as const;
+
+const AI_CAMPAIGN_STARTERS = [
+  {
+    title: "New product launch",
+    goal: "Introduce our new product with a clear benefit and an easy next step.",
+    audience: "Opted-in past customers and warm leads",
+  },
+  {
+    title: "Bring back quiet leads",
+    goal: "Re-engage opted-in leads who have been quiet for at least 7 days with a helpful, low-pressure reason to reply.",
+    audience: "Opted-in leads who have not replied recently",
+  },
+  {
+    title: "Follow up after an ad",
+    goal: "Follow up with opted-in people who contacted us from an ad or website and invite them to continue the conversation.",
+    audience: "Opted-in ad and website-chat leads",
+  },
+  {
+    title: "Reward active customers",
+    goal: "Thank recent customers and offer a relevant next product, service, or referral reason.",
+    audience: "Opted-in recent customers",
+  },
 ] as const;
 
 type Site = {
@@ -174,6 +198,7 @@ function MarketingPage() {
   const [aiDraft, setAiDraft] = useState("");
   const draftWithFlashAi = useServerFn(draftCampaignForAudience);
   const loadAudience = useServerFn(getCampaignAudience);
+  const loadWhatsAppGrowthSegments = useServerFn(getWhatsAppGrowthSegments);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -200,6 +225,10 @@ function MarketingPage() {
   });
   const emailAudience = audience.data?.email ?? null;
   const channelAudience = audience.data?.[aiForm.channel] ?? null;
+  const whatsappGrowth = useQuery({
+    queryKey: ["whatsapp-growth-segments"],
+    queryFn: () => loadWhatsAppGrowthSegments(),
+  });
 
   const sites = useQuery({
     queryKey: ["lead_sites"],
@@ -617,11 +646,78 @@ function MarketingPage() {
             </CardTitle>
             <CardDescription>
               Tell Flas AI your goal — it studies your business profile and your consented audience
-              (contacts and website leads alike), then drafts a compliant, ready-to-send message.
-              Review it, then drop it into a campaign below.
+              (contacts and website leads alike), then drafts a policy-safe message. It never sends
+              a campaign by itself: you review the audience, template, and final text first.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
+            <div className="grid gap-2 rounded-lg border bg-muted/30 p-3">
+              <div>
+                <p className="text-sm font-medium">WhatsApp growth opportunities</p>
+                <p className="text-xs text-muted-foreground">
+                  Real CRM activity, filtered to contacts with WhatsApp marketing consent.
+                </p>
+              </div>
+              {whatsappGrowth.isLoading ? (
+                <p className="text-xs text-muted-foreground">Checking conversations…</p>
+              ) : whatsappGrowth.isError ? (
+                <p className="text-xs text-destructive">
+                  Could not load WhatsApp opportunity groups.
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(whatsappGrowth.data ?? []).map((segment) => (
+                    <button
+                      key={segment.id}
+                      type="button"
+                      className="rounded-md border bg-background p-3 text-left transition-colors hover:bg-accent"
+                      onClick={() => {
+                        setAiForm((current) => ({
+                          ...current,
+                          audience: segment.audienceHint,
+                          channel: "whatsapp",
+                        }));
+                        setAiDraft("");
+                      }}
+                    >
+                      <span className="text-lg font-semibold">{segment.count}</span>
+                      <span className="ml-2 text-sm font-medium">{segment.title}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {segment.description}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="grid gap-1.5">
+              <Label>Start with a growth idea</Label>
+              <div className="flex flex-wrap gap-2">
+                {AI_CAMPAIGN_STARTERS.map((starter) => (
+                  <Button
+                    key={starter.title}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setAiForm((current) => ({
+                        ...current,
+                        goal: starter.goal,
+                        audience: starter.audience,
+                        channel: "whatsapp",
+                      }));
+                      setAiDraft("");
+                    }}
+                  >
+                    {starter.title}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These create a draft only. FLAS checks consent, opt-outs, template approval, and
+                campaign frequency before anyone can be selected.
+              </p>
+            </div>
             <div className="grid gap-1.5">
               <Label htmlFor="ai_goal">Campaign goal</Label>
               <Textarea
@@ -696,7 +792,7 @@ function MarketingPage() {
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Draft with Flas AI
+                Draft with Flas AI (does not send)
               </Button>
             </div>
             {aiDraft && (
@@ -723,7 +819,8 @@ function MarketingPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Campaigns only go to people whose consent is recorded — contacts and website leads
-                  alike — and Flas AI already includes the required opt-out line.
+                  alike. Pasted or imported numbers stay pending until their WhatsApp opt-in is
+                  recorded.
                 </p>
               </div>
             )}

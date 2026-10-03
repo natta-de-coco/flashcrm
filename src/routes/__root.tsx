@@ -43,19 +43,20 @@ function NotFoundComponent() {
 }
 
 // TanStack Router types a route error as `unknown` since 1.170.41: anything can
-// be thrown, not only an Error. Every helper below already accepts `unknown`.
+// be thrown, not only an Error. Normalize it before passing it to error helpers.
 function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
-  console.error(error);
+  const reportedError = error instanceof Error ? error : new Error(String(error));
+  console.error(reportedError);
   const router = useRouter();
-  const staleChunk = isStaleChunkError(error);
+  const staleChunk = isStaleChunkError(reportedError);
   useEffect(() => {
     // A newer version was published while this tab was open: reload once to
     // fetch it. Only if that already happened moments ago is it reported, as
     // the file is then genuinely missing.
     if (staleChunk && reloadForStaleChunk()) return;
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-    captureError(error, { kind: "error_boundary" });
-  }, [error, staleChunk]);
+    reportLovableError(reportedError, { boundary: "tanstack_root_error_component" });
+    captureError(reportedError, { kind: "error_boundary" });
+  }, [reportedError, staleChunk]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
