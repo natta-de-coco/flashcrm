@@ -227,3 +227,26 @@ describe("the migration that closes the escalation", () => {
     assert.match(sql, /ORDER OF DEPLOYMENT/);
   });
 });
+
+describe("connecting a channel is a company-admin action, enforced on the server", () => {
+  // A hidden button is not an authorization control: startConnect is a server
+  // function any signed-in staff member can call directly, and connecting a
+  // Facebook Page or Google account changes the whole workspace.
+  const server = read("src/lib/connections.functions.ts");
+  const startConnect = server.slice(
+    server.indexOf("export const startConnect"),
+    server.indexOf("export const getConnectReadiness"),
+  );
+
+  it("reads the caller's role, not just their workspace", () => {
+    assert.match(startConnect, /\.select\("tenant_id, staff_role"\)/);
+  });
+
+  it("refuses anyone who is not a company or super admin before starting OAuth", () => {
+    const check = startConnect.indexOf('["company_admin", "super_admin"].includes');
+    const start = startConnect.indexOf("startAuthorization({");
+    assert.ok(check > 0, "the role check must exist");
+    assert.ok(start > check, "the check must run before an authorization is started");
+    assert.match(startConnect, /Only a company admin can connect/);
+  });
+});
