@@ -61,9 +61,33 @@ export function buildWhatsAppGrowthSegments(
   }).length;
 
   return [
-    { id: "recent_repliers", title: "Recent repliers", description: "Opted-in people who replied in the last 7 days.", count: recentRepliers, audienceHint: "Opted-in people who replied in the last 7 days" },
-    { id: "quiet_opted_in", title: "Quiet leads", description: "Opted-in contacts with no message activity for 7+ days.", count: quiet, audienceHint: "Opted-in contacts who have been quiet for at least 7 days" },
-    { id: "past_customers", title: "Past customers", description: "Opted-in contacts marked as won customers.", count: pastCustomers, audienceHint: "Opted-in past customers" },
-    { id: "awaiting_reply", title: "Awaiting a reply", description: "Opted-in contacts whose latest message from your team is 3+ days old.", count: awaitingReply, audienceHint: "Opted-in contacts waiting for a reply after our last message" },
+    {
+      id: "recent_repliers",
+      title: "Recent repliers",
+      description: "Opted-in people who replied in the last 7 days.",
+      count: recentRepliers,
+      audienceHint: "Opted-in people who replied in the last 7 days",
+    },
+    {
+      id: "quiet_opted_in",
+      title: "Quiet leads",
+      description: "Opted-in contacts with no message activity for 7+ days.",
+      count: quiet,
+      audienceHint: "Opted-in contacts who have been quiet for at least 7 days",
+    },
+    {
+      id: "past_customers",
+      title: "Past customers",
+      description: "Opted-in contacts marked as won customers.",
+      count: pastCustomers,
+      audienceHint: "Opted-in past customers",
+    },
+    {
+      id: "awaiting_reply",
+      title: "Awaiting a reply",
+      description: "Opted-in contacts whose latest message from your team is 3+ days old.",
+      count: awaitingReply,
+      audienceHint: "Opted-in contacts waiting for a reply after our last message",
+    },
   ];
 }

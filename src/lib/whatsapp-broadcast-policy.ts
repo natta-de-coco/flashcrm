@@ -41,7 +41,8 @@ export function whatsappMarketingBlockReason(
 export const WHATSAPP_MARKETING_BLOCK_COPY: Record<WhatsAppMarketingBlockReason, string> = {
   template_not_approved: "Choose an approved WhatsApp template before sending marketing messages.",
   consent_missing: "This person has no recorded WhatsApp marketing opt-in.",
-  opt_in_evidence_missing: "Record where and when this person agreed to receive WhatsApp marketing first.",
+  opt_in_evidence_missing:
+    "Record where and when this person agreed to receive WhatsApp marketing first.",
   unsubscribed: "This person opted out of WhatsApp marketing and is suppressed.",
   frequency_cap: "This person already received a WhatsApp marketing message in the last 3 days.",
 };

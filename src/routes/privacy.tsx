@@ -32,6 +32,36 @@ function PrivacyPage() {
       <p className="mt-2 text-sm text-muted-foreground">Last updated: 26 August 2026</p>
 
       <div className="mt-8 space-y-6 text-sm leading-relaxed">
+        <section className="rounded-xl border bg-muted/30 p-5">
+          <h2 className="text-lg font-semibold">Security &amp; trust at a glance</h2>
+          <p className="mt-2 text-muted-foreground">
+            Your workspace is separated from other companies at the data layer. Access to customer
+            records is limited to signed-in members of that workspace, and sensitive connection
+            credentials are handled by server-side operations rather than returned to the browser.
+          </p>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-muted-foreground">
+            <li>
+              Workspace-level access controls protect contacts, chats, invoices and integrations.
+            </li>
+            <li>
+              Important actions such as consent, imports, exports and message actions are recorded
+              in an audit log.
+            </li>
+            <li>
+              Incoming WhatsApp and supported plugin webhooks are verified before they are
+              processed.
+            </li>
+            <li>Admins can enable authenticator-app two-factor authentication.</li>
+            <li>
+              Workspace admins can download their data or submit a deletion request from Settings.
+            </li>
+          </ul>
+          <p className="mt-3 text-xs text-muted-foreground">
+            We do not claim a security certification unless one has been independently completed and
+            published.
+          </p>
+        </section>
+
         <section>
           <h2 className="text-lg font-semibold">1. Who we are</h2>
           <p className="mt-2 text-muted-foreground">
@@ -65,8 +95,9 @@ function PrivacyPage() {
           <p className="mt-2 text-muted-foreground">
             To deliver and secure the service: route and store messages, apply consent and messaging
             safety rules, generate analytics and AI assistance, prevent abuse, handle billing and
-            provide support. We never sell personal data and never use your customer data to train
-            third-party models beyond the request needed to produce a response for you.
+            provide support. We never sell personal data. AI features only send the information
+            needed for the requested workspace feature to the configured model provider, such as a
+            draft, translation or suggested reply.
           </p>
         </section>
 
@@ -102,9 +133,11 @@ function PrivacyPage() {
         <section>
           <h2 className="text-lg font-semibold">7. Security</h2>
           <p className="mt-2 text-muted-foreground">
-            Data is isolated per workspace with row-level security, API keys are stored hashed and
-            scoped, incoming WhatsApp and plugin webhooks are signature-verified, and administrator
-            accounts can enable two-step authentication. All traffic is encrypted in transit.
+            Data is isolated per workspace with row-level security. Sensitive integration
+            credentials are restricted to server-side operations and are not returned through normal
+            browser data requests. Incoming WhatsApp and supported plugin webhooks are
+            signature-verified, and administrator accounts can enable two-step authentication. All
+            traffic is encrypted in transit.
           </p>
         </section>
 

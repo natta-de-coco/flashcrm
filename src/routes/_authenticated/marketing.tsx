@@ -661,7 +661,9 @@ function MarketingPage() {
               {whatsappGrowth.isLoading ? (
                 <p className="text-xs text-muted-foreground">Checking conversations…</p>
               ) : whatsappGrowth.isError ? (
-                <p className="text-xs text-destructive">Could not load WhatsApp opportunity groups.</p>
+                <p className="text-xs text-destructive">
+                  Could not load WhatsApp opportunity groups.
+                </p>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {(whatsappGrowth.data ?? []).map((segment) => (
@@ -680,7 +682,9 @@ function MarketingPage() {
                     >
                       <span className="text-lg font-semibold">{segment.count}</span>
                       <span className="ml-2 text-sm font-medium">{segment.title}</span>
-                      <span className="mt-1 block text-xs text-muted-foreground">{segment.description}</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {segment.description}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -710,7 +714,8 @@ function MarketingPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                These create a draft only. FLAS checks consent, opt-outs, template approval, and campaign frequency before anyone can be selected.
+                These create a draft only. FLAS checks consent, opt-outs, template approval, and
+                campaign frequency before anyone can be selected.
               </p>
             </div>
             <div className="grid gap-1.5">
@@ -814,7 +819,8 @@ function MarketingPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Campaigns only go to people whose consent is recorded — contacts and website leads
-                  alike. Pasted or imported numbers stay pending until their WhatsApp opt-in is recorded.
+                  alike. Pasted or imported numbers stay pending until their WhatsApp opt-in is
+                  recorded.
                 </p>
               </div>
             )}

@@ -44,13 +44,46 @@ export function InvoiceBrandingCard() {
     onError: (error: Error) => toast.error(error.message),
   });
   if (!tenant) return null;
-  return <Card>
-    <CardHeader><CardTitle className="flex items-center gap-2"><ImagePlus className="size-5" /> Invoice branding</CardTitle><CardDescription>Your logo appears on newly created invoices and quotations.</CardDescription></CardHeader>
-    <CardContent className="space-y-3">
-      <div className="space-y-1.5"><Label htmlFor="invoice-logo">Secure logo image URL</Label><Input id="invoice-logo" placeholder="https://your-site.com/logo.png" value={logoUrl} onChange={(event) => setLogoUrl(event.target.value)} /></div>
-      {logoUrl && <img key={logoUrl} src={logoUrl} alt="Invoice logo preview" className="max-h-20 max-w-48 rounded border object-contain p-1" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
-      <p className="text-xs text-muted-foreground">Use a public PNG, JPG, or SVG hosted on your own secure website. Existing documents keep their original snapshot.</p>
-      <Button onClick={() => save.mutate()} disabled={save.isPending}><Save className="size-4" />{save.isPending ? "Saving…" : "Save invoice logo"}</Button>
-    </CardContent>
-  </Card>;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ImagePlus className="size-5" /> Invoice branding
+        </CardTitle>
+        <CardDescription>
+          Your logo appears on newly created invoices and quotations.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="invoice-logo">Secure logo image URL</Label>
+          <Input
+            id="invoice-logo"
+            placeholder="https://your-site.com/logo.png"
+            value={logoUrl}
+            onChange={(event) => setLogoUrl(event.target.value)}
+          />
+        </div>
+        {logoUrl && (
+          <img
+            key={logoUrl}
+            src={logoUrl}
+            alt="Invoice logo preview"
+            className="max-h-20 max-w-48 rounded border object-contain p-1"
+            onError={(event) => {
+              event.currentTarget.style.display = "none";
+            }}
+          />
+        )}
+        <p className="text-xs text-muted-foreground">
+          Use a public PNG, JPG, or SVG hosted on your own secure website. Existing documents keep
+          their original snapshot.
+        </p>
+        <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          <Save className="size-4" />
+          {save.isPending ? "Saving…" : "Save invoice logo"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }

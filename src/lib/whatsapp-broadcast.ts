@@ -29,7 +29,9 @@ export function selectInactiveWhatsAppRecipients(
   const cutoff = now.getTime() - inactiveForDays * 24 * 60 * 60 * 1000;
   return contacts.flatMap((contact) => {
     const phone = (contact.phone ?? "").replace(/\D/g, "");
-    const lastMessageAt = contact.last_message_at ? new Date(contact.last_message_at).getTime() : NaN;
+    const lastMessageAt = contact.last_message_at
+      ? new Date(contact.last_message_at).getTime()
+      : NaN;
     if (
       contact.consent_given !== true ||
       contact.stage === "lost" ||
@@ -39,11 +41,13 @@ export function selectInactiveWhatsAppRecipients(
     ) {
       return [];
     }
-    return [{
-      contactId: contact.id,
-      name: contact.name,
-      phone: `+${phone}`,
-      inactiveDays: Math.floor((now.getTime() - lastMessageAt) / 86_400_000),
-    }];
+    return [
+      {
+        contactId: contact.id,
+        name: contact.name,
+        phone: `+${phone}`,
+        inactiveDays: Math.floor((now.getTime() - lastMessageAt) / 86_400_000),
+      },
+    ];
   });
 }

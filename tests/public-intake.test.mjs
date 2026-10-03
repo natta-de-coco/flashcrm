@@ -283,7 +283,10 @@ describe("a WhatsApp message has an honest, durable CRM record", () => {
     assert.match(wa, /export async function completeOutboundDelivery/);
     const crm = read("src/lib/crm.functions.ts");
     assert.match(crm, /null,\n\s+"sending",/);
-    assert.match(crm, /completeOutboundDelivery\(outboundId, waId, deliveryError \? "failed" : "sent"\)/);
+    assert.match(
+      crm,
+      /completeOutboundDelivery\(outboundId, waId, deliveryError \? "failed" : "sent"\)/,
+    );
   });
 
   it("marks the bot's already-stored reply failed when the send is refused", () => {

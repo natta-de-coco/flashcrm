@@ -5,20 +5,22 @@ import { createServerFn } from "@tanstack/react-start";
 export const getWhatsAppGrowthSegments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const [{ data: contacts, error: contactsError }, { data: conversations, error: conversationsError }] =
-      await Promise.all([
-        context.supabase
-          .from("contacts")
-          .select("id, consent_given, phone, stage, last_message_at")
-          .eq("consent_given", true)
-          .not("phone", "is", null)
-          .limit(2000),
-        context.supabase
-          .from("conversations")
-          .select("id, contact_id")
-          .eq("channel", "whatsapp")
-          .limit(2000),
-      ]);
+    const [
+      { data: contacts, error: contactsError },
+      { data: conversations, error: conversationsError },
+    ] = await Promise.all([
+      context.supabase
+        .from("contacts")
+        .select("id, consent_given, phone, stage, last_message_at")
+        .eq("consent_given", true)
+        .not("phone", "is", null)
+        .limit(2000),
+      context.supabase
+        .from("conversations")
+        .select("id, contact_id")
+        .eq("channel", "whatsapp")
+        .limit(2000),
+    ]);
     if (contactsError) throw contactsError;
     if (conversationsError) throw conversationsError;
 
@@ -42,7 +44,10 @@ export const getWhatsAppGrowthSegments = createServerFn({ method: "GET" })
         stage: contact.stage,
         lastMessageAt: contact.last_message_at,
       })),
-      (conversations ?? []).map((conversation) => ({ id: conversation.id, contactId: conversation.contact_id })),
+      (conversations ?? []).map((conversation) => ({
+        id: conversation.id,
+        contactId: conversation.contact_id,
+      })),
       (messages ?? []).map((message) => ({
         conversationId: message.conversation_id,
         direction: message.direction,

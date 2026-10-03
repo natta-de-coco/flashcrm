@@ -1109,12 +1109,7 @@ function InboxPage() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    draft.trim() &&
-                    whatsappReplyWindowOpen
-                  ) {
+                  if (e.key === "Enter" && !e.shiftKey && draft.trim() && whatsappReplyWindowOpen) {
                     e.preventDefault();
                     sendMutation.mutate(draft.trim());
                   }
@@ -1122,8 +1117,8 @@ function InboxPage() {
               />
               {!whatsappReplyWindowOpen && (
                 <p role="status" className="text-sm text-muted-foreground">
-                  This customer has not messaged in the past 24 hours. WhatsApp requires an
-                  approved template before you can send a normal reply.
+                  This customer has not messaged in the past 24 hours. WhatsApp requires an approved
+                  template before you can send a normal reply.
                 </p>
               )}
               <div className="flex items-center justify-between">
