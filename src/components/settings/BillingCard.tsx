@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { useTenant } from "@/hooks/useTenant";
 import { formatDayUnambiguous } from "@/lib/locale";
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 import { usePaddleCheckout } from "@/hooks/usePaddleCheckout";
 import { createPortalSession } from "@/utils/payments.functions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +28,7 @@ const STATUS_LABELS: Record<
 
 export function BillingCard() {
   const { tenant, refresh } = useTenant();
+  const { t } = useI18n();
   const { user } = useAuth();
   const { openCheckout, loading: checkoutLoading } = usePaddleCheckout();
   const portalFn = useServerFn(createPortalSession);
@@ -36,7 +39,7 @@ export function BillingCard() {
     queryKey: ["checkout-return-refresh"],
     queryFn: async () => {
       if (new URLSearchParams(window.location.search).get("checkout") === "success") {
-        toast.success("Subscription activated — welcome aboard!");
+        toast.success(t("settings.billing.activated"));
         await refresh();
         window.history.replaceState({}, "", window.location.pathname);
       }
@@ -67,7 +70,7 @@ export function BillingCard() {
       const { url } = await portalFn();
       window.open(url, "_blank", "noopener");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not open the billing portal");
+      toast.error(e instanceof Error ? e.message : t("settings.billing.portalFailed"));
     } finally {
       setPortalLoading(false);
     }
@@ -78,32 +81,34 @@ export function BillingCard() {
       <PaymentTestModeBanner />
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5" /> Subscription &amp; Billing
+          <CreditCard className="h-5 w-5" /> {t("settings.billing.title")}
         </CardTitle>
-        <CardDescription>
-          Flas WhatsApp Tool — normally $30/month. Launch offer: $20/month for your first six
-          months, or $240 a year instead of $360. Manage or cancel anytime.
-        </CardDescription>
+        <CardDescription>{t("settings.billing.desc")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <Badge variant={status?.variant ?? "secondary"}>{status?.label ?? "Trial"}</Badge>
+          <Badge variant={status?.variant ?? "secondary"}>
+            {hasMessage(`settings.billing.status.${tenant.subscription_status}`)
+              ? t(`settings.billing.status.${tenant.subscription_status}` as MessageKey)
+              : t("settings.billing.status.trial")}
+          </Badge>
           {renewsAt && (
             <span className="text-sm text-muted-foreground">
-              {tenant.subscription_status === "trial" ? "Trial ends" : "Renews"}: {renewsAt}
+              {tenant.subscription_status === "trial"
+                ? t("settings.billing.trialEnds", { date: renewsAt })
+                : t("settings.billing.renews", { date: renewsAt })}
             </span>
           )}
         </div>
 
         {tenant.subscription_status === "past_due" && (
           <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            Your last payment failed. Update your payment method to keep access — retries are
-            running automatically for a few days.
+            {t("settings.billing.pastDue")}
           </p>
         )}
         {tenant.subscription_status === "canceled" && (
           <p className="rounded-md border p-3 text-sm text-muted-foreground">
-            Your subscription is canceled. Resubscribe to restore full access.
+            {t("settings.billing.canceledNote")}
           </p>
         )}
 
@@ -113,31 +118,28 @@ export function BillingCard() {
               <Button onClick={() => subscribe("flash_monthly")} disabled={checkoutLoading}>
                 <Sparkles className="me-2 h-4 w-4" />
                 {checkoutLoading
-                  ? "Opening checkout…"
+                  ? t("settings.billing.openingCheckout")
                   : tenant.subscription_status === "canceled"
-                    ? "Resubscribe — $20/mo"
-                    : "Monthly — $20/mo (was $30, 1 month free)"}
+                    ? t("settings.billing.resubscribe")
+                    : t("settings.billing.monthly")}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => subscribe("flash_yearly")}
                 disabled={checkoutLoading}
               >
-                Yearly — $240/year (was $360)
+                {t("settings.billing.yearly")}
               </Button>
             </>
           )}
           {hasSubscription && (
             <Button variant="outline" onClick={openPortal} disabled={portalLoading}>
               <ExternalLink className="me-2 h-4 w-4" />
-              {portalLoading ? "Opening…" : "Manage or cancel subscription"}
+              {portalLoading ? t("settings.billing.opening") : t("settings.billing.manage")}
             </Button>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">
-          Cancellation is self-service from the billing portal — you keep access until the end of
-          the paid period.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("settings.billing.selfService")}</p>
       </CardContent>
     </Card>
   );

@@ -7,9 +7,10 @@ import contactCard from "./screens/contact-card";
 import contacts from "./screens/contacts";
 import dashboard from "./screens/dashboard";
 import nav from "./screens/nav";
+import settings from "./screens/settings";
 import shell from "./screens/shell";
 
-const SCREENS = [shell, nav, auth, common, dashboard, contacts, contactCard] as const;
+const SCREENS = [shell, nav, auth, common, dashboard, contacts, contactCard, settings] as const;
 
 type KeysOf<T> = T extends unknown ? keyof T : never;
 
