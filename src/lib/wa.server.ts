@@ -320,7 +320,8 @@ Relevant website excerpts: ${JSON.stringify(websiteExcerpts)}`;
     // The automatic-reply path deliberately turns an AI failure into a human
     // handoff. An agent who explicitly asks for a draft needs the safe,
     // actionable provider error instead of a misleading generic toast.
-    const message = error instanceof Error ? error.message : "The AI provider could not generate a reply.";
+    const message =
+      error instanceof Error ? error.message : "The AI provider could not generate a reply.";
     console.error("[bot] no reply:", message);
     if (options.throwOnFailure) throw new Error(message);
     return null;
