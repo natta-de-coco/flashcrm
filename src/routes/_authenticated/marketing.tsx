@@ -16,6 +16,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { Copy, Download, Loader2, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({
@@ -135,14 +137,17 @@ function AudienceNote({
   loading: boolean;
   error?: Error | null;
 }) {
+  const { t, tr } = useI18n();
   if (loading) {
-    return <p className="text-xs text-muted-foreground">Checking who has opted in…</p>;
+    return <p className="text-xs text-muted-foreground">{t("marketing.checkingWhoHasOptedIn")}</p>;
   }
   // Say so rather than showing nothing: without this the writer's button is
   // disabled with no explanation when the audience lookup itself fails.
   if (error) {
     return (
-      <p className="text-xs text-destructive">Could not check who has opted in: {error.message}</p>
+      <p className="text-xs text-destructive">
+        {tr("marketing.couldNotCheckWhoHas", { message: error.message })}
+      </p>
     );
   }
   if (!audience) return null;
@@ -153,29 +158,49 @@ function AudienceNote({
   if (blocked) {
     return (
       <p className="rounded-lg border border-dashed bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
-        <strong className="text-foreground">No {channelLabel} audience yet.</strong> {blocked}
+        <strong className="text-foreground">
+          {tr("marketing.noAudienceYet", { channelLabel: channelLabel })}
+        </strong>{" "}
+        {blocked}
       </p>
     );
   }
 
   return (
     <p className="rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
-      <strong className="text-foreground">
-        {audience.truncated ? "At least " : ""}
-        {audience.total} opted-in {channelLabel} {audience.total === 1 ? "recipient" : "recipients"}
-      </strong>{" "}
-      — {audience.fromContacts} from contacts, {audience.fromLeads} from website leads.
-      {audience.optedInUnreachable > 0
-        ? ` ${audience.optedInUnreachable} more consented but have no ${addressLabel} on file.`
-        : ""}
-      {audience.withoutConsent > 0
-        ? ` ${audience.withoutConsent} excluded until consent is recorded.`
-        : ""}
+      {tr("marketing.fromContactsFromWebsiteLeads", {
+        strong: (
+          <strong className="text-foreground">
+            {tr("marketing.optedIn", {
+              value: audience.truncated ? t("marketing.atLeast") : "",
+              total: audience.total,
+              channelLabel: channelLabel,
+              value2: audience.total === 1 ? t("marketing.recipient") : t("marketing.recipients"),
+            })}
+          </strong>
+        ),
+        fromContacts: audience.fromContacts,
+        fromLeads: audience.fromLeads,
+        value:
+          audience.optedInUnreachable > 0
+            ? t("marketing.moreConsentedButHaveNo", {
+                optedInUnreachable: audience.optedInUnreachable,
+                addressLabel: addressLabel,
+              })
+            : "",
+        value2:
+          audience.withoutConsent > 0
+            ? t("marketing.excludedUntilConsentIsRecorded", {
+                withoutConsent: audience.withoutConsent,
+              })
+            : "",
+      })}
     </p>
   );
 }
 
 function MarketingPage() {
+  const { t, tr } = useI18n();
   const { isAdmin, user } = useAuth();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
@@ -297,7 +322,7 @@ function MarketingPage() {
         wa_number_id: "",
         priority: "100",
       });
-      toast.success("Routing rule added");
+      toast.success(t("marketing.routingRuleAdded"));
       void qc.invalidateQueries({ queryKey: ["routing_rules"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -318,7 +343,7 @@ function MarketingPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Rule removed");
+      toast.success(t("marketing.ruleRemoved"));
       void qc.invalidateQueries({ queryKey: ["routing_rules"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -333,7 +358,7 @@ function MarketingPage() {
     },
     onSuccess: () => {
       setSiteForm({ name: "", platform: "wordpress" });
-      toast.success("Site added — copy its snippet below");
+      toast.success(t("marketing.siteAddedCopyItsSnippet"));
       void qc.invalidateQueries({ queryKey: ["lead_sites"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -356,7 +381,7 @@ function MarketingPage() {
     },
     onSuccess: () => {
       setCampaignForm({ name: "", subject: "", body: "" });
-      toast.success("Campaign saved as a draft");
+      toast.success(t("marketing.campaignSavedAsADraft"));
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -383,15 +408,17 @@ function MarketingPage() {
       }
       setAiDraft(res.draft);
       toast.success(
-        `Flas AI drafted your message for ${res.audience.total} opted-in ${
-          res.audience.total === 1 ? "recipient" : "recipients"
-        }`,
+        t("marketing.flasAiDraftedYourMessage", {
+          total: res.audience.total,
+          value: res.audience.total === 1 ? t("marketing.recipient") : t("marketing.recipients"),
+        }),
       );
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   function useDraftInCampaign() {
+    const { t } = useI18n();
     if (!aiDraft.trim()) return;
     const subjectMatch = aiDraft.match(/^Subject:\s*(.+)$/m);
     setCampaignForm({
@@ -399,7 +426,7 @@ function MarketingPage() {
       subject: aiForm.channel === "email" ? (subjectMatch?.[1] ?? "") : "",
       body: aiForm.channel === "email" ? aiDraft.replace(/^Subject:.*\n?/m, "").trim() : aiDraft,
     });
-    toast.success("Draft copied into the campaign form below");
+    toast.success(t("marketing.draftCopiedIntoTheCampaign"));
   }
 
   async function queueCampaign(id: string) {
@@ -412,14 +439,14 @@ function MarketingPage() {
       // M13: this used to promise the campaign "sends once your email sending
       // domain is verified". Nothing in Flas CRM reads a queued campaign and
       // nothing verifies a domain, so queueing only marks it ready — say that.
-      toast.success("Marked as queued. Flas CRM does not send campaigns itself yet.");
+      toast.success(t("marketing.markedAsQueuedFlasCrm"));
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     }
   }
 
   function copy(value: string) {
     void navigator.clipboard.writeText(value);
-    toast.success("Copied to clipboard");
+    toast.success(t("marketing.copiedToClipboard"));
   }
 
   const activeSite =
@@ -433,7 +460,7 @@ function MarketingPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Site activated");
+      toast.success(t("marketing.siteActivated"));
       void qc.invalidateQueries({ queryKey: ["lead_sites"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -448,7 +475,7 @@ function MarketingPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Site revoked");
+      toast.success(t("marketing.siteRevoked"));
       void qc.invalidateQueries({ queryKey: ["lead_sites"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -466,37 +493,33 @@ function MarketingPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
         <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
-          Leads &amp; marketing
+          {t("marketing.leadsMarketing")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Capture emails from your WordPress or Shopify store and market to them from one place.
+          {t("marketing.captureEmailsFromYourWordpress")}
         </p>
       </header>
 
       <div className="grid max-w-4xl gap-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Website plugin</CardTitle>
-            <CardDescription>
-              Add a site to get its own capture key, then paste the snippet into WordPress
-              (Appearance → Theme File Editor, or a Custom HTML block) or Shopify (Online Store →
-              Themes → Edit code → theme.liquid).
-            </CardDescription>
+            <CardTitle className="text-base">{t("marketing.websitePlugin")}</CardTitle>
+            <CardDescription>{t("marketing.addASiteToGet")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             {isAdmin && (
               <div className="flex flex-wrap items-end gap-2">
                 <div className="grid gap-1.5">
-                  <Label htmlFor="site_name">Site name</Label>
+                  <Label htmlFor="site_name">{t("marketing.siteName")}</Label>
                   <Input
                     id="site_name"
-                    placeholder="My WordPress blog"
+                    placeholder={t("marketing.myWordpressBlog")}
                     value={siteForm.name}
                     onChange={(e) => setSiteForm({ ...siteForm, name: e.target.value })}
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="platform">Platform</Label>
+                  <Label htmlFor="platform">{t("marketing.platform")}</Label>
                   <select
                     id="platform"
                     className="h-9 rounded-md border bg-background px-3 text-sm"
@@ -505,14 +528,14 @@ function MarketingPage() {
                   >
                     <option value="wordpress">WordPress</option>
                     <option value="shopify">Shopify</option>
-                    <option value="other">Other website</option>
+                    <option value="other">{t("marketing.otherWebsite")}</option>
                   </select>
                 </div>
                 <Button
                   disabled={!siteForm.name.trim() || createSite.isPending}
                   onClick={() => createSite.mutate()}
                 >
-                  <Plus className="size-4" /> Add site
+                  <Plus className="size-4" /> {t("marketing.addSite")}
                 </Button>
               </div>
             )}
@@ -545,7 +568,7 @@ function MarketingPage() {
                     {activeSite.status}
                   </Badge>
                   <span className="text-xs text-muted-foreground">
-                    {activeSite.domain ?? "No domain reported yet"}
+                    {activeSite.domain ?? t("marketing.noDomainReportedYet")}
                     {activeSite.admin_email ? ` · ${activeSite.admin_email}` : ""}
                   </span>
                   <div className="ms-auto flex flex-wrap gap-2">
@@ -556,8 +579,8 @@ function MarketingPage() {
                         >
                           <Download className="size-4" />
                           {activeSite.platform === "shopify"
-                            ? "Shopify theme package"
-                            : "WordPress plugin"}
+                            ? t("marketing.shopifyThemePackage")
+                            : t("marketing.wordpressPlugin")}
                         </a>
                       </Button>
                     )}
@@ -570,11 +593,11 @@ function MarketingPage() {
                         )
                       }
                     >
-                      <Copy className="size-4" /> Activation link
+                      <Copy className="size-4" /> {t("marketing.activationLink")}
                     </Button>
                     {isAdmin && activeSite.status !== "active" && (
                       <Button size="sm" onClick={() => activateSite.mutate(activeSite.id)}>
-                        Activate now
+                        {t("marketing.activateNow")}
                       </Button>
                     )}
                     {isAdmin && activeSite.status === "active" && (
@@ -583,57 +606,72 @@ function MarketingPage() {
                         variant="outline"
                         onClick={() => revokeSite.mutate(activeSite.id)}
                       >
-                        Revoke
+                        {t("marketing.revoke")}
                       </Button>
                     )}
                   </div>
                 </div>
-                <Label>Popup chatbot snippet for {activeSite.name}</Label>
+                <Label>{tr("marketing.popupChatbotSnippetFor", { name: activeSite.name })}</Label>
                 <Textarea readOnly rows={2} value={popupSnippet} className="font-mono text-xs" />
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => copy(popupSnippet)}>
-                    <Copy className="size-4" /> Copy popup snippet
+                    <Copy className="size-4" /> {t("marketing.copyPopupSnippet")}
                   </Button>
                 </div>
-                <Label className="mt-2">Inline form snippet</Label>
+                <Label className="mt-2">{t("marketing.inlineFormSnippet")}</Label>
                 <Textarea readOnly rows={3} value={snippet} className="font-mono text-xs" />
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => copy(snippet)}>
-                    <Copy className="size-4" /> Copy snippet
+                    <Copy className="size-4" /> {t("marketing.copySnippet")}
                   </Button>
                 </div>
                 <div className="rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
                   {activeSite.platform === "shopify" ? (
                     <>
-                      <strong className="text-foreground">Shopify install:</strong> download the
-                      theme package, then in Shopify admin go to Online Store → Themes → Edit code,
-                      add the snippet under <em>Snippets</em> and render it before{" "}
-                      <code>&lt;/body&gt;</code> in <code>theme.liquid</code>. Full steps are in
-                      INSTALL.txt inside the ZIP.
+                      {tr("marketing.downloadTheThemePackageThen", {
+                        strong: (
+                          <strong className="text-foreground">
+                            {t("marketing.shopifyInstall")}
+                          </strong>
+                        ),
+                        em: <em>{t("marketing.snippets")}</em>,
+                        code: <code>&lt;/body&gt;</code>,
+                        code2: <code>theme.liquid</code>,
+                      })}
                     </>
                   ) : activeSite.platform === "wordpress" ? (
                     <>
-                      <strong className="text-foreground">WordPress install:</strong> Plugins → Add
-                      New → Upload Plugin, choose the ZIP, activate — or paste the snippet into a
-                      Custom HTML block.
+                      {tr("marketing.pluginsAddNewUploadPlugin", {
+                        strong: (
+                          <strong className="text-foreground">
+                            {t("marketing.wordpressInstall")}
+                          </strong>
+                        ),
+                      })}
                     </>
                   ) : (
                     <>
-                      <strong className="text-foreground">Any website:</strong> paste the popup
-                      snippet just before <code>&lt;/body&gt;</code>.
+                      {tr("marketing.pasteThePopupSnippetJust", {
+                        strong: (
+                          <strong className="text-foreground">{t("marketing.anyWebsite")}</strong>
+                        ),
+                        code: <code>&lt;/body&gt;</code>,
+                      })}
                     </>
                   )}{" "}
-                  The site registers itself with Flas CRM on first visit — then activate it with the
-                  link above so the popup goes live.
+                  {t("marketing.theSiteRegistersItselfWith")}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Already have a signup form? Add <code>class="flas-lead-form"</code> to it and the
-                  plugin captures submissions automatically.
+                  {tr("marketing.alreadyHaveASignupForm", {
+                    code: <code>class="flas-lead-form"</code>,
+                  })}
                 </p>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                No capture sites yet. {isAdmin ? "Add one above." : "Ask an admin to add one."}
+                {tr("marketing.noCaptureSitesYet", {
+                  value: isAdmin ? t("marketing.addOneAbove") : t("marketing.askAnAdminToAdd"),
+                })}
               </p>
             )}
           </CardContent>
@@ -642,27 +680,25 @@ function MarketingPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="size-4 text-primary" /> Flas AI campaign writer
+              <Sparkles className="size-4 text-primary" /> {t("marketing.flasAiCampaignWriter")}
             </CardTitle>
-            <CardDescription>
-              Tell Flas AI your goal — it studies your business profile and your consented audience
-              (contacts and website leads alike), then drafts a policy-safe message. It never sends
-              a campaign by itself: you review the audience, template, and final text first.
-            </CardDescription>
+            <CardDescription>{t("marketing.tellFlasAiYourGoal")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="grid gap-2 rounded-lg border bg-muted/30 p-3">
               <div>
-                <p className="text-sm font-medium">WhatsApp growth opportunities</p>
+                <p className="text-sm font-medium">{t("marketing.whatsappGrowthOpportunities")}</p>
                 <p className="text-xs text-muted-foreground">
-                  Real CRM activity, filtered to contacts with WhatsApp marketing consent.
+                  {t("marketing.realCrmActivityFilteredTo")}
                 </p>
               </div>
               {whatsappGrowth.isLoading ? (
-                <p className="text-xs text-muted-foreground">Checking conversations…</p>
+                <p className="text-xs text-muted-foreground">
+                  {t("marketing.checkingConversations")}
+                </p>
               ) : whatsappGrowth.isError ? (
                 <p className="text-xs text-destructive">
-                  Could not load WhatsApp opportunity groups.
+                  {t("marketing.couldNotLoadWhatsappOpportunity")}
                 </p>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -691,9 +727,9 @@ function MarketingPage() {
               )}
             </div>
             <div className="grid gap-1.5">
-              <Label>Start with a growth idea</Label>
+              <Label>{t("marketing.startWithAGrowthIdea")}</Label>
               <div className="flex flex-wrap gap-2">
-                {AI_CAMPAIGN_STARTERS.map((starter) => (
+                {AI_CAMPAIGN_STARTERS.map((starter, index) => (
                   <Button
                     key={starter.title}
                     type="button"
@@ -702,44 +738,43 @@ function MarketingPage() {
                     onClick={() => {
                       setAiForm((current) => ({
                         ...current,
-                        goal: starter.goal,
-                        audience: starter.audience,
+                        goal: t(`marketing.starter.${index}.goal` as MessageKey),
+                        audience: t(`marketing.starter.${index}.audience` as MessageKey),
                         channel: "whatsapp",
                       }));
                       setAiDraft("");
                     }}
                   >
-                    {starter.title}
+                    {t(`marketing.starter.${index}.title` as MessageKey)}
                   </Button>
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                These create a draft only. FLAS checks consent, opt-outs, template approval, and
-                campaign frequency before anyone can be selected.
+                {t("marketing.theseCreateADraftOnly")}
               </p>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="ai_goal">Campaign goal</Label>
+              <Label htmlFor="ai_goal">{t("marketing.campaignGoal")}</Label>
               <Textarea
                 id="ai_goal"
                 rows={2}
-                placeholder="e.g. Re-engage wholesale leads who went quiet last month with a 10% reorder offer"
+                placeholder={t("marketing.eGReEngageWholesale")}
                 value={aiForm.goal}
                 onChange={(e) => setAiForm({ ...aiForm, goal: e.target.value })}
               />
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="grid gap-1.5 sm:col-span-1">
-                <Label htmlFor="ai_audience">Audience (optional)</Label>
+                <Label htmlFor="ai_audience">{t("marketing.audienceOptional")}</Label>
                 <Input
                   id="ai_audience"
-                  placeholder="e.g. popup-chat leads"
+                  placeholder={t("marketing.eGPopupChatLeads")}
                   value={aiForm.audience}
                   onChange={(e) => setAiForm({ ...aiForm, audience: e.target.value })}
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="ai_tone">Tone</Label>
+                <Label htmlFor="ai_tone">{t("marketing.tone")}</Label>
                 <select
                   id="ai_tone"
                   className="h-9 rounded-md border bg-background px-3 text-sm"
@@ -748,14 +783,14 @@ function MarketingPage() {
                     setAiForm({ ...aiForm, tone: e.target.value as typeof aiForm.tone })
                   }
                 >
-                  <option value="friendly">Friendly</option>
-                  <option value="professional">Professional</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="playful">Playful</option>
+                  <option value="friendly">{t("marketing.friendly")}</option>
+                  <option value="professional">{t("marketing.professional")}</option>
+                  <option value="urgent">{t("marketing.urgent")}</option>
+                  <option value="playful">{t("marketing.playful")}</option>
                 </select>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="ai_channel">Channel</Label>
+                <Label htmlFor="ai_channel">{t("marketing.channel")}</Label>
                 <select
                   id="ai_channel"
                   className="h-9 rounded-md border bg-background px-3 text-sm"
@@ -765,7 +800,7 @@ function MarketingPage() {
                   }
                 >
                   <option value="whatsapp">WhatsApp</option>
-                  <option value="email">Email</option>
+                  <option value="email">{t("marketing.email")}</option>
                 </select>
               </div>
             </div>
@@ -792,12 +827,12 @@ function MarketingPage() {
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Draft with Flas AI (does not send)
+                {t("marketing.draftWithFlasAiDoes")}
               </Button>
             </div>
             {aiDraft && (
               <div className="grid gap-2">
-                <Label htmlFor="ai_draft">Draft — edit anything before using it</Label>
+                <Label htmlFor="ai_draft">{t("marketing.draftEditAnythingBeforeUsing")}</Label>
                 <Textarea
                   id="ai_draft"
                   rows={7}
@@ -806,7 +841,7 @@ function MarketingPage() {
                 />
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={useDraftInCampaign}>
-                    <Send className="size-4" /> Use in campaign form
+                    <Send className="size-4" /> {t("marketing.useInCampaignForm")}
                   </Button>
                   <Button
                     variant="ghost"
@@ -814,13 +849,11 @@ function MarketingPage() {
                     onClick={() => generateDraft.mutate()}
                     disabled={generateDraft.isPending}
                   >
-                    Regenerate
+                    {t("marketing.regenerate")}
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Campaigns only go to people whose consent is recorded — contacts and website leads
-                  alike. Pasted or imported numbers stay pending until their WhatsApp opt-in is
-                  recorded.
+                  {t("marketing.campaignsOnlyGoToPeople")}
                 </p>
               </div>
             )}
@@ -830,17 +863,15 @@ function MarketingPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              Leads <Badge variant="secondary">{(leads.data ?? []).length}</Badge>
+              {tr("marketing.leads", {
+                badge: <Badge variant="secondary">{(leads.data ?? []).length}</Badge>,
+              })}
             </CardTitle>
-            <CardDescription>
-              Every email captured from your sites and chat widget. Leads are a separate list from
-              your CRM contacts — a campaign audience is drawn from both, so a consented contact
-              counts even when this list is empty.
-            </CardDescription>
+            <CardDescription>{t("marketing.everyEmailCapturedFromYour")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {(leads.data ?? []).length === 0 && (
-              <p className="text-sm text-muted-foreground">No leads collected yet.</p>
+              <p className="text-sm text-muted-foreground">{t("marketing.noLeadsCollectedYet")}</p>
             )}
             {(leads.data ?? []).map((lead) => (
               <div
@@ -860,14 +891,15 @@ function MarketingPage() {
                   </Badge>
                   {lead.consent_given ? (
                     <Badge variant="outline" className="text-[10px]">
-                      Consented
-                      {lead.consent_at
-                        ? ` · ${new Date(lead.consent_at).toLocaleDateString()}`
-                        : ""}
+                      {tr("marketing.consented", {
+                        value: lead.consent_at
+                          ? ` · ${new Date(lead.consent_at).toLocaleDateString()}`
+                          : "",
+                      })}
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      No consent
+                      {t("marketing.noConsent")}
                     </Badge>
                   )}
                   <span className="text-[11px] text-muted-foreground">
@@ -881,31 +913,28 @@ function MarketingPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Lead routing rules</CardTitle>
-            <CardDescription>
-              Automatically assign each new website lead to the right WhatsApp number. Rules are
-              checked in priority order — the first match wins.
-            </CardDescription>
+            <CardTitle className="text-base">{t("marketing.leadRoutingRules")}</CardTitle>
+            <CardDescription>{t("marketing.automaticallyAssignEachNewWebsite")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             {(waNumbers.data ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Connect a WhatsApp number in Integrations first, then create routing rules here.
+                {t("marketing.connectAWhatsappNumberIn")}
               </p>
             ) : (
               isAdmin && (
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="grid gap-1.5">
-                    <Label htmlFor="rule_name">Rule name</Label>
+                    <Label htmlFor="rule_name">{t("marketing.ruleName")}</Label>
                     <Input
                       id="rule_name"
-                      placeholder="Shopify leads → sales line"
+                      placeholder={t("marketing.shopifyLeadsSalesLine")}
                       value={ruleForm.name}
                       onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="match_field">Match by</Label>
+                    <Label htmlFor="match_field">{t("marketing.matchBy")}</Label>
                     <select
                       id="match_field"
                       className="h-9 rounded-md border bg-background px-3 text-sm"
@@ -919,31 +948,33 @@ function MarketingPage() {
                     >
                       {MATCH_FIELDS.map((f) => (
                         <option key={f.id} value={f.id}>
-                          {f.label}
+                          {t(`marketing.match.${f.id}.label` as MessageKey)}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="match_value">Value</Label>
+                    <Label htmlFor="match_value">{t("marketing.value")}</Label>
                     <Input
                       id="match_value"
                       placeholder={
-                        MATCH_FIELDS.find((f) => f.id === ruleForm.match_field)?.hint ?? ""
+                        hasMessage(`marketing.match.${ruleForm.match_field}.hint`)
+                          ? t(`marketing.match.${ruleForm.match_field}.hint` as MessageKey)
+                          : ""
                       }
                       value={ruleForm.match_value}
                       onChange={(e) => setRuleForm({ ...ruleForm, match_value: e.target.value })}
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="rule_number">Assign to</Label>
+                    <Label htmlFor="rule_number">{t("marketing.assignTo")}</Label>
                     <select
                       id="rule_number"
                       className="h-9 rounded-md border bg-background px-3 text-sm"
                       value={ruleForm.wa_number_id}
                       onChange={(e) => setRuleForm({ ...ruleForm, wa_number_id: e.target.value })}
                     >
-                      <option value="">Choose a number…</option>
+                      <option value="">{t("marketing.chooseANumber")}</option>
                       {(waNumbers.data ?? []).map((n) => (
                         <option key={n.id} value={n.id}>
                           {n.label}
@@ -953,7 +984,7 @@ function MarketingPage() {
                     </select>
                   </div>
                   <div className="grid w-24 gap-1.5">
-                    <Label htmlFor="rule_priority">Priority</Label>
+                    <Label htmlFor="rule_priority">{t("marketing.priority")}</Label>
                     <Input
                       id="rule_priority"
                       type="number"
@@ -970,7 +1001,7 @@ function MarketingPage() {
                     }
                     onClick={() => createRule.mutate()}
                   >
-                    <Plus className="size-4" /> Add rule
+                    <Plus className="size-4" /> {t("marketing.addRule")}
                   </Button>
                 </div>
               )
@@ -978,9 +1009,7 @@ function MarketingPage() {
 
             <div className="space-y-2">
               {(routingRules.data ?? []).length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No rules yet — leads go to your default WhatsApp number.
-                </p>
+                <p className="text-sm text-muted-foreground">{t("marketing.noRulesYetLeadsGo")}</p>
               )}
               {(routingRules.data ?? []).map((rule) => {
                 const number = (waNumbers.data ?? []).find((n) => n.id === rule.wa_number_id);
@@ -992,9 +1021,14 @@ function MarketingPage() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">{rule.name}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {MATCH_FIELDS.find((f) => f.id === rule.match_field)?.label}:{" "}
-                        <code className="rounded bg-muted px-1">{rule.match_value}</code> →{" "}
-                        {number?.label ?? "Unknown number"} · priority {rule.priority}
+                        {tr("marketing.priority2", {
+                          label: hasMessage(`marketing.match.${rule.match_field}.label`)
+                            ? t(`marketing.match.${rule.match_field}.label` as MessageKey)
+                            : rule.match_field,
+                          code: <code className="rounded bg-muted px-1">{rule.match_value}</code>,
+                          value: number?.label ?? t("marketing.unknownNumber"),
+                          priority: rule.priority,
+                        })}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1021,12 +1055,8 @@ function MarketingPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Marketing campaigns</CardTitle>
-            <CardDescription>
-              Write a campaign for the people who have recorded consent — contacts and website leads
-              alike. That keeps you out of spam folders and on the right side of WhatsApp and email
-              regulations.
-            </CardDescription>
+            <CardTitle className="text-base">{t("marketing.marketingCampaigns")}</CardTitle>
+            <CardDescription>{t("marketing.writeACampaignForThe")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             {/*
@@ -1038,15 +1068,18 @@ function MarketingPage() {
               outbound email really is configured.
             */}
             <div className="rounded-lg border border-dashed bg-muted/40 p-3 text-xs leading-relaxed text-muted-foreground">
-              <strong className="text-foreground">Sending is not automated yet.</strong> Flas CRM
-              saves a campaign and marks it queued, but it does not deliver it for you — you or your
-              provider sends it. Outbound email for this workspace is set up by a company admin in{" "}
-              <Link to="/settings/email" className="font-medium text-brand hover:underline">
-                Settings → Email
-              </Link>
-              , where you pick a provider and send a test. Authenticating your sending domain
-              (SPF/DKIM) is done in that provider's dashboard — Flas CRM has no domain-verification
-              step of its own.
+              {tr("marketing.flasCrmSavesACampaign", {
+                strong: (
+                  <strong className="text-foreground">
+                    {t("marketing.sendingIsNotAutomatedYet")}
+                  </strong>
+                ),
+                link: (
+                  <Link to="/settings/email" className="font-medium text-brand hover:underline">
+                    {t("marketing.settingsEmail")}
+                  </Link>
+                ),
+              })}
             </div>
             <AudienceNote
               audience={emailAudience}
@@ -1055,7 +1088,7 @@ function MarketingPage() {
             />
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="c_name">Campaign name</Label>
+                <Label htmlFor="c_name">{t("marketing.campaignName")}</Label>
                 <Input
                   id="c_name"
                   value={campaignForm.name}
@@ -1063,7 +1096,7 @@ function MarketingPage() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="c_subject">Email subject</Label>
+                <Label htmlFor="c_subject">{t("marketing.emailSubject")}</Label>
                 <Input
                   id="c_subject"
                   value={campaignForm.subject}
@@ -1072,7 +1105,7 @@ function MarketingPage() {
               </div>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="c_body">Message</Label>
+              <Label htmlFor="c_body">{t("marketing.message")}</Label>
               <Textarea
                 id="c_body"
                 rows={5}
@@ -1085,7 +1118,7 @@ function MarketingPage() {
                 disabled={!campaignForm.name.trim() || createCampaign.isPending}
                 onClick={() => createCampaign.mutate()}
               >
-                <Plus className="size-4" /> Save campaign
+                <Plus className="size-4" /> {t("marketing.saveCampaign")}
               </Button>
             </div>
 
@@ -1100,8 +1133,10 @@ function MarketingPage() {
                     <p className="truncate text-xs text-muted-foreground">
                       {/* A snapshot taken when the campaign was saved, not a live
                           count — labelled so it cannot be read as today's reach. */}
-                      {campaign.subject || "No subject"} · {campaign.recipients_count} recipients
-                      when saved
+                      {tr("marketing.recipientsWhenSaved", {
+                        value: campaign.subject || t("marketing.noSubject"),
+                        recipientscount: campaign.recipients_count,
+                      })}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1114,7 +1149,7 @@ function MarketingPage() {
                         variant="outline"
                         onClick={() => void queueCampaign(campaign.id)}
                       >
-                        <Send className="size-4" /> Queue
+                        <Send className="size-4" /> {t("marketing.queue")}
                       </Button>
                     )}
                   </div>

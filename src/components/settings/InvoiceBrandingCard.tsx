@@ -10,9 +10,11 @@ import { Label } from "@/components/ui/label";
 import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
 import { saveBillingProfile } from "@/lib/billing.functions";
+import { useI18n } from "@/hooks/useI18n";
 
 /** A remote logo is used by the existing secure invoice PDF renderer. */
 export function InvoiceBrandingCard() {
+  const { t } = useI18n();
   const { tenant } = useTenant();
   const queryClient = useQueryClient();
   const saveBillingProfileFn = useServerFn(saveBillingProfile);
@@ -38,7 +40,7 @@ export function InvoiceBrandingCard() {
       await saveBillingProfileFn({ data: { logo_url: value || null } });
     },
     onSuccess: () => {
-      toast.success("Invoice logo saved");
+      toast.success(t("invoiceBrandingCard.invoiceLogoSaved"));
       void queryClient.invalidateQueries({ queryKey: ["invoice-branding", tenant?.id] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -48,15 +50,13 @@ export function InvoiceBrandingCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ImagePlus className="size-5" /> Invoice branding
+          <ImagePlus className="size-5" /> {t("invoiceBrandingCard.invoiceBranding")}
         </CardTitle>
-        <CardDescription>
-          Your logo appears on newly created invoices and quotations.
-        </CardDescription>
+        <CardDescription>{t("invoiceBrandingCard.yourLogoAppearsOnNewly")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-1.5">
-          <Label htmlFor="invoice-logo">Secure logo image URL</Label>
+          <Label htmlFor="invoice-logo">{t("invoiceBrandingCard.secureLogoImageUrl")}</Label>
           <Input
             id="invoice-logo"
             placeholder="https://your-site.com/logo.png"
@@ -68,20 +68,19 @@ export function InvoiceBrandingCard() {
           <img
             key={logoUrl}
             src={logoUrl}
-            alt="Invoice logo preview"
+            alt={t("invoiceBrandingCard.invoiceLogoPreview")}
             className="max-h-20 max-w-48 rounded border object-contain p-1"
             onError={(event) => {
               event.currentTarget.style.display = "none";
             }}
           />
         )}
-        <p className="text-xs text-muted-foreground">
-          Use a public PNG, JPG, or SVG hosted on your own secure website. Existing documents keep
-          their original snapshot.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("invoiceBrandingCard.useAPublicPngJpg")}</p>
         <Button onClick={() => save.mutate()} disabled={save.isPending}>
           <Save className="size-4" />
-          {save.isPending ? "Saving…" : "Save invoice logo"}
+          {save.isPending
+            ? t("invoiceBrandingCard.saving")
+            : t("invoiceBrandingCard.saveInvoiceLogo")}
         </Button>
       </CardContent>
     </Card>

@@ -98,6 +98,8 @@ const ENTITIES = {
 };
 
 const hasLetters = (s) => /\p{L}{2,}/u.test(s);
+/** A part number or a phone pattern ("FL-200W", "+9715XXXXXXX") is a sample, not a sentence. */
+const isCode = (s) => /\d/.test(s) && !/\p{Ll}/u.test(s);
 /**
  * An id, a path, an address -- not something to translate. A plain lowercase
  * word ("inactive", "default") IS text when it sits where a person reads it.
@@ -184,10 +186,14 @@ for (const file of files) {
   const shadowed = (() => {
     let found = false;
     const fromHook = (decl) =>
-      decl && ts.isVariableDeclaration(decl) && decl.initializer && /^useI18n\(\)$/.test(decl.initializer.getText(sf));
+      decl &&
+      ts.isVariableDeclaration(decl) &&
+      decl.initializer &&
+      /^useI18n\(\)$/.test(decl.initializer.getText(sf));
     const walk = (node) => {
       if (found) return;
-      const named = (name) => name && ts.isIdentifier(name) && (name.text === "t" || name.text === "tr");
+      const named = (name) =>
+        name && ts.isIdentifier(name) && (name.text === "t" || name.text === "tr");
       if (
         (ts.isParameter(node) && named(node.name)) ||
         (ts.isVariableDeclaration(node) && named(node.name)) ||
@@ -263,6 +269,7 @@ for (const file of files) {
   const translatable = (english) =>
     english &&
     hasLetters(english) &&
+    !isCode(english) &&
     !BRAND_ONLY.test(english.trim()) &&
     !english.includes("{") &&
     !english.includes("}");
@@ -478,7 +485,7 @@ for (const file of files) {
         english += `{${name}}${span.literal.text}`;
       });
       const prose = english.replace(/\{\w+\}/g, "").replace(MARK, "");
-      if (!hasLetters(prose) || BRAND_ONLY.test(prose.trim())) return undefined;
+      if (!hasLetters(prose) || isCode(prose) || BRAND_ONLY.test(prose.trim())) return undefined;
       if (!use(node, "t")) {
         note(node, `template not in a component: "${english.slice(0, 60)}"`);
         return undefined;

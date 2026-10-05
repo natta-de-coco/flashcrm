@@ -2,26 +2,36 @@
 // and list it here. The compiler then enforces that it carries every language.
 import { TRANSLATED_LANGUAGES } from "./define";
 import auth from "./screens/auth";
+import catalog from "./screens/catalog";
 import chatbot from "./screens/chatbot";
 import common from "./screens/common";
 import contactCard from "./screens/contact-card";
 import contacts from "./screens/contacts";
 import dashboard from "./screens/dashboard";
 import inbox from "./screens/inbox";
+import invoiceBrandingCard from "./screens/invoice-branding-card";
+import invoiceBuilder from "./screens/invoice-builder";
+import marketing from "./screens/marketing";
 import nav from "./screens/nav";
+import sales from "./screens/sales";
 import settings from "./screens/settings";
 import shell from "./screens/shell";
 import socialInbox from "./screens/social-inbox";
 
 const SCREENS = [
   auth,
+  catalog,
   chatbot,
   common,
   contactCard,
   contacts,
   dashboard,
   inbox,
+  invoiceBrandingCard,
+  invoiceBuilder,
+  marketing,
   nav,
+  sales,
   settings,
   shell,
   socialInbox,
