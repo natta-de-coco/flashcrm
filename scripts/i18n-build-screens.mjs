@@ -6,12 +6,19 @@
 // {placeholder}, or an empty string, and says which key -- the compiler would
 // catch a missing one too, but not a placeholder that changed its name.
 //
-// Usage: node scripts/i18n-build-screens.mjs <dir> [ns...]   (no ns = every one with both files)
+// A screen that already exists is added to, not replaced: its current messages
+// are kept and the ones in <dir> are laid over them, so extracting the new text
+// of a page that is already translated cannot throw its translations away.
+// Pass --replace to write exactly what <dir> holds (to delete a message).
+//
+// Usage: node scripts/i18n-build-screens.mjs <dir> [--replace] [ns...]   (no ns = every one with both files)
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 
-const [dir, ...only] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const replace = args.includes("--replace");
+const [dir, ...only] = args.filter((arg) => arg !== "--replace");
 if (!dir) {
-  console.error("usage: node scripts/i18n-build-screens.mjs <dir> [ns...]");
+  console.error("usage: node scripts/i18n-build-screens.mjs <dir> [--replace] [ns...]");
   process.exit(1);
 }
 const LANGS = ["ar", "ms", "fil", "sw"];
@@ -24,6 +31,22 @@ const placeholders = (s) =>
     .sort()
     .join(",");
 
+/** The messages a screen file holds now: { en, ar, ms, fil, sw }, or null. */
+function current(ns) {
+  const file = `${SCREENS_DIR}/${kebab(ns)}.ts`;
+  if (!existsSync(file)) return null;
+  const source = readFileSync(file, "utf8");
+  const start = source.indexOf("screen(");
+  const end = source.lastIndexOf(")");
+  if (start < 0 || end < start) return null;
+  try {
+    // The argument of screen(...) is a plain object literal.
+    return new Function(`return (${source.slice(start + "screen(".length, end)});`)();
+  } catch {
+    return null;
+  }
+}
+
 const namespaces = (
   only.length
     ? only
@@ -35,8 +58,15 @@ const namespaces = (
 const problems = [];
 let built = 0;
 for (const ns of namespaces) {
-  const en = JSON.parse(readFileSync(`${dir}/${ns}.en.json`, "utf8"));
-  const tr = JSON.parse(readFileSync(`${dir}/${ns}.tr.json`, "utf8"));
+  const kept = replace ? null : current(ns);
+  const en = {};
+  const tr = {};
+  for (const key of Object.keys(kept?.en ?? {})) {
+    en[key] = kept.en[key];
+    tr[key] = LANGS.map((lang) => kept[lang]?.[key]);
+  }
+  Object.assign(en, JSON.parse(readFileSync(`${dir}/${ns}.en.json`, "utf8")));
+  Object.assign(tr, JSON.parse(readFileSync(`${dir}/${ns}.tr.json`, "utf8")));
   const before = problems.length;
   for (const key of Object.keys(en)) {
     const row = tr[key];
