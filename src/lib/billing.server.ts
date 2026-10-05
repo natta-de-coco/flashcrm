@@ -368,6 +368,8 @@ function toPdfInput(
   verificationUrl: string | null,
 ): InvoicePdfInput {
   const company = (doc.company_snapshot ?? {}) as InvoicePdfInput["company"];
+  // Final documents must never inherit later changes to company branding.
+  if (doc.finalized_at) settings = null;
   const customer = (doc.customer_snapshot ?? {}) as InvoicePdfInput["customer"];
   const pdfItems: PdfItem[] = items.map((item) => ({
     name: item.name_snapshot,

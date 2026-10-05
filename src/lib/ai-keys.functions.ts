@@ -8,11 +8,8 @@
 // Writes go through the service role on purpose. 20260903010000 revoked
 // SELECT on ai_provider_keys from `authenticated` and re-granted it column by
 // column without api_key, so the browser can list which providers are
-// configured but never read a secret. The same migration granted only INSERT
-// and DELETE — there is no UPDATE — which is why replacing a key is delete +
-// insert rather than an upsert. (An upsert would fail anyway: ON CONFLICT DO
-// UPDATE SET api_key = excluded.api_key counts as a read of api_key, exactly
-// the trap that broke saving Meta credentials.)
+// configured but never read a secret. Replacements use a server-side update,
+// preserving the previous key if saving its replacement fails.
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -69,6 +66,68 @@ export const listAiKeys = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+export const getAiResilience = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const tenantId = await requireCompanyAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_tenant_ai_resilience" as never,
+      { _tenant_id: tenantId } as never,
+    );
+    return { available: !error, enabled: !error && data === true };
+  });
+
+export const setAiResilience = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ enabled: z.boolean() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const tenantId = await requireCompanyAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.rpc(
+      "set_tenant_ai_resilience" as never,
+      { _tenant_id: tenantId, _enabled: data.enabled } as never,
+    );
+    if (error)
+      throw new Error(
+        "AI backup storage is not ready. Ask a platform admin to apply the AI settings migration.",
+      );
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "ai.backup_changed",
+      tenantId,
+      actorId: context.userId,
+      entityType: "ai_settings",
+      entityId: tenantId,
+      details: { enabled: data.enabled },
+    });
+    return { ok: true };
+  });
+
+export const checkAiProvider = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ provider: z.enum(["openai", "anthropic", "google", "platform"]) }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const tenantId = await requireCompanyAdmin(context);
+    const { testAiProvider } = await import("@/lib/flash-ai.server");
+    try {
+      await testAiProvider(tenantId, data.provider);
+      return {
+        ok: true,
+        message: "Test passed: the provider generated a reply.",
+        testedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "The connection test failed.",
+        testedAt: new Date().toISOString(),
+      };
+    }
+  });
+
 export const saveAiKey = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
@@ -84,22 +143,36 @@ export const saveAiKey = createServerFn({ method: "POST" })
     const tenantId = await requireCompanyAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // One active key per provider. Replace rather than accumulate, so it is
-    // always obvious which key is paying.
-    await supabaseAdmin
+    const { sealSecret } = await import("@/lib/secret-box.server");
+    const sealed = await sealSecret(data.apiKey);
+    if (!sealed) throw new Error("The AI key could not be encrypted. Nothing was changed.");
+    // Keep the working key if its replacement cannot be saved. The previous
+    // delete-then-insert lost it on an insert failure.
+    const { data: existing, error: lookupError } = await supabaseAdmin
       .from("ai_provider_keys")
-      .delete()
+      .select("id")
       .eq("tenant_id", tenantId)
-      .eq("provider", data.provider);
-
-    const { error } = await supabaseAdmin.from("ai_provider_keys").insert({
+      .eq("provider", data.provider)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lookupError) throw new Error("Could not load the saved AI key. Nothing was changed.");
+    const values = {
       tenant_id: tenantId,
       provider: data.provider,
-      api_key: data.apiKey,
+      api_key: sealed,
       label: data.label ?? AI_PROVIDERS.find((p) => p.id === data.provider)?.name ?? data.provider,
       active: true,
       created_by: context.userId,
-    });
+      created_at: new Date().toISOString(),
+    };
+    const { error } = existing
+      ? await supabaseAdmin
+          .from("ai_provider_keys")
+          .update(values)
+          .eq("id", existing.id)
+          .eq("tenant_id", tenantId)
+      : await supabaseAdmin.from("ai_provider_keys").insert(values);
     if (error) throw error;
 
     const { logAudit } = await import("@/lib/audit.server");

@@ -192,6 +192,7 @@ export async function generateBotReply(
   tenantId: string,
   conversationId: string,
   settings: BotSettings,
+  options: { throwOnFailure?: boolean } = {},
 ): Promise<{ text: string; handoff: boolean } | null> {
   if (!tenantId) return null;
   const { data: conversation, error: conversationError } = await supabaseAdmin
@@ -316,9 +317,13 @@ Relevant website excerpts: ${JSON.stringify(websiteExcerpts)}`;
       platformModel: settings.model,
     });
   } catch (error) {
-    // An exhausted quota, a rejected key or an unreachable provider all end the
-    // same way: no automatic reply, and the caller hands the thread to a human.
-    console.error("[bot] no reply:", error instanceof Error ? error.message : "unknown");
+    // The automatic-reply path deliberately turns an AI failure into a human
+    // handoff. An agent who explicitly asks for a draft needs the safe,
+    // actionable provider error instead of a misleading generic toast.
+    const message =
+      error instanceof Error ? error.message : "The AI provider could not generate a reply.";
+    console.error("[bot] no reply:", message);
+    if (options.throwOnFailure) throw new Error(message);
     return null;
   }
 

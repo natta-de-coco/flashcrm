@@ -11,7 +11,9 @@ export const FLASH_MODEL = "openai/gpt-5.6-sol";
  * Named here rather than inline because it is in the request URL, so a wrong
  * value fails as a 404 from Google rather than as anything self-explanatory.
  */
-const GEMINI_MODEL = "gemini-2.5-pro";
+// Google restricts older 2.5 models for new projects. Keep an operator override
+// so a provider retirement does not require editing every AI feature.
+const GEMINI_MODEL = process.env["FLAS_GOOGLE_MODEL"] || "gemini-3.8-flash";
 
 type RlsClient = {
   from: (table: string) => never;
@@ -81,6 +83,78 @@ type ResolvedProvider = {
   headers: Record<string, string>;
 };
 
+export class AiProviderError extends Error {
+  constructor(
+    message: string,
+    readonly allowFallback = true,
+  ) {
+    super(message);
+    this.name = "AiProviderError";
+  }
+}
+
+function providerFailure(provider: string, status: number): AiProviderError {
+  const name = provider === "platform" ? "Built-in Flas AI" : provider;
+  const reason =
+    status === 401 || status === 403
+      ? "could not authenticate or access this model. Check the key and its permissions"
+      : status === 404
+        ? "could not find the configured model. An administrator must update the model or its access"
+        : status === 402 || status === 429
+          ? "has reached a credit or rate limit. Check the provider's billing and quota"
+          : status >= 500
+            ? "is temporarily unavailable. Try again shortly"
+            : "could not accept this request. Ask an administrator to check the configuration";
+  // Never echo an upstream response: it can include a credential or user data.
+  return new AiProviderError(
+    `${name} ${reason} (HTTP ${status}).`,
+    status !== 400 && status !== 422,
+  );
+}
+
+async function platformProvider(): Promise<ResolvedProvider | null> {
+  const key = process.env["LOVABLE_API_KEY"];
+  return key
+    ? {
+        provider: "platform",
+        apiKey: key,
+        url: "https://ai.gateway.lovable.dev/v1/responses",
+        headers: { Authorization: `Bearer ${key}`, "Lovable-API-Key": key },
+      }
+    : null;
+}
+
+async function savedProvider(
+  provider: string,
+  storedKey: string,
+): Promise<ResolvedProvider | null> {
+  const { openSecret } = await import("@/lib/secret-box.server");
+  const apiKey = await openSecret(storedKey);
+  if (!apiKey) return null;
+  if (provider === "openai")
+    return {
+      provider,
+      apiKey,
+      url: "https://api.openai.com/v1/chat/completions",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    };
+  if (provider === "anthropic")
+    return {
+      provider,
+      apiKey,
+      url: "https://api.anthropic.com/v1/messages",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    };
+  if (provider === "google")
+    return {
+      provider,
+      apiKey,
+      url: `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      headers: { "x-goog-api-key": apiKey },
+    };
+  return null;
+}
+
 /**
  * Picks whose key pays for this call. A tenant that has pasted their own
  * provider key in Settings should be billed to that key — until now nothing
@@ -90,42 +164,22 @@ type ResolvedProvider = {
 async function resolveProvider(tenantId: string | null | undefined): Promise<ResolvedProvider> {
   if (tenantId) {
     try {
-      const { data } = await supabaseAdmin.rpc("get_tenant_ai_key", { _tenant_id: tenantId });
+      const { data, error } = await supabaseAdmin.rpc("get_tenant_ai_key", {
+        _tenant_id: tenantId,
+      });
+      if (error) throw new Error("AI configuration unavailable");
       const row = Array.isArray(data) ? data[0] : data;
       const provider = (row as { provider?: string } | null)?.provider;
       const apiKey = (row as { api_key?: string } | null)?.api_key;
       if (provider && apiKey) {
-        if (provider === "openai") {
-          return {
-            provider,
-            apiKey,
-            url: "https://api.openai.com/v1/chat/completions",
-            headers: { Authorization: `Bearer ${apiKey}` },
-          };
-        }
-        if (provider === "anthropic") {
-          return {
-            provider,
-            apiKey,
-            url: "https://api.anthropic.com/v1/messages",
-            headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-          };
-        }
-        if (provider === "google") {
-          // Gemini takes the key as a header rather than a bearer token, and
-          // the model is part of the path.
-          return {
-            provider,
-            apiKey,
-            url: `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-            headers: { "x-goog-api-key": apiKey },
-          };
-        }
-        // Unknown provider string — fall through to the platform key rather
-        // than guessing an endpoint and failing in a confusing way.
+        const resolved = await savedProvider(provider, apiKey);
+        if (resolved) return resolved;
+        throw new Error("Saved AI key cannot be used");
       }
     } catch {
-      /* fall back to the platform key */
+      throw new Error(
+        "Could not read this workspace's AI key. Ask an administrator to check or replace it.",
+      );
     }
   }
   const key = process.env["LOVABLE_API_KEY"];
@@ -146,6 +200,89 @@ export async function callFlashAi(
   system: string,
   user: string,
   options: FlashAiOptions = {},
+): Promise<string> {
+  const chosen = await resolveProvider(options.tenantId);
+  const candidates = [chosen];
+  if (options.tenantId) {
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_tenant_ai_resilience" as never,
+      { _tenant_id: options.tenantId } as never,
+    );
+    // Missing migration or unreadable settings must not silently enable sharing.
+    if (!error && data === true) {
+      const { data: keys } = await supabaseAdmin
+        .from("ai_provider_keys")
+        .select("provider, api_key")
+        .eq("tenant_id", options.tenantId)
+        .eq("active", true)
+        .order("created_at", { ascending: false })
+        .limit(3);
+      for (const row of keys ?? []) {
+        if (candidates.some((c) => c.provider === row.provider)) continue;
+        try {
+          const candidate = await savedProvider(row.provider, row.api_key);
+          if (candidate) candidates.push(candidate);
+        } catch {
+          /* An unreadable backup must not stop other configured backups. */
+        }
+      }
+      const platform = await platformProvider();
+      if (platform && !candidates.some((c) => c.provider === "platform")) candidates.push(platform);
+    }
+  }
+  const deadline = Date.now() + AI_TIMEOUT_MS;
+  let lastFailure: unknown;
+  for (let i = 0; i < candidates.length; i++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    // Reserve time for backups and bound the entire operation below the edge limit.
+    const timeout = i < candidates.length - 1 ? Math.min(25_000, remaining) : remaining;
+    try {
+      return await attemptFlashAi(system, user, options, candidates[i]!, timeout);
+    } catch (error) {
+      lastFailure = error;
+      if (!(error instanceof AiProviderError) || !error.allowFallback) throw error;
+    }
+  }
+  throw (
+    lastFailure ??
+    new AiProviderError("No AI provider completed in time. Please ask a teammate to reply.")
+  );
+}
+
+/** Runs one provider only, with synthetic input: never hides failure behind a backup. */
+export async function testAiProvider(tenantId: string, provider: string): Promise<void> {
+  let chosen: ResolvedProvider | null = null;
+  if (provider === "platform") chosen = await platformProvider();
+  else {
+    const { data, error } = await supabaseAdmin
+      .from("ai_provider_keys")
+      .select("api_key")
+      .eq("tenant_id", tenantId)
+      .eq("provider", provider)
+      .eq("active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error("Could not read this workspace's AI configuration.");
+    if (data) chosen = await savedProvider(provider, data.api_key);
+  }
+  if (!chosen) throw new Error("No active key is saved for this provider.");
+  await attemptFlashAi(
+    "You are testing a connection. Reply with OK.",
+    "Reply with OK.",
+    { tenantId, feature: "ai_health" },
+    chosen,
+    20_000,
+  );
+}
+
+async function attemptFlashAi(
+  system: string,
+  user: string,
+  options: FlashAiOptions,
+  chosen: ResolvedProvider,
+  timeoutMs: number,
 ): Promise<string> {
   const {
     tenantId = null,
@@ -177,8 +314,6 @@ export async function callFlashAi(
       if (limitError instanceof Error && limitError.message.includes("AI limit")) throw limitError;
     }
   }
-
-  const chosen = await resolveProvider(tenantId);
 
   // The platform gateway's Responses endpoint takes one instruction and one
   // question. A conversation, or a required JSON object, needs its chat
@@ -256,6 +391,17 @@ export async function callFlashAi(
     } catch {
       /* accounting must never break the feature */
     }
+    if (!ok) {
+      const { recordErrorEvent } = await import("@/lib/telemetry.server");
+      await recordErrorEvent({
+        kind: "ai_provider",
+        message: `AI request failed: ${chosen.provider} (${feature}).`,
+        tenantId,
+        userId,
+        sessionId: `ai:${tenantId}:${chosen.provider}:${feature}`,
+        context: { provider: chosen.provider, feature },
+      });
+    }
   };
 
   // A bounded wait. There was none, so a slow or stuck provider left the
@@ -271,89 +417,106 @@ export async function callFlashAi(
       method: "POST",
       headers: { "Content-Type": "application/json", ...chosen.headers },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(AI_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     raw = await res.text();
   } catch (error) {
     await recordUsage(false);
     const name = error instanceof Error ? error.name : "";
-    throw new Error(
+    throw new AiProviderError(
       name === "TimeoutError" || name === "AbortError"
-        ? `The AI did not finish within ${AI_TIMEOUT_MS / 1000} seconds and was stopped. Try again, or ask for a shorter piece.`
+        ? "The AI provider did not finish in time. Try again, or ask for a shorter piece."
         : "The AI service could not be reached. Try again in a moment.",
     );
   }
-  if (!res.ok) await recordUsage(false);
-  else await recordUsage(true);
-
-  // A tenant's own key failing is their configuration to fix, and saying
-  // "Flas AI failed" would send them hunting in the wrong place.
-  if (!res.ok && chosen.provider !== "platform") {
-    throw new Error(
-      `Your ${chosen.provider} API key was rejected (HTTP ${res.status}). Check the key in Settings → AI, or remove it to fall back to the built-in assistant.`,
-    );
-  }
   if (!res.ok) {
-    let message = raw.slice(0, 300);
-    try {
-      const parsed = JSON.parse(raw) as { error?: { message?: string }; message?: string };
-      message = parsed.error?.message ?? parsed.message ?? message;
-    } catch {
-      /* keep raw snippet */
-    }
-    if (res.status === 429) {
-      throw new Error("Flas AI is busy right now — wait a few seconds and try again.");
-    }
-    if (res.status === 402) {
-      throw new Error(
-        "AI credits are exhausted — the workspace owner can top up in Lovable billing settings.",
-      );
-    }
-    throw new Error(`Flas AI request failed [${res.status}]: ${message}`);
+    await recordUsage(false);
+    throw providerFailure(chosen.provider, res.status);
   }
 
   // Each provider returns a different shape; normalize to plain text here so
   // every caller keeps receiving a string regardless of whose key paid.
-  const json = JSON.parse(raw) as {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    await recordUsage(false);
+    throw new AiProviderError("The AI service returned an unreadable response.");
+  }
+  const json = (parsed ?? {}) as {
     // Lovable Responses API
     output_text?: string;
     output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
     // OpenAI chat completions
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string; refusal?: string }; finish_reason?: string }>;
     // Anthropic messages
     content?: Array<{ type?: string; text?: string }>;
     // Gemini generateContent
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
+    promptFeedback?: { blockReason?: string };
+    stop_reason?: string;
   };
 
-  let text = "";
-  if (chosen.provider === "openai" || chosen.shape === "chat") {
-    text = (json.choices?.[0]?.message?.content ?? "").trim();
-  } else if (chosen.provider === "anthropic") {
-    text = (json.content ?? [])
-      .filter((part) => part.type === "text" && part.text)
-      .map((part) => part.text)
-      .join("")
-      .trim();
-  } else if (chosen.provider === "google") {
-    text = (json.candidates?.[0]?.content?.parts ?? [])
-      .map((part) => part.text ?? "")
-      .join("")
-      .trim();
-  } else {
-    text = (json.output_text ?? "").trim();
-    if (!text) {
-      for (const item of json.output ?? []) {
-        if (item.type !== "message") continue;
-        for (const part of item.content ?? []) {
-          if (part.type === "output_text" && part.text) text += part.text;
-        }
-      }
-    }
-    text = text.trim();
+  if (
+    json.promptFeedback?.blockReason ||
+    json.choices?.[0]?.message?.refusal ||
+    json.choices?.[0]?.finish_reason === "content_filter" ||
+    json.stop_reason === "refusal" ||
+    ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "RECITATION"].includes(
+      json.candidates?.[0]?.finishReason ?? "",
+    )
+  ) {
+    await recordUsage(false);
+    throw new AiProviderError(
+      "The AI provider could not safely answer this request. Ask a teammate to review it.",
+      false,
+    );
   }
 
-  if (!text) throw new Error("Flas AI returned an empty response — try rephrasing your goal.");
+  let text = "";
+  try {
+    if (chosen.provider === "openai" || chosen.shape === "chat") {
+      text = (json.choices?.[0]?.message?.content ?? "").trim();
+    } else if (chosen.provider === "anthropic") {
+      text = (json.content ?? [])
+        .filter((part) => part.type === "text" && part.text)
+        .map((part) => part.text)
+        .join("")
+        .trim();
+    } else if (chosen.provider === "google") {
+      text = (json.candidates?.[0]?.content?.parts ?? [])
+        .map((part) => part.text ?? "")
+        .join("")
+        .trim();
+    } else {
+      text = (json.output_text ?? "").trim();
+      if (!text) {
+        for (const item of json.output ?? []) {
+          if (item.type !== "message") continue;
+          for (const part of item.content ?? []) {
+            if (part.type === "output_text" && part.text) text += part.text;
+          }
+        }
+      }
+      text = text.trim();
+    }
+  } catch {
+    await recordUsage(false);
+    throw new AiProviderError("The AI service returned an unreadable response.");
+  }
+  if (!text) {
+    await recordUsage(false);
+    throw new AiProviderError("Flas AI returned an empty response — try rephrasing your goal.");
+  }
+  if (wantsJson) {
+    try {
+      JSON.parse(text);
+    } catch {
+      await recordUsage(false);
+      throw new AiProviderError("The AI response did not match the required format.");
+    }
+  }
+  await recordUsage(true);
   return text;
 }
 
