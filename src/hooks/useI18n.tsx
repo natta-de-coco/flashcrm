@@ -10,6 +10,7 @@ import {
   languageCookie,
   translate,
   type MessageKey,
+  type MessageValues,
 } from "@/lib/i18n";
 import { useRouter } from "@tanstack/react-router";
 import { createContext, Fragment, useContext, useMemo, type ReactNode } from "react";
@@ -17,7 +18,7 @@ import { createContext, Fragment, useContext, useMemo, type ReactNode } from "re
 type I18n = {
   language: string;
   dir: "ltr" | "rtl";
-  t: (key: MessageKey, values?: Record<string, string | number>) => string;
+  t: (key: MessageKey, values?: MessageValues) => string;
   /**
    * A sentence with elements inside it -- a link, a code sample -- as
    * {placeholders}. Word order differs between languages, so the element goes

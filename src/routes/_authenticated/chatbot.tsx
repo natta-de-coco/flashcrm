@@ -20,6 +20,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, Bot, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/chatbot")({
   head: () => ({
@@ -46,6 +47,7 @@ const MODELS = [
 ];
 
 function ChatbotPage() {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const { tenant } = useTenant();
   const [form, setForm] = useState({
@@ -115,11 +117,9 @@ function ChatbotPage() {
     },
     onSuccess: () => {
       if (isDormant) {
-        toast.warning(
-          "Chatbot saved, but auto-reply will remain paused until instructions (min 20 characters) and a greeting are provided.",
-        );
+        toast.warning(t("chatbot.chatbotSavedButAutoReply"));
       } else {
-        toast.success("Chatbot updated");
+        toast.success(t("chatbot.chatbotUpdated"));
       }
       void qc.invalidateQueries({ queryKey: ["tenant_bot_settings", tenant?.id] });
     },
@@ -130,11 +130,10 @@ function ChatbotPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <Bot className="size-6 text-brand" /> AI chatbot
+          <Bot className="size-6 text-brand" /> {t("chatbot.aiChatbot")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          The assistant answers WhatsApp and website chats automatically, then hands off to a human
-          when needed.
+          {t("chatbot.theAssistantAnswersWhatsappAnd")}
         </p>
       </header>
 
@@ -145,7 +144,7 @@ function ChatbotPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base" id="auto-reply-title">
-                  Auto-reply
+                  {t("chatbot.autoReply")}
                 </CardTitle>
                 {form.enabled && (
                   <span
@@ -155,12 +154,12 @@ function ChatbotPage() {
                         : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                     }`}
                   >
-                    {isDormant ? "Dormant" : "Active"}
+                    {isDormant ? t("chatbot.dormant") : t("chatbot.active")}
                   </span>
                 )}
               </div>
               <CardDescription id="auto-reply-desc">
-                Reply instantly to new incoming messages.
+                {t("chatbot.replyInstantlyToNewIncoming")}
               </CardDescription>
             </div>
             <Switch
@@ -176,20 +175,17 @@ function ChatbotPage() {
           <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200">
             <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
             <AlertTitle className="font-semibold text-amber-800 dark:text-amber-300">
-              Auto-reply is dormant
+              {t("chatbot.autoReplyIsDormant")}
             </AlertTitle>
             <AlertDescription className="text-amber-800/90 dark:text-amber-300/90 text-xs sm:text-sm">
-              Even though the auto-reply switch is turned on, your assistant will not reply to
-              incoming chats until configuration requirements are met:
+              {t("chatbot.evenThoughTheAutoReply")}
               <ul className="mt-1.5 list-disc ps-4 space-y-0.5">
                 {!instructionsValid && (
                   <li>
-                    Instructions must be at least 20 characters (currently{" "}
-                    {instructionsTrimmed.length} character
-                    {instructionsTrimmed.length === 1 ? "" : "s"}).
+                    {t("chatbot.instructionsMustBeAtLeast", { length: instructionsTrimmed.length })}
                   </li>
                 )}
-                {!greetingValid && <li>A first greeting message is required.</li>}
+                {!greetingValid && <li>{t("chatbot.aFirstGreetingMessageIs")}</li>}
               </ul>
             </AlertDescription>
           </Alert>
@@ -197,11 +193,11 @@ function ChatbotPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Personality</CardTitle>
+            <CardTitle className="text-base">{t("chatbot.personality")}</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-1.5">
-              <Label htmlFor="bot_name">Bot name</Label>
+              <Label htmlFor="bot_name">{t("chatbot.botName")}</Label>
               <Input
                 id="bot_name"
                 value={form.bot_name}
@@ -210,10 +206,10 @@ function ChatbotPage() {
             </div>
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="greeting">First greeting</Label>
+                <Label htmlFor="greeting">{t("chatbot.firstGreeting")}</Label>
                 {form.enabled && !greetingValid && (
                   <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                    Required for auto-reply
+                    {t("chatbot.requiredForAutoReply")}
                   </span>
                 )}
               </div>
@@ -222,7 +218,7 @@ function ChatbotPage() {
                 rows={2}
                 value={form.greeting}
                 onChange={(e) => setForm({ ...form, greeting: e.target.value })}
-                placeholder="e.g. Hi there! Thanks for contacting us. How can we help you today?"
+                placeholder={t("chatbot.eGHiThereThanks")}
                 className={
                   form.enabled && !greetingValid
                     ? "border-amber-500/50 focus-visible:ring-amber-500"
@@ -232,11 +228,11 @@ function ChatbotPage() {
             </div>
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="instructions">Instructions / knowledge</Label>
+                <Label htmlFor="instructions">{t("chatbot.instructionsKnowledge")}</Label>
                 <span
                   className={`text-xs font-medium ${instructionsValid ? "text-muted-foreground" : form.enabled ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-muted-foreground"}`}
                 >
-                  {instructionsTrimmed.length} / 20 min chars
+                  {tr("chatbot.20MinChars", { length: instructionsTrimmed.length })}
                 </span>
               </div>
               <Textarea
@@ -244,7 +240,7 @@ function ChatbotPage() {
                 rows={8}
                 value={form.instructions}
                 onChange={(e) => setForm({ ...form, instructions: e.target.value })}
-                placeholder="Tell us what you sell, how delivery works, and anything your team should know. Replies are warm and casual by default."
+                placeholder={t("chatbot.tellUsWhatYouSell")}
                 className={
                   form.enabled && !instructionsValid
                     ? "border-amber-500/50 focus-visible:ring-amber-500"
@@ -253,7 +249,7 @@ function ChatbotPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Model</Label>
+              <Label>{t("chatbot.model")}</Label>
               <Select value={form.model} onValueChange={(v) => setForm({ ...form, model: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -267,13 +263,13 @@ function ChatbotPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Customer replies use FLAS AI. If it is unavailable, the conversation goes to your
-                team. Replies use up to 50 products from your{" "}
-                <Link to="/catalog" className="underline">
-                  catalog
-                </Link>
-                . Keep product details and prices current. This is not a WhatsApp shopping catalog
-                sync.
+                {tr("chatbot.customerRepliesUseFlasAi", {
+                  link: (
+                    <Link to="/catalog" className="underline">
+                      {t("chatbot.catalog")}
+                    </Link>
+                  ),
+                })}
               </p>
             </div>
           </CardContent>
@@ -281,32 +277,29 @@ function ChatbotPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Human handoff</CardTitle>
-            <CardDescription>
-              Requests for a person and uncertain answers pause the bot and put the chat in your
-              team’s queue. Add any extra words below.
-            </CardDescription>
+            <CardTitle className="text-base">{t("chatbot.humanHandoff")}</CardTitle>
+            <CardDescription>{t("chatbot.requestsForAPersonAnd")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-1.5">
-              <Label htmlFor="handoff">Handoff keywords (comma separated)</Label>
+              <Label htmlFor="handoff">{t("chatbot.handoffKeywordsCommaSeparated")}</Label>
               <Input
                 id="handoff"
                 value={form.handoff_keywords}
                 onChange={(e) => setForm({ ...form, handoff_keywords: e.target.value })}
-                placeholder="human, agent, complaint, refund"
+                placeholder={t("chatbot.humanAgentComplaintRefund")}
               />
             </div>
             <label className="flex items-center gap-3 text-sm">
               <Switch checked={false} disabled />
-              Availability-based scheduling — coming soon
+              {t("chatbot.availabilityBasedSchedulingComingSoon")}
             </label>
           </CardContent>
         </Card>
 
         <div>
           <Button onClick={() => save.mutate()} disabled={save.isPending}>
-            <Save className="size-4" /> Save chatbot
+            <Save className="size-4" /> {t("chatbot.saveChatbot")}
           </Button>
         </div>
       </div>

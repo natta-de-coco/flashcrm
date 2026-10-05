@@ -60,15 +60,15 @@ export function directionOf(code: string | null | undefined): "rtl" | "ltr" {
  * to English for a key not yet translated, so an unfinished translation shows
  * English rather than "nav.inbox.label".
  */
-export function translate(
-  language: string,
-  key: MessageKey,
-  values?: Record<string, string | number>,
-): string {
+/** What a {placeholder} may be filled with. null and undefined print as nothing. */
+export type MessageValues = Record<string, string | number | null | undefined>;
+
+export function translate(language: string, key: MessageKey, values?: MessageValues): string {
   const template = MESSAGES[language]?.[key] ?? en[key] ?? key;
   if (!values) return template;
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>
-    name in values ? String(values[name]) : match,
+    // An absent value prints nothing, not the word "undefined".
+    name in values ? String(values[name] ?? "") : match,
   );
 }
 
