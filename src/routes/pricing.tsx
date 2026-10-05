@@ -130,7 +130,7 @@ export const Route = createFileRoute("/pricing")({
 });
 
 function Pricing() {
-  const { t, tr } = useI18n();
+  const { t, tr, tx } = useI18n();
   useReveal();
 
   return (
@@ -224,10 +224,10 @@ function Pricing() {
           >
             <h2 className="text-lg font-bold">{t("pricing.includedOnBothPlans")}</h2>
             <ul className="mt-5 grid gap-2.5 sm:grid-cols-2">
-              {INCLUDED.map((item) => (
+              {INCLUDED.map((item, i) => (
                 <li key={item} className="flex gap-2.5 text-sm">
                   <Check className="mt-0.5 size-4 shrink-0 text-brand" />
-                  <span className="text-muted-foreground">{item}</span>
+                  <span className="text-muted-foreground">{tx(`pricing.included.${i}`, item)}</span>
                 </li>
               ))}
             </ul>
@@ -268,13 +268,15 @@ function Pricing() {
                   className="group rounded-2xl border bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40"
                 >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-start font-semibold [&::-webkit-details-marker]:hidden">
-                    {f.q}
+                    {tx(`pricing.faq.${i}.q`, f.q)}
                     <ChevronDown
                       aria-hidden
                       className="size-4 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-180"
                     />
                   </summary>
-                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    {tx(`pricing.faq.${i}.a`, f.a)}
+                  </p>
                 </details>
               ))}
             </div>

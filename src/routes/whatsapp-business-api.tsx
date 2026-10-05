@@ -199,14 +199,16 @@ function WhatsAppApiPage() {
                 style={{ ["--reveal-delay" as string]: "200ms" }}
                 className="mt-7 grid gap-2 text-sm"
               >
-                {[
-                  "Multiple numbers per company, routed automatically",
-                  "AI chatbot with handoff to a human",
-                  "Templates written to pass review first time",
-                ].map((t) => (
-                  <li key={t} className="flex gap-2">
+                {(
+                  [
+                    "whatsappBusinessApi.point.0",
+                    "whatsappBusinessApi.point.1",
+                    "whatsappBusinessApi.point.2",
+                  ] as const
+                ).map((point) => (
+                  <li key={point} className="flex gap-2">
                     <Check className="mt-0.5 size-4 shrink-0 text-brand" />
-                    <span className="text-muted-foreground">{t}</span>
+                    <span className="text-muted-foreground">{i18n.t(point)}</span>
                   </li>
                 ))}
               </ul>
@@ -242,8 +244,12 @@ function WhatsAppApiPage() {
                   <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
                     <s.icon className="size-5" />
                   </span>
-                  <h3 className="mt-4 text-base font-semibold">{s.title}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{s.body}</p>
+                  <h3 className="mt-4 text-base font-semibold">
+                    {i18n.tx(`whatsappBusinessApi.step.${i}.title`, s.title)}
+                  </h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {i18n.tx(`whatsappBusinessApi.step.${i}.body`, s.body)}
+                  </p>
                 </div>
               ))}
             </div>
@@ -277,13 +283,15 @@ function WhatsAppApiPage() {
                 className="group rounded-2xl border bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-start font-semibold [&::-webkit-details-marker]:hidden">
-                  {f.q}
+                  {i18n.tx(`whatsappBusinessApi.faq.${i}.q`, f.q)}
                   <ChevronDown
                     aria-hidden
                     className="size-4 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-180"
                   />
                 </summary>
-                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                  {i18n.tx(`whatsappBusinessApi.faq.${i}.a`, f.a)}
+                </p>
               </details>
             ))}
           </div>

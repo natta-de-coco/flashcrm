@@ -288,7 +288,7 @@ const FAQS = [
 const WHATSAPP = "https://wa.me/9710509630506";
 
 function Landing() {
-  const { t, tr } = useI18n();
+  const { t, tr, tx } = useI18n();
   useReveal();
 
   // The chat widget loads through <HomepageChatWidget />, only when the
@@ -498,8 +498,12 @@ function Landing() {
                 <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand transition-transform duration-300 group-hover:scale-110">
                   <m.icon className="size-5" />
                 </span>
-                <h3 className="mt-4 text-base font-semibold">{m.title}</h3>
-                <p className="mt-1.5 text-sm text-muted-foreground">{m.body}</p>
+                <h3 className="mt-4 text-base font-semibold">
+                  {tx(`home.module.${i}.title`, m.title)}
+                </h3>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {tx(`home.module.${i}.body`, m.body)}
+                </p>
               </article>
             ))}
           </div>
@@ -522,8 +526,12 @@ function Landing() {
                   <span className="grid size-9 place-items-center rounded-full bg-brand text-sm font-bold text-brand-foreground">
                     {i + 1}
                   </span>
-                  <h3 className="mt-4 text-base font-bold">{s.title}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{s.body}</p>
+                  <h3 className="mt-4 text-base font-bold">
+                    {tx(`home.step.${i}.title`, s.title)}
+                  </h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {tx(`home.step.${i}.body`, s.body)}
+                  </p>
                   {i < STEPS.length - 1 && (
                     <ArrowRight
                       aria-hidden
@@ -611,13 +619,15 @@ function Landing() {
                   className="group rounded-2xl border bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40"
                 >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-start font-semibold [&::-webkit-details-marker]:hidden">
-                    {f.q}
+                    {tx(`home.faq.${i}.q`, f.q)}
                     <ChevronDown
                       aria-hidden
                       className="size-4 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-180"
                     />
                   </summary>
-                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    {tx(`home.faq.${i}.a`, f.a)}
+                  </p>
                 </details>
               ))}
             </div>

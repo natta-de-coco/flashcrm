@@ -218,20 +218,35 @@ describe("the page is rendered in the chosen language and direction", () => {
   });
 });
 
-describe("a page not yet translated is not laid out backwards", () => {
-  // Arabic turns the whole document right-to-left. A page whose text is still
-  // English would read backwards, so until it is translated it marks itself
+describe("a page kept in English is not laid out backwards", () => {
+  // Arabic turns the whole document right-to-left. A page whose text is English
+  // would read backwards, so the legal pages and the blog mark themselves
   // English and left-to-right, while the translated frame keeps the reader's
-  // direction.
-  it("knows which pages are translated", () => {
-    assert.equal(i18n.isTranslatedPath("/dashboard"), true);
+  // direction. Every other page is translated.
+  it("treats every page as translated except the legal texts and the blog", () => {
+    for (const path of [
+      "/",
+      "/dashboard",
+      "/settings",
+      "/inbox",
+      "/pricing",
+      "/companies/errors",
+    ]) {
+      assert.equal(i18n.isTranslatedPath(path), true, path);
+    }
     assert.equal(i18n.isTranslatedPath("/dashboard/"), true, "a trailing slash is the same page");
-    assert.equal(i18n.isTranslatedPath("/settings"), false);
-    assert.equal(i18n.isTranslatedPath("/"), false);
+    for (const path of ["/terms", "/privacy", "/privacy/", "/blog", "/blog/whatsapp-api-cost"]) {
+      assert.equal(i18n.isTranslatedPath(path), false, path);
+    }
+  });
+
+  it("does not mistake a page that merely starts with the same letters", () => {
+    assert.equal(i18n.isTranslatedPath("/blogroll"), true);
+    assert.equal(i18n.isTranslatedPath("/terms-of-sale"), true);
   });
 
   it("lists only pages that exist", () => {
-    for (const path of i18n.TRANSLATED_PATHS) {
+    for (const path of i18n.ENGLISH_ONLY_PATHS) {
       const name = path.replace(/^\//, "");
       const candidates = [`src/routes/${name}.tsx`, `src/routes/_authenticated/${name}.tsx`];
       assert.ok(
@@ -268,4 +283,25 @@ describe("a page not yet translated is not laid out backwards", () => {
       "both content outlets",
     );
   });
+});
+
+describe("a public page's FAQ reads the same on the page and in its structured data", () => {
+  // Google takes the FAQ from the page's JSON-LD, which is built from the
+  // page's own array, and requires it to match the text a visitor sees. The
+  // visible English comes from the message files, so the two must be the same
+  // sentences.
+  for (const [prefix, file] of [
+    ["home.faq.", "src/routes/index.tsx"],
+    ["pricing.faq.", "src/routes/pricing.tsx"],
+    ["whatsappBusinessApi.faq.", "src/routes/whatsapp-business-api.tsx"],
+  ]) {
+    it(file, () => {
+      const source = read(file);
+      const keys = Object.keys(en).filter((key) => key.startsWith(prefix));
+      assert.ok(keys.length >= 10, `${prefix} has ${keys.length} messages`);
+      for (const key of keys) {
+        assert.ok(source.includes(en[key]), `${key} differs from the page's own array`);
+      }
+    });
+  }
 });

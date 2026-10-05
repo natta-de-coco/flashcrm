@@ -121,15 +121,18 @@ export function workspaceDefaultLanguage(
 }
 
 /**
- * The pages whose own text is translated. Screens are translated one by one,
- * and a page not yet done must not be laid out right-to-left in Arabic -- that
- * puts English sentences backwards. Until a page is listed here its content
- * declares itself English and left-to-right, while the translated frame
- * around it (sidebar, header) follows the reader's language.
+ * The pages whose own text is still English only: the legal texts, which must
+ * read exactly as a lawyer approved them, and the blog, whose articles are
+ * written in English. Laid out right-to-left in Arabic their sentences would
+ * run backwards, so their content declares itself English and left-to-right
+ * while the translated frame around it follows the reader's language.
+ *
+ * Every other page is translated. A new page is translated by default: it is
+ * listed here only if its text is deliberately kept in English.
  */
-export const TRANSLATED_PATHS: readonly string[] = ["/auth", "/dashboard", "/contacts"];
+export const ENGLISH_ONLY_PATHS: readonly string[] = ["/terms", "/privacy", "/blog"];
 
 export function isTranslatedPath(pathname: string): boolean {
   const path = pathname.replace(/\/+$/, "") || "/";
-  return TRANSLATED_PATHS.includes(path);
+  return !ENGLISH_ONLY_PATHS.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }

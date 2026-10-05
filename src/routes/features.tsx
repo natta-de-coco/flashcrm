@@ -170,7 +170,7 @@ export const Route = createFileRoute("/features")({
 });
 
 function Features() {
-  const { t } = useI18n();
+  const { t, tx } = useI18n();
   useReveal();
 
   return (
@@ -202,14 +202,14 @@ function Features() {
             <div className="mx-auto max-w-6xl px-6">
               <div className="max-w-2xl">
                 <h2 data-reveal className="text-2xl font-bold">
-                  {group.name}
+                  {tx(`features.group.${gi}.name`, group.name)}
                 </h2>
                 <p
                   data-reveal
                   style={{ ["--reveal-delay" as string]: "40ms" }}
                   className="mt-2 text-sm text-muted-foreground"
                 >
-                  {group.lede}
+                  {tx(`features.group.${gi}.lede`, group.lede)}
                 </p>
               </div>
 
@@ -224,8 +224,12 @@ function Features() {
                     <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand transition-transform duration-300 group-hover:scale-110">
                       <item.icon className="size-5" />
                     </span>
-                    <h3 className="mt-4 text-base font-semibold">{item.title}</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">{item.body}</p>
+                    <h3 className="mt-4 text-base font-semibold">
+                      {tx(`features.item.${gi}.${i}.title`, item.title)}
+                    </h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {tx(`features.item.${gi}.${i}.body`, item.body)}
+                    </p>
                   </article>
                 ))}
               </div>
