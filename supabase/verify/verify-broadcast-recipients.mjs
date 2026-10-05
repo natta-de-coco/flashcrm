@@ -151,6 +151,43 @@ try {
   console.log(
     "PASS: broadcast recipients and suppression migrations re-run cleanly; browser reads own workspace only, cannot write recipients, may add but not edit or remove a suppression; server writes",
   );
+  const resilience = read("20261005160000_ai_resilience_settings.sql");
+  await db.query(resilience);
+  await db.query(resilience);
+  await db.query(`SET ROLE service_role`);
+  assert.equal(
+    (await db.query(`SELECT public.get_tenant_ai_resilience('${OWN}') AS enabled`)).rows[0].enabled,
+    false,
+  );
+  await db.query(`SELECT public.set_tenant_ai_resilience('${OWN}', true)`);
+  assert.equal(
+    (await db.query(`SELECT public.get_tenant_ai_resilience('${OWN}') AS enabled`)).rows[0].enabled,
+    true,
+  );
+  assert.equal(
+    (await db.query(`SELECT public.get_tenant_ai_resilience('${OTHER}') AS enabled`)).rows[0]
+      .enabled,
+    false,
+  );
+  await db.query(`SELECT public.set_tenant_ai_resilience('${OTHER}', true)`);
+  await db.query(`RESET ROLE; SET test.tenant='${OWN}'; SET ROLE authenticated`);
+  assert.equal((await db.query("SELECT * FROM public.tenant_ai_settings")).rowCount, 1);
+  await assert.rejects(
+    db.query(`SELECT public.set_tenant_ai_resilience('${OWN}', false)`),
+    /permission denied/,
+  );
+  await assert.rejects(
+    db.query(`SELECT public.get_tenant_ai_resilience('${OTHER}')`),
+    /permission denied/,
+  );
+  await assert.rejects(
+    db.query("UPDATE public.tenant_ai_settings SET fallback_enabled=false"),
+    /permission denied/,
+  );
+  await db.query("RESET ROLE");
+  console.log(
+    "PASS: AI backup settings default off, rerun safely, isolate tenants and require server writes",
+  );
 } finally {
   if (db) await db.end();
   await server.stop();
