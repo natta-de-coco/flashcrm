@@ -169,7 +169,7 @@ export function InboxPreview() {
                       {i18n.t("inboxPreview.fatima")}
                     </span>
                   )}
-                  {turn.text}
+                  {i18n.tx(`inboxPreview.turn.${i}`, turn.text)}
                   {mine && (
                     <span className="mt-1 flex justify-end opacity-70">
                       {turn.from === "agent" ? (

@@ -30,6 +30,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/")({
@@ -334,6 +335,7 @@ function Landing() {
             >
               {t("home.getAQuote")}
             </a>
+            <LanguageSwitcher compact />
             <Button asChild size="sm">
               <Link to="/auth">{t("home.openApp")}</Link>
             </Button>

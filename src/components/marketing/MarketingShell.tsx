@@ -2,6 +2,7 @@ import { FlasWordmark } from "@/components/FlashLogoBadge";
 import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import { HomepageChatWidget } from "@/components/marketing/HomepageChatWidget";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useI18n } from "@/hooks/useI18n";
 
 /**
@@ -42,6 +43,7 @@ export function MarketingShell({ children }: { children: React.ReactNode }) {
             >
               {t("marketingShell.guides")}
             </Link>
+            <LanguageSwitcher compact />
             <Button asChild size="sm">
               <Link to="/auth">{t("marketingShell.openApp")}</Link>
             </Button>
