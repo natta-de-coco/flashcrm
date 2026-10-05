@@ -7,9 +7,11 @@ import common from "./screens/common";
 import contactCard from "./screens/contact-card";
 import contacts from "./screens/contacts";
 import dashboard from "./screens/dashboard";
+import inbox from "./screens/inbox";
 import nav from "./screens/nav";
 import settings from "./screens/settings";
 import shell from "./screens/shell";
+import socialInbox from "./screens/social-inbox";
 
 const SCREENS = [
   auth,
@@ -18,9 +20,11 @@ const SCREENS = [
   contactCard,
   contacts,
   dashboard,
+  inbox,
   nav,
   settings,
   shell,
+  socialInbox,
 ] as const;
 
 type KeysOf<T> = T extends unknown ? keyof T : never;

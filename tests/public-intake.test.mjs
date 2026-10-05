@@ -301,6 +301,8 @@ describe("a WhatsApp message has an honest, durable CRM record", () => {
   it("shows a failed message as not delivered in the inbox", () => {
     const inbox = read("src/routes/_authenticated/inbox.tsx");
     assert.match(inbox, /status === "failed"/);
-    assert.match(inbox, /Not delivered/);
+    // Said through a translation key now; the English is still these words.
+    assert.match(inbox, /inbox\.notDelivered/);
+    assert.match(read("src/lib/i18n/screens/inbox.ts"), /"inbox\.notDelivered": "Not delivered"/);
   });
 });

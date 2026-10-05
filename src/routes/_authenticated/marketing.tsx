@@ -527,7 +527,7 @@ function MarketingPage() {
                     onClick={() => setSelectedSite(site.id)}
                   >
                     {site.name}
-                    <Badge variant="secondary" className="ml-1 capitalize">
+                    <Badge variant="secondary" className="ms-1 capitalize">
                       {site.platform}
                     </Badge>
                   </Button>
@@ -548,7 +548,7 @@ function MarketingPage() {
                     {activeSite.domain ?? "No domain reported yet"}
                     {activeSite.admin_email ? ` · ${activeSite.admin_email}` : ""}
                   </span>
-                  <div className="ml-auto flex flex-wrap gap-2">
+                  <div className="ms-auto flex flex-wrap gap-2">
                     {activeSite.platform !== "other" && (
                       <Button variant="outline" size="sm" asChild>
                         <a
@@ -670,7 +670,7 @@ function MarketingPage() {
                     <button
                       key={segment.id}
                       type="button"
-                      className="rounded-md border bg-background p-3 text-left transition-colors hover:bg-accent"
+                      className="rounded-md border bg-background p-3 text-start transition-colors hover:bg-accent"
                       onClick={() => {
                         setAiForm((current) => ({
                           ...current,
@@ -681,7 +681,7 @@ function MarketingPage() {
                       }}
                     >
                       <span className="text-lg font-semibold">{segment.count}</span>
-                      <span className="ml-2 text-sm font-medium">{segment.title}</span>
+                      <span className="ms-2 text-sm font-medium">{segment.title}</span>
                       <span className="mt-1 block text-xs text-muted-foreground">
                         {segment.description}
                       </span>

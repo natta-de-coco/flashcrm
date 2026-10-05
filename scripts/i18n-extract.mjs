@@ -177,6 +177,34 @@ for (const file of files) {
   const lineOf = (node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
   const note = (node, message) => notes.push(`${file}:${lineOf(node)} ${message}`);
 
+  // `threads.map((t) => ...)` is everywhere in this codebase, and inside that
+  // callback `t` is a thread, not the translator. If the file binds `t` or
+  // `tr` to anything of its own, the translator is called as i18n.t / i18n.tr
+  // instead, which nothing shadows.
+  const shadowed = (() => {
+    let found = false;
+    const fromHook = (decl) =>
+      decl && ts.isVariableDeclaration(decl) && decl.initializer && /^useI18n\(\)$/.test(decl.initializer.getText(sf));
+    const walk = (node) => {
+      if (found) return;
+      const named = (name) => name && ts.isIdentifier(name) && (name.text === "t" || name.text === "tr");
+      if (
+        (ts.isParameter(node) && named(node.name)) ||
+        (ts.isVariableDeclaration(node) && named(node.name)) ||
+        (ts.isBindingElement(node) && named(node.name) && !fromHook(node.parent?.parent)) ||
+        (ts.isFunctionDeclaration(node) && named(node.name))
+      ) {
+        found = true;
+        return;
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(sf);
+    return found;
+  })();
+  const T = shadowed ? "i18n.t" : "t";
+  const TR = shadowed ? "i18n.tr" : "tr";
+
   const keyFor = (english) => {
     const existing = keyByText.get(english);
     if (existing) return existing;
@@ -373,15 +401,17 @@ for (const file of files) {
   }
 
   function hookLine(component) {
+    if (shadowed) return "const i18n = useI18n();";
     const names = [...usage.get(component)].sort();
     return `const { ${names.join(", ")} } = useI18n();`;
   }
 
   /** Puts the hook at the top of a component's body, or widens the one there. */
   function withHook(blockText, block, component) {
+    if (shadowed && /const i18n = useI18n();/.test(blockText)) return blockText;
     const existing = /const \{([^}]*)\} = useI18n\(\);/.exec(blockText);
     const direct = block.statements.some((s) => /=\s*useI18n\(\)/.test(s.getText(sf)));
-    if (existing && direct) {
+    if (existing && direct && !shadowed) {
       const have = new Set(
         existing[1]
           .split(",")
@@ -416,7 +446,7 @@ for (const file of files) {
     }
     const lead = /^\s*/.exec(raw)[0];
     const trail = /\s*$/.exec(raw)[0];
-    return `${lead}{t(${JSON.stringify(keyFor(english))})}${trail}`;
+    return `${lead}{${T}(${JSON.stringify(keyFor(english))})}${trail}`;
   }
 
   function printAttribute(node) {
@@ -428,7 +458,7 @@ for (const file of files) {
       note(node, `attribute not in a component: "${english.slice(0, 60)}"`);
       return undefined;
     }
-    return `${node.name.getText(sf)}={t(${JSON.stringify(keyFor(english))})}`;
+    return `${node.name.getText(sf)}={${T}(${JSON.stringify(keyFor(english))})}`;
   }
 
   function printShownLiteral(node) {
@@ -455,8 +485,8 @@ for (const file of files) {
       }
       const call = (wording) =>
         values.length
-          ? `t(${JSON.stringify(keyForTemplate(wording))}, { ${values.join(", ")} })`
-          : `t(${JSON.stringify(keyForTemplate(wording))})`;
+          ? `${T}(${JSON.stringify(keyForTemplate(wording))}, { ${values.join(", ")} })`
+          : `${T}(${JSON.stringify(keyForTemplate(wording))})`;
       if (onePlural) {
         const plural = plurals.find(Boolean);
         return `(${plural.condition} ? ${call(english.replace(MARK, plural.whenTrue))} : ${call(english.replace(MARK, plural.whenFalse))})`;
@@ -472,7 +502,7 @@ for (const file of files) {
       note(node, `string not in a component: "${english.slice(0, 60)}"`);
       return undefined;
     }
-    return `t(${JSON.stringify(keyFor(english))})`;
+    return `${T}(${JSON.stringify(keyFor(english))})`;
   }
 
   function keyForTemplate(english) {
@@ -595,10 +625,10 @@ for (const file of files) {
       const key = JSON.stringify(keyForTemplate(wording));
       if (nodes.length === 0) {
         use(node, "t");
-        return `t(${key})`;
+        return `${T}(${key})`;
       }
       use(node, "tr");
-      return `tr(${key}, { ${nodes.join(", ")} })`;
+      return `${TR}(${key}, { ${nodes.join(", ")} })`;
     };
     const plural = onePlural ? plurals.find(Boolean) : null;
     const expression = plural
