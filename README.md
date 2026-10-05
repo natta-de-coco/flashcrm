@@ -4,7 +4,8 @@ i want full flas CRM for monitoring whatsapp chat connecting whatsapp chatbot in
 
 This project was built with alot of efforts.
 
-**Live app**: https://flashcrm.lovable.app
+**Live app**: https://flas.mobidigisol.com
+
 
 
 - **Ship faster**: describe what you want to build and Lovable handles the code.
