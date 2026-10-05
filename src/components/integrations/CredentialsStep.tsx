@@ -12,6 +12,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Check, CheckCircle2, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * Collects the values a channel needs, with the instructions for finding each
@@ -37,6 +38,7 @@ export function CredentialsStep({
   onSaved: () => void;
   continueLabel?: string;
 }) {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const saveApp = useServerFn(savePlatformApp);
   const addNumber = useServerFn(addWhatsAppNumber);
@@ -80,8 +82,8 @@ export function CredentialsStep({
       setValues({});
       toast.success(
         spec.scope === "provider"
-          ? "App details saved. Provider sign-in is still needed to connect your account."
-          : "Number connected.",
+          ? t("credentialsStep.appDetailsSavedProviderSign")
+          : t("credentialsStep.numberConnected"),
       );
       void qc.invalidateQueries({ queryKey: ["connect-readiness"] });
       void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
@@ -97,11 +99,11 @@ export function CredentialsStep({
     return (
       <Alert>
         <CheckCircle2 className="size-4" />
-        <AlertTitle>Saved</AlertTitle>
+        <AlertTitle>{t("credentialsStep.saved")}</AlertTitle>
         <AlertDescription>
           {spec.scope === "provider"
-            ? "Move on to the last step to run the secure login."
-            : "Flas can now send and receive on this number."}
+            ? t("credentialsStep.moveOnToTheLast")
+            : t("credentialsStep.flasCanNowSendAnd")}
         </AlertDescription>
       </Alert>
     );
@@ -112,15 +114,16 @@ export function CredentialsStep({
       {spec.scope === "provider" && (
         <>
           <p className="text-muted-foreground">
-            These are your own app keys, so {platformName} talks to your business rather than to
-            Flas. You enter them once.
+            {tr("credentialsStep.theseAreYourOwnApp", { platformName: platformName })}
           </p>
 
           {spec.alsoUnlocks && spec.alsoUnlocks.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              The same keys also connect{" "}
-              <span className="font-medium text-foreground">{spec.alsoUnlocks.join(", ")}</span> —
-              you will not be asked again for those.
+              {tr("credentialsStep.theSameKeysAlsoConnect", {
+                span: (
+                  <span className="font-medium text-foreground">{spec.alsoUnlocks.join(", ")}</span>
+                ),
+              })}
             </p>
           )}
 
@@ -128,12 +131,11 @@ export function CredentialsStep({
               app still refuses the login, so it is on the same screen. */}
           <div className="rounded-lg border bg-muted/40 p-3">
             <p className="mb-1.5 text-xs font-medium">
-              First, add this redirect URI to the app you create
+              {t("credentialsStep.firstAddThisRedirectUri")}
             </p>
             <CopyRow value={redirectUri} />
             <p className="mt-1.5 text-xs text-muted-foreground">
-              The platform rejects the login unless this exact URL is listed as an authorized
-              redirect.
+              {t("credentialsStep.thePlatformRejectsTheLogin")}
             </p>
           </div>
         </>
@@ -183,7 +185,9 @@ export function CredentialsStep({
           {continueLabel}
         </Button>
         {!complete && (
-          <span className="text-xs text-muted-foreground">Fill every field above to continue.</span>
+          <span className="text-xs text-muted-foreground">
+            {t("credentialsStep.fillEveryFieldAboveTo")}
+          </span>
         )}
       </div>
     </section>
@@ -191,6 +195,7 @@ export function CredentialsStep({
 }
 
 function CopyRow({ value }: { value: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex items-center gap-2">
@@ -209,7 +214,7 @@ function CopyRow({ value }: { value: string }) {
         }}
       >
         {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-        {copied ? "Copied" : "Copy"}
+        {copied ? t("credentialsStep.copied") : t("credentialsStep.copy")}
       </Button>
     </div>
   );

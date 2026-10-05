@@ -11,6 +11,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { ExternalLink, KeyRound, Sparkles, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 type ProviderId = (typeof AI_PROVIDERS)[number]["id"];
 
@@ -28,6 +29,7 @@ type ProviderId = (typeof AI_PROVIDERS)[number]["id"];
  * the correct trade.
  */
 export function AiKeysCard() {
+  const { t, tr } = useI18n();
   const { staffRole } = useTenant();
   const canManage = isCompanyManager(staffRole);
   const qc = useQueryClient();
@@ -45,20 +47,22 @@ export function AiKeysCard() {
   const saving = useMutation({
     mutationFn: () => save({ data: { provider, apiKey: apiKey.trim() } }),
     onSuccess: () => {
-      toast.success("Key saved — Flas AI will bill this workspace to it from the next request.");
+      toast.success(t("aiKeysCard.keySavedFlasAiWill"));
       setApiKey("");
       refresh();
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save the key"),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : t("aiKeysCard.couldNotSaveTheKey")),
   });
 
   const removing = useMutation({
     mutationFn: (p: ProviderId) => remove({ data: { provider: p } }),
     onSuccess: () => {
-      toast.success("Key removed — reverting to the shared Flas AI key.");
+      toast.success(t("aiKeysCard.keyRemovedRevertingToThe"));
       refresh();
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not remove the key"),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : t("aiKeysCard.couldNotRemoveTheKey")),
   });
 
   const configured = keys.data ?? [];
@@ -68,14 +72,10 @@ export function AiKeysCard() {
     <Card id="ai-keys" className="scroll-mt-6">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Sparkles className="size-4 text-brand" /> Your own AI keys
+          <Sparkles className="size-4 text-brand" /> {t("aiKeysCard.yourOwnAiKeys")}
           {configured.length > 0 && <Badge variant="secondary">{configured.length}</Badge>}
         </CardTitle>
-        <CardDescription>
-          Flas AI works without this. Add your own OpenAI or Anthropic key and every AI request from
-          this workspace runs against your account instead — your usage, your bill, your rate
-          limits. Remove it and Flas falls back to the shared key.
-        </CardDescription>
+        <CardDescription>{t("aiKeysCard.flasAiWorksWithoutThis")}</CardDescription>
       </CardHeader>
 
       <CardContent className="grid gap-4">
@@ -94,12 +94,14 @@ export function AiKeysCard() {
                     {AI_PROVIDERS.find((p) => p.id === k.provider)?.name ?? k.provider}
                     {k.active && (
                       <Badge variant="secondary" className="ms-2 text-[10px]">
-                        in use
+                        {t("aiKeysCard.inUse")}
                       </Badge>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Added {new Date(k.created_at).toLocaleDateString()} · key hidden for safety
+                    {tr("aiKeysCard.addedKeyHiddenForSafety", {
+                      toLocaleDateString: new Date(k.created_at).toLocaleDateString(),
+                    })}
                   </p>
                 </div>
                 {canManage && (
@@ -110,7 +112,7 @@ export function AiKeysCard() {
                     disabled={removing.isPending}
                     onClick={() => removing.mutate(k.provider as ProviderId)}
                   >
-                    <Trash2 className="size-3.5" /> Remove
+                    <Trash2 className="size-3.5" /> {t("aiKeysCard.remove")}
                   </Button>
                 )}
               </div>
@@ -135,7 +137,7 @@ export function AiKeysCard() {
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="ai-key">API key</Label>
+              <Label htmlFor="ai-key">{t("aiKeysCard.apiKey")}</Label>
               <Input
                 id="ai-key"
                 type="password"
@@ -155,7 +157,7 @@ export function AiKeysCard() {
                   rel="noreferrer noopener"
                   className="inline-flex items-center gap-0.5 text-brand underline underline-offset-2"
                 >
-                  Open <ExternalLink className="size-3" />
+                  {t("aiKeysCard.open")} <ExternalLink className="size-3" />
                 </a>
               </p>
             </div>
@@ -168,19 +170,18 @@ export function AiKeysCard() {
                 onClick={() => saving.mutate()}
               >
                 <KeyRound className="size-3.5" />
-                {configured.some((k) => k.provider === provider) ? "Replace key" : "Save key"}
+                {configured.some((k) => k.provider === provider)
+                  ? t("aiKeysCard.replaceKey")
+                  : t("aiKeysCard.saveKey")}
               </Button>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Stored encrypted at rest and never sent back to a browser — not even to yours. To
-              change it, paste a new one.
+              {t("aiKeysCard.storedEncryptedAtRestAnd")}
             </p>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            Only a company admin can add or change AI keys.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("aiKeysCard.onlyACompanyAdminCan")}</p>
         )}
       </CardContent>
     </Card>

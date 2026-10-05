@@ -36,6 +36,7 @@ import { useState, type ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { credentialsNote } from "@/lib/credentials-note";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 const TONE: Record<string, string> = {
   connected: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
@@ -47,6 +48,7 @@ const TONE: Record<string, string> = {
 };
 
 export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
+  const { t, tr } = useI18n();
   const [open, setOpen] = useState(false);
   const { isSuperAdmin } = useAuth();
   const qc = useQueryClient();
@@ -64,8 +66,8 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
     onSuccess: (result) => {
       toast.success(
         result.sealedNow
-          ? `Encrypted ${result.sealedNow} stored credential(s).`
-          : "Nothing needed encrypting.",
+          ? t("healthReportDialog.encryptedStoredCredentialS", { sealedNow: result.sealedNow })
+          : t("healthReportDialog.nothingNeededEncrypting"),
       );
       void qc.invalidateQueries({ queryKey: ["integration-health"] });
     },
@@ -77,12 +79,17 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
     onSuccess: (result) => {
       const results = result.results ?? [];
       if (results.length === 0) {
-        toast.success("Nothing to retry — every connection is healthy.");
+        toast.success(t("healthReportDialog.nothingToRetryEveryConnection"));
       } else {
         const recovered = results.filter((r) =>
           ["healthy", "recovered", "refreshed"].includes(r.outcome),
         ).length;
-        toast.success(`Re-checked ${results.length} connection(s) — ${recovered} healthy now.`);
+        toast.success(
+          t("healthReportDialog.reCheckedConnectionSHealthy", {
+            length: results.length,
+            recovered: recovered,
+          }),
+        );
       }
       void qc.invalidateQueries({ queryKey: ["integration-health"] });
       void qc.invalidateQueries({ queryKey: ["connections"] });
@@ -100,24 +107,23 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
       <DialogTrigger asChild>
         {trigger ?? (
           <Button variant="outline" size="sm" className="gap-1.5">
-            <Stethoscope className="size-4" /> Health report
+            <Stethoscope className="size-4" /> {t("healthReportDialog.healthReport")}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Integration Health Report</DialogTitle>
+          <DialogTitle>{t("healthReportDialog.integrationHealthReport")}</DialogTitle>
           <DialogDescription>
             {/* This said "every platform" while covering only the OAuth ones,
                 so the totals here and on the connector grid disagreed and
                 neither said why. Both numbers are derived from the catalogue
                 now, so they cannot drift apart again. */}
-            Status, last error, missing permissions and the next retry step for the{" "}
-            {CONNECTOR_COUNTS.oauthPlatforms} API platform connectors that sign in with OAuth. The
-            other {CONNECTOR_COUNTS.keyedOrPlugin} —{" "}
-            {KEYED_CONNECTORS.map((c) => c.displayName).join(", ")} — connect with keys or a plugin
-            rather than a login, so they are checked on their own cards instead. Export this and
-            share it with whoever owns the account.
+            {tr("healthReportDialog.statusLastErrorMissingPermissions", {
+              oauthPlatforms: CONNECTOR_COUNTS.oauthPlatforms,
+              keyedOrPlugin: CONNECTOR_COUNTS.keyedOrPlugin,
+              join: KEYED_CONNECTORS.map((c) => c.displayName).join(", "),
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -132,9 +138,15 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
         {data && (
           <>
             <div className="flex flex-wrap gap-2 text-xs">
-              <Badge className={TONE["connected"]}>{data.connected} connected</Badge>
-              <Badge className={TONE["failing"]}>{data.needs_attention} need attention</Badge>
-              <Badge className={TONE["not_connected"]}>{data.not_connected} not connected</Badge>
+              <Badge className={TONE["connected"]}>
+                {tr("healthReportDialog.connected", { connected: data.connected })}
+              </Badge>
+              <Badge className={TONE["failing"]}>
+                {tr("healthReportDialog.needAttention", { needsattention: data.needs_attention })}
+              </Badge>
+              <Badge className={TONE["not_connected"]}>
+                {tr("healthReportDialog.notConnected", { notconnected: data.not_connected })}
+              </Badge>
             </div>
 
             {data.credentials ? (
@@ -148,7 +160,9 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
                     disabled={sealing.isPending}
                     onClick={() => sealing.mutate()}
                   >
-                    {sealing.isPending ? "Encrypting…" : "Encrypt now"}
+                    {sealing.isPending
+                      ? t("healthReportDialog.encrypting")
+                      : t("healthReportDialog.encryptNow")}
                   </Button>
                 ) : null}
               </p>
@@ -168,7 +182,9 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
 
               {data.retries.length > 0 && (
                 <div className="mt-4 grid gap-1.5">
-                  <p className="text-sm font-semibold">Recent automatic retries</p>
+                  <p className="text-sm font-semibold">
+                    {t("healthReportDialog.recentAutomaticRetries")}
+                  </p>
                   {data.retries.slice(0, 8).map((r) => (
                     <p key={r.id} className="text-xs text-muted-foreground">
                       {new Date(r.created_at).toLocaleString()} · {r.platform.replace(/_/g, " ")} ·{" "}
@@ -193,7 +209,7 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
                 onClick={() => runRetry.mutate(undefined)}
               >
                 <RefreshCw className={`size-4 ${runRetry.isPending ? "animate-spin" : ""}`} />
-                Retry failing connections
+                {t("healthReportDialog.retryFailingConnections")}
               </Button>
               <div className="flex gap-2">
                 <Button
@@ -225,6 +241,7 @@ function HealthRowCard({
   onRetry: () => void;
   retrying: boolean;
 }) {
+  const { t, tr } = useI18n();
   const good = row.state === "connected";
   return (
     <div className="rounded-lg border p-3">
@@ -247,16 +264,18 @@ function HealthRowCard({
       <p className="mt-2 break-words text-xs text-muted-foreground">{row.reason}</p>
       {row.last_error && (
         <p className="mt-1 break-words text-xs text-red-600 dark:text-red-400">
-          Last error: {row.last_error}
+          {tr("healthReportDialog.lastError", { lasterror: row.last_error })}
         </p>
       )}
       {row.missing_permissions.length > 0 && (
         <p className="mt-1 break-words text-xs text-amber-600 dark:text-amber-400">
-          Missing permissions: {row.missing_permissions.join(", ")}
+          {tr("healthReportDialog.missingPermissions", {
+            join: row.missing_permissions.join(", "),
+          })}
         </p>
       )}
       <p className="mt-1 break-words text-xs">
-        <span className="font-medium">Next step:</span> {row.next_step}
+        <span className="font-medium">{t("healthReportDialog.nextStep")}</span> {row.next_step}
       </p>
       {!good && row.state !== "not_connected" && (
         <Button
@@ -266,7 +285,8 @@ function HealthRowCard({
           disabled={retrying}
           onClick={onRetry}
         >
-          <RefreshCw className={`size-3.5 ${retrying ? "animate-spin" : ""}`} /> Retry now
+          <RefreshCw className={`size-3.5 ${retrying ? "animate-spin" : ""}`} />{" "}
+          {t("healthReportDialog.retryNow")}
         </Button>
       )}
     </div>

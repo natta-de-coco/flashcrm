@@ -78,6 +78,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
+
+type Translate = ReturnType<typeof useI18n>["t"];
 
 type Account = {
   id: string;
@@ -161,6 +165,7 @@ export function IntegrationsAuditFixed({
   search?: ConnectionOutcomeSearch;
   onDismiss?: () => void;
 }) {
+  const { t, tr } = useI18n();
   // Company owners are admins of their workspace, not of FLAS: they get
   // Continue with Facebook, never FLAS's server diagnostics. Those are for
   // FLAS staff (super admins) only.
@@ -324,7 +329,7 @@ export function IntegrationsAuditFixed({
   const remove = useMutation({
     mutationFn: async (id: string) => disconnect({ data: { id } }),
     onSuccess: () => {
-      toast.success("Disconnected. Existing FLAS history is kept.");
+      toast.success(t("integrationsAuditFixed.disconnectedExistingFlasHistoryIs"));
       void qc.invalidateQueries({ queryKey: ["connections"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -365,7 +370,7 @@ export function IntegrationsAuditFixed({
       window.location.href = connector.internalHref;
       return;
     }
-    toast.info(`${connector.name} setup is managed from this Integrations page.`);
+    toast.info(t("integrationsAuditFixed.setupIsManagedFromThis", { name: connector.name }));
   }
 
   const confirmConnector = confirming ? CONNECTORS.find((c) => c.id === confirming) : undefined;
@@ -390,8 +395,8 @@ export function IntegrationsAuditFixed({
       <div className="mx-auto max-w-7xl space-y-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <PageHeader
-            title="Integrations"
-            description="Connect the tools your team uses and manage every account from one clear place."
+            title={t("integrationsAuditFixed.integrations")}
+            description={t("integrationsAuditFixed.connectTheToolsYourTeam")}
           />
           <div className="flex flex-wrap gap-2">
             {/* Connection health, retries and "Encrypt now" for this company's
@@ -401,7 +406,8 @@ export function IntegrationsAuditFixed({
               <HealthReportDialog
                 trigger={
                   <Button variant="outline">
-                    <Stethoscope className="me-2 size-4" /> Health report
+                    <Stethoscope className="me-2 size-4" />{" "}
+                    {t("integrationsAuditFixed.healthReport")}
                   </Button>
                 }
               />
@@ -414,7 +420,7 @@ export function IntegrationsAuditFixed({
                   openDiagnostics(null);
                 }}
               >
-                <Settings2 className="me-2 size-4" /> Admin diagnostics
+                <Settings2 className="me-2 size-4" /> {t("integrationsAuditFixed.adminDiagnostics")}
               </Button>
             )}
             <Button
@@ -423,28 +429,27 @@ export function IntegrationsAuditFixed({
                 setMarketplaceOpen(true);
               }}
             >
-              <Plus className="me-2 size-4" /> Add Integration
+              <Plus className="me-2 size-4" /> {t("integrationsAuditFixed.addIntegration")}
             </Button>
           </div>
         </div>
 
         {connecting && (
           <p role="status" className="rounded-xl border bg-muted/40 p-4 text-sm">
-            Opening secure sign-in… Choose your Page or account after signing in to finish
-            connecting.
+            {t("integrationsAuditFixed.openingSecureSignInChoose")}
           </p>
         )}
         {/* A page that failed to load is not a connection that needs setup. */}
         {connections.isError && (
           <Problem
-            title="We could not load your integrations"
+            title={t("integrationsAuditFixed.weCouldNotLoadYour")}
             message="Please refresh the page. If it keeps happening, tell your administrator."
             onAdmin={undefined}
           />
         )}
         {readiness.isError && (
           <Problem
-            title="We could not check which integrations are available"
+            title={t("integrationsAuditFixed.weCouldNotCheckWhich")}
             message="Please refresh the page. If it keeps happening, tell your administrator."
             onAdmin={undefined}
           />
@@ -475,8 +480,8 @@ export function IntegrationsAuditFixed({
         {pendingAccounts.length > 0 && !search.select_target && !resume && (
           <section className="space-y-3">
             <SectionHeading
-              title="Finish connecting"
-              description="Sign-in is saved. Choose the Page or account to complete the connection."
+              title={t("integrationsAuditFixed.finishConnecting")}
+              description={t("integrationsAuditFixed.signInIsSavedChoose")}
             />
             {pendingAccounts.map((account) => (
               <Button
@@ -486,39 +491,43 @@ export function IntegrationsAuditFixed({
                   setResume({ connected: account.platform, select_target: account.id })
                 }
               >
-                Choose {CONNECTORS.find((c) => c.id === account.platform)?.name ?? "account"}
+                {tr("integrationsAuditFixed.choose", {
+                  value:
+                    CONNECTORS.find((c) => c.id === account.platform)?.name ??
+                    t("integrationsAuditFixed.account"),
+                })}
               </Button>
             ))}
           </section>
         )}
         {healthReport.isError && (
           <Problem
-            title="We couldn't build your health report"
+            title={t("integrationsAuditFixed.weCouldnTBuildYour")}
             message={`${plainErrorMessage(healthReport.error)} Open Health report again to retry.`}
             onAdmin={undefined}
           />
         )}
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            label="Connected"
+            label={t("integrationsAuditFixed.connected")}
             value={connectedTotal}
             tone="good"
             loading={connectionsPending}
           />
           <StatCard
-            label="Needs attention"
+            label={t("integrationsAuditFixed.needsAttention")}
             value={attention.length}
             tone={attention.length ? "warn" : "muted"}
             loading={connectionsPending}
           />
           <StatCard
-            label="Ready to connect"
+            label={t("integrationsAuditFixed.readyToConnect")}
             value={available}
             tone="muted"
             loading={readinessPending}
           />
           <StatCard
-            label="Coming soon"
+            label={t("integrationsAuditFixed.comingSoon")}
             value={comingSoon}
             tone="muted"
             loading={readinessPending}
@@ -528,8 +537,8 @@ export function IntegrationsAuditFixed({
         {attention.length > 0 && (
           <section className="space-y-3">
             <SectionHeading
-              title="Needs attention"
-              description="Fix these first so your automations and reporting keep working."
+              title={t("integrationsAuditFixed.needsAttention")}
+              description={t("integrationsAuditFixed.fixTheseFirstSoYour")}
             />
             {attention.map((account) => {
               const state = connectionStatus(account);
@@ -550,7 +559,8 @@ export function IntegrationsAuditFixed({
                     </div>
                     {meta?.oauth && (
                       <Button size="sm" onClick={() => openConnector(meta)}>
-                        <RefreshCw className="me-2 size-4" /> Reconnect
+                        <RefreshCw className="me-2 size-4" />{" "}
+                        {t("integrationsAuditFixed.reconnect")}
                       </Button>
                     )}
                   </CardContent>
@@ -562,8 +572,8 @@ export function IntegrationsAuditFixed({
 
         <section className="space-y-3">
           <SectionHeading
-            title="Channels"
-            description="Each channel connects on its own. Open one to see exactly what to do."
+            title={t("integrationsAuditFixed.channels")}
+            description={t("integrationsAuditFixed.eachChannelConnectsOnIts")}
           />
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {CHANNELS.map((id) => {
@@ -592,8 +602,8 @@ export function IntegrationsAuditFixed({
 
         <section className="space-y-3">
           <SectionHeading
-            title="Connected integrations"
-            description="Accounts and channels currently linked to this workspace."
+            title={t("integrationsAuditFixed.connectedIntegrations")}
+            description={t("integrationsAuditFixed.accountsAndChannelsCurrentlyLinked")}
           />
           {connections.isLoading ? (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -606,13 +616,15 @@ export function IntegrationsAuditFixed({
               <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
                 <Link2 className="size-6" />
                 <div>
-                  <p className="font-semibold">Connect your first integration</p>
+                  <p className="font-semibold">
+                    {t("integrationsAuditFixed.connectYourFirstIntegration")}
+                  </p>
                   <p className="text-sm text-muted-foreground">
-                    Facebook, Instagram, YouTube, WhatsApp and more can live in FLAS.
+                    {t("integrationsAuditFixed.facebookInstagramYoutubeWhatsappAnd")}
                   </p>
                 </div>
                 <Button onClick={() => setMarketplaceOpen(true)}>
-                  <Plus className="me-2 size-4" /> Add Integration
+                  <Plus className="me-2 size-4" /> {t("integrationsAuditFixed.addIntegration")}
                 </Button>
               </CardContent>
             </Card>
@@ -637,11 +649,11 @@ export function IntegrationsAuditFixed({
         <section className="space-y-3">
           <div className="flex items-end justify-between gap-3">
             <SectionHeading
-              title="Explore integrations"
-              description="Add another channel without touching developer settings."
+              title={t("integrationsAuditFixed.exploreIntegrations")}
+              description={t("integrationsAuditFixed.addAnotherChannelWithoutTouching")}
             />
             <Button variant="ghost" size="sm" onClick={() => setMarketplaceOpen(true)}>
-              View all <ArrowRight className="ms-1 size-4" />
+              {t("integrationsAuditFixed.viewAll")} <ArrowRight className="ms-1 size-4" />
             </Button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -664,7 +676,9 @@ export function IntegrationsAuditFixed({
 
         {isAdmin && (
           <details id="channel-setup" className="rounded-xl border p-4">
-            <summary className="cursor-pointer font-medium">Advanced admin settings</summary>
+            <summary className="cursor-pointer font-medium">
+              {t("integrationsAuditFixed.advancedAdminSettings")}
+            </summary>
             <div className="mt-4 space-y-4">
               <WorkspaceApps
                 rows={rows}
@@ -681,8 +695,8 @@ export function IntegrationsAuditFixed({
         )}
         <section id="ai-keys" className="scroll-mt-20 space-y-3">
           <SectionHeading
-            title="Your own AI keys"
-            description="Optional: use your own AI provider account for the chatbot."
+            title={t("integrationsAuditFixed.yourOwnAiKeys")}
+            description={t("integrationsAuditFixed.optionalUseYourOwnAi")}
           />
           <AiKeysCard />
         </section>
@@ -698,16 +712,16 @@ export function IntegrationsAuditFixed({
       >
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Integration</DialogTitle>
+            <DialogTitle>{t("integrationsAuditFixed.addIntegration")}</DialogTitle>
             <DialogDescription>
-              Choose a platform, continue with your account, then choose the channel to connect.
+              {t("integrationsAuditFixed.chooseAPlatformContinueWith")}
             </DialogDescription>
           </DialogHeader>
           <div className="relative">
             <Search className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="ps-9"
-              placeholder="Search integrations..."
+              placeholder={t("integrationsAuditFixed.searchIntegrations")}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -726,7 +740,9 @@ export function IntegrationsAuditFixed({
                 variant={category === item.id ? "default" : "outline"}
                 onClick={() => chooseCategory(item.id as "popular" | ConnectorGroup)}
               >
-                {item.label}
+                {hasMessage(`integrationsAuditFixed.group.${item.id}`)
+                  ? t(`integrationsAuditFixed.group.${item.id}` as MessageKey)
+                  : item.label}
               </Button>
             ))}
           </div>
@@ -757,11 +773,9 @@ export function IntegrationsAuditFixed({
         <Dialog open={providerSetupOpen} onOpenChange={setProviderSetupOpen}>
           <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Admin diagnostics</DialogTitle>
+              <DialogTitle>{t("integrationsAuditFixed.adminDiagnostics")}</DialogTitle>
               <DialogDescription>
-                Admin-only readiness. A provider is Ready only when credentials, origin and secure
-                token storage all pass. Available means sign-in can start; your account is connected
-                only after you sign in and choose its Page or channel.
+                {t("integrationsAuditFixed.adminOnlyReadinessAProvider")}
               </DialogDescription>
             </DialogHeader>
             <ProviderReadiness
@@ -837,12 +851,13 @@ export function IntegrationsAuditFixed({
           <DialogHeader>
             <DialogTitle>
               {credentialConnector
-                ? `Advanced workspace app: ${credentialConnector.name}`
-                : "Advanced workspace app"}
+                ? t("integrationsAuditFixed.advancedWorkspaceApp", {
+                    name: credentialConnector.name,
+                  })
+                : t("integrationsAuditFixed.advancedWorkspaceApp2")}
             </DialogTitle>
             <DialogDescription>
-              FLAS normally provides the shared app. Only use this optional override if your
-              workspace administrator maintains a separate provider app. Secrets stay on the server.
+              {t("integrationsAuditFixed.flasNormallyProvidesTheShared")}
             </DialogDescription>
           </DialogHeader>
           {spec && credentialConnector ? (
@@ -866,7 +881,7 @@ export function IntegrationsAuditFixed({
             />
           ) : (
             <p className="text-sm text-muted-foreground">
-              This integration does not require app credentials here.
+              {t("integrationsAuditFixed.thisIntegrationDoesNotRequire")}
             </p>
           )}
         </DialogContent>
@@ -891,13 +906,14 @@ function Problem({
   /** Nothing for this person to do: say so without a warning. */
   calm?: boolean | undefined;
 }) {
+  const { t } = useI18n();
   if (calm) {
     return (
       <div role="status" className="rounded-xl border bg-muted/40 p-4">
         <div className="flex gap-3">
           <Clock className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
           <div>
-            <p className="font-medium">Not available to connect yet</p>
+            <p className="font-medium">{t("integrationsAuditFixed.notAvailableToConnectYet")}</p>
             <p className="mt-1 text-sm text-muted-foreground">{message}</p>
           </div>
         </div>
@@ -910,7 +926,7 @@ function Problem({
         <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
         <div>
           <p className="font-medium">
-            {title ?? "This connection needs setup before it can continue"}
+            {title ?? t("integrationsAuditFixed.thisConnectionNeedsSetupBefore")}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">{message}</p>
           {blockers.length > 0 && (
@@ -928,7 +944,7 @@ function Problem({
           )}
           {onAdmin && (
             <Button className="mt-3" size="sm" variant="outline" onClick={onAdmin}>
-              Open Provider Setup
+              {t("integrationsAuditFixed.openProviderSetup")}
             </Button>
           )}
         </div>
@@ -948,6 +964,7 @@ function ProviderReadiness({
   onConnect: (id: string) => void;
   connecting: boolean;
 }) {
+  const { t } = useI18n();
   const oauthFamilies = rows.filter((r) => r.oauth);
   const utility = rows.filter((r) =>
     ["whatsapp", "wordpress", "shopify", "woocommerce"].includes(r.id),
@@ -955,7 +972,7 @@ function ProviderReadiness({
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="mb-2 text-sm font-semibold">OAuth providers</h3>
+        <h3 className="mb-2 text-sm font-semibold">{t("integrationsAuditFixed.oauthProviders")}</h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {oauthFamilies.map((row) => (
             <ReadinessCard
@@ -969,7 +986,9 @@ function ProviderReadiness({
         </div>
       </div>
       <div>
-        <h3 className="mb-2 text-sm font-semibold">Messaging & website</h3>
+        <h3 className="mb-2 text-sm font-semibold">
+          {t("integrationsAuditFixed.messagingWebsite")}
+        </h3>
         <div className="grid gap-3 sm:grid-cols-2">
           {utility.map((row) => (
             <ReadinessCard key={row.id} row={row} onConfigure={() => onConfigure(row.id)} />
@@ -991,6 +1010,7 @@ function ReadinessCard({
   onConnect?: () => void;
   connecting?: boolean;
 }) {
+  const { t, tr } = useI18n();
   const setup = providerSetup(row.provider);
   const label = row.name;
   return (
@@ -1002,11 +1022,11 @@ function ReadinessCard({
         </div>
         <CardDescription>
           {row.source === "workspace"
-            ? "Workspace credentials"
+            ? t("integrationsAuditFixed.workspaceCredentials")
             : row.source === "shared"
-              ? "Shared FLAS credentials"
+              ? t("integrationsAuditFixed.sharedFlasCredentials")
               : row.oauth
-                ? "Credentials not configured"
+                ? t("integrationsAuditFixed.credentialsNotConfigured")
                 : row.name}
         </CardDescription>
       </CardHeader>
@@ -1016,15 +1036,23 @@ function ReadinessCard({
           label={
             row.credentials.idLabel && row.credentials.secretLabel
               ? `${row.credentials.idLabel} + ${row.credentials.secretLabel}`
-              : "Credentials"
+              : t("integrationsAuditFixed.credentials")
           }
           hint={credentialHint(row)}
         />
-        <CheckLine ok={row.checks.allowedOrigin} label="OAuth return address" />
-        <CheckLine ok={row.checks.publicAppUrl} label="Public app URL" />
-        <CheckLine ok={row.checks.encryption} label="Token encryption" />
-        <CheckLine ok={row.checks.storage} label="OAuth database schema" />
-        {row.callbackUri && <CopyRow label="Callback" value={row.callbackUri} />}
+        <CheckLine
+          ok={row.checks.allowedOrigin}
+          label={t("integrationsAuditFixed.oauthReturnAddress")}
+        />
+        <CheckLine ok={row.checks.publicAppUrl} label={t("integrationsAuditFixed.publicAppUrl")} />
+        <CheckLine ok={row.checks.encryption} label={t("integrationsAuditFixed.tokenEncryption")} />
+        <CheckLine
+          ok={row.checks.storage}
+          label={t("integrationsAuditFixed.oauthDatabaseSchema")}
+        />
+        {row.callbackUri && (
+          <CopyRow label={t("integrationsAuditFixed.callback")} value={row.callbackUri} />
+        )}
         {row.blockers
           .filter((b) => b.severity !== "INFO" && !CREDENTIAL_CODES.has(b.code))
           .map((b) => (
@@ -1044,7 +1072,9 @@ function ReadinessCard({
         {row.blockers.some((b) => b.severity === "INFO") && (
           <details className="rounded-md border p-2">
             <summary className="cursor-pointer text-xs font-medium">
-              Provider setup notes ({row.blockers.filter((b) => b.severity === "INFO").length})
+              {tr("integrationsAuditFixed.providerSetupNotes", {
+                length: row.blockers.filter((b) => b.severity === "INFO").length,
+              })}
             </summary>
             <div className="mt-2 grid gap-2">
               {row.blockers
@@ -1063,18 +1093,22 @@ function ReadinessCard({
         <div className="flex flex-wrap gap-2">
           {row.oauth && (row.status === "READY" || row.status === "LIMITED") && onConnect && (
             <Button size="sm" onClick={onConnect} disabled={connecting}>
-              {connecting ? "Opening secure sign-in…" : signInLabel(row.provider, row.name)}
+              {connecting
+                ? t("integrationsAuditFixed.openingSecureSignIn")
+                : signInLabel(row.provider, row.name)}
             </Button>
           )}
           {row.oauth && row.status !== "COMING_SOON" && (
             <Button size="sm" variant="outline" onClick={onConfigure} disabled={connecting}>
-              <KeyRound className="me-1.5 size-3.5" /> Advanced: workspace app
+              <KeyRound className="me-1.5 size-3.5" />{" "}
+              {t("integrationsAuditFixed.advancedWorkspaceApp3")}
             </Button>
           )}
           {setup?.links?.[0] && (
             <Button asChild size="sm" variant="outline">
               <a href={setup.links[0].url} target="_blank" rel="noreferrer noopener">
-                Open {setup.displayName} setup <ExternalLink className="ms-1 size-3.5" />
+                {tr("integrationsAuditFixed.openSetup", { displayName: setup.displayName })}{" "}
+                <ExternalLink className="ms-1 size-3.5" />
               </a>
             </Button>
           )}
@@ -1100,6 +1134,7 @@ function credentialHint(row: IntegrationReadinessRow): string | undefined {
 }
 
 function CheckLine({ ok, label, hint }: { ok: boolean; label: string; hint?: string | undefined }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-start gap-2">
       {ok ? (
@@ -1108,7 +1143,7 @@ function CheckLine({ ok, label, hint }: { ok: boolean; label: string; hint?: str
         <XCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />
       )}
       <span className="min-w-0">
-        {label}: {ok ? "Ready" : "Missing"}
+        {label}: {ok ? t("integrationsAuditFixed.ready") : t("integrationsAuditFixed.missing")}
         {hint && (
           <span className="mt-0.5 block break-words text-xs text-muted-foreground">{hint}</span>
         )}
@@ -1149,12 +1184,15 @@ function StatusBadge({
   /** Seen by a company rather than FLAS staff. */
   forCompany?: boolean;
 }) {
-  if (row.status === "READY") return <Badge>Available</Badge>;
-  if (row.status === "LIMITED") return <Badge variant="secondary">Limited</Badge>;
-  if (row.status === "COMING_SOON") return <Badge variant="outline">Coming soon</Badge>;
+  const { t } = useI18n();
+  if (row.status === "READY") return <Badge>{t("integrationsAuditFixed.available")}</Badge>;
+  if (row.status === "LIMITED")
+    return <Badge variant="secondary">{t("integrationsAuditFixed.limited")}</Badge>;
+  if (row.status === "COMING_SOON")
+    return <Badge variant="outline">{t("integrationsAuditFixed.comingSoon")}</Badge>;
   if (forCompany && row.setupOwner !== "workspace")
-    return <Badge variant="secondary">Available soon</Badge>;
-  return <Badge variant="secondary">Setup needed</Badge>;
+    return <Badge variant="secondary">{t("integrationsAuditFixed.availableSoon")}</Badge>;
+  return <Badge variant="secondary">{t("integrationsAuditFixed.setupNeeded")}</Badge>;
 }
 
 function MarketplaceCard({
@@ -1172,6 +1210,7 @@ function MarketplaceCard({
   isSuperAdmin?: boolean;
   onConnect: () => void;
 }) {
+  const { t } = useI18n();
   const { icon: Icon, tint } = connectorIcon(connector.id);
   const status =
     readiness?.status ?? (connector.unavailableReason ? "COMING_SOON" : "ADMIN_SETUP_REQUIRED");
@@ -1208,7 +1247,7 @@ function MarketplaceCard({
           {readiness ? (
             <StatusBadge row={readiness} forCompany={!isSuperAdmin} />
           ) : (
-            <Badge variant="secondary">Checking</Badge>
+            <Badge variant="secondary">{t("integrationsAuditFixed.checking")}</Badge>
           )}
         </div>
         <CardTitle className="pt-2 text-base">{connector.name}</CardTitle>
@@ -1229,7 +1268,7 @@ function MarketplaceCard({
         )}
         {connector.oauth && (
           <p className="text-xs text-muted-foreground">
-            Features depend on your account and the permissions approved by the provider.
+            {t("integrationsAuditFixed.featuresDependOnYourAccount")}
           </p>
         )}
         {readiness?.blockers.some((b) => b.severity === "BLOCKING") && (
@@ -1245,9 +1284,9 @@ function MarketplaceCard({
             disabled={disabled}
           >
             {!readiness
-              ? "Checking availability…"
+              ? t("integrationsAuditFixed.checkingAvailability")
               : connecting
-                ? "Opening secure sign-in…"
+                ? t("integrationsAuditFixed.openingSecureSignIn")
                 : action}
           </Button>
         </div>
@@ -1267,6 +1306,7 @@ function ConnectedCard({
   onReconnect: () => void;
   onDisconnect: () => void;
 }) {
+  const { t } = useI18n();
   const meta = CONNECTORS.find((c) => c.id === account.platform);
   const state = connectionStatus(account);
   const { icon: Icon, tint } = connectorIcon(account.platform);
@@ -1295,11 +1335,11 @@ function ConnectedCard({
       <CardContent className="flex flex-1 flex-col gap-4">
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
-            <p className="text-muted-foreground">Last verified</p>
+            <p className="text-muted-foreground">{t("integrationsAuditFixed.lastVerified")}</p>
             <p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p>
           </div>
           <div>
-            <p className="text-muted-foreground">Last sync</p>
+            <p className="text-muted-foreground">{t("integrationsAuditFixed.lastSync")}</p>
             <p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p>
           </div>
         </div>
@@ -1314,13 +1354,13 @@ function ConnectedCard({
           {account.profile_url && (
             <Button asChild size="sm" variant="outline">
               <a href={account.profile_url} target="_blank" rel="noreferrer noopener">
-                Open <ExternalLink className="ms-1 size-3.5" />
+                {t("integrationsAuditFixed.open")} <ExternalLink className="ms-1 size-3.5" />
               </a>
             </Button>
           )}
           {meta?.oauth && (
             <Button size="sm" variant="outline" onClick={onReconnect}>
-              <RefreshCw className="me-1 size-3.5" /> Reconnect
+              <RefreshCw className="me-1 size-3.5" /> {t("integrationsAuditFixed.reconnect")}
             </Button>
           )}
           <Button
@@ -1330,7 +1370,7 @@ function ConnectedCard({
             disabled={disconnecting}
             onClick={onDisconnect}
           >
-            <Unplug className="me-1 size-3.5" /> Disconnect
+            <Unplug className="me-1 size-3.5" /> {t("integrationsAuditFixed.disconnect")}
           </Button>
         </div>
       </CardContent>
@@ -1424,6 +1464,7 @@ function WorkspaceApps({
   rows: IntegrationReadinessRow[];
   onConfigure: (id: string) => void;
 }) {
+  const { t } = useI18n();
   const families: IntegrationReadinessRow[] = [];
   for (const row of rows) {
     if (!row.oauth || !row.provider || row.status === "COMING_SOON") continue;
@@ -1433,12 +1474,10 @@ function WorkspaceApps({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Use your own developer app (optional)</CardTitle>
-        <CardDescription>
-          Most companies never need this: FLAS connects through its own app, so Continue with
-          Facebook just works. Add your own app only if your company must use it. Accounts already
-          connected through a different app may need to be reconnected.
-        </CardDescription>
+        <CardTitle className="text-base">
+          {t("integrationsAuditFixed.useYourOwnDeveloperApp")}
+        </CardTitle>
+        <CardDescription>{t("integrationsAuditFixed.mostCompaniesNeverNeedThis")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {families.map((row) => (
@@ -1453,22 +1492,27 @@ function WorkspaceApps({
                     .join(", ")}
                   {" · "}
                   {row.source === "workspace"
-                    ? "Using your own app"
+                    ? t("integrationsAuditFixed.usingYourOwnApp")
                     : row.source === "shared"
-                      ? "Using the FLAS app"
-                      : "Not available yet"}
+                      ? t("integrationsAuditFixed.usingTheFlasApp")
+                      : t("integrationsAuditFixed.notAvailableYet")}
                 </p>
               </div>
               <Button size="sm" variant="outline" onClick={() => onConfigure(row.id)}>
                 <KeyRound className="me-1.5 size-3.5" />
-                {row.source === "workspace" ? "Update your app keys" : "Use your own app"}
+                {row.source === "workspace"
+                  ? t("integrationsAuditFixed.updateYourAppKeys")
+                  : t("integrationsAuditFixed.useYourOwnApp")}
               </Button>
             </div>
             {row.source === "workspace" && (
               // The company owns this app, so it has to register FLAS in it.
               <div className="space-y-2 text-xs text-muted-foreground">
                 {row.callbackUri && (
-                  <CopyRow label="Register this callback in your app" value={row.callbackUri} />
+                  <CopyRow
+                    label={t("integrationsAuditFixed.registerThisCallbackInYour")}
+                    value={row.callbackUri}
+                  />
                 )}
                 {row.blockers
                   .filter((b) => b.owner === "WORKSPACE_ADMIN" && b.technical)
@@ -1501,6 +1545,7 @@ function ConnectConsent({
   onCancel: () => void;
   onContinue: () => void;
 }) {
+  const { t, tr } = useI18n();
   const provider = connector.provider === "meta" ? "Facebook" : (connector.name ?? "the provider");
   const permissions = plainPermissions(connectorDefinition(connector.id)?.requestedScopes);
   const { icon: Icon, tint } = connectorIcon(connector.id);
@@ -1508,11 +1553,15 @@ function ConnectConsent({
     <>
       <DialogHeader>
         <DialogTitle className="flex items-center gap-2">
-          <Icon className={`size-5 ${tint}`} /> Connect {connector.name}
+          <Icon className={`size-5 ${tint}`} />{" "}
+          {tr("integrationsAuditFixed.connect", { name: connector.name })}
         </DialogTitle>
         <DialogDescription>
-          FLAS will ask {provider} for permission to do the following for your business. You choose
-          the exact {pickerNoun(connector.id)} on {provider}&apos;s screen.
+          {tr("integrationsAuditFixed.flasWillAskForPermission", {
+            provider: provider,
+            pickerNoun: pickerNoun(connector.id),
+            provider2: provider,
+          })}
         </DialogDescription>
       </DialogHeader>
       {permissions.length > 0 ? (
@@ -1526,7 +1575,7 @@ function ConnectConsent({
         </ul>
       ) : (
         <p className="rounded-xl border bg-muted/30 p-4 text-sm">
-          You&apos;ll be asked to allow FLAS to work with your {connector.name} account.
+          {tr("integrationsAuditFixed.youLlBeAskedTo", { name: connector.name })}
         </p>
       )}
       {connector.limitedReason && (
@@ -1537,10 +1586,12 @@ function ConnectConsent({
       </p>
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={onCancel} disabled={busy}>
-          Cancel
+          {t("integrationsAuditFixed.cancel")}
         </Button>
         <Button onClick={onContinue} disabled={busy}>
-          {busy ? "Opening secure sign-in…" : signInLabel(connector.provider, connector.name)}
+          {busy
+            ? t("integrationsAuditFixed.openingSecureSignIn")
+            : signInLabel(connector.provider, connector.name)}
         </Button>
       </div>
     </>
@@ -1552,21 +1603,28 @@ function channelState(
   readiness: IntegrationReadinessRow | null,
   connected: ReadonlyArray<{ id: string }>,
   isSuperAdmin: boolean,
+  t: Translate,
 ): { label: string; tone: "good" | "warn" | "muted" } {
   if (connected.length > 0)
     return {
-      label: connected.length > 1 ? `${connected.length} connected` : "Connected",
+      label:
+        connected.length > 1
+          ? t("integrationsAuditFixed.state.connectedCount", { count: connected.length })
+          : t("integrationsAuditFixed.connected"),
       tone: "good",
     };
-  if (!readiness) return { label: "Checking…", tone: "muted" };
-  if (readiness.status === "COMING_SOON") return { label: "Coming soon", tone: "muted" };
+  if (!readiness) return { label: t("integrationsAuditFixed.state.checking"), tone: "muted" };
+  if (readiness.status === "COMING_SOON")
+    return { label: t("integrationsAuditFixed.comingSoon"), tone: "muted" };
   if (readiness.status === "ADMIN_SETUP_REQUIRED")
     return {
       label:
-        isSuperAdmin || readiness.setupOwner === "workspace" ? "Setup needed" : "Available soon",
+        isSuperAdmin || readiness.setupOwner === "workspace"
+          ? t("integrationsAuditFixed.setupNeeded")
+          : t("integrationsAuditFixed.availableSoon"),
       tone: "warn",
     };
-  return { label: "Not connected", tone: "muted" };
+  return { label: t("integrationsAuditFixed.state.notConnected"), tone: "muted" };
 }
 
 function ChannelCard({
@@ -1582,8 +1640,9 @@ function ChannelCard({
   isSuperAdmin: boolean;
   onOpen: () => void;
 }) {
+  const { t } = useI18n();
   const { icon: Icon, tint } = connectorIcon(connector.id);
-  const state = channelState(readiness, connected, isSuperAdmin);
+  const state = channelState(readiness, connected, isSuperAdmin, t);
   return (
     <Card>
       <CardContent className="flex items-center justify-between gap-3 p-4">
@@ -1599,7 +1658,9 @@ function ChannelCard({
           </div>
         </div>
         <Button size="sm" variant={connected.length > 0 ? "outline" : "default"} onClick={onOpen}>
-          {connected.length > 0 ? "Manage" : "Set up"}
+          {connected.length > 0
+            ? t("integrationsAuditFixed.manage")
+            : t("integrationsAuditFixed.setUp")}
         </Button>
       </CardContent>
     </Card>
@@ -1635,11 +1696,13 @@ function ChannelSetup({
   /** Admins: add a WhatsApp number by hand. */
   onAddNumber?: (() => void) | undefined;
 }) {
+  const { t, tr } = useI18n();
   const { icon: Icon, tint } = connectorIcon(connector.id);
   const state = channelState(
     readiness,
     connector.id === "whatsapp" ? waNumbers : connected,
     isSuperAdmin,
+    t,
   );
   const steps = connectSteps(connector.id, connector.name, connector.provider);
   const providerName = readiness?.providerName ?? connector.name;
@@ -1668,26 +1731,32 @@ function ChannelSetup({
                   className="text-destructive"
                   onClick={() => onDisconnect(account.id)}
                 >
-                  <Unplug className="me-1 size-3.5" /> Disconnect
+                  <Unplug className="me-1 size-3.5" /> {t("integrationsAuditFixed.disconnect")}
                 </Button>
               </div>
               {account.external_id && (
                 <CopyRow label={accountIdLabel(connector.id)} value={account.external_id} />
               )}
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-                <dt className="text-muted-foreground">Connected by</dt>
+                <dt className="text-muted-foreground">{t("integrationsAuditFixed.connectedBy")}</dt>
                 <dd>
-                  {account.connect_method === "oauth" ? `${providerName} sign-in` : "Manual setup"}
+                  {account.connect_method === "oauth"
+                    ? t("integrationsAuditFixed.signIn", { providerName: providerName })
+                    : t("integrationsAuditFixed.manualSetup")}
                 </dd>
                 {account.created_at && (
                   <>
-                    <dt className="text-muted-foreground">Connected on</dt>
+                    <dt className="text-muted-foreground">
+                      {t("integrationsAuditFixed.connectedOn")}
+                    </dt>
                     <dd>{new Date(account.created_at).toLocaleDateString()}</dd>
                   </>
                 )}
                 {account.token_expires_at && (
                   <>
-                    <dt className="text-muted-foreground">Access valid until</dt>
+                    <dt className="text-muted-foreground">
+                      {t("integrationsAuditFixed.accessValidUntil")}
+                    </dt>
                     <dd>{new Date(account.token_expires_at).toLocaleDateString()}</dd>
                   </>
                 )}
@@ -1699,7 +1768,7 @@ function ChannelSetup({
 
       <div className="grid gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          How to connect
+          {t("integrationsAuditFixed.howToConnect")}
         </p>
         <ol className="grid gap-2 text-sm">
           {steps.map((step, i) => (
@@ -1717,7 +1786,7 @@ function ChannelSetup({
         <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
           {connector.unavailableReason}
           {isAdmin && connector.id === "whatsapp"
-            ? " An administrator adds numbers from Advanced admin settings on this page."
+            ? t("integrationsAuditFixed.anAdministratorAddsNumbersFrom")
             : ""}
         </p>
       )}
@@ -1733,9 +1802,14 @@ function ChannelSetup({
             <div key={number.id} className="grid gap-2 rounded-lg border p-3 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{number.display_phone || number.label}</span>
-                {number.is_default && <Badge variant="secondary">Default</Badge>}
+                {number.is_default && (
+                  <Badge variant="secondary">{t("integrationsAuditFixed.default")}</Badge>
+                )}
               </div>
-              <CopyRow label="Phone number ID" value={number.phone_number_id} />
+              <CopyRow
+                label={t("integrationsAuditFixed.phoneNumberId")}
+                value={number.phone_number_id}
+              />
             </div>
           ))}
         </div>
@@ -1744,30 +1818,32 @@ function ChannelSetup({
       {(onUseOwnApp || onAddNumber) && (
         <div className="grid gap-2 rounded-lg border border-dashed p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Another way to connect
+            {t("integrationsAuditFixed.anotherWayToConnect")}
           </p>
           {onUseOwnApp && (
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <p className="min-w-0 flex-1 text-muted-foreground">
-                Connect through a {providerName} app your company owns. It works before FLAS&apos;s
-                shared app is approved; you&apos;ll need that app&apos;s ID and secret.
+                {tr("integrationsAuditFixed.connectThroughAAppYour", {
+                  providerName: providerName,
+                })}
               </p>
               <Button
                 size="sm"
                 variant={waitingOnFlas ? "default" : "outline"}
                 onClick={onUseOwnApp}
               >
-                <KeyRound className="me-1.5 size-3.5" /> Use your own {providerName} app
+                <KeyRound className="me-1.5 size-3.5" />{" "}
+                {tr("integrationsAuditFixed.useYourOwnApp2", { providerName: providerName })}
               </Button>
             </div>
           )}
           {onAddNumber && (
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <p className="min-w-0 flex-1 text-muted-foreground">
-                Add a WhatsApp Business number by hand, with its phone number ID and access token.
+                {t("integrationsAuditFixed.addAWhatsappBusinessNumber")}
               </p>
               <Button size="sm" onClick={onAddNumber}>
-                Add a number manually
+                {t("integrationsAuditFixed.addANumberManually")}
               </Button>
             </div>
           )}
@@ -1778,9 +1854,9 @@ function ChannelSetup({
         <div className="flex flex-wrap justify-end gap-2">
           <Button onClick={onConnect} disabled={busy || waitingOnFlas}>
             {busy
-              ? "Opening secure sign-in…"
+              ? t("integrationsAuditFixed.openingSecureSignIn")
               : connected.length > 0
-                ? `Reconnect ${connector.name}`
+                ? t("integrationsAuditFixed.reconnect2", { name: connector.name })
                 : signInLabel(connector.provider, connector.name)}
           </Button>
         </div>

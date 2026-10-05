@@ -34,6 +34,8 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 type Step = "prepare" | "verify" | "credentials" | "permissions" | "connect" | "errors";
 
@@ -69,6 +71,11 @@ export function ConnectionWizard({
    *  page one of a guide the user has to click through. */
   openAt?: Step;
 }) {
+  const { t, tr } = useI18n();
+  const stepTitle = (step: Step) =>
+    hasMessage(`connectionWizard.step.${step}`)
+      ? t(`connectionWizard.step.${step}` as MessageKey)
+      : STEP_TITLE[step];
   const meta = connector(platformId);
   const guide = setupGuide(platformId);
   const definition = connectorDefinition(platformId);
@@ -119,18 +126,22 @@ export function ConnectionWizard({
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {meta?.name ?? platformId} setup wizard
-            <Badge
-              variant={
-                status.tone === "good"
-                  ? "default"
-                  : status.tone === "bad"
-                    ? "destructive"
-                    : "secondary"
-              }
-            >
-              {status.label}
-            </Badge>
+            {tr("connectionWizard.setupWizard", {
+              value: meta?.name ?? platformId,
+              badge: (
+                <Badge
+                  variant={
+                    status.tone === "good"
+                      ? "default"
+                      : status.tone === "bad"
+                        ? "destructive"
+                        : "secondary"
+                  }
+                >
+                  {status.label}
+                </Badge>
+              ),
+            })}
           </DialogTitle>
           <DialogDescription>{status.reason}</DialogDescription>
         </DialogHeader>
@@ -139,13 +150,13 @@ export function ConnectionWizard({
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="rounded-md border bg-muted/30 p-3">
               <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
-                <UserRoundCog className="size-3.5" /> Owner/admin · one time
+                <UserRoundCog className="size-3.5" /> {t("connectionWizard.ownerAdminOneTime")}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{provider.ownerTask}</p>
             </div>
             <div className="rounded-md border bg-muted/30 p-3">
               <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
-                <UsersRound className="size-3.5" /> SMM team · per client/channel
+                <UsersRound className="size-3.5" /> {t("connectionWizard.smmTeamPerClientChannel")}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{provider.connectionTask}</p>
             </div>
@@ -163,7 +174,7 @@ export function ConnectionWizard({
               className="h-7 px-2 text-xs"
               onClick={() => setStep(s)}
             >
-              {s === "errors" ? STEP_TITLE[s] : `${i + 1}. ${STEP_TITLE[s]}`}
+              {s === "errors" ? stepTitle(s) : `${i + 1}. ${stepTitle(s)}`}
             </Button>
           ))}
         </div>
@@ -171,9 +182,7 @@ export function ConnectionWizard({
         <div className="space-y-4 text-sm">
           {step === "prepare" && (
             <section className="space-y-3">
-              <p className="text-muted-foreground">
-                Get these in place first — most failed connections are missing one of them.
-              </p>
+              <p className="text-muted-foreground">{t("connectionWizard.getTheseInPlaceFirst")}</p>
               <ul className="space-y-2">
                 {(guide?.requires ?? ["No special requirements for this platform."]).map((item) => (
                   <li key={item} className="flex gap-2">
@@ -185,10 +194,9 @@ export function ConnectionWizard({
 
               {provider ? (
                 <div className="rounded-md border p-3">
-                  <p className="font-medium">Official setup shortcuts</p>
+                  <p className="font-medium">{t("connectionWizard.officialSetupShortcuts")}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    No treasure hunt. These open the provider's own pages for apps, keys,
-                    permissions and review.
+                    {t("connectionWizard.noTreasureHuntTheseOpen")}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {provider.links.map((link) => (
@@ -215,7 +223,7 @@ export function ConnectionWizard({
 
               {guide?.steps ? (
                 <div className="rounded-md border bg-muted/40 p-3">
-                  <p className="mb-1 font-medium">What happens, in order</p>
+                  <p className="mb-1 font-medium">{t("connectionWizard.whatHappensInOrder")}</p>
                   <ol className="ms-4 list-decimal space-y-1 text-muted-foreground">
                     {guide.steps.map((s) => (
                       <li key={s}>{s}</li>
@@ -229,11 +237,18 @@ export function ConnectionWizard({
           {step === "verify" && (
             <section className="space-y-3">
               <p className="text-muted-foreground">
-                Tick each line once it is true.{" "}
-                {checklist.length > 0 ? `${doneCount}/${checklist.length} confirmed.` : ""}
+                {tr("connectionWizard.tickEachLineOnceIt", {
+                  value:
+                    checklist.length > 0
+                      ? t("connectionWizard.confirmed", {
+                          doneCount: doneCount,
+                          length: checklist.length,
+                        })
+                      : "",
+                })}
               </p>
               {checklist.length === 0 ? (
-                <p>Nothing to verify for this platform — continue to permissions.</p>
+                <p>{t("connectionWizard.nothingToVerifyForThis")}</p>
               ) : (
                 <ul className="space-y-2">
                   {checklist.map((item) => (
@@ -257,10 +272,9 @@ export function ConnectionWizard({
             <section className="space-y-3">
               {provider ? (
                 <div className="rounded-md border bg-muted/40 p-3 text-xs">
-                  <p className="font-medium">Where are the keys?</p>
+                  <p className="font-medium">{t("connectionWizard.whereAreTheKeys")}</p>
                   <p className="mt-1 text-muted-foreground">
-                    Open the official provider page below. Copy only the App/Client ID and Secret
-                    requested by Flas — never paste user access tokens here.
+                    {t("connectionWizard.openTheOfficialProviderPage")}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {provider.links
@@ -293,7 +307,9 @@ export function ConnectionWizard({
           {step === "permissions" && (
             <section className="space-y-3">
               <div>
-                <p className="mb-1 font-medium">Permissions Flas will request</p>
+                <p className="mb-1 font-medium">
+                  {t("connectionWizard.permissionsFlasWillRequest")}
+                </p>
                 {/* Straight from the registry, which is the same list
                     oauth.server.ts puts in the authorization URL. */}
                 {definition && definition.requestedScopes.length > 0 ? (
@@ -306,27 +322,24 @@ export function ConnectionWizard({
                   </div>
                 ) : (
                   <p className="text-muted-foreground">
-                    This platform is configured manually inside Flas — no OAuth permissions needed.
+                    {t("connectionWizard.thisPlatformIsConfiguredManually")}
                   </p>
                 )}
                 {definition && definition.requestedScopes.length > 0 && (
                   <div className="mt-2 rounded-md border bg-muted/40 p-3 text-xs">
                     <p className="font-medium">
-                      Grant the full Flas permission set shown on the provider screen
+                      {t("connectionWizard.grantTheFullFlasPermission")}
                     </p>
                     <p className="mt-1 text-muted-foreground">
-                      Approve every permission Flas requests for this connector. Do not grant
-                      unrelated permissions that Flas did not request. If the provider lets you
-                      decline individual scopes, Flas will verify the result and mark only the
-                      affected capability unavailable instead of pretending the connection is
-                      healthy.
+                      {t("connectionWizard.approveEveryPermissionFlasRequests")}
                     </p>
                     <p className="mt-2 text-muted-foreground">
-                      These permissions power:{" "}
-                      {advertisableCapabilities(definition)
-                        .map((cap) => CAPABILITY_LABELS[cap.key].toLowerCase())
-                        .join(", ") || "profile access"}
-                      .
+                      {tr("connectionWizard.thesePermissionsPower", {
+                        value:
+                          advertisableCapabilities(definition)
+                            .map((cap) => CAPABILITY_LABELS[cap.key].toLowerCase())
+                            .join(", ") || t("connectionWizard.profileAccess"),
+                      })}
                     </p>
                   </div>
                 )}
@@ -364,57 +377,54 @@ export function ConnectionWizard({
                 <div className="flex gap-2 rounded-md border bg-muted/40 p-3">
                   <Clock className="mt-0.5 size-4 shrink-0" />
                   <div>
-                    <p className="font-medium">Expected review timeline</p>
+                    <p className="font-medium">{t("connectionWizard.expectedReviewTimeline")}</p>
                     <p className="text-muted-foreground">{trouble.reviewTimeline}</p>
                   </div>
                 </div>
               ) : null}
               <p className="text-xs text-muted-foreground">
-                Redirect URI to whitelist in your provider app:{" "}
-                <span className="break-all font-mono">
-                  {origin
-                    ? `${origin}${OAUTH_REDIRECT_PATH}`
-                    : `https://flas.mobidigisol.com${OAUTH_REDIRECT_PATH}`}
-                </span>
+                {tr("connectionWizard.redirectUriToWhitelistIn", {
+                  span: (
+                    <span className="break-all font-mono">
+                      {origin
+                        ? `${origin}${OAUTH_REDIRECT_PATH}`
+                        : `https://flas.mobidigisol.com${OAUTH_REDIRECT_PATH}`}
+                    </span>
+                  ),
+                })}
               </p>
             </section>
           )}
 
           {step === "connect" && (
             <section className="space-y-3">
-              <p className="text-muted-foreground">
-                Flas opens the platform's official login in a new browser tab. Your password stays
-                with the provider; Flas receives only the OAuth authorization result.
-              </p>
+              <p className="text-muted-foreground">{t("connectionWizard.flasOpensThePlatformS")}</p>
               <ol className="ms-4 list-decimal space-y-1 text-muted-foreground">
-                <li>Press Connect below and sign in on the provider's own page.</li>
-                <li>
-                  Approve every permission Flas shows. If you manage several assets, choose the
-                  right client Page/channel/account.
-                </li>
-                <li>Return to Flas. The connection is verified before it is shown as healthy.</li>
-                <li>
-                  If something is missing, Flas should name the exact scope/review/account-type
-                  blocker — not the timeless classic “Something went wrong.”
-                </li>
+                <li>{t("connectionWizard.pressConnectBelowAndSign")}</li>
+                <li>{t("connectionWizard.approveEveryPermissionFlasShows")}</li>
+                <li>{t("connectionWizard.returnToFlasTheConnection")}</li>
+                <li>{t("connectionWizard.ifSomethingIsMissingFlas")}</li>
               </ol>
               <div className="flex flex-wrap gap-2">
                 {meta?.oauth ? (
                   <Button disabled={connecting} onClick={onConnect}>
-                    {connecting ? "Opening…" : "Connect securely"}{" "}
+                    {connecting
+                      ? t("connectionWizard.opening")
+                      : t("connectionWizard.connectSecurely")}{" "}
                     <ArrowRight className="ms-1 size-4" />
                   </Button>
                 ) : null}
                 {meta?.manageUrl ? (
                   <Button asChild variant="outline">
                     <a href={meta.manageUrl} target="_blank" rel="noreferrer noopener">
-                      Platform settings <ExternalLink className="ms-1 size-3" />
+                      {t("connectionWizard.platformSettings")}{" "}
+                      <ExternalLink className="ms-1 size-3" />
                     </a>
                   </Button>
                 ) : null}
               </div>
               <div className="rounded-md border p-3">
-                <p className="font-medium">Current status</p>
+                <p className="font-medium">{t("connectionWizard.currentStatus")}</p>
                 <p className="text-muted-foreground">{status.reason}</p>
                 <p className="mt-1 flex gap-1.5">
                   <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
@@ -427,7 +437,9 @@ export function ConnectionWizard({
           {step === "errors" && (
             <section className="space-y-3">
               {(trouble?.errors ?? []).length === 0 ? (
-                <p className="text-muted-foreground">No known platform errors recorded yet.</p>
+                <p className="text-muted-foreground">
+                  {t("connectionWizard.noKnownPlatformErrorsRecorded")}
+                </p>
               ) : (
                 trouble?.errors.map((entry) => (
                   <div key={entry.error} className="rounded-md border p-3">
@@ -436,13 +448,17 @@ export function ConnectionWizard({
                       {entry.error}
                     </p>
                     <p className="mt-1.5 text-muted-foreground">{entry.means}</p>
-                    <p className="mt-1 font-medium">Fix: {entry.fix}</p>
+                    <p className="mt-1 font-medium">
+                      {tr("connectionWizard.fix", { fix: entry.fix })}
+                    </p>
                   </div>
                 ))
               )}
               {guide?.gotchas?.length ? (
                 <div className="rounded-md border bg-muted/40 p-3">
-                  <p className="mb-1 font-medium">Platform limits worth knowing</p>
+                  <p className="mb-1 font-medium">
+                    {t("connectionWizard.platformLimitsWorthKnowing")}
+                  </p>
                   <ul className="ms-4 list-disc space-y-1 text-muted-foreground">
                     {guide.gotchas.map((g) => (
                       <li key={g}>{g}</li>
@@ -460,10 +476,10 @@ export function ConnectionWizard({
             onClick={() => setStep(STEP_ORDER[Math.max(STEP_ORDER.indexOf(step) - 1, 0)] as Step)}
             disabled={step === "prepare"}
           >
-            Back
+            {t("connectionWizard.back")}
           </Button>
           <Button variant="outline" onClick={next} disabled={step === "errors"}>
-            Next step
+            {t("connectionWizard.nextStep")}
           </Button>
         </div>
       </DialogContent>

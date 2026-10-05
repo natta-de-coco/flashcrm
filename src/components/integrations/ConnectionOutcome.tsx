@@ -16,6 +16,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 /**
  * What the user sees when they come back from a platform's login page.
@@ -105,6 +107,7 @@ export function ConnectionOutcome({
   /** Starts sign-in again for a platform, offered after a cancel. */
   onRetry?: ((platform: string) => void) | undefined;
 }) {
+  const i18n = useI18n();
   const blocked = search.connect_blocked;
   const errored = search.connect_error;
   const connected = search.connected;
@@ -121,20 +124,17 @@ export function ConnectionOutcome({
     const known = CONNECTORS.some((c) => c.id === cancelled);
     return (
       <Alert className="mt-4">
-        <AlertTitle>Sign-in to {name} was cancelled</AlertTitle>
+        <AlertTitle>{i18n.tr("connectionOutcome.signInToWasCancelled", { name: name })}</AlertTitle>
         <AlertDescription className="space-y-3">
-          <p>
-            Sign-in stopped before FLAS got access, so nothing was connected or changed. You can try
-            again whenever you are ready.
-          </p>
+          <p>{i18n.t("connectionOutcome.signInStoppedBeforeFlas")}</p>
           <div className="flex flex-wrap gap-2">
             {onRetry && known && (
               <Button size="sm" onClick={() => onRetry(cancelled)}>
-                Try again
+                {i18n.t("connectionOutcome.tryAgain")}
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={onDismiss}>
-              Dismiss
+              {i18n.t("connectionOutcome.dismiss")}
             </Button>
           </div>
         </AlertDescription>
@@ -161,19 +161,18 @@ export function ConnectionOutcome({
       <Alert variant="destructive" className="mt-4">
         <XCircle className="size-4" />
         <AlertTitle>
-          Couldn&apos;t finish connecting {PROVIDER_LABEL[blocked] ?? blocked.replaceAll("_", " ")}
+          {i18n.tr("connectionOutcome.couldnTFinishConnecting", {
+            value: PROVIDER_LABEL[blocked] ?? blocked.replaceAll("_", " "),
+          })}
         </AlertTitle>
         <AlertDescription className="space-y-3">
           <p className="font-medium">
-            {search.connect_reason ?? "The platform did not return a usable authorization."}
+            {search.connect_reason ?? i18n.t("connectionOutcome.thePlatformDidNotReturn")}
           </p>
 
-          <p className="text-xs opacity-80">
-            Nothing was saved, so there is no half-connected account to clean up. Fix the cause
-            above and press Connect again.
-          </p>
+          <p className="text-xs opacity-80">{i18n.t("connectionOutcome.nothingWasSavedSoThere")}</p>
           <Button size="sm" variant="outline" onClick={onDismiss}>
-            Dismiss
+            {i18n.t("connectionOutcome.dismiss")}
           </Button>
         </AlertDescription>
       </Alert>
@@ -190,7 +189,7 @@ export function ConnectionOutcome({
         <AlertDescription className="space-y-3">
           <p>{outcomeCopy(search.connect_code, platformName(search.connect_platform)).message}</p>
           <Button size="sm" variant="outline" onClick={onDismiss}>
-            Dismiss
+            {i18n.t("connectionOutcome.dismiss")}
           </Button>
         </AlertDescription>
       </Alert>
@@ -200,10 +199,8 @@ export function ConnectionOutcome({
   if (!account)
     return (
       <Alert>
-        <AlertTitle>Loading your connection</AlertTitle>
-        <AlertDescription>
-          Refresh if the account does not appear, or start sign-in again.
-        </AlertDescription>
+        <AlertTitle>{i18n.t("connectionOutcome.loadingYourConnection")}</AlertTitle>
+        <AlertDescription>{i18n.t("connectionOutcome.refreshIfTheAccountDoes")}</AlertDescription>
       </Alert>
     );
 
@@ -239,6 +236,7 @@ function TargetPicker({
   onChanged: () => void;
   onDismiss: () => void;
 }) {
+  const i18n = useI18n();
   const targetsFn = useServerFn(getMetaTargets);
   const selectFn = useServerFn(selectMetaTarget);
   const [chosen, setChosen] = useState<string | null>(null);
@@ -251,36 +249,37 @@ function TargetPicker({
   const choose = useMutation({
     mutationFn: (pageId: string) => selectFn({ data: { accountId: account.id, pageId } }),
     onSuccess: () => {
-      toast.success("Connected — Flas is now pinned to that account.");
+      toast.success(i18n.t("connectionOutcome.connectedFlasIsNowPinned"));
       onChanged();
       onDismiss();
     },
-    onError: () =>
-      toast.error(
-        "Could not complete the connection. Please try again or ask a FLAS administrator.",
-      ),
+    onError: () => toast.error(i18n.t("connectionOutcome.couldNotCompleteTheConnection")),
   });
 
   return (
     <Card className="mt-4 border-primary/40">
       <CardHeader>
-        <CardTitle className="text-base">Choose which account Flas should manage</CardTitle>
-        <CardDescription>Choose the account this workspace should use.</CardDescription>
+        <CardTitle className="text-base">
+          {i18n.t("connectionOutcome.chooseWhichAccountFlasShould")}
+        </CardTitle>
+        <CardDescription>
+          {i18n.t("connectionOutcome.chooseTheAccountThisWorkspace")}
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {targets.isPending && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Asking the platform what this login can
-            reach…
+            <Loader2 className="size-4 animate-spin" />{" "}
+            {i18n.t("connectionOutcome.askingThePlatformWhatThis")}
           </p>
         )}
 
         {targets.isError && (
           <Alert variant="destructive">
             <AlertTriangle className="size-4" />
-            <AlertTitle>Couldn&apos;t list the available accounts</AlertTitle>
+            <AlertTitle>{i18n.t("connectionOutcome.couldnTListTheAvailable")}</AlertTitle>
             <AlertDescription>
-              {"Could not load your accounts. Try again or ask a FLAS administrator."}
+              {i18n.t("connectionOutcome.couldNotLoadYourAccounts")}
             </AlertDescription>
           </Alert>
         )}
@@ -305,7 +304,7 @@ function TargetPicker({
                   target="_blank"
                   rel="noreferrer noopener"
                 >
-                  Open the page where this is fixed
+                  {i18n.t("connectionOutcome.openThePageWhereThis")}
                 </a>
               )}
             </AlertDescription>
@@ -332,9 +331,11 @@ function TargetPicker({
               <p className="truncate text-sm font-medium">{t.pageName}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {t.instagramUsername ? `@${t.instagramUsername} · ` : ""}
-                {t.category ?? "Page"}
+                {t.category ?? i18n.t("connectionOutcome.page")}
                 {typeof t.followers === "number"
-                  ? ` · ${t.followers.toLocaleString()} followers`
+                  ? i18n.t("connectionOutcome.followers", {
+                      toLocaleString: t.followers.toLocaleString(),
+                    })
                   : ""}
               </p>
             </div>
@@ -344,14 +345,16 @@ function TargetPicker({
               variant={t.canPublish ? "secondary" : "outline"}
               className="shrink-0 text-[10px]"
             >
-              {t.canPublish ? "Can post" : "Read only"}
+              {t.canPublish
+                ? i18n.t("connectionOutcome.canPost")
+                : i18n.t("connectionOutcome.readOnly")}
             </Badge>
           </button>
         ))}
 
         {targets.data && targets.data.targets.length === 0 && !targets.data.diagnosis && (
           <p className="text-sm text-muted-foreground">
-            This login does not control any account Flas can manage.
+            {i18n.t("connectionOutcome.thisLoginDoesNotControl")}
           </p>
         )}
 
@@ -362,10 +365,10 @@ function TargetPicker({
             onClick={() => chosen && choose.mutate(chosen)}
           >
             {choose.isPending ? <Loader2 className="me-1.5 size-3.5 animate-spin" /> : null}
-            Use this account
+            {i18n.t("connectionOutcome.useThisAccount")}
           </Button>
           <Button size="sm" variant="ghost" onClick={onDismiss}>
-            Later
+            {i18n.t("connectionOutcome.later")}
           </Button>
         </div>
       </CardContent>
@@ -385,14 +388,12 @@ function ConnectedBanner({
   onChanged: () => void;
   onDismiss: () => void;
 }) {
+  const i18n = useI18n();
   const testFn = useServerFn(testSocialConnection);
   const test = useMutation({
     mutationFn: () => testFn({ data: { accountId: account?.id ?? "" } }),
     onSuccess: () => onChanged(),
-    onError: () =>
-      toast.error(
-        "Could not complete the connection. Please try again or ask a FLAS administrator.",
-      ),
+    onError: () => toast.error(i18n.t("connectionOutcome.couldNotCompleteTheConnection")),
   });
 
   const report = test.data;
@@ -400,13 +401,12 @@ function ConnectedBanner({
   return (
     <Alert className="mt-4">
       <CheckCircle2 className="size-4" />
-      <AlertTitle>Connected to {account?.label ?? platform}</AlertTitle>
+      <AlertTitle>
+        {i18n.tr("connectionOutcome.connectedTo", { value: account?.label ?? platform })}
+      </AlertTitle>
       <AlertDescription className="space-y-3">
         {!report && (
-          <p className="text-sm">
-            Your account is connected. Available features depend on the access your provider
-            approved.
-          </p>
+          <p className="text-sm">{i18n.t("connectionOutcome.yourAccountIsConnectedAvailable")}</p>
         )}
 
         {report && (
@@ -435,11 +435,13 @@ function ConnectedBanner({
               onClick={() => test.mutate()}
             >
               {test.isPending ? <Loader2 className="me-1.5 size-3.5 animate-spin" /> : null}
-              {report ? "Check again" : "Check what works"}
+              {report
+                ? i18n.t("connectionOutcome.checkAgain")
+                : i18n.t("connectionOutcome.checkWhatWorks")}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={onDismiss}>
-            Done
+            {i18n.t("connectionOutcome.done")}
           </Button>
         </div>
       </AlertDescription>
@@ -461,10 +463,13 @@ function ChannelPicker({
   onChanged: () => void;
   onDismiss: () => void;
 }) {
+  const i18n = useI18n();
   const listFn = useServerFn(getConnectionTargets);
   const chooseFn = useServerFn(selectConnectionTarget);
   const [chosen, setChosen] = useState<string | null>(null);
-  const noun = PICKER_NOUN[account.platform] ?? "account";
+  const noun = hasMessage(`connectionOutcome.noun.${account.platform}`)
+    ? i18n.t(`connectionOutcome.noun.${account.platform}` as MessageKey)
+    : (PICKER_NOUN[account.platform] ?? i18n.t("connectionOutcome.noun.account"));
 
   const targets = useQuery({
     queryKey: ["connection-targets", account.id],
@@ -474,39 +479,37 @@ function ChannelPicker({
   const choose = useMutation({
     mutationFn: (targetId: string) => chooseFn({ data: { accountId: account.id, targetId } }),
     onSuccess: () => {
-      toast.success(`Connected — Flas is now pinned to that ${noun}.`);
+      toast.success(i18n.t("connectionOutcome.connectedFlasIsNowPinned2", { noun: noun }));
       onChanged();
       onDismiss();
     },
-    onError: () =>
-      toast.error(
-        "Could not complete the connection. Please try again or ask a FLAS administrator.",
-      ),
+    onError: () => toast.error(i18n.t("connectionOutcome.couldNotCompleteTheConnection")),
   });
 
   return (
     <Card className="mt-4 border-primary/40">
       <CardHeader>
-        <CardTitle className="text-base">Choose which {noun} Flas should manage</CardTitle>
+        <CardTitle className="text-base">
+          {i18n.tr("connectionOutcome.chooseWhichFlasShouldManage", { noun: noun })}
+        </CardTitle>
         <CardDescription>
-          Choose the account this workspace should use. To add another later, connect again and
-          choose it.
+          {i18n.t("connectionOutcome.chooseTheAccountThisWorkspace2")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {targets.isPending && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Asking the platform what this login can
-            manage…
+            <Loader2 className="size-4 animate-spin" />{" "}
+            {i18n.t("connectionOutcome.askingThePlatformWhatThis2")}
           </p>
         )}
 
         {targets.isError && (
           <Alert variant="destructive">
             <AlertTriangle className="size-4" />
-            <AlertTitle>Couldn&apos;t list the available accounts</AlertTitle>
+            <AlertTitle>{i18n.t("connectionOutcome.couldnTListTheAvailable")}</AlertTitle>
             <AlertDescription>
-              {"Could not load your accounts. Try again or ask a FLAS administrator."}
+              {i18n.t("connectionOutcome.couldNotLoadYourAccounts")}
             </AlertDescription>
           </Alert>
         )}
@@ -514,7 +517,7 @@ function ChannelPicker({
         {targets.data && !targets.data.ok && targets.data.reason && (
           <Alert>
             <AlertTriangle className="size-4" />
-            <AlertTitle>The platform did not list any accounts</AlertTitle>
+            <AlertTitle>{i18n.t("connectionOutcome.thePlatformDidNotList")}</AlertTitle>
             <AlertDescription>{targets.data.reason}</AlertDescription>
           </Alert>
         )}
@@ -541,7 +544,7 @@ function ChannelPicker({
 
         {targets.data?.ok && targets.data.targets.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            This login does not manage any {noun} Flas can connect.
+            {i18n.tr("connectionOutcome.thisLoginDoesNotManage", { noun: noun })}
           </p>
         )}
 
@@ -552,10 +555,10 @@ function ChannelPicker({
             onClick={() => chosen && choose.mutate(chosen)}
           >
             {choose.isPending ? <Loader2 className="me-1.5 size-3.5 animate-spin" /> : null}
-            Use this {noun}
+            {i18n.t("connectionOutcome.useThis")} {noun}
           </Button>
           <Button size="sm" variant="ghost" onClick={onDismiss}>
-            Later
+            {i18n.t("connectionOutcome.later")}
           </Button>
         </div>
       </CardContent>

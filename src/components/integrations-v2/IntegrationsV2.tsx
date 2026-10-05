@@ -46,6 +46,8 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 type Account = {
   id: string;
@@ -125,6 +127,7 @@ function humanTime(value: string | null) {
 }
 
 export function IntegrationsV2() {
+  const { t } = useI18n();
   const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const connections = useQuery({ queryKey: ["connections"], queryFn: () => getConnections() });
@@ -180,9 +183,7 @@ export function IntegrationsV2() {
         });
         return;
       }
-      toast.info(
-        "Finish sign-in with the provider. FLAS will show the connection after the callback completes.",
-      );
+      toast.info(t("integrationsV2.finishSignInWithThe"));
       window.setTimeout(() => {
         void qc.invalidateQueries({ queryKey: ["connections"] });
         void qc.invalidateQueries({ queryKey: ["connect-readiness"] });
@@ -197,7 +198,7 @@ export function IntegrationsV2() {
   const remove = useMutation({
     mutationFn: async (id: string) => disconnect({ data: { id } }),
     onSuccess: () => {
-      toast.success("Disconnected. Existing FLAS history is kept.");
+      toast.success(t("integrationsV2.disconnectedExistingFlasHistoryIs"));
       void qc.invalidateQueries({ queryKey: ["connections"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -208,37 +209,37 @@ export function IntegrationsV2() {
       <div className="mx-auto max-w-7xl space-y-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <PageHeader
-            title="Integrations"
-            description="Connect the tools your team uses and manage every account from one clear place."
+            title={t("integrationsV2.integrations")}
+            description={t("integrationsV2.connectTheToolsYourTeam")}
           />
           <div className="flex flex-wrap gap-2">
             {isAdmin && (
               <Button variant="outline" onClick={() => setProviderSetupOpen(true)}>
-                <Settings2 className="me-2 size-4" /> Provider setup
+                <Settings2 className="me-2 size-4" /> {t("integrationsV2.providerSetup")}
               </Button>
             )}
             <Button onClick={() => setMarketplaceOpen(true)}>
-              <Plus className="me-2 size-4" /> Add Integration
+              <Plus className="me-2 size-4" /> {t("integrationsV2.addIntegration")}
             </Button>
           </div>
         </div>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Connected" value={accounts.length} tone="good" />
+          <StatCard label={t("integrationsV2.connected")} value={accounts.length} tone="good" />
           <StatCard
-            label="Needs attention"
+            label={t("integrationsV2.needsAttention")}
             value={attention.length}
             tone={attention.length ? "warn" : "muted"}
           />
-          <StatCard label="Available" value={available} tone="muted" />
-          <StatCard label="Coming soon" value={comingSoon} tone="muted" />
+          <StatCard label={t("integrationsV2.available")} value={available} tone="muted" />
+          <StatCard label={t("integrationsV2.comingSoon")} value={comingSoon} tone="muted" />
         </section>
 
         {attention.length > 0 && (
           <section className="space-y-3">
             <SectionHeading
-              title="Needs attention"
-              description="Fix these first so your automations and reporting keep working."
+              title={t("integrationsV2.needsAttention")}
+              description={t("integrationsV2.fixTheseFirstSoYour")}
             />
             <div className="grid gap-3">
               {attention.map((account) => {
@@ -267,7 +268,7 @@ export function IntegrationsV2() {
                         onClick={() => meta && connect.mutate(meta.id)}
                         disabled={!meta?.oauth || connecting === meta?.id}
                       >
-                        <RefreshCw className="me-2 size-4" /> Fix connection
+                        <RefreshCw className="me-2 size-4" /> {t("integrationsV2.fixConnection")}
                       </Button>
                     </CardContent>
                   </Card>
@@ -279,8 +280,8 @@ export function IntegrationsV2() {
 
         <section className="space-y-3">
           <SectionHeading
-            title="Connected integrations"
-            description="Accounts and channels currently linked to this workspace."
+            title={t("integrationsV2.connectedIntegrations")}
+            description={t("integrationsV2.accountsAndChannelsCurrentlyLinked")}
           />
           {connections.isLoading ? (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -295,13 +296,13 @@ export function IntegrationsV2() {
                   <Link2 className="size-5" />
                 </div>
                 <div>
-                  <p className="font-semibold">Connect your first integration</p>
+                  <p className="font-semibold">{t("integrationsV2.connectYourFirstIntegration")}</p>
                   <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                    Bring Facebook, Instagram, YouTube, WhatsApp and more into FLAS.
+                    {t("integrationsV2.bringFacebookInstagramYoutubeWhatsapp")}
                   </p>
                 </div>
                 <Button onClick={() => setMarketplaceOpen(true)}>
-                  <Plus className="me-2 size-4" /> Add Integration
+                  <Plus className="me-2 size-4" /> {t("integrationsV2.addIntegration")}
                 </Button>
               </CardContent>
             </Card>
@@ -323,11 +324,11 @@ export function IntegrationsV2() {
         <section className="space-y-3">
           <div className="flex items-end justify-between gap-3">
             <SectionHeading
-              title="Explore integrations"
-              description="Add another channel without touching developer settings."
+              title={t("integrationsV2.exploreIntegrations")}
+              description={t("integrationsV2.addAnotherChannelWithoutTouching")}
             />
             <Button variant="ghost" size="sm" onClick={() => setMarketplaceOpen(true)}>
-              View all <ArrowRight className="ms-1 size-4" />
+              {t("integrationsV2.viewAll")} <ArrowRight className="ms-1 size-4" />
             </Button>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -360,16 +361,14 @@ export function IntegrationsV2() {
       >
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Integration</DialogTitle>
-            <DialogDescription>
-              Choose a platform. FLAS will guide you through the shortest secure connection path.
-            </DialogDescription>
+            <DialogTitle>{t("integrationsV2.addIntegration")}</DialogTitle>
+            <DialogDescription>{t("integrationsV2.chooseAPlatformFlasWill")}</DialogDescription>
           </DialogHeader>
           <div className="relative">
             <Search className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="ps-9"
-              placeholder="Search integrations..."
+              placeholder={t("integrationsV2.searchIntegrations")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -388,7 +387,9 @@ export function IntegrationsV2() {
                   setQuery("");
                 }}
               >
-                {item.label}
+                {hasMessage(`integrationsAuditFixed.group.${item.id}`)
+                  ? t(`integrationsAuditFixed.group.${item.id}` as MessageKey)
+                  : item.label}
               </Button>
             ))}
           </div>
@@ -398,11 +399,11 @@ export function IntegrationsV2() {
               <div className="flex gap-3">
                 <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
                 <div>
-                  <p className="font-medium">This connection needs setup before it can continue</p>
+                  <p className="font-medium">
+                    {t("integrationsV2.thisConnectionNeedsSetupBefore")}
+                  </p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {isAdmin
-                      ? blocked.reason
-                      : "A FLAS administrator needs to finish the platform configuration. Please try again after setup is completed."}
+                    {isAdmin ? blocked.reason : t("integrationsV2.aFlasAdministratorNeedsTo")}
                   </p>
                   {isAdmin && (
                     <Button
@@ -411,7 +412,7 @@ export function IntegrationsV2() {
                       variant="outline"
                       onClick={() => setProviderSetupOpen(true)}
                     >
-                      Open Provider Setup
+                      {t("integrationsV2.openProviderSetup")}
                     </Button>
                   )}
                 </div>
@@ -421,7 +422,7 @@ export function IntegrationsV2() {
 
           {marketplaceItems.length === 0 ? (
             <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-              No integrations match your search.
+              {t("integrationsV2.noIntegrationsMatchYourSearch")}
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -436,7 +437,11 @@ export function IntegrationsV2() {
                       ? connect.mutate(connector.id)
                       : connector.internalHref
                         ? (window.location.href = connector.internalHref)
-                        : toast.info(`${connector.name} uses guided setup outside OAuth.`)
+                        : toast.info(
+                            t("integrationsV2.usesGuidedSetupOutsideOauth", {
+                              name: connector.name,
+                            }),
+                          )
                   }
                 />
               ))}
@@ -448,22 +453,17 @@ export function IntegrationsV2() {
       <Dialog open={providerSetupOpen} onOpenChange={setProviderSetupOpen}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Provider setup</DialogTitle>
-            <DialogDescription>
-              Paste your own developer-app keys once per platform family. Every channel under that
-              family then connects in one click. If you do not have a developer app yet, open the
-              console link on each card first.
-            </DialogDescription>
+            <DialogTitle>{t("integrationsV2.providerSetup")}</DialogTitle>
+            <DialogDescription>{t("integrationsV2.pasteYourOwnDeveloperApp")}</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-3 rounded-xl border bg-muted/30 p-3">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">Redirect URL to whitelist</p>
+                <p className="text-sm font-medium">{t("integrationsV2.redirectUrlToWhitelist")}</p>
                 <p className="text-xs text-muted-foreground">
-                  Add this exact URL as an allowed OAuth redirect URI in every provider app you
-                  create.
+                  {t("integrationsV2.addThisExactUrlAs")}
                 </p>
                 <div className="mt-2 flex items-center gap-2">
                   <Input readOnly value={redirectUri()} className="h-8 text-xs" />
@@ -473,10 +473,10 @@ export function IntegrationsV2() {
                     className="h-8 gap-1 text-xs"
                     onClick={() => {
                       void navigator.clipboard.writeText(redirectUri());
-                      toast.success("Redirect URL copied");
+                      toast.success(t("integrationsV2.redirectUrlCopied"));
                     }}
                   >
-                    <Copy className="size-3" /> Copy
+                    <Copy className="size-3" /> {t("integrationsV2.copy")}
                   </Button>
                 </div>
               </div>
@@ -554,6 +554,7 @@ function ConnectedCard({
   onReconnect: () => void;
   onDisconnect: () => void;
 }) {
+  const { t } = useI18n();
   const meta = CONNECTORS.find((c) => c.id === account.platform);
   const state = connectionStatus(account);
   const { icon: Icon, tint } = connectorIcon(account.platform);
@@ -584,11 +585,11 @@ function ConnectedCard({
       <CardContent className="flex flex-1 flex-col gap-4">
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
-            <p className="text-muted-foreground">Last verified</p>
+            <p className="text-muted-foreground">{t("integrationsV2.lastVerified")}</p>
             <p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p>
           </div>
           <div>
-            <p className="text-muted-foreground">Last sync</p>
+            <p className="text-muted-foreground">{t("integrationsV2.lastSync")}</p>
             <p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p>
           </div>
         </div>
@@ -603,13 +604,13 @@ function ConnectedCard({
           {account.profile_url && (
             <Button asChild size="sm" variant="outline">
               <a href={account.profile_url} target="_blank" rel="noreferrer noopener">
-                Open <ExternalLink className="ms-1 size-3.5" />
+                {t("integrationsV2.open")} <ExternalLink className="ms-1 size-3.5" />
               </a>
             </Button>
           )}
           {meta?.oauth && (
             <Button size="sm" variant="outline" onClick={onReconnect}>
-              <RefreshCw className="me-1 size-3.5" /> Reconnect
+              <RefreshCw className="me-1 size-3.5" /> {t("integrationsV2.reconnect")}
             </Button>
           )}
           <Button
@@ -619,7 +620,7 @@ function ConnectedCard({
             disabled={disconnecting}
             onClick={onDisconnect}
           >
-            <Unplug className="me-1 size-3.5" /> Disconnect
+            <Unplug className="me-1 size-3.5" /> {t("integrationsV2.disconnect")}
           </Button>
         </div>
       </CardContent>
@@ -657,6 +658,7 @@ function MarketplaceCard({
   connecting: boolean;
   onConnect: () => void;
 }) {
+  const { t } = useI18n();
   const { icon: Icon, tint } = connectorIcon(connector.id);
   const comingSoon = Boolean(connector.unavailableReason);
   const needsAdminSetup = Boolean(connector.oauth && readiness && !readiness.ready);
@@ -668,11 +670,11 @@ function MarketplaceCard({
             <Icon className={`size-5 ${tint}`} />
           </span>
           {comingSoon ? (
-            <Badge variant="outline">Coming soon</Badge>
+            <Badge variant="outline">{t("integrationsV2.comingSoon")}</Badge>
           ) : needsAdminSetup ? (
-            <Badge variant="secondary">Admin setup</Badge>
+            <Badge variant="secondary">{t("integrationsV2.adminSetup")}</Badge>
           ) : (
-            <Badge variant="secondary">Available</Badge>
+            <Badge variant="secondary">{t("integrationsV2.available")}</Badge>
           )}
         </div>
         <CardTitle className="pt-2 text-base">{connector.name}</CardTitle>
@@ -691,17 +693,17 @@ function MarketplaceCard({
         <div className="mt-auto pt-2">
           {comingSoon ? (
             <Button className="w-full" variant="outline" disabled>
-              Coming soon
+              {t("integrationsV2.comingSoon")}
             </Button>
           ) : (
             <Button className="w-full" onClick={onConnect} disabled={connecting}>
               {connecting
-                ? "Opening secure sign-in…"
+                ? t("integrationsV2.openingSecureSignIn")
                 : connector.oauth
-                  ? `Connect ${connector.name}`
+                  ? t("integrationsV2.connect", { name: connector.name })
                   : connector.internalHref
-                    ? "Open setup"
-                    : "Set up"}
+                    ? t("integrationsV2.openSetup")
+                    : t("integrationsV2.setUp")}
             </Button>
           )}
         </div>

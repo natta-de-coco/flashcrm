@@ -99,7 +99,8 @@ const ENTITIES = {
 
 const hasLetters = (s) => /\p{L}{2,}/u.test(s);
 /** A part number or a phone pattern ("FL-200W", "+9715XXXXXXX") is a sample, not a sentence. */
-const isCode = (s) => /\d/.test(s) && !/\p{Ll}/u.test(s);
+const isCode = (s) =>
+  (/\d/.test(s) && !/\p{Ll}/u.test(s)) || /^(https?:\/\/|sk-|AIza)/.test(s.trim());
 /**
  * An id, a path, an address -- not something to translate. A plain lowercase
  * word ("inactive", "default") IS text when it sits where a person reads it.
