@@ -7,6 +7,7 @@
 import {
   DEFAULT_UI_LANGUAGE,
   directionOf,
+  hasMessage,
   languageCookie,
   translate,
   type MessageKey,
@@ -25,8 +26,17 @@ type I18n = {
    * where the translation puts it rather than where the English had it.
    */
   tr: (key: MessageKey, nodes: Record<string, ReactNode>) => ReactNode;
+  /**
+   * For a label looked up by an id that arrives as data -- a status, a
+   * category, a metric: its translation when there is one, otherwise the text
+   * it was given, so a value nobody translated is still shown.
+   */
+  tx: (key: string, fallback: string, values?: MessageValues) => string;
   setLanguage: (code: string) => void;
 };
+
+const lookup = (language: string, key: string, fallback: string, values?: MessageValues) =>
+  hasMessage(key) ? translate(language, key as MessageKey, values) : fallback;
 
 /** Splits translated text on {name} and puts each node where its name is. */
 export function interleave(text: string, nodes: Record<string, ReactNode>): ReactNode[] {
@@ -41,6 +51,7 @@ const I18nContext = createContext<I18n>({
   dir: "ltr",
   t: (key, values) => translate(DEFAULT_UI_LANGUAGE, key, values),
   tr: (key, nodes) => interleave(translate(DEFAULT_UI_LANGUAGE, key), nodes),
+  tx: (key, fallback, values) => lookup(DEFAULT_UI_LANGUAGE, key, fallback, values),
   setLanguage: () => {},
 });
 
@@ -52,6 +63,7 @@ export function I18nProvider({ language, children }: { language: string; childre
       dir: directionOf(language),
       t: (key, values) => translate(language, key, values),
       tr: (key, nodes) => interleave(translate(language, key), nodes),
+      tx: (key, fallback, values) => lookup(language, key, fallback, values),
       setLanguage: (code) => {
         document.cookie = languageCookie(code);
         // Re-reads the cookie in the root route, which re-renders <html> with

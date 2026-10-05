@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getErrorEvents } from "@/lib/telemetry.functions";
 import { useQuery } from "@tanstack/react-query";
 import { Bug } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
 
 const KIND_LABEL: Record<string, string> = {
   frontend: "Frontend error",
@@ -42,6 +43,7 @@ function groupIncidents(events: Incident[]): IncidentGroup[] {
 }
 
 export function IncidentsCard() {
+  const { t, tr, tx } = useI18n();
   const incidents = useQuery({
     queryKey: ["error-events"],
     queryFn: () => getErrorEvents(),
@@ -61,21 +63,23 @@ export function IncidentsCard() {
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Bug className="size-4 text-primary" />
-          Application incidents
-          <Badge variant={activeGroups.length > 0 ? "destructive" : "secondary"}>
-            {activeGroups.length > 0 ? `${activeGroups.length} active` : "Healthy"}
-          </Badge>
+          {tr("incidentsCard.applicationIncidents", {
+            badge: (
+              <Badge variant={activeGroups.length > 0 ? "destructive" : "secondary"}>
+                {activeGroups.length > 0
+                  ? t("incidentsCard.active", { length: activeGroups.length })
+                  : t("incidentsCard.healthy")}
+              </Badge>
+            ),
+          })}
         </CardTitle>
-        <CardDescription>
-          Active means recorded in the last 24 hours. Repeated copies are grouped so one problem
-          appears once. Only your own workspace is shown.
-        </CardDescription>
+        <CardDescription>{t("incidentsCard.activeMeansRecordedInThe")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {incidents.isLoading && <Skeleton className="h-16 w-full" />}
         {!incidents.isLoading && activeGroups.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No incidents recorded in the last 24 hours.
+            {t("incidentsCard.noIncidentsRecordedInThe")}
           </p>
         )}
         {activeGroups.slice(0, 25).map(({ latest: event, count }) => (
@@ -85,8 +89,8 @@ export function IncidentsCard() {
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm font-semibold">
-                {KIND_LABEL[event.kind] ?? event.kind}
-                {count > 1 ? ` · repeated ${count} times` : ""}
+                {tx(`incidentsCard.kind.${event.kind}`, KIND_LABEL[event.kind] ?? event.kind)}
+                {count > 1 ? t("incidentsCard.repeatedTimes", { count: count }) : ""}
               </span>
               <Badge variant={event.severity === "error" ? "destructive" : "secondary"}>
                 {event.severity}
@@ -102,8 +106,13 @@ export function IncidentsCard() {
         ))}
         {!incidents.isLoading && historicalCount > 0 && (
           <p className="pt-1 text-xs text-muted-foreground">
-            {historicalCount} older {historicalCount === 1 ? "incident is" : "incidents are"} kept
-            in history and do not count as active.
+            {tr("incidentsCard.olderKeptInHistoryAnd", {
+              historicalCount: historicalCount,
+              value:
+                historicalCount === 1
+                  ? t("incidentsCard.incidentIs")
+                  : t("incidentsCard.incidentsAre"),
+            })}
           </p>
         )}
       </CardContent>

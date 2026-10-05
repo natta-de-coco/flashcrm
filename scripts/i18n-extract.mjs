@@ -70,7 +70,7 @@ const INLINE_TAGS = new Set([
 const VERBATIM_TAGS = new Set(["code", "kbd", "pre", "style", "script", "samp"]);
 /** Names that are the same in every language. */
 const BRAND_ONLY =
-  /^(Flas( CRM)?( AI)?|WhatsApp|Meta|Instagram|Facebook|Messenger|YouTube|TikTok|LinkedIn|Google|X|Paddle|WordPress|Shopify|Pinterest|Snapchat|Telegram|PDF|CSV|JSON|API|SEO|AI|URL|ID|OK|SMS|2FA|QR|CRM|FAQ)$/;
+  /^(Flas( CRM)?( AI)?|WhatsApp|Meta|Instagram|Facebook|Messenger|YouTube|TikTok|LinkedIn|Google|X|Paddle|WordPress|Shopify|Pinterest|Snapchat|Telegram|Resend|Postmark|Mailgun|SendGrid|Stripe|PDF|CSV|JSON|API|SEO|AI|URL|ID|OK|SMS|2FA|QR|CRM|FAQ|US|EU|UK)$/;
 
 const ENTITIES = {
   amp: "&",

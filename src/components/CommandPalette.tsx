@@ -11,6 +11,8 @@ import { NAV_SECTIONS } from "@/lib/navigation";
 import { useNavigate } from "@tanstack/react-router";
 import { FileText, Package, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
+import { navMessageKey } from "@/lib/i18n";
 
 type Hit = {
   id: string;
@@ -52,6 +54,7 @@ export function CommandPalette({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t, tx } = useI18n();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [records, setRecords] = useState<{ contacts: Hit[]; products: Hit[]; articles: Hit[] }>({
@@ -109,21 +112,21 @@ export function CommandPalette({
         contacts: (contacts.data ?? []).map((c) => ({
           id: c.id,
           label: c.name,
-          sub: c.phone ?? c.email ?? c.company ?? "Contact",
+          sub: c.phone ?? c.email ?? c.company ?? t("commandPalette.contact"),
           to: "/contacts",
           icon: Users,
         })),
         products: (products.data ?? []).map((p) => ({
           id: p.id,
           label: p.title,
-          sub: p.sku ?? "Product",
+          sub: p.sku ?? t("commandPalette.product"),
           to: "/catalog",
           icon: Package,
         })),
         articles: (articles.data ?? []).map((a) => ({
           id: a.id,
           label: a.title,
-          sub: a.status,
+          sub: tx(`seoBlogIndex.status.${a.status}`, a.status),
           to: "/seo-blog",
           icon: FileText,
         })),
@@ -133,7 +136,7 @@ export function CommandPalette({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [q]);
+  }, [q, t, tx]);
 
   const go = (to: string) => {
     onOpenChange(false);
@@ -142,24 +145,33 @@ export function CommandPalette({
   };
 
   const groups: { heading: string; hits: Hit[] }[] = [
-    { heading: "Pages", hits: PAGES },
-    { heading: "Contacts", hits: records.contacts },
-    { heading: "Products", hits: records.products },
-    { heading: "Articles", hits: records.articles },
+    {
+      heading: t("commandPalette.pages"),
+      // Shown in the reader's language; the English name stays searchable.
+      hits: PAGES.map((page) => ({
+        ...page,
+        label: tx(navMessageKey(page.to, "label"), page.label),
+        ...(page.sub ? { sub: tx(navMessageKey(page.to, "desc"), page.sub) } : {}),
+        keywords: `${page.keywords ?? ""} ${page.label}`,
+      })),
+    },
+    { heading: t("commandPalette.contacts"), hits: records.contacts },
+    { heading: t("commandPalette.products"), hits: records.products },
+    { heading: t("commandPalette.articles"), hits: records.articles },
   ];
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <CommandInput
-        placeholder="Search Flas — pages, contacts, products, articles…"
+        placeholder={t("commandPalette.searchFlasPagesContactsProducts")}
         value={q}
         onValueChange={setQ}
       />
       <CommandList>
         <CommandEmpty>
           {q.trim().length < 2
-            ? "Type at least 2 characters to search records."
-            : "No matches found."}
+            ? t("commandPalette.typeAtLeast2Characters")
+            : t("commandPalette.noMatchesFound")}
         </CommandEmpty>
         {groups.map((group) =>
           group.hits.length ? (
