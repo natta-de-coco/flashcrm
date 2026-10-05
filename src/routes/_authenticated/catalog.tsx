@@ -42,10 +42,48 @@ type Product = {
   price: number | null;
   description: string | null;
   images: string[];
+  specs: Record<string, unknown>;
   created_at: string;
 };
 
-const emptyForm = { title: "", sku: "", price: "", description: "", image: "" };
+/** The solution category stored in a product's free-form specs, if any. */
+function productCategory(product: Product): string | null {
+  const value = product.specs["category"];
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * The page a product was imported from, only when it is an ordinary web
+ * address. specs are free-form, and a stored `javascript:` URL would run in
+ * the admin's session when the link is clicked.
+ */
+function productSourceUrl(product: Product): string | null {
+  const value = product.specs["source_url"];
+  return typeof value === "string" && /^https?:\/\//i.test(value) ? value : null;
+}
+
+const CATALOG_CATEGORIES = [
+  "CCTV & Surveillance",
+  "Security Scanners",
+  "Cash Counting Machines",
+  "Walkie-Talkies",
+  "Access Control & Attendance",
+  "POS & Barcode Systems",
+  "Networking & IT",
+  "Gates & Vehicle Security",
+  "PBX & Intercom",
+  "Alarm, Fire & Public Address",
+] as const;
+
+const emptyForm = {
+  title: "",
+  sku: "",
+  price: "",
+  description: "",
+  image: "",
+  category: "",
+  sourceUrl: "",
+};
 
 function CatalogPage() {
   const qc = useQueryClient();
@@ -53,13 +91,14 @@ function CatalogPage() {
   // SKU badge and read as one value, e.g. "31390 368".
   const { tenant } = useTenant();
   const [form, setForm] = useState(emptyForm);
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, title, sku, price, description, images, created_at")
+        .select("id, title, sku, price, description, images, specs, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Product[];
@@ -77,6 +116,10 @@ function CatalogPage() {
         price: form.price ? Number(form.price) : null,
         description: form.description.trim() || null,
         images: form.image.trim() ? [form.image.trim()] : [],
+        specs: {
+          ...(form.category ? { category: form.category } : {}),
+          ...(form.sourceUrl.trim() ? { source_url: form.sourceUrl.trim() } : {}),
+        },
       });
       if (error) throw error;
     },
@@ -87,6 +130,9 @@ function CatalogPage() {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+  const visibleProducts = products.filter(
+    (product) => categoryFilter === "all" || productCategory(product) === categoryFilter,
+  );
 
   const removeProduct = useMutation({
     mutationFn: async (id: string) => {
@@ -108,6 +154,39 @@ function CatalogPage() {
           The products your team quotes, pitches and attaches to portfolio outreach.
         </p>
       </header>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Product categories</CardTitle>
+          <CardDescription>
+            Keep equipment in the same groups customers use when they ask for a solution.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant={categoryFilter === "all" ? "default" : "outline"}
+            onClick={() => setCategoryFilter("all")}
+          >
+            All ({products.length})
+          </Button>
+          {CATALOG_CATEGORIES.map((category) => {
+            const count = products.filter(
+              (product) => productCategory(product) === category,
+            ).length;
+            return (
+              <Button
+                key={category}
+                size="sm"
+                variant={categoryFilter === category ? "default" : "outline"}
+                onClick={() => setCategoryFilter(category)}
+              >
+                {category} ({count})
+              </Button>
+            );
+          })}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
         <Card>
@@ -149,6 +228,22 @@ function CatalogPage() {
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="p-category">Category</Label>
+              <select
+                id="p-category"
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Choose a category</option>
+                {CATALOG_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="p-image">Image URL</Label>
               <Input
                 id="p-image"
@@ -167,6 +262,19 @@ function CatalogPage() {
                 placeholder="Short selling description used by the AI assistant."
               />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="p-source">Website source page</Label>
+              <Input
+                id="p-source"
+                value={form.sourceUrl}
+                onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
+                placeholder="https://your-site.com/product/..."
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional. Save the original product page so the team can verify specifications
+                before quoting.
+              </p>
+            </div>
             <Button
               className="w-full gap-2"
               disabled={productFormError(form) !== null || createProduct.isPending}
@@ -184,16 +292,19 @@ function CatalogPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Catalog</CardTitle>
-            <CardDescription>{products.length} product(s)</CardDescription>
+            <CardDescription>
+              {visibleProducts.length} product(s)
+              {categoryFilter !== "all" ? ` in ${categoryFilter}` : ""}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoading && <p className="text-sm text-muted-foreground">Loading catalog…</p>}
-            {!isLoading && products.length === 0 && (
+            {!isLoading && visibleProducts.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No products yet. Add your first one to start building portfolio pitches.
               </p>
             )}
-            {products.map((product) => (
+            {visibleProducts.map((product) => (
               <div
                 key={product.id}
                 className="flex items-start gap-3 rounded-lg border p-3 text-sm"
@@ -214,6 +325,9 @@ function CatalogPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{product.title}</p>
                     {product.sku && <Badge variant="outline">{product.sku}</Badge>}
+                    {productCategory(product) && (
+                      <Badge variant="outline">{productCategory(product)}</Badge>
+                    )}
                     {product.price !== null && (
                       <Badge variant="secondary">
                         {formatMoney(product.price, tenant?.currency ?? "AED")}
@@ -224,6 +338,16 @@ function CatalogPage() {
                     <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                       {product.description}
                     </p>
+                  )}
+                  {productSourceUrl(product) && (
+                    <a
+                      href={productSourceUrl(product) ?? undefined}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 block truncate text-xs text-primary underline"
+                    >
+                      View source page
+                    </a>
                   )}
                 </div>
                 <Button

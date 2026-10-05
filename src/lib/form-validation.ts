@@ -18,6 +18,8 @@ export type ProductForm = {
   price: string;
   description: string;
   image: string;
+  category?: string;
+  sourceUrl?: string;
 };
 
 /**
@@ -34,6 +36,9 @@ export function productFormError(form: ProductForm): string | null {
   }
   if (form.image.trim() && !/^https?:\/\//i.test(form.image.trim())) {
     return "Image URL must start with http:// or https://";
+  }
+  if (form.sourceUrl?.trim() && !/^https?:\/\//i.test(form.sourceUrl.trim())) {
+    return "Source page URL must start with http:// or https://";
   }
   return null;
 }

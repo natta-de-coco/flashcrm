@@ -14,7 +14,7 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SendSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { sendWhatsAppText, storeOutbound, resolveWaCredentials } =
+    const { completeOutboundDelivery, sendWhatsAppText, storeOutbound, resolveWaCredentials } =
       await import("@/lib/wa.server");
 
     const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
@@ -53,6 +53,18 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
     let deliveryError: string | null = null;
 
     if (conversation.channel === "whatsapp") {
+      // Write before calling Meta. A provider success followed by a failed
+      // database insert is worse than a visible failed message: the business
+      // has sent something it can no longer audit in FLAS.
+      const outboundId = await storeOutbound(
+        tenantId as string,
+        conversation.id,
+        data.body,
+        "agent",
+        context.userId,
+        null,
+        "sending",
+      );
       const { data: contact } = await supabaseAdmin
         .from("contacts")
         .select("phone")
@@ -72,19 +84,10 @@ export const sendAgentMessage = createServerFn({ method: "POST" })
       } else {
         deliveryError = "This contact has no phone number";
       }
+      await completeOutboundDelivery(outboundId, waId, deliveryError ? "failed" : "sent");
+    } else {
+      await storeOutbound(tenantId as string, conversation.id, data.body, "agent", context.userId);
     }
-
-    // A message WhatsApp refused is recorded as failed, so the conversation
-    // never shows it as if the customer had received it.
-    await storeOutbound(
-      tenantId as string,
-      conversation.id,
-      data.body,
-      "agent",
-      context.userId,
-      waId,
-      deliveryError ? "failed" : "sent",
-    );
     await logAudit({
       action: "message.send",
       actorId: context.userId,
@@ -268,22 +271,38 @@ export const sendTemplateMessage = createServerFn({ method: "POST" })
       return { ok: false, waId: null, rendered: null, blockedReasons: safety.reasons };
     }
 
-    const waId = await sendWhatsAppTemplate(
-      phone,
-      template.name,
-      template.language,
-      data.variables,
-      await resolveWaCredentials(tenantId as string, waNumberId),
-    );
-
+    let waId: string | null = null;
     if (conversationId) {
-      await storeOutbound(
+      const { completeOutboundDelivery } = await import("@/lib/wa.server");
+      const outboundId = await storeOutbound(
         tenantId as string,
         conversationId,
         rendered,
         "agent",
         context.userId,
-        waId,
+        null,
+        "sending",
+      );
+      try {
+        waId = await sendWhatsAppTemplate(
+          phone,
+          template.name,
+          template.language,
+          data.variables,
+          await resolveWaCredentials(tenantId as string, waNumberId),
+        );
+        await completeOutboundDelivery(outboundId, waId, "sent");
+      } catch (error) {
+        await completeOutboundDelivery(outboundId, null, "failed");
+        throw error;
+      }
+    } else {
+      waId = await sendWhatsAppTemplate(
+        phone,
+        template.name,
+        template.language,
+        data.variables,
+        await resolveWaCredentials(tenantId as string, waNumberId),
       );
     }
     await logAudit({

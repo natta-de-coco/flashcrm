@@ -26,6 +26,7 @@ import {
   Bell,
   Bot,
   Check,
+  CheckCheck,
   Download,
   Globe,
   Languages,
@@ -107,7 +108,10 @@ function InboxPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
+  const [autoTranslate, setAutoTranslate] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const autoTranslatedMessageIds = useRef(new Set<string>());
+  const autoTranslateStartedAt = useRef<number | null>(null);
 
   const send = useServerFn(sendAgentMessage);
   const suggest = useServerFn(draftBotReply);
@@ -261,6 +265,33 @@ function InboxPage() {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.data?.length, activeId]);
 
+  // Opt-in and limited to messages received while this inbox is open. This
+  // avoids silently sending a customer's entire past chat to the translation
+  // provider when an agent only wants help with new messages.
+  useEffect(() => {
+    if (!autoTranslate || !activeId || !messages.data?.length) return;
+    for (const message of messages.data) {
+      if (
+        message.direction !== "inbound" ||
+        message.translated_body ||
+        new Date(message.created_at).getTime() < (autoTranslateStartedAt.current ?? Infinity) ||
+        autoTranslatedMessageIds.current.has(message.id)
+      ) {
+        continue;
+      }
+      autoTranslatedMessageIds.current.add(message.id);
+      void translate({ data: { messageId: message.id, targetLanguage: "English" } })
+        .then(() => {
+          setExpandedTranslations((previous) => new Set(previous).add(message.id));
+          void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+        })
+        .catch(() => {
+          // Let a transient provider failure retry after the next refresh.
+          autoTranslatedMessageIds.current.delete(message.id);
+        });
+    }
+  }, [activeId, autoTranslate, messages.data, qc, translate]);
+
   const list = useMemo(() => {
     const all = conversations.data ?? [];
     return all.filter((c) => {
@@ -276,6 +307,26 @@ function InboxPage() {
   }, [conversations.data, statusFilter, search]);
 
   const active = list.find((c) => c.id === activeId) ?? null;
+
+  // WhatsApp permits a free-form reply only during the 24 hours after the
+  // customer's last inbound message. The server remains the authority for
+  // this rule, but exposing it here prevents an agent from writing a reply,
+  // pressing Send, and only then discovering why it could not leave FLAS.
+  const whatsappReplyWindowOpen = useMemo(() => {
+    if (active?.channel !== "whatsapp" || !messages.isSuccess) return true;
+    const newestInbound = (messages.data ?? [])
+      .filter((message) => message.direction === "inbound")
+      .map((message) => new Date(message.created_at).getTime())
+      .filter(Number.isFinite)
+      .reduce((newest, timestamp) => Math.max(newest, timestamp), 0);
+    return newestInbound > 0 && newestInbound >= Date.now() - 24 * 60 * 60 * 1000;
+  }, [active?.channel, messages.data, messages.isSuccess]);
+
+  // Tools should stay out of the way while an agent is reading a thread, but
+  // a closed WhatsApp window has one clear next step: an approved template.
+  useEffect(() => {
+    if (active?.channel === "whatsapp" && !whatsappReplyWindowOpen) setShowTools(true);
+  }, [active?.channel, whatsappReplyWindowOpen]);
 
   // Auto-open the newest thread on desktop only. On mobile the list is a full
   // screen of its own, so auto-selecting would trap the user inside a chat.
@@ -569,6 +620,7 @@ function InboxPage() {
             <Input
               className="pl-9"
               placeholder="Search chats"
+              aria-label="Search conversations"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -681,9 +733,9 @@ function InboxPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="lg:hidden"
                   onClick={() => setShowTools((v) => !v)}
                   aria-expanded={showTools}
+                  aria-label="Show message tools"
                 >
                   <Settings2 className="size-4" /> Tools
                 </Button>
@@ -693,6 +745,17 @@ function InboxPage() {
                     onCheckedChange={(v) => void updateConversation({ bot_enabled: v })}
                   />
                   AI auto-reply
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium">
+                  <Switch
+                    checked={autoTranslate}
+                    onCheckedChange={(enabled) => {
+                      autoTranslateStartedAt.current = enabled ? Date.now() : null;
+                      setAutoTranslate(enabled);
+                    }}
+                    aria-label="Auto-translate new incoming messages"
+                  />
+                  Auto-translate new
                 </label>
                 <div className="flex gap-1">
                   {(["open", "pending", "closed"] as const).map((s) => (
@@ -736,7 +799,7 @@ function InboxPage() {
             {/* Thread tools: tags, templates, follow-up reminders */}
             <div
               className={cn(
-                "space-y-3 border-b bg-card px-4 py-3 lg:block lg:px-5",
+                "space-y-3 border-b bg-card px-4 py-3 lg:px-5",
                 showTools ? "block" : "hidden",
               )}
             >
@@ -753,6 +816,7 @@ function InboxPage() {
                 <Input
                   className="h-8 w-40"
                   placeholder="Add tag"
+                  aria-label="Add conversation tag"
                   value={tagDraft}
                   onChange={(e) => setTagDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -841,6 +905,7 @@ function InboxPage() {
                   <Input
                     className="h-8 w-48"
                     placeholder="Search products"
+                    aria-label="Search catalog products"
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                   />
@@ -911,6 +976,7 @@ function InboxPage() {
                 <Input
                   className="h-8 w-56"
                   placeholder="Follow-up note"
+                  aria-label="Follow-up note"
                   value={reminderNote}
                   onChange={(e) => setReminderNote(e.target.value)}
                 />
@@ -1022,13 +1088,7 @@ function InboxPage() {
                             minute: "2-digit",
                           })}
                         </span>
-                        {/* A message WhatsApp refused must never read as one the
-                            customer received. */}
-                        {m.direction === "outbound" && m.status === "failed" && (
-                          <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
-                            <AlertTriangle className="size-3" /> Not delivered
-                          </span>
-                        )}
+                        {m.direction === "outbound" && <DeliveryState status={m.status} />}
                       </div>
                     </div>
                   </div>
@@ -1040,16 +1100,27 @@ function InboxPage() {
             <div className="space-y-2 border-t bg-card p-4">
               <Textarea
                 rows={2}
-                placeholder="Write a reply…"
+                aria-label="Reply to conversation"
+                placeholder={
+                  whatsappReplyWindowOpen
+                    ? "Write a reply…"
+                    : "Use an approved template to re-open this WhatsApp conversation…"
+                }
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && draft.trim()) {
+                  if (e.key === "Enter" && !e.shiftKey && draft.trim() && whatsappReplyWindowOpen) {
                     e.preventDefault();
                     sendMutation.mutate(draft.trim());
                   }
                 }}
               />
+              {!whatsappReplyWindowOpen && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  This customer has not messaged in the past 24 hours. WhatsApp requires an approved
+                  template before you can send a normal reply.
+                </p>
+              )}
               <div className="flex items-center justify-between">
                 <Button
                   variant="outline"
@@ -1066,7 +1137,7 @@ function InboxPage() {
                 </Button>
                 <Button
                   onClick={() => draft.trim() && sendMutation.mutate(draft.trim())}
-                  disabled={sendMutation.isPending || !draft.trim()}
+                  disabled={sendMutation.isPending || !draft.trim() || !whatsappReplyWindowOpen}
                 >
                   <Send className="size-4" />
                   Send
@@ -1078,6 +1149,42 @@ function InboxPage() {
       </div>
     </div>
   );
+}
+
+/** Shows what Meta has actually reported for an outbound WhatsApp message. */
+function DeliveryState({ status }: { status: string | null | undefined }) {
+  if (status === "sending") {
+    return <span className="text-[10px] text-muted-foreground">Sending…</span>;
+  }
+  if (status === "failed") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
+        <AlertTriangle className="size-3" /> Not delivered
+      </span>
+    );
+  }
+  if (status === "read") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold text-brand">
+        <CheckCheck className="size-3" /> Read
+      </span>
+    );
+  }
+  if (status === "delivered") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold opacity-70">
+        <CheckCheck className="size-3" /> Delivered
+      </span>
+    );
+  }
+  if (status === "sent") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold opacity-70">
+        <Check className="size-3" /> Sent
+      </span>
+    );
+  }
+  return null;
 }
 
 /** Toggle between WhatsApp/website chats and social DMs & comments. */

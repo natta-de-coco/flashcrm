@@ -436,6 +436,19 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
         default_payment_terms: z.string().trim().max(300).nullable().optional(),
         default_terms: z.string().trim().max(6000).nullable().optional(),
         online_payment_url: z.string().trim().max(500).nullable().optional(),
+        // Logos are fetched by the PDF renderer. Restrict this new setting to
+        // public HTTPS URLs before it is persisted, rather than relying only
+        // on the renderer's network-side guard.
+        logo_url: z
+          .string()
+          .trim()
+          .max(500)
+          .refine((value) => value === "" || /^https:\/\//i.test(value), {
+            message: "Use a secure https:// logo URL.",
+          })
+          .transform((value) => value || null)
+          .nullable()
+          .optional(),
       })
       .parse(input),
   )
