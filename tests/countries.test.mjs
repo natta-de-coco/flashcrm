@@ -286,3 +286,17 @@ describe("the timezone picker", () => {
     assert.equal(zones[0], "UTC");
   });
 });
+
+describe("a searchable picker's list is as wide as the field it opens from", () => {
+  it("reads the trigger's width with Tailwind 4's variable syntax", () => {
+    // `w-[--radix-popover-trigger-width]` is Tailwind 3 syntax and resolves to
+    // nothing in Tailwind 4, so the list fell back to its minimum width:
+    // long timezone names were cut off and narrow cards overflowed.
+    const picker = readFileSync(
+      new URL("../src/components/ui/searchable-select.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.match(picker, /w-\(--radix-popover-trigger-width\)/);
+    assert.ok(!/-\[--[a-z]/.test(picker), "a bare --variable in square brackets does nothing");
+  });
+});
