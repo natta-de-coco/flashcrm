@@ -7,6 +7,7 @@ import { TeamCard } from "@/components/settings/TeamCard";
 import { InvoiceBrandingCard } from "@/components/settings/InvoiceBrandingCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
+import { isCompanyManager } from "@/lib/permissions";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
 
@@ -30,7 +31,7 @@ export const Route = createFileRoute("/_authenticated/settings/")({
 
 function SettingsPage() {
   const { isAdmin } = useAuth();
-  const { tenant } = useTenant();
+  const { tenant, staffRole } = useTenant();
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -51,7 +52,7 @@ function SettingsPage() {
 
         <BillingCard />
 
-        {isAdmin && <InvoiceBrandingCard />}
+        {isCompanyManager(staffRole) && <InvoiceBrandingCard />}
 
         {isAdmin && <AuditLogCard />}
 
