@@ -436,11 +436,31 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
         default_payment_terms: z.string().trim().max(300).nullable().optional(),
         default_terms: z.string().trim().max(6000).nullable().optional(),
         online_payment_url: z.string().trim().max(500).nullable().optional(),
+        // Logos are fetched by the PDF renderer. Restrict this new setting to
+        // public HTTPS URLs before it is persisted, rather than relying only
+        // on the renderer's network-side guard.
+        logo_url: z
+          .string()
+          .trim()
+          .max(500)
+          .refine((value) => value === "" || /^https:\/\//i.test(value), {
+            message: "Use a secure https:// logo URL.",
+          })
+          .transform((value) => value || null)
+          .nullable()
+          .optional(),
       })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
     const { ensureBillingSettings, requireTenantId } = await import("@/lib/billing.server");
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile || !["company_admin", "super_admin"].includes(profile.staff_role))
+      throw new Error("Only a company admin can change invoice company details.");
     const tenantId = await requireTenantId(context.supabase);
     await ensureBillingSettings(context.supabase, tenantId);
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };

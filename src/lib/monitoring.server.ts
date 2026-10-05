@@ -406,7 +406,7 @@ export async function processWaPayload(body: WaWebhookBody) {
             if (waId && replyMessageId) {
               await supabaseAdmin
                 .from("messages")
-                .update({ wa_message_id: waId })
+                .update({ wa_message_id: waId, status: "sent" })
                 .eq("id", replyMessageId);
             }
           } catch (sendError) {

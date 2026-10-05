@@ -16,6 +16,8 @@ import {
   callFlashAi,
   generateBotReply,
   resolveContactByPhone,
+  testAiProvider,
+  sealSecret,
 } from "../node_modules/.cache/flas-onboarding.mjs";
 
 // Normalized, because these files are checked out with CRLF on Windows and a
@@ -236,6 +238,121 @@ describe("a conversation and a JSON answer work on every provider", () => {
     const text = await callFlashAi("system", "one question", { tenantId: TENANT });
     assert.equal(text, "plain text");
     assert.match(requests[0].url, /\/v1\/responses$/);
+  });
+});
+
+describe("AI resilience respects workspace choice and records actual outcomes", () => {
+  const googleReply = () =>
+    new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "OK" }] } }] }));
+  function enableBackups() {
+    rpc.get_tenant_ai_resilience = true;
+    rpc.get_tenant_ai_key = { provider: "google", api_key: "google-key" };
+    rows.ai_provider_keys = [
+      { tenant_id: TENANT, provider: "google", api_key: "google-key", active: true },
+      { tenant_id: "other-tenant", provider: "anthropic", api_key: "other-secret", active: true },
+      { tenant_id: TENANT, provider: "openai", api_key: "own-backup", active: true },
+    ];
+  }
+  it("uses the current Google model", async () => {
+    rpc.get_tenant_ai_key = { provider: "google", api_key: "google-key" };
+    responder = googleReply;
+    await callFlashAi("system", "hello", { tenantId: TENANT });
+    assert.match(requests[0].url, /gemini-3\.8-flash:generateContent$/);
+  });
+  it("does not turn on backups without workspace opt-in", async () => {
+    rpc.get_tenant_ai_key = { provider: "google", api_key: "google-key" };
+    responder = () => new Response("secret upstream body", { status: 404 });
+    await assert.rejects(callFlashAi("system", "hello", { tenantId: TENANT }), /configured model/);
+    assert.equal(requests.length, 1);
+  });
+  it("tries only this workspace's active backups and records both outcomes", async () => {
+    enableBackups();
+    responder = () =>
+      requests.length === 1
+        ? new Response("quota", { status: 429 })
+        : new Response(JSON.stringify({ choices: [{ message: { content: "backup reply" } }] }));
+    assert.equal(await callFlashAi("system", "hello", { tenantId: TENANT }), "backup reply");
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].headers.Authorization, "Bearer own-backup");
+    const outcomes = rpc.calls
+      .filter((x) => x.name === "record_ai_usage")
+      .map((x) => [x.args._provider, x.args._ok]);
+    assert.deepEqual(outcomes, [
+      ["google", false],
+      ["openai", true],
+    ]);
+  });
+  it("uses built-in AI after the saved providers fail", async () => {
+    enableBackups();
+    responder = () =>
+      requests.length < 3
+        ? new Response("down", { status: 503 })
+        : new Response(JSON.stringify({ output_text: "built-in reply" }));
+    assert.equal(await callFlashAi("system", "hello", { tenantId: TENANT }), "built-in reply");
+    assert.match(requests[2].url, /ai\.gateway\.lovable\.dev/);
+  });
+  it("does not switch providers to evade a safety refusal", async () => {
+    enableBackups();
+    responder = () => new Response(JSON.stringify({ promptFeedback: { blockReason: "SAFETY" } }));
+    await assert.rejects(callFlashAi("system", "hello", { tenantId: TENANT }), /safely answer/);
+    assert.equal(requests.length, 1);
+  });
+  it("never leaks an upstream error body or credential", async () => {
+    responder = () => new Response("test-gateway-key private customer text", { status: 500 });
+    await assert.rejects(callFlashAi("system", "hello", { tenantId: TENANT }), (error) => {
+      assert.doesNotMatch(error.message, /test-gateway-key|private customer/);
+      return /temporarily unavailable/.test(error.message);
+    });
+  });
+  it("counts malformed JSON and empty responses as failures", async () => {
+    for (const body of ["not json", "{}", '{"output_text":42}']) {
+      rpc.calls = [];
+      responder = () => new Response(body);
+      await assert.rejects(callFlashAi("system", "hello", { tenantId: TENANT }));
+      assert.deepEqual(
+        rpc.calls.filter((x) => x.name === "record_ai_usage").map((x) => x.args._ok),
+        [false],
+      );
+    }
+  });
+  it("a health test does not pass by silently using a backup", async () => {
+    enableBackups();
+    responder = () => new Response("bad key", { status: 401 });
+    await assert.rejects(testAiProvider(TENANT, "google"), /authenticate/);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].body.contents[0].parts[0].text, "Reply with OK.");
+  });
+  it("decrypts saved keys on the server", async () => {
+    process.env.TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+    try {
+      rpc.get_tenant_ai_key = { provider: "google", api_key: await sealSecret("google-key") };
+      responder = googleReply;
+      await callFlashAi("system", "hello", { tenantId: TENANT });
+      assert.equal(requests[0].headers["x-goog-api-key"], "google-key");
+    } finally {
+      delete process.env.TOKEN_ENCRYPTION_KEY;
+    }
+  });
+  it("backs up after a network failure but never exceeds the candidate list", async () => {
+    enableBackups();
+    responder = () => {
+      throw new TypeError("network down");
+    };
+    await assert.rejects(
+      callFlashAi("system", "hello", { tenantId: TENANT }),
+      /could not be reached/,
+    );
+    assert.equal(requests.length, 3);
+  });
+  it("keeps quota failures as a human handoff, even with backups", async () => {
+    enableBackups();
+    rpc.check_ai_rate_limit = { allowed: false, reason: "daily" };
+    assert.equal(await generateBotReply(TENANT, "c1", botSettings), null);
+    await assert.rejects(
+      generateBotReply(TENANT, "c1", botSettings, { throwOnFailure: true }),
+      /daily AI limit/,
+    );
+    assert.equal(requests.length, 0);
   });
 });
 

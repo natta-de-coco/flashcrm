@@ -143,9 +143,7 @@ export async function sendWhatsAppText(to: string, body: string, creds: WaCreden
   const text = await res.text();
   if (!res.ok) {
     console.error(`[whatsapp] send failed [${res.status}]`);
-    throw new Error(
-      `WhatsApp could not deliver the message (${res.status}). Ask your admin to check the connection.`,
-    );
+    throw new Error(describeWhatsAppSendFailure(res.status, text));
   }
   try {
     const json = JSON.parse(text) as { messages?: Array<{ id?: string }> };
@@ -155,12 +153,46 @@ export async function sendWhatsAppText(to: string, body: string, creds: WaCreden
   }
 }
 
+/**
+ * Meta's Graph errors are useful to a developer but confusing to an agent in
+ * the middle of a customer conversation. Keep the detailed provider response
+ * out of the browser while translating the common, actionable cases.
+ */
+function describeWhatsAppSendFailure(status: number, raw: string): string {
+  let code: number | null = null;
+  let detail = "";
+  try {
+    const parsed = JSON.parse(raw) as {
+      error?: { code?: number; error_user_msg?: string; message?: string };
+    };
+    code = typeof parsed.error?.code === "number" ? parsed.error.code : null;
+    detail = parsed.error?.error_user_msg ?? parsed.error?.message ?? "";
+  } catch {
+    // A non-JSON provider response still gets a safe, useful explanation.
+  }
+
+  if (code === 131047)
+    return "The 24-hour WhatsApp reply window has closed. Send an approved template to re-open this chat.";
+  if (code === 131026)
+    return "WhatsApp could not reach this number. Check that the customer can receive WhatsApp messages.";
+  if (code === 131030)
+    return "This WhatsApp number is not valid. Save it with its full country code, for example +971 50 123 4567.";
+  if (code === 190)
+    return "The connected WhatsApp account needs to be reconnected by a company admin.";
+
+  // Meta can give a customer-safe explanation for a template or policy issue.
+  // Limit it so a verbose upstream error cannot overwhelm the inbox toast.
+  if (detail.trim()) return `WhatsApp did not accept this message: ${detail.trim().slice(0, 240)}`;
+  return `WhatsApp could not deliver the message (${status}). Ask a company admin to check the connection.`;
+}
+
 type HistoryRow = { sender: string; body: string; created_at?: string | null };
 
 export async function generateBotReply(
   tenantId: string,
   conversationId: string,
   settings: BotSettings,
+  options: { throwOnFailure?: boolean } = {},
 ): Promise<{ text: string; handoff: boolean } | null> {
   if (!tenantId) return null;
   const { data: conversation, error: conversationError } = await supabaseAdmin
@@ -285,9 +317,13 @@ Relevant website excerpts: ${JSON.stringify(websiteExcerpts)}`;
       platformModel: settings.model,
     });
   } catch (error) {
-    // An exhausted quota, a rejected key or an unreachable provider all end the
-    // same way: no automatic reply, and the caller hands the thread to a human.
-    console.error("[bot] no reply:", error instanceof Error ? error.message : "unknown");
+    // The automatic-reply path deliberately turns an AI failure into a human
+    // handoff. An agent who explicitly asks for a draft needs the safe,
+    // actionable provider error instead of a misleading generic toast.
+    const message =
+      error instanceof Error ? error.message : "The AI provider could not generate a reply.";
+    console.error("[bot] no reply:", message);
+    if (options.throwOnFailure) throw new Error(message);
     return null;
   }
 
@@ -619,9 +655,11 @@ export async function storeOutbound(
    * like any other outbound message, so the conversation showed it as if the
    * customer had received it.
    */
-  status: "sent" | "failed" = "sent",
-): Promise<string | null> {
-  const { data } = await supabaseAdmin
+  status: "sending" | "sent" | "failed" = "sent",
+  // Never null: a failed insert throws, so a caller always has a row to
+  // complete after the provider answers.
+): Promise<string> {
+  const { data, error } = await supabaseAdmin
     .from("messages")
     .insert({
       conversation_id: conversationId,
@@ -635,6 +673,9 @@ export async function storeOutbound(
     })
     .select("id")
     .single();
+  if (error || !data?.id) {
+    throw new Error("Could not save this message in the CRM. It was not marked as sent.");
+  }
   await supabaseAdmin
     .from("conversations")
     .update({
@@ -642,7 +683,26 @@ export async function storeOutbound(
       last_message_preview: body.slice(0, 140),
     })
     .eq("id", conversationId);
-  return data?.id ?? null;
+  return data.id;
+}
+
+/**
+ * Marks a message already durably stored in FLAS with the outcome returned by
+ * Meta. Senders call this after their provider request finishes, so a message
+ * cannot leave the business number without a CRM row first existing.
+ */
+export async function completeOutboundDelivery(
+  messageId: string,
+  waMessageId: string | null,
+  status: "sent" | "failed",
+) {
+  const { error } = await supabaseAdmin
+    .from("messages")
+    .update({ wa_message_id: waMessageId, status })
+    .eq("id", messageId);
+  if (error) {
+    throw new Error("Could not update the saved WhatsApp message status in the CRM.");
+  }
 }
 
 /** Sends an approved WhatsApp message template. */
@@ -673,9 +733,7 @@ export async function sendWhatsAppTemplate(
   const text = await res.text();
   if (!res.ok) {
     console.error(`[whatsapp] template send failed [${res.status}]`);
-    throw new Error(
-      `WhatsApp could not deliver the template (${res.status}). Ask your admin to check the connection.`,
-    );
+    throw new Error(describeWhatsAppSendFailure(res.status, text));
   }
   try {
     const json = JSON.parse(text) as { messages?: Array<{ id?: string }> };
