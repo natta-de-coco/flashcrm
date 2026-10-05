@@ -76,7 +76,15 @@ export function translate(language: string, key: MessageKey, values?: MessageVal
 export function languageFromCookieHeader(header: string | null | undefined): string {
   for (const part of (header ?? "").split(";")) {
     const [name, ...rest] = part.trim().split("=");
-    if (name === LANGUAGE_COOKIE) return normalizeUiLanguage(decodeURIComponent(rest.join("=")));
+    if (name !== LANGUAGE_COOKIE) continue;
+    try {
+      return normalizeUiLanguage(decodeURIComponent(rest.join("=")));
+    } catch {
+      // A malformed escape ("%", "%ZZ") is an unusable preference, not an
+      // error. This runs in the browser on every navigation, and throwing
+      // here left the person on the error screen until the cookie was cleared.
+      return DEFAULT_UI_LANGUAGE;
+    }
   }
   return DEFAULT_UI_LANGUAGE;
 }
@@ -100,24 +108,48 @@ export function navMessageKey(to: string, part: "label" | "desc"): string {
   return `nav.${to.replace(/^\//, "").replace(/\//g, ".")}.${part}`;
 }
 
-/** True once this browser has a language choice of its own. */
-export function hasLanguageCookie(header: string | null | undefined): boolean {
-  return (header ?? "").split(";").some((part) => part.trim().startsWith(`${LANGUAGE_COOKIE}=`));
+/**
+ * Set beside the language cookie when the language was the company's default
+ * rather than this person's pick. The language cookie has to be written either
+ * way, because the server renders from it; this is what tells the two apart.
+ */
+export const INHERITED_LANGUAGE_COOKIE = "flas_lang_auto";
+
+/** Writes the mark for an inherited language, or removes it for a personal choice. */
+export function inheritedLanguageCookie(inherited: boolean): string {
+  return inherited
+    ? `${INHERITED_LANGUAGE_COOKIE}=1; Path=/; Max-Age=31536000; SameSite=Lax`
+    : `${INHERITED_LANGUAGE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+const hasCookie = (header: string | null | undefined, name: string) =>
+  (header ?? "").split(";").some((part) => part.trim().startsWith(`${name}=`));
+
+/** True once the person picked this browser's language themselves. */
+export function hasChosenLanguage(header: string | null | undefined): boolean {
+  return hasCookie(header, LANGUAGE_COOKIE) && !hasCookie(header, INHERITED_LANGUAGE_COOKIE);
 }
 
 /**
  * The company's language becomes a teammate's interface language only until
  * that teammate chooses one: an admin who sets Arabic for the company gives the
  * whole team Arabic by default, and anyone can still switch back.
+ *
+ * Returns the language to apply as an inherited default, or null to leave
+ * things as they are. A teammate who is only inheriting keeps following the
+ * company -- including back to English when the company moves to a language
+ * the interface does not have. `undefined` means the workspace has not loaded
+ * yet, which is not a reason to change anything.
  */
 export function workspaceDefaultLanguage(
   cookieHeader: string | null | undefined,
   workspaceLocale: string | null | undefined,
   current: string,
 ): string | null {
-  if (hasLanguageCookie(cookieHeader)) return null;
-  if (!isSupportedUiLanguage(workspaceLocale)) return null;
-  return workspaceLocale === current ? null : workspaceLocale;
+  if (workspaceLocale === undefined) return null;
+  if (hasChosenLanguage(cookieHeader)) return null;
+  const target = isSupportedUiLanguage(workspaceLocale) ? workspaceLocale : DEFAULT_UI_LANGUAGE;
+  return target === current ? null : target;
 }
 
 /**

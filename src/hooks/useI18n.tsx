@@ -8,6 +8,7 @@ import {
   DEFAULT_UI_LANGUAGE,
   directionOf,
   hasMessage,
+  inheritedLanguageCookie,
   languageCookie,
   translate,
   type MessageKey,
@@ -32,7 +33,13 @@ type I18n = {
    * it was given, so a value nobody translated is still shown.
    */
   tx: (key: string, fallback: string, values?: MessageValues) => string;
-  setLanguage: (code: string) => void;
+  /**
+   * Switches the interface language. `inherited` is for the company's default
+   * applied on someone's behalf: it shows the same way but is not remembered
+   * as their own choice, so a later change of the company's language still
+   * reaches them.
+   */
+  setLanguage: (code: string, options?: { inherited?: boolean }) => void;
 };
 
 const lookup = (language: string, key: string, fallback: string, values?: MessageValues) =>
@@ -64,8 +71,9 @@ export function I18nProvider({ language, children }: { language: string; childre
       t: (key, values) => translate(language, key, values),
       tr: (key, nodes) => interleave(translate(language, key), nodes),
       tx: (key, fallback, values) => lookup(language, key, fallback, values),
-      setLanguage: (code) => {
+      setLanguage: (code, { inherited = false } = {}) => {
         document.cookie = languageCookie(code);
+        document.cookie = inheritedLanguageCookie(inherited);
         // Re-reads the cookie in the root route, which re-renders <html> with
         // the new lang and dir and every translated string with it.
         void router.invalidate();

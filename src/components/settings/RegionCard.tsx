@@ -28,9 +28,11 @@ import { Globe2, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
+import { useTenant } from "@/hooks/useTenant";
 
 export function RegionCard() {
   const { t, tr } = useI18n();
+  const { refresh } = useTenant();
   const qc = useQueryClient();
   const save = useServerFn(saveWorkspaceRegion);
   const region = useQuery({ queryKey: ["workspace-region"], queryFn: () => getWorkspaceRegion() });
@@ -55,6 +57,10 @@ export function RegionCard() {
       // the chatbot answers in the customer's own language.
       toast.success(t("regionCard.regionalSettingsSaved"));
       void qc.invalidateQueries({ queryKey: ["workspace-region"] });
+      // The workspace record is loaded once per signed-in user, so the saved
+      // company language would not reach anyone -- this admin included --
+      // until a full reload.
+      void refresh();
     },
     onError: (e: Error) => toast.error(e.message),
   });

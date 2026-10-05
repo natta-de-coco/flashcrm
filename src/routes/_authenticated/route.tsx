@@ -127,7 +127,7 @@ function WorkspaceLanguageDefault() {
   const { language, setLanguage } = useI18n();
   useEffect(() => {
     const next = workspaceDefaultLanguage(document.cookie, tenant?.locale, language);
-    if (next) setLanguage(next);
+    if (next) setLanguage(next, { inherited: true });
   }, [tenant?.locale, language, setLanguage]);
   return null;
 }

@@ -163,21 +163,75 @@ describe("the language cookie", () => {
   });
 });
 
+describe("a language cookie that cannot be read", () => {
+  // This runs in the browser on every navigation. decodeURIComponent throws on
+  // a malformed escape, and that took the whole page to the error screen until
+  // the cookie was cleared -- over a display preference.
+  it("is treated as no choice instead of throwing", () => {
+    assert.equal(i18n.languageFromCookieHeader("flas_lang=%"), "en");
+    assert.equal(i18n.languageFromCookieHeader("sb=1; flas_lang=%ZZ; theme=dark"), "en");
+  });
+});
+
 describe("the company's language as a default", () => {
+  // What the browser holds after the company's Arabic was applied for someone
+  // who never picked a language.
+  const inherited = "flas_lang=ar; flas_lang_auto=1";
+
   it("applies to a teammate who has never chosen", () => {
     assert.equal(i18n.workspaceDefaultLanguage("sb=1", "ar", "en"), "ar");
   });
 
   it("never overrides a teammate's own choice", () => {
+    assert.equal(i18n.hasChosenLanguage("flas_lang=en"), true);
     assert.equal(i18n.workspaceDefaultLanguage("flas_lang=en", "ar", "en"), null);
   });
 
-  it("does nothing for a language the interface does not have yet", () => {
+  it("does not count an inherited default as the teammate's own choice", () => {
+    // Applying the default writes the language cookie so the server can render
+    // it. That used to look like a personal choice, so a later change of the
+    // company's language never reached a teammate who had chosen nothing.
+    assert.equal(i18n.hasChosenLanguage(inherited), false);
+    assert.equal(i18n.hasChosenLanguage("sb=1"), false);
+    assert.equal(i18n.workspaceDefaultLanguage(inherited, "ms", "ar"), "ms");
+  });
+
+  it("returns an inheriting teammate to English when the company picks a language the interface lacks", () => {
+    assert.equal(i18n.workspaceDefaultLanguage(inherited, "fr", "ar"), "en");
     assert.equal(i18n.workspaceDefaultLanguage("", "fr", "en"), null);
+  });
+
+  it("waits for the workspace to load before deciding", () => {
+    assert.equal(i18n.workspaceDefaultLanguage(inherited, undefined, "ar"), null);
   });
 
   it("does nothing when it is already showing", () => {
     assert.equal(i18n.workspaceDefaultLanguage("", "ar", "ar"), null);
+    assert.equal(i18n.workspaceDefaultLanguage(inherited, "ar", "ar"), null);
+  });
+
+  it("marks an inherited language, and clears the mark when the person chooses", () => {
+    assert.equal(
+      i18n.inheritedLanguageCookie(true),
+      "flas_lang_auto=1; Path=/; Max-Age=31536000; SameSite=Lax",
+    );
+    assert.equal(
+      i18n.inheritedLanguageCookie(false),
+      "flas_lang_auto=; Path=/; Max-Age=0; SameSite=Lax",
+    );
+    const hook = read("src/hooks/useI18n.tsx");
+    assert.match(hook, /setLanguage: \(code, \{ inherited = false \} = \{\}\) => \{/);
+    assert.match(hook, /document\.cookie = inheritedLanguageCookie\(inherited\);/);
+    const shell = read("src/routes/_authenticated/route.tsx");
+    assert.match(shell, /if \(next\) setLanguage\(next, \{ inherited: true \}\);/);
+  });
+
+  it("re-reads the workspace after an admin saves the company language", () => {
+    // The workspace record is loaded once per signed-in user. Without this the
+    // newly saved default reached nobody until a full reload.
+    const card = read("src/components/settings/RegionCard.tsx");
+    assert.match(card, /const \{ refresh \} = useTenant\(\);/);
+    assert.match(card, /void refresh\(\);/);
   });
 });
 
