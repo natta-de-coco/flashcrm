@@ -1,39 +1,51 @@
 // Every screen's text, combined. Adding a screen: write src/lib/i18n/screens/<name>.ts
 // and list it here. The compiler then enforces that it carries every language.
 import { TRANSLATED_LANGUAGES } from "./define";
+import advisor from "./screens/advisor";
 import auth from "./screens/auth";
+import campaignPlanner from "./screens/campaign-planner";
 import catalog from "./screens/catalog";
+import channelReportDialog from "./screens/channel-report-dialog";
 import chatbot from "./screens/chatbot";
 import common from "./screens/common";
 import contactCard from "./screens/contact-card";
 import contacts from "./screens/contacts";
 import dashboard from "./screens/dashboard";
+import followUpCard from "./screens/follow-up-card";
 import inbox from "./screens/inbox";
 import invoiceBrandingCard from "./screens/invoice-branding-card";
 import invoiceBuilder from "./screens/invoice-builder";
+import kpiTargetsCard from "./screens/kpi-targets-card";
 import marketing from "./screens/marketing";
 import nav from "./screens/nav";
 import sales from "./screens/sales";
 import settings from "./screens/settings";
 import shell from "./screens/shell";
+import social from "./screens/social";
 import socialInbox from "./screens/social-inbox";
 
 const SCREENS = [
+  advisor,
   auth,
+  campaignPlanner,
   catalog,
+  channelReportDialog,
   chatbot,
   common,
   contactCard,
   contacts,
   dashboard,
+  followUpCard,
   inbox,
   invoiceBrandingCard,
   invoiceBuilder,
+  kpiTargetsCard,
   marketing,
   nav,
   sales,
   settings,
   shell,
+  social,
   socialInbox,
 ] as const;
 

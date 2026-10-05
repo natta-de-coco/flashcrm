@@ -37,6 +37,8 @@ import {
 import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authenticated/advisor")({
   head: () => ({
@@ -93,6 +95,7 @@ function Section({
 }
 
 function AdvisorPage() {
+  const i18n = useI18n();
   const qc = useQueryClient();
   const loadContext = useServerFn(getAdvisorContext);
   const loadLatest = useServerFn(getLatestAdvisorAnalysis);
@@ -165,7 +168,7 @@ function AdvisorPage() {
         },
       }),
     onSuccess: () => {
-      toast.success("Business brief saved — the advisor will use it from now on");
+      toast.success(i18n.t("advisor.businessBriefSavedTheAdvisor"));
       void qc.invalidateQueries({ queryKey: ["advisor_context"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -175,7 +178,7 @@ function AdvisorPage() {
     mutationFn: () => runAnalysis({}),
     onSuccess: (data) => {
       setAnalysis(data as AdvisorAnalysis);
-      toast.success("Advisor review ready");
+      toast.success(i18n.t("advisor.advisorReviewReady"));
       void qc.invalidateQueries({ queryKey: ["advisor_latest"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -196,7 +199,7 @@ function AdvisorPage() {
   function submitQuestion() {
     const q = question.trim();
     if (q.length < 3) {
-      toast.error("Ask a slightly longer question");
+      toast.error(i18n.t("advisor.askASlightlyLongerQuestion"));
       return;
     }
     setQuestion("");
@@ -207,12 +210,9 @@ function AdvisorPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
       <header className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <Briefcase className="size-6 text-brand" /> Business advisor
+          <Briefcase className="size-6 text-brand" /> {i18n.t("advisor.businessAdvisor")}
         </h1>
-        <p className="text-sm text-muted-foreground">
-          A senior operator for your niche. It reads your chat traffic, social accounts, leads,
-          products and your city/country market, then tells you exactly what to do next.
-        </p>
+        <p className="text-sm text-muted-foreground">{i18n.t("advisor.aSeniorOperatorForYour")}</p>
       </header>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -221,12 +221,14 @@ function AdvisorPage() {
             <CardHeader className="flex-row items-start justify-between gap-3">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <Sparkles className="size-4 text-brand" /> Strategic review
+                  <Sparkles className="size-4 text-brand" /> {i18n.t("advisor.strategicReview")}
                 </CardTitle>
                 <CardDescription>
                   {analysis
-                    ? `Last review ${new Date(analysis.generatedAt).toLocaleString()}`
-                    : "Run a review to get scores, opportunities, risks and a 7-day plan."}
+                    ? i18n.t("advisor.lastReview", {
+                        toLocaleString: new Date(analysis.generatedAt).toLocaleString(),
+                      })
+                    : i18n.t("advisor.runAReviewToGet")}
                 </CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -238,23 +240,23 @@ function AdvisorPage() {
                         try {
                           const { downloadAdvisorPdf } = await import("@/lib/advisor-pdf");
                           downloadAdvisorPdf(analysis, brief);
-                          toast.success("PDF report downloaded");
+                          toast.success(i18n.t("advisor.pdfReportDownloaded"));
                         } catch {
-                          toast.error("Could not build the PDF report");
+                          toast.error(i18n.t("advisor.couldNotBuildThePdf"));
                         }
                       })();
                     }}
                   >
-                    <FileDown className="size-4" /> Export PDF
+                    <FileDown className="size-4" /> {i18n.t("advisor.exportPdf")}
                   </Button>
                 ) : null}
                 <Button onClick={() => review.mutate()} disabled={review.isPending}>
                   <TrendingUp className="size-4" />
                   {review.isPending
-                    ? "Analyzing…"
+                    ? i18n.t("advisor.analyzing")
                     : analysis
-                      ? "Re-analyze"
-                      : "Analyze my business"}
+                      ? i18n.t("advisor.reAnalyze")
+                      : i18n.t("advisor.analyzeMyBusiness")}
                 </Button>
               </div>
             </CardHeader>
@@ -288,8 +290,7 @@ function AdvisorPage() {
               </CardContent>
             ) : (
               <CardContent className="text-sm text-muted-foreground">
-                No review yet. Fill in the business brief on the right for sharper, location-aware
-                advice, then run the analysis.
+                {i18n.t("advisor.noReviewYetFillIn")}
               </CardContent>
             )}
           </Card>
@@ -297,8 +298,8 @@ function AdvisorPage() {
           {analysis && analysis.opportunities.length > 0 ? (
             <Section
               icon={Lightbulb}
-              title="Growth opportunities"
-              description="Ranked by expected impact on revenue."
+              title={i18n.t("advisor.growthOpportunities")}
+              description={i18n.t("advisor.rankedByExpectedImpactOn")}
             >
               {analysis.opportunities.map((o) => (
                 <div key={o.title} className="rounded-lg border p-3">
@@ -308,12 +309,14 @@ function AdvisorPage() {
                       variant="outline"
                       className={IMPACT_STYLES[o.impact] ?? IMPACT_STYLES["low"]}
                     >
-                      {o.impact} impact
+                      {hasMessage(`advisor.impactLevel.${o.impact}`)
+                        ? i18n.t(`advisor.impactLevel.${o.impact}` as MessageKey)
+                        : i18n.tr("advisor.impact", { impact: o.impact })}
                     </Badge>
                   </div>
                   <p className="text-muted-foreground">{o.why}</p>
                   <p className="mt-1">
-                    <span className="font-medium">Do: </span>
+                    <span className="font-medium">{i18n.t("advisor.do")} </span>
                     {o.action}
                   </p>
                 </div>
@@ -325,7 +328,7 @@ function AdvisorPage() {
             {analysis && analysis.local.length > 0 ? (
               <Section
                 icon={MapPin}
-                title="Local market"
+                title={i18n.t("advisor.localMarket")}
                 description={[brief.city, brief.country].filter(Boolean).join(", ") || undefined}
               >
                 <ul className="list-disc space-y-1.5 ps-4">
@@ -337,7 +340,7 @@ function AdvisorPage() {
             ) : null}
 
             {analysis && analysis.socialPlan.length > 0 ? (
-              <Section icon={Globe2} title="Social & traffic plan">
+              <Section icon={Globe2} title={i18n.t("advisor.socialTrafficPlan")}>
                 {analysis.socialPlan.map((s) => (
                   <div key={s.platform}>
                     <span className="font-medium capitalize">{s.platform}: </span>
@@ -348,7 +351,7 @@ function AdvisorPage() {
             ) : null}
 
             {analysis && analysis.pricing.length > 0 ? (
-              <Section icon={Target} title="Products & pricing">
+              <Section icon={Target} title={i18n.t("advisor.productsPricing")}>
                 <ul className="list-disc space-y-1.5 ps-4">
                   {analysis.pricing.map((p) => (
                     <li key={p}>{p}</li>
@@ -358,7 +361,7 @@ function AdvisorPage() {
             ) : null}
 
             {analysis && analysis.risks.length > 0 ? (
-              <Section icon={AlertTriangle} title="Risks to fix">
+              <Section icon={AlertTriangle} title={i18n.t("advisor.risksToFix")}>
                 <ul className="list-disc space-y-1.5 ps-4">
                   {analysis.risks.map((r) => (
                     <li key={r}>{r}</li>
@@ -368,11 +371,11 @@ function AdvisorPage() {
             ) : null}
 
             {analysis && (analysis.next7Days.length > 0 || analysis.next90Days.length > 0) ? (
-              <Section icon={CalendarClock} title="Action plan">
+              <Section icon={CalendarClock} title={i18n.t("advisor.actionPlan")}>
                 {analysis.next7Days.length > 0 ? (
                   <div>
                     <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                      Next 7 days
+                      {i18n.t("advisor.next7Days")}
                     </p>
                     <ol className="list-decimal space-y-1 ps-4">
                       {analysis.next7Days.map((a) => (
@@ -384,7 +387,7 @@ function AdvisorPage() {
                 {analysis.next90Days.length > 0 ? (
                   <div>
                     <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
-                      Next 90 days
+                      {i18n.t("advisor.next90Days")}
                     </p>
                     <ol className="list-decimal space-y-1 ps-4">
                       {analysis.next90Days.map((a) => (
@@ -397,7 +400,7 @@ function AdvisorPage() {
             ) : null}
 
             {analysis && analysis.kpis.length > 0 ? (
-              <Section icon={TrendingUp} title="KPIs to track">
+              <Section icon={TrendingUp} title={i18n.t("advisor.kpisToTrack")}>
                 {analysis.kpis.map((k) => (
                   <div
                     key={k.name}
@@ -418,10 +421,10 @@ function AdvisorPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <MessageSquare className="size-4 text-brand" /> Ask the advisor
+                <MessageSquare className="size-4 text-brand" /> {i18n.t("advisor.askTheAdvisor")}
               </CardTitle>
               <CardDescription>
-                Anything about pricing, hiring, offers, ads, competitors or your city's market.
+                {i18n.t("advisor.anythingAboutPricingHiringOffers")}
               </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3">
@@ -471,14 +474,14 @@ function AdvisorPage() {
                   rows={2}
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
-                  placeholder="e.g. My inbound dropped 20% — what should I change first?"
+                  placeholder={i18n.t("advisor.eGMyInboundDropped")}
                 />
                 <Button
                   onClick={submitQuestion}
                   disabled={sendQuestion.isPending}
                   className="sm:self-end"
                 >
-                  <Send className="size-4" /> Ask
+                  <Send className="size-4" /> {i18n.t("advisor.ask")}
                 </Button>
               </div>
             </CardContent>
@@ -487,11 +490,8 @@ function AdvisorPage() {
 
         <Card className="h-fit">
           <CardHeader>
-            <CardTitle className="text-base">Business brief</CardTitle>
-            <CardDescription>
-              The more the advisor knows, the sharper the advice. Location drives local demand,
-              pricing power and seasonality.
-            </CardDescription>
+            <CardTitle className="text-base">{i18n.t("advisor.businessBrief")}</CardTitle>
+            <CardDescription>{i18n.t("advisor.theMoreTheAdvisorKnows")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             {context.isLoading ? (
@@ -503,7 +503,7 @@ function AdvisorPage() {
             ) : (
               <>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="business_name">Business name</Label>
+                  <Label htmlFor="business_name">{i18n.t("advisor.businessName")}</Label>
                   <Input
                     id="business_name"
                     value={brief.business_name}
@@ -512,25 +512,25 @@ function AdvisorPage() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="grid gap-1.5">
-                    <Label htmlFor="industry">Industry</Label>
+                    <Label htmlFor="industry">{i18n.t("advisor.industry")}</Label>
                     <Input
                       id="industry"
-                      placeholder="Retail, clinic, real estate…"
+                      placeholder={i18n.t("advisor.retailClinicRealEstate")}
                       value={brief.industry}
                       onChange={(e) => setBrief({ ...brief, industry: e.target.value })}
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="niche">Niche</Label>
+                    <Label htmlFor="niche">{i18n.t("advisor.niche")}</Label>
                     <Input
                       id="niche"
-                      placeholder="Bridal wear, dental implants…"
+                      placeholder={i18n.t("advisor.bridalWearDentalImplants")}
                       value={brief.niche}
                       onChange={(e) => setBrief({ ...brief, niche: e.target.value })}
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="city">City</Label>
+                    <Label htmlFor="city">{i18n.t("advisor.city")}</Label>
                     <Input
                       id="city"
                       value={brief.city}
@@ -538,7 +538,7 @@ function AdvisorPage() {
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="country">Country</Label>
+                    <Label htmlFor="country">{i18n.t("advisor.country")}</Label>
                     <Input
                       id="country"
                       value={brief.country}
@@ -546,26 +546,26 @@ function AdvisorPage() {
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="stage">Stage</Label>
+                    <Label htmlFor="stage">{i18n.t("advisor.stage")}</Label>
                     <Input
                       id="stage"
-                      placeholder="New, growing, established"
+                      placeholder={i18n.t("advisor.newGrowingEstablished")}
                       value={brief.business_stage}
                       onChange={(e) => setBrief({ ...brief, business_stage: e.target.value })}
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="currency">Currency</Label>
+                    <Label htmlFor="currency">{i18n.t("advisor.currency")}</Label>
                     <Input
                       id="currency"
-                      placeholder="AED, USD…"
+                      placeholder={i18n.t("advisor.aedUsd")}
                       value={brief.currency}
                       onChange={(e) => setBrief({ ...brief, currency: e.target.value })}
                     />
                   </div>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="target">Monthly revenue target</Label>
+                  <Label htmlFor="target">{i18n.t("advisor.monthlyRevenueTarget")}</Label>
                   <Input
                     id="target"
                     type="number"
@@ -575,7 +575,7 @@ function AdvisorPage() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="website">Website</Label>
+                  <Label htmlFor="website">{i18n.t("advisor.website")}</Label>
                   <Input
                     id="website"
                     placeholder="https://…"
@@ -584,7 +584,7 @@ function AdvisorPage() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="goal">Main goal right now</Label>
+                  <Label htmlFor="goal">{i18n.t("advisor.mainGoalRightNow")}</Label>
                   <Textarea
                     id="goal"
                     rows={2}
@@ -593,7 +593,7 @@ function AdvisorPage() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="competitors">Main competitors</Label>
+                  <Label htmlFor="competitors">{i18n.t("advisor.mainCompetitors")}</Label>
                   <Textarea
                     id="competitors"
                     rows={2}
@@ -602,7 +602,7 @@ function AdvisorPage() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="about">About the business</Label>
+                  <Label htmlFor="about">{i18n.t("advisor.aboutTheBusiness")}</Label>
                   <Textarea
                     id="about"
                     rows={4}
@@ -611,7 +611,7 @@ function AdvisorPage() {
                   />
                 </div>
                 <Button onClick={() => save.mutate()} disabled={save.isPending} variant="secondary">
-                  <Save className="size-4" /> Save brief
+                  <Save className="size-4" /> {i18n.t("advisor.saveBrief")}
                 </Button>
               </>
             )}

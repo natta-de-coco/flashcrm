@@ -135,6 +135,8 @@ describe("the sync no longer swallows what it could not read", () => {
 
 describe("a connection whose Page was never chosen is not a syncable account", () => {
   const page = read("src/routes/_authenticated/social.tsx");
+  // The page says these through translation keys now; the English lives here.
+  const words = read("src/lib/i18n/screens/social.ts");
 
   it("offers Finish connecting instead of a Sync that can only fail", () => {
     // QA saw "Facebook – Never synced" and "Instagram – Never synced" ghost rows
@@ -142,11 +144,13 @@ describe("a connection whose Page was never chosen is not a syncable account", (
     // with "Add the Meta account ID and access token first", which makes no
     // sense for a connection made by signing in.
     assert.match(page, /!a\.external_id \? \(/);
-    assert.match(page, /Finish connecting/);
+    assert.match(page, /social\.finishConnecting/);
+    assert.match(words, /"social\.finishConnecting": "Finish connecting"/);
     assert.match(page, /to="\/connect"/);
   });
 
   it("says what state it is in rather than Never synced", () => {
-    assert.match(page, /choose which Page or account to use/);
+    assert.match(page, /social\.signInDoneChooseWhich/);
+    assert.match(words, /choose which Page or account to use/);
   });
 });
