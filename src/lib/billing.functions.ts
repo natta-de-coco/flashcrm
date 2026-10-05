@@ -454,6 +454,13 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { ensureBillingSettings, requireTenantId } = await import("@/lib/billing.server");
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile || !["company_admin", "super_admin"].includes(profile.staff_role))
+      throw new Error("Only a company admin can change invoice company details.");
     const tenantId = await requireTenantId(context.supabase);
     await ensureBillingSettings(context.supabase, tenantId);
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };

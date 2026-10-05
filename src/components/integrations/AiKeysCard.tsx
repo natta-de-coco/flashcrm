@@ -4,12 +4,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTenant } from "@/hooks/useTenant";
-import { AI_PROVIDERS, deleteAiKey, listAiKeys, saveAiKey } from "@/lib/ai-keys.functions";
+import {
+  AI_PROVIDERS,
+  deleteAiKey,
+  listAiKeys,
+  saveAiKey,
+  checkAiProvider,
+  getAiResilience,
+  setAiResilience,
+} from "@/lib/ai-keys.functions";
 import { isCompanyManager } from "@/lib/permissions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { ExternalLink, KeyRound, Sparkles, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 
@@ -30,24 +38,62 @@ type ProviderId = (typeof AI_PROVIDERS)[number]["id"];
  */
 export function AiKeysCard() {
   const { t, tr } = useI18n();
-  const { staffRole } = useTenant();
+  const { staffRole, tenant } = useTenant();
   const canManage = isCompanyManager(staffRole);
   const qc = useQueryClient();
 
   const load = useServerFn(listAiKeys);
   const save = useServerFn(saveAiKey);
   const remove = useServerFn(deleteAiKey);
+  const check = useServerFn(checkAiProvider);
+  const loadResilience = useServerFn(getAiResilience);
+  const saveResilience = useServerFn(setAiResilience);
+  const [health, setHealth] = useState<
+    Record<string, { ok: boolean; message: string; testedAt: string }>
+  >({});
+  useEffect(() => setHealth({}), [tenant?.id]);
+  const resilience = useQuery({
+    queryKey: ["ai-resilience", tenant?.id],
+    queryFn: () => loadResilience(),
+    enabled: canManage,
+  });
+  const testing = useMutation({
+    mutationFn: (p: ProviderId | "platform") => check({ data: { provider: p } }),
+    onSuccess: (result, p) => setHealth((previous) => ({ ...previous, [p]: result })),
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : t("aiKeysCard.couldNotTestTheProvider")),
+  });
+  const backups = useMutation({
+    mutationFn: (enabled: boolean) => saveResilience({ data: { enabled } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["ai-resilience"] });
+    },
+    onError: (error) =>
+      toast.error(
+        error instanceof Error ? error.message : t("aiKeysCard.couldNotSaveBackupSettings"),
+      ),
+  });
 
   const [provider, setProvider] = useState<ProviderId>("openai");
   const [apiKey, setApiKey] = useState("");
 
-  const keys = useQuery({ queryKey: ["ai-keys"], queryFn: () => load() });
+  useEffect(() => setApiKey(""), [tenant?.id]);
+  const keys = useQuery({
+    queryKey: ["ai-keys", tenant?.id],
+    queryFn: () => load(),
+    enabled: canManage,
+  });
   const refresh = () => void qc.invalidateQueries({ queryKey: ["ai-keys"] });
 
   const saving = useMutation({
     mutationFn: () => save({ data: { provider, apiKey: apiKey.trim() } }),
     onSuccess: () => {
-      toast.success(t("aiKeysCard.keySavedFlasAiWill"));
+      toast.success(t("aiKeysCard.keySavedTestTheConnection"));
+      setHealth((previous) => {
+        const next = { ...previous };
+        delete next[provider];
+        return next;
+      });
       setApiKey("");
       refresh();
     },
@@ -58,7 +104,7 @@ export function AiKeysCard() {
   const removing = useMutation({
     mutationFn: (p: ProviderId) => remove({ data: { provider: p } }),
     onSuccess: () => {
-      toast.success(t("aiKeysCard.keyRemovedRevertingToThe"));
+      toast.success(t("aiKeysCard.keyRemovedTheNewestRemaining"));
       refresh();
     },
     onError: (e) =>
@@ -75,7 +121,7 @@ export function AiKeysCard() {
           <Sparkles className="size-4 text-brand" /> {t("aiKeysCard.yourOwnAiKeys")}
           {configured.length > 0 && <Badge variant="secondary">{configured.length}</Badge>}
         </CardTitle>
-        <CardDescription>{t("aiKeysCard.flasAiWorksWithoutThis")}</CardDescription>
+        <CardDescription>{t("aiKeysCard.addOpenaiClaudeOrGemini")}</CardDescription>
       </CardHeader>
 
       <CardContent className="grid gap-4">
@@ -93,8 +139,8 @@ export function AiKeysCard() {
                   <div className="text-sm font-medium">
                     {AI_PROVIDERS.find((p) => p.id === k.provider)?.name ?? k.provider}
                     {k.active && (
-                      <Badge variant="secondary" className="ms-2 text-[10px]">
-                        {t("aiKeysCard.inUse")}
+                      <Badge variant="secondary" className="ml-2 text-[10px]">
+                        {t("aiKeysCard.savedNotAHealthCheck")}
                       </Badge>
                     )}
                   </div>
@@ -103,7 +149,27 @@ export function AiKeysCard() {
                       toLocaleDateString: new Date(k.created_at).toLocaleDateString(),
                     })}
                   </p>
+                  {health[k.provider] && (
+                    <p role="status" className="text-xs">
+                      {tr("aiKeysCard.checked", {
+                        message: health[k.provider]!.message,
+                        toLocaleTimeString: new Date(
+                          health[k.provider]!.testedAt,
+                        ).toLocaleTimeString(),
+                      })}
+                    </p>
+                  )}
                 </div>
+                {canManage && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={testing.isPending}
+                    onClick={() => testing.mutate(k.provider as ProviderId)}
+                  >
+                    {t("aiKeysCard.testConnection")}
+                  </Button>
+                )}
                 {canManage && (
                   <Button
                     size="sm"
@@ -117,6 +183,42 @@ export function AiKeysCard() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {canManage && (
+          <div className="grid gap-2 rounded-lg border p-3">
+            <Label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={resilience.data?.enabled ?? false}
+                disabled={!resilience.data?.available || backups.isPending}
+                onChange={(event) => backups.mutate(event.target.checked)}
+              />
+              {t("aiKeysCard.useBackupAiWhenThe")}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {t("aiKeysCard.withBackupsEnabledTheSame")}
+            </p>
+            {resilience.data && !resilience.data.available && (
+              <p role="alert" className="text-xs">
+                {t("aiKeysCard.backupSettingsNeedTheAi")}
+              </p>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={testing.isPending}
+              onClick={() => testing.mutate("platform")}
+            >
+              {t("aiKeysCard.testBuiltInAi")}
+            </Button>
+            {health["platform"] && (
+              <p role="status" className="text-xs">
+                {health["platform"].message}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">{t("aiKeysCard.testsSendOnlyAShort")}</p>
           </div>
         )}
 
@@ -176,9 +278,7 @@ export function AiKeysCard() {
               </Button>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              {t("aiKeysCard.storedEncryptedAtRestAnd")}
-            </p>
+            <p className="text-xs text-muted-foreground">{t("aiKeysCard.newAndReplacedKeysAre")}</p>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">{t("aiKeysCard.onlyACompanyAdminCan")}</p>

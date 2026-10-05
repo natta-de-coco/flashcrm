@@ -124,7 +124,9 @@ export const draftBotReply = createServerFn({ method: "POST" })
 
     const settings = await getBotSettings(tenantId as string);
     if (!settings) throw new Error("Chatbot is not configured");
-    const draft = await generateBotReply(tenantId as string, data.conversationId, settings);
+    const draft = await generateBotReply(tenantId as string, data.conversationId, settings, {
+      throwOnFailure: true,
+    });
     if (!draft) throw new Error("The assistant could not generate a reply right now");
     return { draft: draft.text };
   });

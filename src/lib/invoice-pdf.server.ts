@@ -135,7 +135,23 @@ function safe(text: unknown): string {
 }
 
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = safe(text).split(/\s+/).filter(Boolean);
+  // Split long SKUs, URLs and account identifiers as well as ordinary words.
+  const words = safe(text)
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((word) => {
+      const parts: string[] = [];
+      let part = "";
+      for (const character of word) {
+        if (part && font.widthOfTextAtSize(part + character, size) > maxWidth) {
+          parts.push(part);
+          part = "";
+        }
+        part += character;
+      }
+      if (part) parts.push(part);
+      return parts;
+    });
   const lines: string[] = [];
   let current = "";
   for (const word of words) {
@@ -258,6 +274,22 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
     const page = pdf.addPage([A4.width, A4.height]);
     pages.push(page);
     drawWatermark(page);
+    page.drawRectangle({ x: 0, y: A4.height - 7, width: A4.width, height: 7, color: primary });
+    if (pages.length > 1) {
+      page.drawText(`${TITLES[input.kind]}  |  ${safe(input.doc_number)}`, {
+        x: M,
+        y: A4.height - M + 3,
+        size: 9,
+        font: bold,
+        color: primary,
+      });
+      page.drawLine({
+        start: { x: M, y: A4.height - M - 10 },
+        end: { x: A4.width - M, y: A4.height - M - 10 },
+        thickness: 0.5,
+        color: hairline,
+      });
+    }
     return page;
   };
 
@@ -295,14 +327,17 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
 
   // ---------- header ----------
   const companyName = safe(input.company.trade_name || input.company.legal_name || "Your Company");
+  const headerTop = y;
   if (logo) {
     const dims = logo.scale(Math.min(64 / logo.height, 150 / logo.width));
     page.drawImage(logo, { x: M, y: y - dims.height, width: dims.width, height: dims.height });
     y -= dims.height + 10;
   }
-  const headerTop = y;
-  page.drawText(companyName, { x: M, y, size: 14, font: bold, color: primary });
-  y -= 15;
+  for (const line of wrap(companyName, bold, 14, contentWidth * 0.47)) {
+    page.drawText(line, { x: M, y, size: 14, font: bold, color: primary });
+    y -= 17;
+  }
+  y -= 4;
   const companyLines = [
     input.company.legal_name && input.company.legal_name !== companyName
       ? input.company.legal_name
@@ -323,7 +358,10 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
   }
 
   // Document title + meta block, right aligned.
-  const title = TITLES[input.kind];
+  const title =
+    input.kind === "invoice" && !input.company.vat_number && !input.tax_total
+      ? "INVOICE"
+      : TITLES[input.kind];
   const titleSize = 22;
   const titleWidth = bold.widthOfTextAtSize(title, titleSize);
   page.drawText(title, {
@@ -348,17 +386,17 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
   meta.push(["Status", input.mode === "draft" ? "Draft" : safe(input.status).replace(/_/g, " ")]);
 
   for (const [label, value] of meta) {
-    const text = safe(value);
-    const valueWidth = font.widthOfTextAtSize(text, 9);
     page.drawText(`${label}`, { x: A4.width - M - 190, y: metaY, size: 8.5, font, color: muted });
-    page.drawText(text, {
-      x: A4.width - M - valueWidth,
-      y: metaY,
-      size: 9,
-      font: bold,
-      color: ink,
-    });
-    metaY -= 13;
+    for (const text of wrap(safe(value), bold, 9, 118)) {
+      page.drawText(text, {
+        x: A4.width - M - bold.widthOfTextAtSize(text, 9),
+        y: metaY,
+        size: 9,
+        font: bold,
+        color: ink,
+      });
+      metaY -= 13;
+    }
   }
 
   y = Math.min(y, metaY) - 14;
@@ -409,14 +447,10 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
   if (customFields.length) {
     if (!input.customer.shipping_address) sy -= 0;
     for (const [key, value] of customFields) {
-      page.drawText(`${safe(key)}: ${safe(value)}`, {
-        x: M + colW + 20,
-        y: sy,
-        size: 9,
-        font,
-        color: muted,
-      });
-      sy -= 11.5;
+      for (const line of wrap(`${key}: ${value}`, font, 9, colW)) {
+        page.drawText(line, { x: M + colW + 20, y: sy, size: 9, font, color: muted });
+        sy -= 11.5;
+      }
     }
   }
 
@@ -425,10 +459,10 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
   // ---------- item table ----------
   const cols = {
     desc: M,
-    qty: M + contentWidth * 0.52,
-    price: M + contentWidth * 0.64,
-    disc: M + contentWidth * 0.76,
-    tax: M + contentWidth * 0.85,
+    qty: M + contentWidth * 0.55,
+    price: M + contentWidth * 0.69,
+    disc: M + contentWidth * 0.79,
+    tax: M + contentWidth * 0.86,
     total: A4.width - M,
   };
 
@@ -439,25 +473,34 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       width: contentWidth,
       height: 20,
       color: primary,
-      opacity: 0.08,
     });
     page.drawText("DESCRIPTION", {
       x: cols.desc + 6,
       y: atY + 2,
       size: 8,
       font: bold,
-      color: primary,
+      color: rgb(1, 1, 1),
     });
-    right("QTY", cols.price - 12, atY + 2, 8, bold, primary);
-    right("RATE", cols.disc - 12, atY + 2, 8, bold, primary);
-    right("DISC", cols.tax - 8, atY + 2, 8, bold, primary);
-    right(safe(input.tax_label).toUpperCase(), cols.total - 78, atY + 2, 8, bold, primary);
-    right("AMOUNT", cols.total - 6, atY + 2, 8, bold, primary);
-    return atY - 12;
+    right("QTY", cols.qty, atY + 2, 8, bold, rgb(1, 1, 1));
+    right("RATE", cols.price, atY + 2, 8, bold, rgb(1, 1, 1));
+    right("DISC", cols.disc, atY + 2, 8, bold, rgb(1, 1, 1));
+    right("TAX", cols.tax, atY + 2, 8, bold, rgb(1, 1, 1));
+    right("AMOUNT", cols.total - 6, atY + 2, 8, bold, rgb(1, 1, 1));
+    return atY - 19;
   };
 
-  function right(text: string, x: number, atY: number, size: number, f: PDFFont, color = ink) {
+  function right(
+    text: string,
+    x: number,
+    atY: number,
+    size: number,
+    f: PDFFont,
+    color = ink,
+    maxWidth = 150,
+  ) {
     const t = safe(text);
+    const measured = f.widthOfTextAtSize(t, size);
+    if (measured > maxWidth) size *= maxWidth / measured;
     page.drawText(t, { x: x - f.widthOfTextAtSize(t, size), y: atY, size, font: f, color });
   }
 
@@ -465,68 +508,98 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
 
   const BOTTOM_LIMIT = M + 96;
   for (const item of input.items) {
-    const descLines = wrap(item.name, bold, 9.5, contentWidth * 0.5 - 8);
+    const descLines = wrap(item.name, bold, 9.5, contentWidth * 0.44 - 8);
     const extra: string[] = [];
-    if (item.description) extra.push(...wrap(item.description, font, 8.3, contentWidth * 0.5 - 8));
+    if (item.description) extra.push(...wrap(item.description, font, 8.3, contentWidth * 0.44 - 8));
     const details = [
       item.sku ? `SKU ${item.sku}` : null,
       item.serial_number ? `S/N ${item.serial_number}` : null,
       item.warranty ? `Warranty: ${item.warranty}` : null,
       item.service_period ? `Period: ${item.service_period}` : null,
     ].filter(Boolean) as string[];
-    if (details.length) extra.push(...wrap(details.join("  •  "), font, 8, contentWidth * 0.5 - 8));
+    if (details.length)
+      extra.push(...wrap(details.join("  |  "), font, 8, contentWidth * 0.44 - 8));
 
     const rowHeight = Math.max(20, descLines.length * 12 + extra.length * 10 + 8);
 
     // Keep a line item whole: never split it across pages.
     if (y - rowHeight < BOTTOM_LIMIT) {
       page = newPage();
-      y = A4.height - M;
+      y = A4.height - M - 30;
       y = drawTableHeader(y);
     }
 
-    let ly = y - 2;
+    const rowPage = page;
+    const numberY = y - 2;
+    let ly = numberY;
     for (const line of descLines) {
+      if (ly < BOTTOM_LIMIT) {
+        page = newPage();
+        y = drawTableHeader(A4.height - M - 30);
+        ly = y - 2;
+      }
       page.drawText(line, { x: cols.desc + 6, y: ly, size: 9.5, font: bold, color: ink });
       ly -= 12;
     }
     for (const line of extra) {
+      if (ly < BOTTOM_LIMIT) {
+        page = newPage();
+        y = drawTableHeader(A4.height - M - 30);
+        ly = y - 2;
+      }
       page.drawText(line, { x: cols.desc + 6, y: ly, size: 8.3, font, color: muted });
       ly -= 10;
     }
 
     const qtyLabel = `${trimNumber(item.quantity)}${item.unit ? ` ${item.unit}` : ""}`;
-    right(qtyLabel, cols.price - 12, y - 2, 9, font);
+    // Numbers stay on the same page as the last part of an oversized item.
+    const figuresY = page === rowPage ? numberY : Math.min(y - 2, Math.max(ly + 10, BOTTOM_LIMIT));
+    right(qtyLabel, cols.qty, figuresY, 9, font, ink, 48);
     right(
       money(item.unit_price, input.currency).replace(`${input.currency} `, ""),
-      cols.disc - 12,
-      y - 2,
+      cols.price,
+      figuresY,
       9,
       font,
+      ink,
+      62,
     );
     right(
       item.discount_amount ? trimNumber(item.discount_amount) : "-",
-      cols.tax - 8,
-      y - 2,
+      cols.disc,
+      figuresY,
       9,
       font,
+      ink,
+      42,
     );
-    right(item.tax_rate ? `${trimNumber(item.tax_rate)}%` : "-", cols.total - 78, y - 2, 9, font);
+    right(
+      item.tax_rate ? `${trimNumber(item.tax_rate)}%` : "-",
+      cols.tax,
+      figuresY,
+      9,
+      font,
+      ink,
+      32,
+    );
     right(
       money(item.line_total, input.currency).replace(`${input.currency} `, ""),
       cols.total - 6,
-      y - 2,
+      figuresY,
       9.5,
       bold,
+      ink,
+      62,
     );
 
-    y -= rowHeight;
+    y = ly - 12;
     page.drawLine({
       start: { x: M, y: y + 6 },
       end: { x: A4.width - M, y: y + 6 },
       thickness: 0.5,
       color: hairline,
     });
+    y -= 8;
   }
 
   // ---------- totals ----------
@@ -552,7 +625,7 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
   const totalsHeight = totals.length * 15 + 18;
   if (y - totalsHeight < BOTTOM_LIMIT) {
     page = newPage();
-    y = A4.height - M;
+    y = A4.height - M - 30;
   }
 
   const boxX = A4.width - M - 250;
@@ -588,11 +661,26 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
 
   // ---------- bank, terms, signature ----------
   y -= 12;
-  const blockTop = y;
-  let leftY = y;
+  function ensureSpace(height: number) {
+    if (y - height < BOTTOM_LIMIT) {
+      page = newPage();
+      y = A4.height - M - 30;
+    }
+  }
+  function detailBlock(title: string, lines: string[], size = 8.5) {
+    ensureSpace(38);
+    page.drawText(title, { x: M, y, size: 8, font: bold, color: accent });
+    y -= 15;
+    for (const value of lines) {
+      for (const line of wrap(value, font, size, contentWidth)) {
+        ensureSpace(13);
+        page.drawText(line, { x: M, y, size, font, color: muted });
+        y -= 12;
+      }
+    }
+    y -= 14;
+  }
   if (input.bank?.bank_name) {
-    page.drawText("PAYMENT DETAILS", { x: M, y: leftY, size: 8, font: bold, color: accent });
-    leftY -= 13;
     const bankLines = [
       input.bank.bank_name,
       input.bank.account_name ? `Account: ${input.bank.account_name}` : null,
@@ -601,33 +689,21 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       input.bank.swift ? `SWIFT: ${input.bank.swift}` : null,
       input.bank.branch ? `Branch: ${input.bank.branch}` : null,
     ].filter(Boolean) as string[];
-    for (const line of bankLines) {
-      page.drawText(safe(line), { x: M, y: leftY, size: 8.5, font, color: muted });
-      leftY -= 11;
-    }
+    detailBlock("PAYMENT DETAILS", bankLines);
   }
   if (input.notes) {
-    leftY -= 6;
-    page.drawText("NOTES", { x: M, y: leftY, size: 8, font: bold, color: accent });
-    leftY -= 12;
-    for (const line of wrap(input.notes, font, 8.5, contentWidth * 0.55)) {
-      page.drawText(line, { x: M, y: leftY, size: 8.5, font, color: muted });
-      leftY -= 11;
-    }
+    detailBlock("NOTES", [input.notes]);
   }
   if (input.terms) {
-    leftY -= 6;
-    page.drawText("TERMS & CONDITIONS", { x: M, y: leftY, size: 8, font: bold, color: accent });
-    leftY -= 12;
-    for (const line of wrap(input.terms, font, 8, contentWidth * 0.55)) {
-      page.drawText(line, { x: M, y: leftY, size: 8, font, color: muted });
-      leftY -= 10;
-    }
+    detailBlock("TERMS & CONDITIONS", [input.terms], 8);
   }
 
   // Signature block, right side.
-  let rightY = blockTop;
   if (input.company.signatory_name) {
+    const nameLines = wrap(input.company.signatory_name, bold, 9.5, 170);
+    const positionLines = wrap(input.company.signatory_position ?? "", font, 8.5, 170);
+    ensureSpace(65 + (nameLines.length + positionLines.length) * 12);
+    let rightY = y;
     page.drawText("AUTHORISED SIGNATORY", {
       x: A4.width - M - 170,
       y: rightY,
@@ -642,21 +718,19 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       thickness: 0.6,
       color: hairline,
     });
-    page.drawText(safe(input.company.signatory_name), {
-      x: A4.width - M - 170,
-      y: rightY - 4,
-      size: 9.5,
-      font: bold,
-      color: ink,
-    });
-    if (input.company.signatory_position) {
-      page.drawText(safe(input.company.signatory_position), {
+    for (const line of nameLines) {
+      page.drawText(line, {
         x: A4.width - M - 170,
-        y: rightY - 16,
-        size: 8.5,
-        font,
-        color: muted,
+        y: rightY - 4,
+        size: 9.5,
+        font: bold,
+        color: ink,
       });
+      rightY -= 12;
+    }
+    for (const line of positionLines) {
+      page.drawText(line, { x: A4.width - M - 170, y: rightY - 4, size: 8.5, font, color: muted });
+      rightY -= 12;
     }
   }
 
@@ -677,7 +751,9 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       input.verification_id ? `Verification ID: ${input.verification_id}` : "",
     ].filter(Boolean) as string[];
     let fy = M + 34;
-    for (const line of footerLines) {
+    for (const line of footerLines
+      .flatMap((line) => wrap(line, font, 7.5, contentWidth - 75))
+      .slice(0, 3)) {
       p.drawText(safe(line), { x: M, y: fy, size: 7.5, font, color: muted });
       fy -= 9.5;
     }
