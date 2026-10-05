@@ -10,6 +10,11 @@ import channelReportDialog from "./screens/channel-report-dialog";
 import chatbot from "./screens/chatbot";
 import commandPalette from "./screens/command-palette";
 import common from "./screens/common";
+import companiesEmails from "./screens/companies-emails";
+import companiesErrors from "./screens/companies-errors";
+import companiesIndex from "./screens/companies-index";
+import companiesOrgId from "./screens/companies-org-id";
+import companyMembers from "./screens/company-members";
 import connectBusiness from "./screens/connect-business";
 import connectionOutcome from "./screens/connection-outcome";
 import connectionWizard from "./screens/connection-wizard";
@@ -18,9 +23,12 @@ import contacts from "./screens/contacts";
 import content from "./screens/content";
 import credentialsStep from "./screens/credentials-step";
 import dashboard from "./screens/dashboard";
+import features from "./screens/features";
 import followUpCard from "./screens/follow-up-card";
 import healthReportDialog from "./screens/health-report-dialog";
+import home from "./screens/home";
 import inbox from "./screens/inbox";
+import inboxPreview from "./screens/inbox-preview";
 import incidentsCard from "./screens/incidents-card";
 import integrationLogs from "./screens/integration-logs";
 import integrationSettings from "./screens/integration-settings";
@@ -29,14 +37,20 @@ import integrationsV2 from "./screens/integrations-v2";
 import invoiceBrandingCard from "./screens/invoice-branding-card";
 import invoiceBuilder from "./screens/invoice-builder";
 import kpiTargetsCard from "./screens/kpi-targets-card";
+import manageSubscriptionDialog from "./screens/manage-subscription-dialog";
 import marketing from "./screens/marketing";
+import marketingShell from "./screens/marketing-shell";
 import monitoring from "./screens/monitoring";
 import nav from "./screens/nav";
 import onboardingModal from "./screens/onboarding-modal";
+import payToken from "./screens/pay-token";
 import paymentTestModeBanner from "./screens/payment-test-mode-banner";
 import platformAppsCard from "./screens/platform-apps-card";
+import pricing from "./screens/pricing";
 import quickCreate from "./screens/quick-create";
 import regionCard from "./screens/region-card";
+import resetPassword from "./screens/reset-password";
+import root from "./screens/root";
 import sales from "./screens/sales";
 import seoBlogIndex from "./screens/seo-blog-index";
 import seoBlogStudio from "./screens/seo-blog-studio";
@@ -46,7 +60,11 @@ import settingsIndex from "./screens/settings-index";
 import shell from "./screens/shell";
 import social from "./screens/social";
 import socialInbox from "./screens/social-inbox";
+import stickyCta from "./screens/sticky-cta";
+import verifyToken from "./screens/verify-token";
 import websiteKnowledgeCard from "./screens/website-knowledge-card";
+import whatsappBusinessApi from "./screens/whatsapp-business-api";
+import widgetDemo from "./screens/widget-demo";
 import wordPressSitesCard from "./screens/word-press-sites-card";
 
 const SCREENS = [
@@ -59,6 +77,11 @@ const SCREENS = [
   chatbot,
   commandPalette,
   common,
+  companiesEmails,
+  companiesErrors,
+  companiesIndex,
+  companiesOrgId,
+  companyMembers,
   connectBusiness,
   connectionOutcome,
   connectionWizard,
@@ -67,9 +90,12 @@ const SCREENS = [
   content,
   credentialsStep,
   dashboard,
+  features,
   followUpCard,
   healthReportDialog,
+  home,
   inbox,
+  inboxPreview,
   incidentsCard,
   integrationLogs,
   integrationSettings,
@@ -78,14 +104,20 @@ const SCREENS = [
   invoiceBrandingCard,
   invoiceBuilder,
   kpiTargetsCard,
+  manageSubscriptionDialog,
   marketing,
+  marketingShell,
   monitoring,
   nav,
   onboardingModal,
+  payToken,
   paymentTestModeBanner,
   platformAppsCard,
+  pricing,
   quickCreate,
   regionCard,
+  resetPassword,
+  root,
   sales,
   seoBlogIndex,
   seoBlogStudio,
@@ -95,7 +127,11 @@ const SCREENS = [
   shell,
   social,
   socialInbox,
+  stickyCta,
+  verifyToken,
   websiteKnowledgeCard,
+  whatsappBusinessApi,
+  widgetDemo,
   wordPressSitesCard,
 ] as const;
 

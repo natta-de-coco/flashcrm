@@ -33,6 +33,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { ChevronRight, RefreshCw, Search } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 // An index route: companies.tsx used to be the parent of the company page,
 // Errors and Subscribers, but never rendered an <Outlet />, so opening any of
@@ -72,6 +73,7 @@ const BUCKET_STYLES: Record<Bucket, string> = {
 
 /** Manager portal -- super_admin only: every company, its subscription and access. */
 function CompaniesPage() {
+  const i18n = useI18n();
   const { isSuperAdmin } = useAuth();
   const load = useServerFn(listSubscriptions);
   const fetchPresence = useServerFn(listCompanyPresence);
@@ -96,7 +98,7 @@ function CompaniesPage() {
     return (
       <main className="grid flex-1 place-items-center p-6">
         <p className="text-sm text-muted-foreground">
-          This area is only available to the Flas platform manager.
+          {i18n.t("companiesIndex.thisAreaIsOnlyAvailable")}
         </p>
       </main>
     );
@@ -150,10 +152,9 @@ function CompaniesPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Companies</h1>
+          <h1 className="text-xl font-bold tracking-tight">{i18n.t("companiesIndex.companies")}</h1>
           <p className="text-sm text-muted-foreground">
-            Every workspace on Flas. Use Manage to record a payment, change a plan or status, or
-            suspend a company. Open shows everything else about it.
+            {i18n.t("companiesIndex.everyWorkspaceOnFlasUse")}
           </p>
         </div>
         <Button
@@ -164,7 +165,7 @@ function CompaniesPage() {
           onClick={() => void companies.refetch()}
         >
           <RefreshCw className={`size-3.5 ${companies.isFetching ? "animate-spin" : ""}`} />
-          Refresh
+          {i18n.t("companiesIndex.refresh")}
         </Button>
       </div>
 
@@ -193,16 +194,20 @@ function CompaniesPage() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by company, country or Paddle customer ID"
-          aria-label="Search companies"
+          placeholder={i18n.t("companiesIndex.searchByCompanyCountryOr")}
+          aria-label={i18n.t("companiesIndex.searchCompanies")}
           className="ps-8"
         />
       </div>
 
-      {companies.isLoading && <p className="text-sm text-muted-foreground">Loading companies…</p>}
+      {companies.isLoading && (
+        <p className="text-sm text-muted-foreground">{i18n.t("companiesIndex.loadingCompanies")}</p>
+      )}
       {companies.error && (
         <p className="text-sm text-destructive">
-          {companies.error instanceof Error ? companies.error.message : "Could not load companies"}
+          {companies.error instanceof Error
+            ? companies.error.message
+            : i18n.t("companiesIndex.couldNotLoadCompanies")}
         </p>
       )}
 
@@ -213,14 +218,14 @@ function CompaniesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Company</TableHead>
-                    <TableHead>Plan</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Paid until</TableHead>
-                    <TableHead>Access</TableHead>
-                    <TableHead>Team</TableHead>
-                    <TableHead>Activity</TableHead>
-                    <TableHead className="text-end">Actions</TableHead>
+                    <TableHead>{i18n.t("companiesIndex.company")}</TableHead>
+                    <TableHead>{i18n.t("companiesIndex.plan")}</TableHead>
+                    <TableHead>{i18n.t("companiesIndex.status")}</TableHead>
+                    <TableHead>{i18n.t("companiesIndex.paidUntil")}</TableHead>
+                    <TableHead>{i18n.t("companiesIndex.access")}</TableHead>
+                    <TableHead>{i18n.t("companiesIndex.team")}</TableHead>
+                    <TableHead>{i18n.t("companiesIndex.activity")}</TableHead>
+                    <TableHead className="text-end">{i18n.t("companiesIndex.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -231,8 +236,8 @@ function CompaniesPage() {
                         className="py-8 text-center text-sm text-muted-foreground"
                       >
                         {rows.length === 0
-                          ? "No companies yet."
-                          : "No companies match this filter or search."}
+                          ? i18n.t("companiesIndex.noCompaniesYet")
+                          : i18n.t("companiesIndex.noCompaniesMatchThisFilter")}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -271,29 +276,38 @@ function CompaniesPage() {
                           </TableCell>
                           <TableCell className="text-xs">
                             {access.allowed ? (
-                              <span className="text-emerald-700">Has access</span>
+                              <span className="text-emerald-700">
+                                {i18n.t("companiesIndex.hasAccess")}
+                              </span>
                             ) : (
                               <span className="font-medium text-destructive" title={access.reason}>
-                                No access
+                                {i18n.t("companiesIndex.noAccess")}
                               </span>
                             )}
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-xs">
-                            {c.staff} {c.staff === 1 ? "person" : "people"}
+                            {c.staff}{" "}
+                            {c.staff === 1
+                              ? i18n.t("companiesIndex.person")
+                              : i18n.t("companiesIndex.people")}
                             {c.members_suspended > 0 && (
                               <span className="text-destructive">
                                 {" "}
-                                · {c.members_suspended} suspended
+                                {i18n.tr("companiesIndex.suspended", {
+                                  memberssuspended: c.members_suspended,
+                                })}
                               </span>
                             )}
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                             {online > 0 ? (
-                              <span className="text-emerald-700">{online} online now</span>
+                              <span className="text-emerald-700">
+                                {i18n.tr("companiesIndex.onlineNow", { online: online })}
+                              </span>
                             ) : c.last_active ? (
                               formatMomentUnambiguous(c.last_active)
                             ) : (
-                              "never"
+                              i18n.t("companiesIndex.never")
                             )}
                           </TableCell>
                           <TableCell className="text-end">
@@ -303,9 +317,10 @@ function CompaniesPage() {
                                 <Link
                                   to="/companies/$orgId"
                                   params={{ orgId: c.id }}
-                                  aria-label={`Open ${c.name}`}
+                                  aria-label={i18n.t("companiesIndex.open", { name: c.name })}
                                 >
-                                  Open <ChevronRight className="size-3.5" />
+                                  {i18n.t("companiesIndex.open2")}{" "}
+                                  <ChevronRight className="size-3.5" />
                                 </Link>
                               </Button>
                             </div>
@@ -328,6 +343,7 @@ function CompaniesPage() {
 
 /** WhatsApp health alert defaults per plan -- rarely changed, so kept folded away. */
 function PlanThresholds() {
+  const i18n = useI18n();
   const savePlanThresholds = useServerFn(updatePlanThresholds);
   const thresholds = useQuery({
     queryKey: ["plan_thresholds"],
@@ -343,18 +359,18 @@ function PlanThresholds() {
   const thresholdMutation = useMutation({
     mutationFn: (input: { plan: string; deliverabilityMin: number; readRateMin: number }) =>
       savePlanThresholds({ data: input }),
-    onSuccess: () => toast.success("Plan thresholds saved"),
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Save failed"),
+    onSuccess: () => toast.success(i18n.t("companiesIndex.planThresholdsSaved")),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : i18n.t("companiesIndex.saveFailed")),
   });
 
   return (
     <details className="mt-8 rounded-lg border p-4">
       <summary className="cursor-pointer text-sm font-semibold">
-        WhatsApp health alert thresholds per plan
+        {i18n.t("companiesIndex.whatsappHealthAlertThresholdsPer")}
       </summary>
       <p className="mt-2 text-xs text-muted-foreground">
-        Default deliverability and read-rate alert thresholds per subscription plan. Companies can
-        override these per connected number in their own Settings.
+        {i18n.t("companiesIndex.defaultDeliverabilityAndReadRate")}
       </p>
       <div className="mt-3 space-y-2">
         {(thresholds.data ?? []).map((t) => (
@@ -364,7 +380,7 @@ function PlanThresholds() {
           >
             <span className="w-24 font-semibold capitalize">{t.plan}</span>
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              Deliverability
+              {i18n.t("companiesIndex.deliverability")}
               <Input
                 type="number"
                 min={0}
@@ -385,7 +401,7 @@ function PlanThresholds() {
               %
             </label>
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              Read rate
+              {i18n.t("companiesIndex.readRate")}
               <Input
                 type="number"
                 min={0}

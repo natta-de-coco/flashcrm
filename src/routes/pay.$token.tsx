@@ -12,6 +12,14 @@ import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, Download, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import type { MessageKey } from "@/lib/i18n";
+
+/** One line in the reader's language, for the states the route shows without the page. */
+function Notice({ message }: { message: MessageKey }) {
+  const { t } = useI18n();
+  return <p className="text-sm text-muted-foreground">{t(message)}</p>;
+}
 
 export const Route = createFileRoute("/pay/$token")({
   loader: ({ params }) => getPublicDocument({ data: { token: params.token } }),
@@ -35,29 +43,29 @@ export const Route = createFileRoute("/pay/$token")({
   }),
   errorComponent: () => (
     <Shell>
-      <p className="text-sm text-muted-foreground">
-        We could not load this document. Please ask the sender for a fresh link.
-      </p>
+      <Notice message="payToken.couldNotLoad" />
     </Shell>
   ),
   notFoundComponent: () => (
     <Shell>
-      <p className="text-sm text-muted-foreground">This link is no longer valid.</p>
+      <Notice message="payToken.linkNoLongerValid" />
     </Shell>
   ),
   component: PayPage,
 });
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="mb-6 text-2xl font-bold">Flas · Mobi Digital Solutions</h1>
+      <h1 className="mb-6 text-2xl font-bold">{"Flas · Mobi Digital Solutions"}</h1>
       {children}
     </main>
   );
 }
 
 function PayPage() {
+  const { t, tr } = useI18n();
   const doc = Route.useLoaderData();
   const { token } = Route.useParams();
   const claim = useServerFn(claimDocumentPayment);
@@ -66,16 +74,14 @@ function PayPage() {
   const tellSeller = useMutation({
     mutationFn: () =>
       claim({ data: { token, ...(reference.trim() ? { reference: reference.trim() } : {}) } }),
-    onSuccess: () => toast.success("Thanks — the sender has been notified."),
-    onError: () => toast.error("Could not notify the sender. Please contact them directly."),
+    onSuccess: () => toast.success(t("payToken.thanksTheSenderHasBeen")),
+    onError: () => toast.error(t("payToken.couldNotNotifyTheSender")),
   });
 
   if (!doc) {
     return (
       <Shell>
-        <p className="text-sm text-muted-foreground">
-          This document is not available. It may have been withdrawn.
-        </p>
+        <p className="text-sm text-muted-foreground">{t("payToken.thisDocumentIsNotAvailable")}</p>
       </Shell>
     );
   }
@@ -95,9 +101,14 @@ function PayPage() {
                 {label} {doc.doc_number}
               </CardTitle>
               <CardDescription>
-                {issuer ? `From ${issuer} · ` : ""}Issued {doc.issue_date}
-                {doc.due_date ? ` · Due ${doc.due_date}` : ""}
-                {doc.valid_until ? ` · Valid until ${doc.valid_until}` : ""}
+                {tr("payToken.issued", {
+                  value: issuer ? t("payToken.from", { issuer: issuer }) : "",
+                  issuedate: doc.issue_date,
+                  value2: doc.due_date ? t("payToken.due", { duedate: doc.due_date }) : "",
+                  value3: doc.valid_until
+                    ? t("payToken.validUntil", { validuntil: doc.valid_until })
+                    : "",
+                })}
               </CardDescription>
             </div>
             <Badge variant="secondary" className="capitalize">
@@ -110,10 +121,10 @@ function PayPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-start text-muted-foreground">
-                  <th className="py-2">Item</th>
-                  <th className="py-2 text-end">Qty</th>
-                  <th className="py-2 text-end">Price</th>
-                  <th className="py-2 text-end">Total</th>
+                  <th className="py-2">{t("payToken.item")}</th>
+                  <th className="py-2 text-end">{t("payToken.qty")}</th>
+                  <th className="py-2 text-end">{t("payToken.price")}</th>
+                  <th className="py-2 text-end">{t("payToken.total")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -136,24 +147,24 @@ function PayPage() {
 
           <div className="rounded-lg bg-muted/50 p-4 text-sm">
             <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Total</span>
+              <span className="text-muted-foreground">{t("payToken.total")}</span>
               <span className="font-semibold">{money(doc.grand_total)}</span>
             </div>
             {doc.paid_amount > 0 ? (
               <div className="flex justify-between py-1">
-                <span className="text-muted-foreground">Paid</span>
+                <span className="text-muted-foreground">{t("payToken.paid")}</span>
                 <span>{money(doc.paid_amount)}</span>
               </div>
             ) : null}
             <div className="flex justify-between border-t pt-2 text-base font-bold">
-              <span>{doc.balance <= 0 ? "Settled" : "Amount due"}</span>
+              <span>{doc.balance <= 0 ? t("payToken.settled") : t("payToken.amountDue")}</span>
               <span>{money(Math.max(0, doc.balance))}</span>
             </div>
           </div>
 
           {doc.bank ? (
             <div className="rounded-lg border p-4 text-sm">
-              <p className="mb-2 font-semibold">Bank transfer details</p>
+              <p className="mb-2 font-semibold">{t("payToken.bankTransferDetails")}</p>
               <ul className="space-y-1 text-muted-foreground">
                 {Object.entries(doc.bank)
                   .filter(([, value]) => value)
@@ -174,31 +185,31 @@ function PayPage() {
           <div className="flex flex-wrap gap-2">
             <Button asChild>
               <a href={`/api/public/documents/${token}`} target="_blank" rel="noreferrer">
-                <Download className="me-1 h-4 w-4" /> Download PDF
+                <Download className="me-1 h-4 w-4" /> {t("payToken.downloadPdf")}
               </a>
             </Button>
             {doc.online_payment_url && doc.balance > 0 ? (
               <Button asChild variant="outline">
                 <a href={doc.online_payment_url} target="_blank" rel="noreferrer">
-                  Pay online
+                  {t("payToken.payOnline")}
                 </a>
               </Button>
             ) : null}
             {doc.verification_id ? (
               <span className="inline-flex items-center gap-1 self-center text-xs text-muted-foreground">
-                <ShieldCheck className="h-4 w-4" /> Verification ID {doc.verification_id} — scan the
-                QR code on the PDF to confirm authenticity.
+                <ShieldCheck className="h-4 w-4" />{" "}
+                {tr("payToken.verificationIdScanTheQr", { verificationid: doc.verification_id })}
               </span>
             ) : null}
           </div>
 
           {doc.balance > 0 ? (
             <div className="rounded-lg border border-dashed p-4">
-              <p className="mb-2 text-sm font-semibold">Already paid by transfer or cash?</p>
+              <p className="mb-2 text-sm font-semibold">{t("payToken.alreadyPaidByTransferOr")}</p>
               <div className="flex flex-wrap gap-2">
                 <Input
                   className="max-w-xs"
-                  placeholder="Payment reference (optional)"
+                  placeholder={t("payToken.paymentReferenceOptional")}
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                 />
@@ -207,13 +218,13 @@ function PayPage() {
                   disabled={tellSeller.isPending}
                   onClick={() => tellSeller.mutate()}
                 >
-                  <CheckCircle2 className="me-1 h-4 w-4" /> I have paid
+                  <CheckCircle2 className="me-1 h-4 w-4" /> {t("payToken.iHavePaid")}
                 </Button>
               </div>
             </div>
           ) : (
             <p className="flex items-center gap-2 text-sm font-medium text-emerald-600">
-              <CheckCircle2 className="h-4 w-4" /> Payment received — thank you.
+              <CheckCircle2 className="h-4 w-4" /> {t("payToken.paymentReceivedThankYou")}
             </p>
           )}
         </CardContent>

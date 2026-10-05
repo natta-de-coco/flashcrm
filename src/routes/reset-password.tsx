@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/reset-password")({
 });
 
 function ResetPasswordPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -59,11 +61,11 @@ function ResetPasswordPage() {
   async function updatePassword(event: React.FormEvent) {
     event.preventDefault();
     if (password.length < 8) {
-      toast.error("Use at least 8 characters for your new password.");
+      toast.error(t("resetPassword.useAtLeast8Characters"));
       return;
     }
     if (password !== confirmPassword) {
-      toast.error("The passwords do not match.");
+      toast.error(t("resetPassword.thePasswordsDoNotMatch"));
       return;
     }
 
@@ -75,7 +77,7 @@ function ResetPasswordPage() {
       return;
     }
 
-    toast.success("Password updated. You can now sign in.");
+    toast.success(t("resetPassword.passwordUpdatedYouCanNow"));
     await supabase.auth.signOut();
     navigate({ to: "/auth", replace: true });
   }
@@ -86,19 +88,21 @@ function ResetPasswordPage() {
         <div className="flex flex-col items-center gap-3 text-center">
           <FlashLogoBadge className="size-12" />
           <div>
-            <h1 className="text-2xl font-bold">Set a new password</h1>
+            <h1 className="text-2xl font-bold">{t("resetPassword.setANewPassword")}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Choose a strong password for your Flas CRM account.
+              {t("resetPassword.chooseAStrongPasswordFor")}
             </p>
           </div>
         </div>
 
         {checking ? (
-          <p className="text-center text-sm text-muted-foreground">Checking your recovery link…</p>
+          <p className="text-center text-sm text-muted-foreground">
+            {t("resetPassword.checkingYourRecoveryLink")}
+          </p>
         ) : recoveryReady ? (
           <form onSubmit={updatePassword} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="new-password">New password</Label>
+              <Label htmlFor="new-password">{t("resetPassword.newPassword")}</Label>
               <Input
                 id="new-password"
                 type="password"
@@ -110,7 +114,7 @@ function ResetPasswordPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirm new password</Label>
+              <Label htmlFor="confirm-password">{t("resetPassword.confirmNewPassword")}</Label>
               <Input
                 id="confirm-password"
                 type="password"
@@ -122,16 +126,16 @@ function ResetPasswordPage() {
               />
             </div>
             <Button type="submit" className="w-full" disabled={busy}>
-              {busy ? "Updating password…" : "Update password"}
+              {busy ? t("resetPassword.updatingPassword") : t("resetPassword.updatePassword")}
             </Button>
           </form>
         ) : (
           <div className="space-y-4 text-center">
             <p className="text-sm text-destructive">
-              This recovery link is invalid or expired. Request a new one from the sign-in page.
+              {t("resetPassword.thisRecoveryLinkIsInvalid")}
             </p>
             <Button type="button" className="w-full" onClick={() => navigate({ to: "/auth" })}>
-              Return to sign in
+              {t("resetPassword.returnToSignIn")}
             </Button>
           </div>
         )}

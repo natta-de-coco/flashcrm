@@ -54,6 +54,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { CalendarPlus, CreditCard, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export type ManagedCompany = CompanySubscription & { id: string; name: string };
 
@@ -88,6 +89,7 @@ export function ManageSubscriptionDialog({
   company: ManagedCompany;
   trigger?: ReactNode;
 }) {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const save = useServerFn(updateCompanyStatus);
   const loadHistory = useServerFn(getSubscriptionHistory);
@@ -125,7 +127,8 @@ export function ManageSubscriptionDialog({
       setNote("");
       setOpen(false);
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save"),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : t("manageSubscriptionDialog.couldNotSave")),
   });
 
   const suspendMutation = useMutation({
@@ -133,12 +136,17 @@ export function ManageSubscriptionDialog({
       save({ data: { organizationId: company.id, suspended, ...noteField } }),
     onSuccess: (_res, suspended) => {
       toast.success(
-        suspended ? `${company.name} is suspended` : `${company.name} can use Flas again`,
+        suspended
+          ? t("manageSubscriptionDialog.isSuspended", { name: company.name })
+          : t("manageSubscriptionDialog.canUseFlasAgain", { name: company.name }),
       );
       refresh();
       setNote("");
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update access"),
+    onError: (e) =>
+      toast.error(
+        e instanceof Error ? e.message : t("manageSubscriptionDialog.couldNotUpdateAccess"),
+      ),
   });
 
   const onOpenChange = (next: boolean) => {
@@ -157,15 +165,20 @@ export function ManageSubscriptionDialog({
       <DialogTrigger asChild>
         {trigger ?? (
           <Button size="sm" variant="outline" className="gap-1">
-            <CreditCard className="size-3.5" /> Manage
+            <CreditCard className="size-3.5" /> {t("manageSubscriptionDialog.manage")}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Subscription — {company.name}</DialogTitle>
+          <DialogTitle>
+            {tr("manageSubscriptionDialog.subscription", { name: company.name })}
+          </DialogTitle>
           <DialogDescription>
-            {statusLabel(company.subscription_status)} · paid until {paidUntilText(company, now)}
+            {tr("manageSubscriptionDialog.paidUntil", {
+              statusLabel: statusLabel(company.subscription_status),
+              paidUntilText: paidUntilText(company, now),
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -175,26 +188,34 @@ export function ManageSubscriptionDialog({
           }`}
         >
           <p className="font-medium">
-            {access.allowed ? "They can use Flas." : "They cannot use Flas right now."}
+            {access.allowed
+              ? t("manageSubscriptionDialog.theyCanUseFlas")
+              : t("manageSubscriptionDialog.theyCannotUseFlasRight")}
           </p>
           <p className="text-muted-foreground">{access.reason}</p>
           <p className="mt-1 text-muted-foreground">
-            {paddle ? "Pays by card through Paddle." : "Pays manually (cash or bank transfer)."}
+            {paddle
+              ? t("manageSubscriptionDialog.paysByCardThroughPaddle")
+              : t("manageSubscriptionDialog.paysManuallyCashOrBank")}
           </p>
         </div>
 
         {paddle && (
           <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
-            Paddle sets this company&apos;s status and paid-until date after each payment or
-            cancellation, replacing changes made here. Use this form for corrections.
+            {t("manageSubscriptionDialog.paddleSetsThisCompanyS")}
           </p>
         )}
 
         <section className="space-y-2">
-          <h3 className="text-sm font-semibold">Record a payment</h3>
+          <h3 className="text-sm font-semibold">{t("manageSubscriptionDialog.recordAPayment")}</h3>
           <p className="text-xs text-muted-foreground">
-            Sets the status to Paid and counts from {formatDay(base)}
-            {base === today ? " (today)" : " (their current paid-until date)"}.
+            {tr("manageSubscriptionDialog.setsTheStatusToPaid", {
+              formatDay: formatDay(base),
+              value:
+                base === today
+                  ? t("manageSubscriptionDialog.today")
+                  : t("manageSubscriptionDialog.theirCurrentPaidUntilDate"),
+            })}
           </p>
           <div className="flex flex-wrap gap-2">
             {PAYMENT_PERIODS.map((p) => (
@@ -215,10 +236,10 @@ export function ManageSubscriptionDialog({
 
         <section className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1">
-            <Label htmlFor={`plan-${company.id}`}>Plan</Label>
+            <Label htmlFor={`plan-${company.id}`}>{t("manageSubscriptionDialog.plan")}</Label>
             <Select value={draft.plan} onValueChange={(plan) => setDraft((d) => ({ ...d, plan }))}>
               <SelectTrigger id={`plan-${company.id}`}>
-                <SelectValue placeholder="Choose a plan" />
+                <SelectValue placeholder={t("manageSubscriptionDialog.chooseAPlan")} />
               </SelectTrigger>
               <SelectContent>
                 {planOptions(company.plan).map((o) => (
@@ -230,7 +251,7 @@ export function ManageSubscriptionDialog({
             </Select>
           </div>
           <div className="space-y-1">
-            <Label htmlFor={`status-${company.id}`}>Status</Label>
+            <Label htmlFor={`status-${company.id}`}>{t("manageSubscriptionDialog.status")}</Label>
             <Select
               value={draft.status}
               onValueChange={(v) => setDraft((d) => ({ ...d, status: v as SubscriptionStatus }))}
@@ -248,7 +269,7 @@ export function ManageSubscriptionDialog({
             </Select>
           </div>
           <div className="space-y-1">
-            <Label htmlFor={`paid-${company.id}`}>Paid until</Label>
+            <Label htmlFor={`paid-${company.id}`}>{t("manageSubscriptionDialog.paidUntil2")}</Label>
             <Input
               id={`paid-${company.id}`}
               type="date"
@@ -264,22 +285,24 @@ export function ManageSubscriptionDialog({
         )}
 
         <div className="space-y-1">
-          <Label htmlFor={`note-${company.id}`}>Note for the history (optional)</Label>
+          <Label htmlFor={`note-${company.id}`}>
+            {t("manageSubscriptionDialog.noteForTheHistoryOptional")}
+          </Label>
           <Input
             id={`note-${company.id}`}
             value={note}
             maxLength={280}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="e.g. Cash AED 240 received for one year"
+            placeholder={t("manageSubscriptionDialog.eGCashAed240")}
           />
         </div>
 
         <div className="rounded-lg border bg-muted/40 p-3 text-xs">
           {changes.length === 0 ? (
-            <p className="text-muted-foreground">No changes yet.</p>
+            <p className="text-muted-foreground">{t("manageSubscriptionDialog.noChangesYet")}</p>
           ) : (
             <>
-              <p className="mb-1 font-medium">Saving will change:</p>
+              <p className="mb-1 font-medium">{t("manageSubscriptionDialog.savingWillChange")}</p>
               <ul className="list-disc space-y-0.5 ps-4">
                 {changes.map((c) => (
                   <li
@@ -299,7 +322,7 @@ export function ManageSubscriptionDialog({
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-            Close
+            {t("manageSubscriptionDialog.close")}
           </Button>
           <Button
             type="button"
@@ -313,16 +336,16 @@ export function ManageSubscriptionDialog({
             }
           >
             {saveMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
-            Save changes
+            {t("manageSubscriptionDialog.saveChanges")}
           </Button>
         </div>
 
         <section className="space-y-2 border-t pt-4">
-          <h3 className="text-sm font-semibold">Suspend</h3>
+          <h3 className="text-sm font-semibold">{t("manageSubscriptionDialog.suspend")}</h3>
           <p className="text-xs text-muted-foreground">
             {company.suspended
-              ? "This company is suspended: nobody at it can use Flas."
-              : "Suspending cuts off everyone at this company at once, whatever they have paid. Their data is kept."}
+              ? t("manageSubscriptionDialog.thisCompanyIsSuspendedNobody")
+              : t("manageSubscriptionDialog.suspendingCutsOffEveryoneAt")}
           </p>
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -334,11 +357,13 @@ export function ManageSubscriptionDialog({
               >
                 {company.suspended ? (
                   <>
-                    <ShieldCheck className="size-3.5" /> Lift suspension
+                    <ShieldCheck className="size-3.5" />{" "}
+                    {t("manageSubscriptionDialog.liftSuspension")}
                   </>
                 ) : (
                   <>
-                    <ShieldOff className="size-3.5" /> Suspend company
+                    <ShieldOff className="size-3.5" />{" "}
+                    {t("manageSubscriptionDialog.suspendCompany")}
                   </>
                 )}
               </Button>
@@ -347,19 +372,21 @@ export function ManageSubscriptionDialog({
               <AlertDialogHeader>
                 <AlertDialogTitle>
                   {company.suspended
-                    ? `Give ${company.name} access again?`
-                    : `Suspend ${company.name}?`}
+                    ? t("manageSubscriptionDialog.giveAccessAgain", { name: company.name })
+                    : t("manageSubscriptionDialog.suspend2", { name: company.name })}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
                   {company.suspended
-                    ? "Everyone at this company can use Flas again, unless their paid-until date has passed and their status is Payment issue or Canceled."
-                    : "Everyone at this company loses access immediately. Nothing is deleted, and you can lift the suspension at any time."}
+                    ? t("manageSubscriptionDialog.everyoneAtThisCompanyCan")
+                    : t("manageSubscriptionDialog.everyoneAtThisCompanyLoses")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("manageSubscriptionDialog.cancel")}</AlertDialogCancel>
                 <AlertDialogAction onClick={() => suspendMutation.mutate(!company.suspended)}>
-                  {company.suspended ? "Lift suspension" : "Suspend"}
+                  {company.suspended
+                    ? t("manageSubscriptionDialog.liftSuspension")
+                    : t("manageSubscriptionDialog.suspend")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -367,15 +394,21 @@ export function ManageSubscriptionDialog({
         </section>
 
         <section className="space-y-2 border-t pt-4">
-          <h3 className="text-sm font-semibold">History</h3>
-          {history.isLoading && <p className="text-xs text-muted-foreground">Loading…</p>}
+          <h3 className="text-sm font-semibold">{t("manageSubscriptionDialog.history")}</h3>
+          {history.isLoading && (
+            <p className="text-xs text-muted-foreground">{t("manageSubscriptionDialog.loading")}</p>
+          )}
           {history.error && (
             <p className="text-xs text-destructive">
-              {history.error instanceof Error ? history.error.message : "Could not load history"}
+              {history.error instanceof Error
+                ? history.error.message
+                : t("manageSubscriptionDialog.couldNotLoadHistory")}
             </p>
           )}
           {history.data?.length === 0 && (
-            <p className="text-xs text-muted-foreground">No subscription changes recorded yet.</p>
+            <p className="text-xs text-muted-foreground">
+              {t("manageSubscriptionDialog.noSubscriptionChangesRecordedYet")}
+            </p>
           )}
           <ul className="space-y-2">
             {history.data?.map((h) => (

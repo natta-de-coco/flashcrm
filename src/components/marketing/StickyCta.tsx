@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * A conversion bar that appears once the reader has passed the hero.
@@ -15,6 +16,7 @@ import { useEffect, useState } from "react";
  * where a fixed bottom bar competes with the chat widget for the same corner.
  */
 export function StickyCta() {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -42,20 +44,17 @@ export function StickyCta() {
     <div className="flas-slide-up fixed inset-x-0 bottom-0 z-30 hidden justify-center px-4 pb-4 md:flex">
       <div className="flex max-w-3xl items-center gap-4 rounded-2xl border border-white/40 bg-card/85 px-5 py-3 shadow-2xl backdrop-blur-xl dark:border-white/10">
         <p className="text-sm">
-          <span className="font-semibold">One month free</span>
-          <span className="text-muted-foreground">
-            {" "}
-            · then $20/month for six months, instead of $30
-          </span>
+          <span className="font-semibold">{t("stickyCta.oneMonthFree")}</span>
+          <span className="text-muted-foreground"> {t("stickyCta.then20MonthForSix")}</span>
         </p>
         <Button asChild size="sm" className="shrink-0">
           <Link to="/auth">
-            Start free <ArrowRight className="size-3.5" />
+            {t("stickyCta.startFree")} <ArrowRight className="size-3.5" />
           </Link>
         </Button>
         <button
           type="button"
-          aria-label="Dismiss this offer"
+          aria-label={t("stickyCta.dismissThisOffer")}
           className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           onClick={() => {
             setDismissed(true);

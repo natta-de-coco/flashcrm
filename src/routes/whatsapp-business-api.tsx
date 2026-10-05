@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
 
 const SITE = "https://flas.mobidigisol.com";
 const TITLE = "WhatsApp Business API setup, approval & shared inbox | Flas CRM";
@@ -144,6 +145,7 @@ export const Route = createFileRoute("/whatsapp-business-api")({
 });
 
 function WhatsAppApiPage() {
+  const i18n = useI18n();
   useReveal();
 
   return (
@@ -161,23 +163,21 @@ function WhatsAppApiPage() {
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-[1.05fr_0.95fr]">
             <div>
               <p data-reveal className="text-xs font-semibold uppercase tracking-widest text-brand">
-                WhatsApp Business Platform
+                {i18n.t("whatsappBusinessApi.whatsappBusinessPlatform")}
               </p>
               <h1
                 data-reveal
                 style={{ ["--reveal-delay" as string]: "50ms" }}
                 className="mt-3 text-4xl font-bold tracking-tight sm:text-5xl"
               >
-                Your WhatsApp number, approved — and an inbox behind it
+                {i18n.t("whatsappBusinessApi.yourWhatsappNumberApprovedAnd")}
               </h1>
               <p
                 data-reveal
                 style={{ ["--reveal-delay" as string]: "100ms" }}
                 className="mt-5 text-base text-muted-foreground sm:text-lg"
               >
-                The API is credentials, not software. We handle Meta business verification, number
-                registration, display name review and your first templates — then connect it to a
-                shared inbox your whole team can answer from.
+                {i18n.t("whatsappBusinessApi.theApiIsCredentialsNot")}
               </p>
               <div
                 data-reveal
@@ -186,11 +186,12 @@ function WhatsAppApiPage() {
               >
                 <Button asChild size="lg" className="flas-sheen relative overflow-hidden">
                   <Link to="/" hash="quote">
-                    Get a setup quotation <ArrowRight className="size-4" />
+                    {i18n.t("whatsappBusinessApi.getASetupQuotation")}{" "}
+                    <ArrowRight className="size-4" />
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
-                  <Link to="/auth">Start the CRM free</Link>
+                  <Link to="/auth">{i18n.t("whatsappBusinessApi.startTheCrmFree")}</Link>
                 </Button>
               </div>
               <ul
@@ -220,15 +221,14 @@ function WhatsAppApiPage() {
         <section className="border-y bg-muted/30 py-20">
           <div className="mx-auto max-w-6xl px-6">
             <h2 data-reveal className="text-center text-3xl font-bold">
-              What getting approved actually involves
+              {i18n.t("whatsappBusinessApi.whatGettingApprovedActuallyInvolves")}
             </h2>
             <p
               data-reveal
               style={{ ["--reveal-delay" as string]: "50ms" }}
               className="mx-auto mt-3 max-w-2xl text-center text-sm text-muted-foreground"
             >
-              Applications rarely fail on merit. They fail on avoidable mismatches — which is
-              exactly what this stage is for.
+              {i18n.t("whatsappBusinessApi.applicationsRarelyFailOnMerit")}
             </p>
 
             <div className="mt-12 grid gap-4 sm:grid-cols-2">
@@ -249,22 +249,24 @@ function WhatsAppApiPage() {
             </div>
 
             <p data-reveal className="mt-10 text-center text-sm text-muted-foreground">
-              Prefer to do it yourself? Our{" "}
-              <Link
-                to="/blog/$slug"
-                params={{ slug: "whatsapp-business-api-approval-checklist" }}
-                className="font-medium text-brand underline underline-offset-2"
-              >
-                full approval checklist
-              </Link>{" "}
-              is free and holds nothing back.
+              {i18n.tr("whatsappBusinessApi.preferToDoItYourself", {
+                link: (
+                  <Link
+                    to="/blog/$slug"
+                    params={{ slug: "whatsapp-business-api-approval-checklist" }}
+                    className="font-medium text-brand underline underline-offset-2"
+                  >
+                    {i18n.t("whatsappBusinessApi.fullApprovalChecklist")}
+                  </Link>
+                ),
+              })}
             </p>
           </div>
         </section>
 
         <section className="mx-auto max-w-3xl px-6 py-20">
           <h2 data-reveal className="text-center text-3xl font-bold">
-            WhatsApp Business API questions
+            {i18n.t("whatsappBusinessApi.whatsappBusinessApiQuestions")}
           </h2>
           <div className="mt-10 grid gap-3">
             {FAQS.map((f, i) => (
@@ -287,19 +289,20 @@ function WhatsAppApiPage() {
           </div>
 
           <div data-reveal className="mt-12 rounded-3xl border bg-muted/40 px-8 py-10 text-center">
-            <h2 className="text-2xl font-bold">Tell us your situation</h2>
+            <h2 className="text-2xl font-bold">
+              {i18n.t("whatsappBusinessApi.tellUsYourSituation")}
+            </h2>
             <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
-              How many numbers, how many agents, and whether you are migrating an existing number.
-              We will tell you honestly whether you need the API yet.
+              {i18n.t("whatsappBusinessApi.howManyNumbersHowMany")}
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <Button asChild size="lg">
                 <Link to="/" hash="quote">
-                  Request a quotation
+                  {i18n.t("whatsappBusinessApi.requestAQuotation")}
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline">
-                <Link to="/pricing">See CRM pricing</Link>
+                <Link to="/pricing">{i18n.t("whatsappBusinessApi.seeCrmPricing")}</Link>
               </Button>
             </div>
           </div>
