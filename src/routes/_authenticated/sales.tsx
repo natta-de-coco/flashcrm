@@ -173,13 +173,21 @@ function SalesPage() {
 
   const startNew = (kind: "quotation" | "invoice") => {
     const settings = data?.settings as
-      | { default_currency?: string; default_tax_rate?: number; default_terms?: string | null }
+      | {
+          default_currency?: string;
+          default_tax_rate?: number;
+          default_terms?: string | null;
+          default_notes?: string | null;
+          default_payment_terms?: string | null;
+        }
       | undefined;
     const next = emptyDocument(
       settings?.default_currency ?? "AED",
       Number(settings?.default_tax_rate ?? 0),
       settings?.default_terms ?? "",
       tenant?.timezone ?? null,
+      settings?.default_notes ?? "",
+      settings?.default_payment_terms ?? "",
     );
     next.kind = kind;
     setBuilder(next);

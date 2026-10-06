@@ -76,7 +76,10 @@ export const getSalesWorkspace = createServerFn({ method: "GET" })
         .order("created_at", { ascending: false })
         .limit(500),
       supabase.from("products").select("id, title, sku, price, description").limit(300),
-      supabase.from("bank_accounts").select("id, bank_name, account_name, is_default").limit(20),
+      supabase
+        .from("bank_accounts")
+        .select("id, bank_name, account_name, account_number, iban, swift, is_default")
+        .limit(20),
     ]);
     if (docs.error) throw docs.error;
 
@@ -426,16 +429,25 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     z
       .object({
         legal_name: z.string().trim().max(200).nullable().optional(),
+        trade_name: z.string().trim().max(200).nullable().optional(),
         address: z.string().trim().max(500).nullable().optional(),
+        country: z.string().trim().max(100).nullable().optional(),
         phone: z.string().trim().max(60).nullable().optional(),
         email: z.string().trim().max(200).nullable().optional(),
         website: z.string().trim().max(200).nullable().optional(),
         vat_number: z.string().trim().max(80).nullable().optional(),
+        registration_number: z.string().trim().max(80).nullable().optional(),
         default_currency: z.string().trim().min(2).max(6).optional(),
         default_tax_rate: z.number().min(0).max(100).optional(),
+        tax_label: z.string().trim().max(40).optional(),
+        tax_inclusive: z.boolean().optional(),
         default_payment_terms: z.string().trim().max(300).nullable().optional(),
         default_terms: z.string().trim().max(6000).nullable().optional(),
+        default_notes: z.string().trim().max(4000).nullable().optional(),
         online_payment_url: z.string().trim().max(500).nullable().optional(),
+        signatory_name: z.string().trim().max(200).nullable().optional(),
+        signatory_position: z.string().trim().max(200).nullable().optional(),
+        show_qr_verification: z.boolean().optional(),
         // Logos are fetched by the PDF renderer. Restrict this new setting to
         // public HTTPS URLs before it is persisted, rather than relying only
         // on the renderer's network-side guard.
@@ -447,6 +459,16 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
             message: "Use a secure https:// logo URL.",
           })
           .transform((value) => value || null)
+          .nullable()
+          .optional(),
+        bank_account: z
+          .object({
+            bank_name: z.string().trim().max(200),
+            account_name: z.string().trim().max(200).nullable().optional(),
+            account_number: z.string().trim().max(100).nullable().optional(),
+            iban: z.string().trim().max(100).nullable().optional(),
+            swift: z.string().trim().max(50).nullable().optional(),
+          })
           .nullable()
           .optional(),
       })
@@ -463,8 +485,10 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
       throw new Error("Only a company admin can change invoice company details.");
     const tenantId = await requireTenantId(context.supabase);
     await ensureBillingSettings(context.supabase, tenantId);
+
+    const { bank_account, ...settingsData } = data;
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    for (const [key, value] of Object.entries(data)) {
+    for (const [key, value] of Object.entries(settingsData)) {
       if (value !== undefined) patch[key] = value;
     }
     const { error } = await context.supabase
@@ -472,5 +496,44 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
       .update(patch as never)
       .eq("tenant_id", tenantId);
     if (error) throw error;
+
+    if (bank_account && bank_account.bank_name.trim()) {
+      const { data: existingBank } = await context.supabase
+        .from("bank_accounts")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .order("is_default", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingBank?.id) {
+        await context.supabase
+          .from("bank_accounts")
+          .update({
+            bank_name: bank_account.bank_name.trim(),
+            account_name: bank_account.account_name?.trim() || null,
+            account_number: bank_account.account_number?.trim() || null,
+            iban: bank_account.iban?.trim() || null,
+            swift: bank_account.swift?.trim() || null,
+            is_default: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingBank.id);
+      } else {
+        await context.supabase
+          .from("bank_accounts")
+          .insert({
+            tenant_id: tenantId,
+            label: "Primary Account",
+            bank_name: bank_account.bank_name.trim(),
+            account_name: bank_account.account_name?.trim() || null,
+            account_number: bank_account.account_number?.trim() || null,
+            iban: bank_account.iban?.trim() || null,
+            swift: bank_account.swift?.trim() || null,
+            is_default: true,
+          });
+      }
+    }
+
     return { ok: true };
   });

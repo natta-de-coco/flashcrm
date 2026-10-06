@@ -78,6 +78,8 @@ export function emptyDocument(
   taxRate: number,
   terms: string,
   timeZone: string | null,
+  notes: string = "",
+  paymentTerms: string = "",
 ): BuilderState {
   // The tenant's calendar day, not the server's.
   const today = todayInTimeZone(timeZone);
@@ -90,14 +92,14 @@ export function emptyDocument(
     due_date: "",
     valid_until: "",
     currency,
-    payment_terms: "",
+    payment_terms: paymentTerms,
     reference: "",
     po_number: "",
     invoice_discount: 0,
     shipping: 0,
     additional_charges: 0,
     adjustment: 0,
-    notes: "",
+    notes,
     terms,
     items: [{ ...emptyItem(), tax_rate: taxRate }],
   };
