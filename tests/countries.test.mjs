@@ -406,3 +406,51 @@ describe("regional settings belong to the caller's own workspace", () => {
     assert.match(server, /\["company_admin", "super_admin"\]\.includes\(profile\.staff_role/);
   });
 });
+
+describe("what a searchable picker matches", () => {
+  const { optionSearchScore, foldForSearch } = loadLib("../src/lib/option-search.ts");
+  const saudi = ["المملكة العربية السعودية", "Saudi Arabia", "SA", "+966"];
+  const kyrgyzstan = ["قيرغيزستان", "Kyrgyzstan", "KG", "+996"];
+  const jordan = ["الأردن", "Jordan", "JO", "+962"];
+  const uae = ["الإمارات العربية المتحدة", "United Arab Emirates", "AE", "+971"];
+
+  it("finds a country by its calling code and nothing that merely resembles it", () => {
+    // The fuzzy default listed +996, +976, +962, +964 and +965 for "+966".
+    assert.ok(optionSearchScore(saudi, "+966") > 0);
+    assert.equal(optionSearchScore(kyrgyzstan, "+966"), 0);
+    assert.equal(optionSearchScore(jordan, "+966"), 0);
+  });
+
+  it("finds it by English name, local name or code, in any interface language", () => {
+    assert.ok(optionSearchScore(uae, "united arab") > 0);
+    assert.ok(optionSearchScore(uae, "emirates united") > 0, "words in any order");
+    assert.ok(optionSearchScore(uae, "ae") > 0);
+    assert.ok(optionSearchScore(uae, "الإمارات") > 0);
+    assert.equal(optionSearchScore(uae, "zzzz"), 0);
+  });
+
+  it("forgives the Arabic spellings people type interchangeably, and accents", () => {
+    assert.ok(optionSearchScore(uae, "الامارات") > 0, "alef without hamza");
+    assert.ok(optionSearchScore(jordan, "الاردن") > 0);
+    assert.equal(foldForSearch("São Paulo"), "sao paulo");
+  });
+
+  it("puts an exact code ahead of a longer name that merely contains it", () => {
+    const samoa = ["Samoa", "WS", "+685"];
+    assert.ok(optionSearchScore(saudi, "sa") > optionSearchScore(samoa, "sa"));
+    assert.ok(optionSearchScore(samoa, "sa") > 0);
+  });
+
+  it("shows everything before anything is typed", () => {
+    assert.equal(optionSearchScore(saudi, ""), 1);
+    assert.equal(optionSearchScore(saudi, "   "), 1);
+  });
+
+  it("is what the picker uses", () => {
+    const picker = readSource("../src/components/ui/searchable-select.tsx");
+    assert.match(
+      picker,
+      /optionSearchScore\(\[\.\.\.\(keywords \?\? \[\]\), itemValue\], search\)/,
+    );
+  });
+});
