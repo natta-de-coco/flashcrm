@@ -1,0 +1,1042 @@
+// What a WhatsApp message is allowed to claim about itself.
+//
+// These drive the real send pipeline, safety gate and webhook processor
+// against a database double and a provider the test controls. Each case is a
+// way a conversation ends up lying to the business: a message sent twice, a
+// timeout shown as "failed", a late receipt turning "read" back into "sent",
+// one workspace reaching another's number.
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, it } from "node:test";
+
+import { createDb, secondsAgo } from "./support/db-double.mjs";
+
+import {
+  describeSendContext,
+  failureReasonForCode,
+  generateBotReply,
+  mayAdvance,
+  processWaPayload,
+  providerStatus,
+  readSendResponse,
+  resolveRecipientNumber,
+  sendConversationMessage,
+  sendTemplate,
+  statusesThatMayBecome,
+} from "../node_modules/.cache/flas-whatsapp.mjs";
+
+const db = createDb();
+globalThis.waSuite = { db: db.client, audits: [] };
+
+const A = "tenant-a";
+const B = "tenant-b";
+const REF_1 = "11111111-1111-4111-8111-111111111111";
+const REF_2 = "22222222-2222-4222-8222-222222222222";
+
+/** What the provider was asked, and what it answers next. */
+let provider;
+/** The same for the AI provider behind the assistant. Down unless a test says otherwise. */
+let ai;
+const accepted = (id = "wamid.OK") => ({ status: 200, body: { messages: [{ id }] } });
+const refused = (code, status = 400) => ({ status, body: { error: { code, message: "x" } } });
+
+function installProvider() {
+  provider = { calls: [], next: [], fail: null };
+  ai = { calls: [], respond: () => ({ status: 503, body: "down" }) };
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes("graph.facebook.com")) {
+      ai.calls.push({ url: String(url), body: JSON.parse(init.body) });
+      const answer = ai.respond();
+      return new Response(
+        typeof answer.body === "string" ? answer.body : JSON.stringify(answer.body),
+        { status: answer.status },
+      );
+    }
+    provider.calls.push({ url: String(url), init, body: JSON.parse(init.body) });
+    if (provider.fail) throw provider.fail;
+    const answer = provider.next.shift() ?? accepted(`wamid.${provider.calls.length}`);
+    return {
+      ok: answer.status >= 200 && answer.status < 300,
+      status: answer.status,
+      text: async () =>
+        typeof answer.body === "string" ? answer.body : JSON.stringify(answer.body),
+    };
+  };
+}
+
+let rows;
+beforeEach(() => {
+  rows = {
+    organizations: [
+      { id: A, suspended: false, subscription_status: "active", country: null },
+      { id: B, suspended: false, subscription_status: "active", country: null },
+    ],
+    wa_numbers: [
+      {
+        id: "num-a",
+        tenant_id: A,
+        label: "Sales line",
+        display_phone: "+971 4 000 0001",
+        phone_number_id: "pn-a",
+        access_token: "token-a",
+        active: true,
+        is_default: true,
+      },
+      {
+        id: "num-b",
+        tenant_id: B,
+        label: "B line",
+        display_phone: "+44 20 0000 0002",
+        phone_number_id: "pn-b",
+        access_token: "token-b",
+        active: true,
+        is_default: true,
+      },
+    ],
+    contacts: [
+      { id: "c-a", tenant_id: A, name: "Sara", phone: "+971 50 123 4567", consent_given: true },
+      { id: "c-b", tenant_id: B, name: "Tom", phone: "+447700900123", consent_given: true },
+    ],
+    conversations: [
+      { id: "conv-a", tenant_id: A, contact_id: "c-a", channel: "whatsapp", wa_number_id: "num-a" },
+      { id: "conv-b", tenant_id: B, contact_id: "c-b", channel: "whatsapp", wa_number_id: "num-b" },
+      { id: "web-a", tenant_id: A, contact_id: "c-a", channel: "web", wa_number_id: null },
+    ],
+    messages: [
+      // The customer wrote an hour ago, so the 24-hour window is open.
+      {
+        id: "in-a",
+        tenant_id: A,
+        conversation_id: "conv-a",
+        direction: "inbound",
+        sender: "contact",
+        body: "Hi",
+        status: "sent",
+        wa_message_id: "wamid.IN-A",
+        created_at: secondsAgo(3600),
+      },
+    ],
+    wa_templates: [
+      {
+        id: "tpl-a",
+        tenant_id: A,
+        name: "order_update",
+        language: "en",
+        status: "approved",
+        body: "Hi {{1}}, your order is ready.",
+      },
+    ],
+    leads: [],
+    webhook_dedup: [],
+    system_alerts: [],
+    tenant_bot_settings: [],
+  };
+  db.reset(rows);
+  db.unique("webhook_dedup", ["event_source", "event_id"]);
+  globalThis.waSuite.audits = [];
+  installProvider();
+});
+
+const outbound = () => rows.messages.filter((m) => m.direction === "outbound");
+const send = (extra = {}) =>
+  sendConversationMessage({
+    tenantId: A,
+    userId: "user-a",
+    conversationId: "conv-a",
+    body: "Your order is ready",
+    ...extra,
+  });
+
+describe("a message's status only moves forward", () => {
+  it("applies a receipt only when it is later than what is already known", () => {
+    assert.equal(mayAdvance("sending", "sent"), true);
+    assert.equal(mayAdvance("unconfirmed", "delivered"), true);
+    assert.equal(mayAdvance("sent", "read"), true);
+    assert.equal(mayAdvance("delivered", "read"), true);
+    // The regressions that used to be written straight to the row.
+    assert.equal(mayAdvance("read", "sent"), false);
+    assert.equal(mayAdvance("read", "delivered"), false);
+    assert.equal(mayAdvance("delivered", "sent"), false);
+    assert.equal(mayAdvance("sent", "sent"), false);
+  });
+
+  it("never marks a delivered or read message failed, and never revives a failed one", () => {
+    assert.deepEqual(statusesThatMayBecome("failed"), ["sending", "unconfirmed", "sent"]);
+    assert.equal(mayAdvance("delivered", "failed"), false);
+    assert.equal(mayAdvance("read", "failed"), false);
+    assert.equal(mayAdvance("failed", "delivered"), false);
+    assert.equal(mayAdvance("failed", "sent"), false);
+  });
+
+  it("accepts only the statuses the provider documents", () => {
+    for (const s of ["sent", "delivered", "read", "failed"]) assert.equal(providerStatus(s), s);
+    for (const s of ["deleted", "warning", "sending", "unconfirmed", "", null, undefined]) {
+      assert.equal(providerStatus(s), null);
+    }
+  });
+});
+
+describe("a provider answer is read for what it says, not for whether it threw", () => {
+  it("is accepted only with a message id", () => {
+    assert.deepEqual(readSendResponse(200, JSON.stringify(accepted("wamid.X").body)), {
+      state: "accepted",
+      waMessageId: "wamid.X",
+    });
+    assert.equal(readSendResponse(200, "{}").state, "unconfirmed");
+    assert.equal(readSendResponse(200, "").state, "unconfirmed");
+  });
+
+  it("is a refusal only when Meta says why", () => {
+    const window = readSendResponse(400, JSON.stringify(refused(131047).body));
+    assert.equal(window.state, "rejected");
+    assert.equal(window.reason, "window_closed");
+    assert.equal(window.providerCode, 131047);
+    // A server error that names its code is still Meta saying no.
+    assert.equal(readSendResponse(500, JSON.stringify(refused(131016).body)).state, "rejected");
+  });
+
+  it("is not known when there is no readable answer", () => {
+    assert.equal(readSendResponse(502, "<html>Bad gateway</html>").state, "unconfirmed");
+    assert.equal(readSendResponse(500, "").state, "unconfirmed");
+  });
+
+  it("groups Meta's codes by what the person has to do", () => {
+    assert.equal(failureReasonForCode(190), "credentials");
+    assert.equal(failureReasonForCode(10), "permission");
+    assert.equal(failureReasonForCode(230), "permission", "200–299 is the permission range");
+    assert.equal(failureReasonForCode(132001), "template");
+    assert.equal(failureReasonForCode(132015), "template");
+    assert.equal(failureReasonForCode(130429), "rate_limited");
+    assert.equal(failureReasonForCode(131048), "quality_restricted");
+    assert.equal(failureReasonForCode(368), "quality_restricted");
+    assert.equal(failureReasonForCode(131026), "recipient_unreachable");
+    assert.equal(failureReasonForCode(131030), "recipient_not_allowed");
+    assert.equal(failureReasonForCode(133010), "number_not_registered");
+    assert.equal(failureReasonForCode(999999), "unknown");
+    assert.equal(failureReasonForCode(null), "unknown");
+  });
+});
+
+describe("the number a message is addressed to", () => {
+  it("is the canonical digits, however the number was written", () => {
+    for (const written of [
+      "+971 50 123 4567",
+      "00971501234567",
+      "971501234567",
+      "+971-50-123-4567",
+    ]) {
+      assert.deepEqual(resolveRecipientNumber(written, null), {
+        ok: true,
+        digits: "971501234567",
+        international: "+971501234567",
+      });
+    }
+  });
+
+  it("completes a national number with the workspace's country, and only then", () => {
+    const completed = resolveRecipientNumber("050 123 4567", "971");
+    assert.equal(completed.ok && completed.international, "+971501234567");
+    const refusedNumber = resolveRecipientNumber("050 123 4567", null);
+    assert.equal(refusedNumber.ok, false);
+    assert.match(refusedNumber.reason, /without a country code/);
+  });
+
+  it("refuses what cannot be a phone number instead of guessing", () => {
+    assert.equal(resolveRecipientNumber("", "971").ok, false);
+    assert.equal(resolveRecipientNumber("12345", null).ok, false);
+    assert.equal(resolveRecipientNumber("+1234567890123456", null).ok, false, "longer than E.164");
+  });
+});
+
+describe("sending a reply", () => {
+  it("saves it, sends it once from the conversation's own number, and records the provider's id", async () => {
+    provider.next.push(accepted("wamid.SENT"));
+    const result = await send();
+    assert.equal(result.ok, true);
+    assert.equal(result.state, "accepted");
+    assert.deepEqual(result.sendingNumber, {
+      label: "Sales line",
+      displayPhone: "+971 4 000 0001",
+    });
+    assert.equal(result.recipient, "+971501234567");
+
+    assert.equal(provider.calls.length, 1);
+    const call = provider.calls[0];
+    assert.match(call.url, /\/pn-a\/messages$/);
+    assert.equal(call.init.headers.Authorization, "Bearer token-a");
+    assert.equal(call.body.to, "971501234567");
+    assert.equal(call.body.text.body, "Your order is ready");
+
+    const [row] = outbound();
+    assert.equal(row.status, "sent", "accepted by the provider is sent, not delivered");
+    assert.equal(row.wa_message_id, "wamid.SENT");
+    assert.equal(row.tenant_id, A);
+    // The provider is given FLAS's own id, so a receipt can find this row.
+    assert.equal(call.body.biz_opaque_callback_data, row.id);
+    assert.equal(globalThis.waSuite.audits.at(-1).details.outcome, "accepted");
+  });
+
+  it("stores a website-chat reply without calling WhatsApp", async () => {
+    const result = await send({ conversationId: "web-a" });
+    assert.equal(result.state, "stored");
+    assert.equal(provider.calls.length, 0);
+    assert.equal(outbound()[0].status, "sent");
+  });
+});
+
+describe("one workspace cannot reach into another", () => {
+  it("does not find another workspace's conversation", async () => {
+    await assert.rejects(send({ conversationId: "conv-b" }), /Conversation not found/);
+    assert.equal(provider.calls.length, 0);
+    assert.equal(outbound().length, 0);
+  });
+
+  it("refuses a conversation bound to another workspace's number", async () => {
+    // However the row came to point there, the send must not leave from it.
+    rows.conversations[0].wa_number_id = "num-b";
+    const result = await send();
+    assert.equal(result.state, "blocked");
+    assert.deepEqual(
+      result.blocks.map((b) => b.code),
+      ["number_missing"],
+    );
+    assert.equal(provider.calls.length, 0, "no request with another workspace's token");
+    assert.equal(outbound().length, 0);
+  });
+
+  it("does not fall back to another line when the conversation's number is unusable", async () => {
+    rows.wa_numbers.push({
+      id: "num-a2",
+      tenant_id: A,
+      label: "Support line",
+      phone_number_id: "pn-a2",
+      access_token: "token-a2",
+      active: true,
+      is_default: false,
+    });
+    rows.wa_numbers[0].active = false;
+    const disabled = await send();
+    assert.deepEqual(
+      disabled.blocks.map((b) => b.code),
+      ["number_disabled"],
+    );
+    assert.match(disabled.blockedReasons[0], /Sales line/);
+
+    rows.wa_numbers[0].active = true;
+    rows.wa_numbers[0].access_token = "";
+    const disconnected = await send();
+    assert.deepEqual(
+      disconnected.blocks.map((b) => b.code),
+      ["number_needs_reconnect"],
+    );
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("says so when the workspace has no number at all", async () => {
+    rows.conversations[0].wa_number_id = null;
+    rows.wa_numbers = rows.wa_numbers.filter((n) => n.tenant_id !== A);
+    db.reset(rows);
+    db.unique("webhook_dedup", ["event_source", "event_id"]);
+    const result = await send();
+    assert.deepEqual(
+      result.blocks.map((b) => b.code),
+      ["no_number"],
+    );
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("binds a conversation with no number to the line it was first answered from", async () => {
+    rows.conversations[0].wa_number_id = null;
+    await send();
+    assert.equal(provider.calls.length, 1);
+    assert.match(provider.calls[0].url, /\/pn-a\/messages$/);
+    assert.equal(rows.conversations[0].wa_number_id, "num-a");
+  });
+});
+
+describe("the same click is sent once", () => {
+  it("sends one message for two simultaneous requests carrying the same reference", async () => {
+    const results = await Promise.all([send({ clientRef: REF_1 }), send({ clientRef: REF_1 })]);
+    assert.equal(provider.calls.length, 1, "the provider was called once");
+    assert.equal(outbound().length, 1, "one message row");
+    assert.deepEqual(results.map((r) => r.state).sort(), ["accepted", "duplicate"]);
+    assert.ok(
+      results.every((r) => r.ok),
+      "the duplicate is not reported as a failure",
+    );
+  });
+
+  it("still sends two different messages", async () => {
+    await send({ clientRef: REF_1 });
+    await send({ clientRef: REF_2 });
+    assert.equal(provider.calls.length, 2);
+    assert.equal(outbound().length, 2);
+  });
+
+  it("keeps one workspace's reference from blocking another's", async () => {
+    await send({ clientRef: REF_1 });
+    rows.messages.push({
+      id: "in-b",
+      tenant_id: B,
+      conversation_id: "conv-b",
+      direction: "inbound",
+      created_at: secondsAgo(60),
+    });
+    const other = await sendConversationMessage({
+      tenantId: B,
+      userId: "user-b",
+      conversationId: "conv-b",
+      body: "Hello",
+      clientRef: REF_1,
+    });
+    assert.equal(other.state, "accepted");
+    assert.match(provider.calls[1].url, /\/pn-b\/messages$/);
+  });
+});
+
+describe("a send that got no answer is not called failed, and is not sent again", () => {
+  it("records it as unconfirmed after a timeout", async () => {
+    provider.fail = Object.assign(new Error("The operation was aborted"), { name: "AbortError" });
+    const result = await send({ clientRef: REF_1 });
+    assert.equal(result.ok, false);
+    assert.equal(result.state, "unconfirmed");
+    assert.equal(result.failureReason, "unconfirmed");
+    assert.match(result.deliveryError, /Do not send it again yet/);
+    assert.equal(provider.calls.length, 1, "no automatic retry");
+    assert.equal(outbound()[0].status, "unconfirmed");
+    assert.equal(outbound()[0].wa_message_id, null);
+  });
+
+  it("does not resend when the same click arrives again", async () => {
+    provider.fail = new Error("socket hang up");
+    await send({ clientRef: REF_1 });
+    provider.fail = null;
+    const again = await send({ clientRef: REF_1 });
+    assert.equal(again.state, "duplicate");
+    assert.equal(provider.calls.length, 1);
+    assert.equal(outbound().length, 1);
+  });
+
+  it("treats an unreadable gateway answer the same way", async () => {
+    provider.next.push({ status: 502, body: "<html>Bad gateway</html>" });
+    const result = await send();
+    assert.equal(result.state, "unconfirmed");
+    assert.equal(outbound()[0].status, "unconfirmed");
+  });
+
+  it("matches the later receipt to the message by FLAS's own reference", async () => {
+    provider.fail = new Error("timeout");
+    await send();
+    const row = outbound()[0];
+    // The send carried the row id as its reference (asserted above). Real ids
+    // are uuids; the database double numbers its rows, so give this one a uuid.
+    assert.equal(provider.calls[0].body.biz_opaque_callback_data, row.id);
+    row.id = "44444444-4444-4444-8444-444444444444";
+    await processWaPayload(
+      statusPayload("pn-a", {
+        id: "wamid.LATE",
+        status: "delivered",
+        biz_opaque_callback_data: row.id,
+      }),
+    );
+    assert.equal(row.status, "delivered");
+    assert.equal(row.wa_message_id, "wamid.LATE");
+  });
+});
+
+describe("a message that could not be saved is not sent", () => {
+  it("never calls the provider when the CRM cannot store the message", async () => {
+    db.fail("messages:insert", "connection reset");
+    await assert.rejects(send({ clientRef: REF_1 }), /Could not save this message/);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("lets the same click try again afterwards", async () => {
+    db.fail("messages:insert", "connection reset");
+    await assert.rejects(send({ clientRef: REF_1 }));
+    delete db.state.faults["messages:insert"];
+    const retry = await send({ clientRef: REF_1 });
+    assert.equal(retry.state, "accepted");
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("does not report an error for a message the provider already accepted", async () => {
+    // Saving the provider's answer fails after the message has gone. Throwing
+    // here told the sender "error" and invited a second copy.
+    db.fail("messages:update", "connection reset");
+    const result = await send();
+    assert.equal(result.ok, true);
+    assert.equal(result.state, "accepted");
+    assert.equal(provider.calls.length, 1);
+  });
+});
+
+describe("a refusal says why", () => {
+  const cases = [
+    [131047, "window_closed", /24-hour/],
+    [190, "credentials", /reconnected/],
+    [10, "permission", /permission/],
+    [130429, "rate_limited", /limiting/],
+    [131048, "quality_restricted", /restricted/],
+    [131026, "recipient_unreachable", /could not reach/],
+  ];
+  for (const [code, reason, text] of cases) {
+    it(`${code} is ${reason}`, async () => {
+      provider.next.push(refused(code));
+      const result = await send();
+      assert.equal(result.ok, false);
+      assert.equal(result.state, "rejected");
+      assert.equal(result.failureReason, reason);
+      assert.match(result.deliveryError, text);
+      assert.equal(outbound()[0].status, "failed");
+      assert.equal(provider.calls.length, 1);
+    });
+  }
+
+  it("never shows the provider's raw error text or the token", async () => {
+    provider.next.push({
+      status: 400,
+      body: { error: { code: 131009, message: "Invalid parameter token-a at /v21.0/pn-a" } },
+    });
+    const result = await send();
+    assert.ok(!result.deliveryError.includes("token-a"));
+    assert.ok(!result.deliveryError.includes("pn-a"));
+  });
+});
+
+describe("the gate explains a block before anything is saved or sent", () => {
+  it("blocks a free-form reply once the 24-hour window has closed", async () => {
+    rows.messages[0].created_at = secondsAgo(25 * 3600);
+    const result = await send();
+    assert.equal(result.state, "blocked");
+    assert.deepEqual(
+      result.blocks.map((b) => b.code),
+      ["window_closed"],
+    );
+    assert.equal(provider.calls.length, 0);
+    assert.equal(outbound().length, 0);
+    const audit = globalThis.waSuite.audits.at(-1);
+    assert.equal(audit.action, "message.blocked");
+    assert.deepEqual(audit.details.codes, ["window_closed"]);
+  });
+
+  it("does not open the window with another workspace's inbound message", async () => {
+    rows.messages[0].tenant_id = B;
+    const result = await send();
+    assert.deepEqual(
+      result.blocks.map((b) => b.code),
+      ["window_closed"],
+    );
+  });
+
+  it("refuses a number saved without its country when the workspace has none either", async () => {
+    rows.contacts[0].phone = "050 123 4567";
+    const result = await send();
+    assert.deepEqual(
+      result.blocks.map((b) => b.code),
+      ["recipient_invalid"],
+    );
+    assert.match(result.blockedReasons[0], /without a country code/);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("blocks a suspended workspace and an inactive subscription", async () => {
+    rows.organizations[0].suspended = true;
+    assert.deepEqual(
+      (await send()).blocks.map((b) => b.code),
+      ["workspace_suspended"],
+    );
+    rows.organizations[0].suspended = false;
+    rows.organizations[0].subscription_status = "past_due";
+    assert.deepEqual(
+      (await send()).blocks.map((b) => b.code),
+      ["subscription_inactive"],
+    );
+  });
+
+  it("tells the composer the same thing before anyone types", async () => {
+    const open = await describeSendContext(A, "conv-a");
+    assert.deepEqual(open.sendingNumber, { label: "Sales line", displayPhone: "+971 4 000 0001" });
+    assert.equal(open.recipient, "+971501234567");
+    assert.deepEqual(open.blocks, []);
+
+    rows.wa_numbers[0].active = false;
+    const blockedContext = await describeSendContext(A, "conv-a");
+    assert.deepEqual(
+      blockedContext.blocks.map((b) => b.code),
+      ["number_disabled"],
+    );
+    // And it reveals nothing about a conversation in another workspace.
+    const foreign = await describeSendContext(A, "conv-b");
+    assert.equal(foreign.sendingNumber, null);
+    assert.equal(foreign.recipient, null);
+    assert.deepEqual(
+      foreign.blocks.map((b) => b.code),
+      ["conversation_not_found"],
+    );
+  });
+});
+
+describe("a template", () => {
+  const template = (extra = {}) =>
+    sendTemplate({
+      tenantId: A,
+      userId: "user-a",
+      templateId: "tpl-a",
+      conversationId: "conv-a",
+      variables: ["Sara"],
+      ...extra,
+    });
+
+  it("goes out as a template and is stored as the customer reads it", async () => {
+    provider.next.push(accepted("wamid.TPL"));
+    const result = await template();
+    assert.equal(result.state, "accepted");
+    assert.equal(result.rendered, "Hi Sara, your order is ready.");
+    const call = provider.calls[0].body;
+    assert.equal(call.type, "template");
+    assert.equal(call.template.name, "order_update");
+    assert.deepEqual(call.template.components[0].parameters, [{ type: "text", text: "Sara" }]);
+    assert.equal(outbound()[0].body, "Hi Sara, your order is ready.");
+    assert.equal(outbound()[0].status, "sent");
+  });
+
+  it("may be sent after the 24-hour window, but never without consent", async () => {
+    rows.messages[0].created_at = secondsAgo(40 * 3600);
+    assert.equal((await template()).state, "accepted");
+    rows.contacts[0].consent_given = false;
+    const result = await template();
+    assert.deepEqual(
+      result.blocks.map((b) => b.code),
+      ["no_consent"],
+    );
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("is refused for a number that is not a saved contact", async () => {
+    const result = await template({ conversationId: null, phone: "+971 55 000 0000" });
+    assert.equal(result.state, "blocked");
+    assert.ok(result.blocks.some((b) => b.code === "contact_not_saved"));
+    assert.equal(provider.calls.length, 0);
+    assert.equal(outbound().length, 0);
+  });
+
+  it("sent to a saved contact's number lands in that contact's conversation", async () => {
+    // It used to leave an audit line and no message anywhere.
+    rows.conversations = rows.conversations.filter((c) => c.id !== "conv-a");
+    db.reset(rows);
+    db.unique("webhook_dedup", ["event_source", "event_id"]);
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    const result = await template({ conversationId: null, phone: "971501234567" });
+    assert.equal(result.state, "accepted");
+    const opened = rows.conversations.find(
+      (c) => c.contact_id === "c-a" && c.channel === "whatsapp",
+    );
+    assert.ok(opened, "a WhatsApp conversation was opened for the contact");
+    assert.equal(opened.tenant_id, A);
+    assert.equal(outbound()[0].conversation_id, opened.id);
+    assert.equal(provider.calls[0].body.to, "971501234567");
+  });
+
+  it("cannot use another workspace's template", async () => {
+    rows.wa_templates[0].tenant_id = B;
+    await assert.rejects(template(), /Template not found/);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("is refused by the provider with the template reason", async () => {
+    provider.next.push(refused(132001));
+    const result = await template();
+    assert.equal(result.failureReason, "template");
+    assert.equal(outbound()[0].status, "failed");
+  });
+});
+
+function statusPayload(phoneNumberId, ...statuses) {
+  return {
+    entry: [{ changes: [{ value: { metadata: { phone_number_id: phoneNumberId }, statuses } }] }],
+  };
+}
+
+function inboundPayload(phoneNumberId, message) {
+  return {
+    entry: [
+      {
+        changes: [
+          {
+            value: {
+              metadata: { phone_number_id: phoneNumberId },
+              contacts: [{ profile: { name: "Sara" } }],
+              messages: [message],
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+describe("delivery receipts", () => {
+  const sentRow = (extra = {}) => {
+    const row = {
+      id: "out-a",
+      tenant_id: A,
+      conversation_id: "conv-a",
+      direction: "outbound",
+      sender: "agent",
+      body: "Hello",
+      status: "sent",
+      wa_message_id: "wamid.OUT-A",
+      ...extra,
+    };
+    rows.messages.push(row);
+    return row;
+  };
+
+  it("advance sent to delivered to read", async () => {
+    const row = sentRow();
+    await processWaPayload(statusPayload("pn-a", { id: "wamid.OUT-A", status: "delivered" }));
+    assert.equal(row.status, "delivered");
+    await processWaPayload(statusPayload("pn-a", { id: "wamid.OUT-A", status: "read" }));
+    assert.equal(row.status, "read");
+  });
+
+  it("arriving out of order never move a message backwards", async () => {
+    const row = sentRow();
+    await processWaPayload(statusPayload("pn-a", { id: "wamid.OUT-A", status: "read" }));
+    await processWaPayload(statusPayload("pn-a", { id: "wamid.OUT-A", status: "delivered" }));
+    await processWaPayload(statusPayload("pn-a", { id: "wamid.OUT-A", status: "sent" }));
+    assert.equal(row.status, "read");
+  });
+
+  it("delivered twice are handled once", async () => {
+    sentRow();
+    const first = await processWaPayload(
+      statusPayload("pn-a", { id: "wamid.OUT-A", status: "delivered" }),
+    );
+    const second = await processWaPayload(
+      statusPayload("pn-a", { id: "wamid.OUT-A", status: "delivered" }),
+    );
+    assert.equal(first, 1);
+    assert.equal(second, 0, "the replay does nothing");
+  });
+
+  it("mark a sent message failed, but not one that already arrived", async () => {
+    const pending = sentRow();
+    await processWaPayload(
+      statusPayload("pn-a", { id: "wamid.OUT-A", status: "failed", errors: [{ code: 131026 }] }),
+    );
+    assert.equal(pending.status, "failed");
+    assert.match(rows.system_alerts.at(-1).message, /could not reach/);
+
+    const arrived = sentRow({ id: "out-a2", wa_message_id: "wamid.OUT-A2", status: "delivered" });
+    await processWaPayload(statusPayload("pn-a", { id: "wamid.OUT-A2", status: "failed" }));
+    assert.equal(arrived.status, "delivered");
+  });
+
+  it("ignore a status the provider does not document", async () => {
+    const row = sentRow();
+    const handled = await processWaPayload(
+      statusPayload("pn-a", { id: "wamid.OUT-A", status: "deleted" }),
+    );
+    assert.equal(handled, 0);
+    assert.equal(row.status, "sent");
+  });
+
+  it("for one workspace's number never touch another workspace's message", async () => {
+    const theirs = sentRow({
+      id: "out-b",
+      tenant_id: B,
+      conversation_id: "conv-b",
+      wa_message_id: "wamid.OUT-B",
+    });
+    // The receipt names B's message id but arrives on A's number.
+    await processWaPayload(statusPayload("pn-a", { id: "wamid.OUT-B", status: "read" }));
+    assert.equal(theirs.status, "sent");
+    // Nor can A's receipt claim B's row through the callback reference.
+    const unconfirmed = sentRow({
+      id: "33333333-3333-4333-8333-333333333333",
+      tenant_id: B,
+      conversation_id: "conv-b",
+      status: "unconfirmed",
+      wa_message_id: null,
+    });
+    await processWaPayload(
+      statusPayload("pn-a", {
+        id: "wamid.NEW",
+        status: "delivered",
+        biz_opaque_callback_data: unconfirmed.id,
+      }),
+    );
+    assert.equal(unconfirmed.status, "unconfirmed");
+    assert.equal(unconfirmed.wa_message_id, null);
+  });
+
+  it("with a reference that is not a FLAS id are ignored", async () => {
+    const row = sentRow({ status: "unconfirmed", wa_message_id: null });
+    await processWaPayload(
+      statusPayload("pn-a", {
+        id: "wamid.X",
+        status: "delivered",
+        biz_opaque_callback_data: "out-a' OR 1=1",
+      }),
+    );
+    assert.equal(row.status, "unconfirmed");
+  });
+
+  it("for a number FLAS does not know are dropped, not guessed", async () => {
+    const row = sentRow();
+    await processWaPayload(statusPayload("pn-unknown", { id: "wamid.OUT-A", status: "read" }));
+    assert.equal(row.status, "sent");
+  });
+});
+
+describe("an inbound message", () => {
+  const message = {
+    id: "wamid.IN-NEW",
+    from: "971501234567",
+    type: "text",
+    text: { body: "Any update?" },
+  };
+
+  it("delivered twice is stored once and counted unread once", async () => {
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await processWaPayload(inboundPayload("pn-a", message));
+    await processWaPayload(inboundPayload("pn-a", message));
+    const stored = rows.messages.filter((m) => m.wa_message_id === "wamid.IN-NEW");
+    assert.equal(stored.length, 1);
+    assert.equal(stored[0].tenant_id, A);
+    assert.equal(stored[0].direction, "inbound");
+    assert.equal(stored[0].conversation_id, "conv-a", "no second thread for the same contact");
+    const unread = db.state.rpcCalls.filter((c) => c.name === "increment_unread_count");
+    assert.equal(unread.length, 1);
+  });
+
+  it("is filed under the workspace that owns the number it arrived on", async () => {
+    // The same customer number writes to B's line: it must not land in A.
+    await processWaPayload(inboundPayload("pn-b", { ...message, id: "wamid.IN-B" }));
+    const stored = rows.messages.find((m) => m.wa_message_id === "wamid.IN-B");
+    assert.equal(stored.tenant_id, B);
+    const conversation = rows.conversations.find((c) => c.id === stored.conversation_id);
+    assert.equal(conversation.tenant_id, B);
+  });
+});
+
+describe("the chatbot's reply on WhatsApp", () => {
+  const askForHuman = {
+    id: "wamid.IN-BOT",
+    from: "971501234567",
+    type: "text",
+    text: { body: "I want to talk to a human" },
+  };
+  beforeEach(() => {
+    rows.tenant_bot_settings.push({
+      tenant_id: A,
+      enabled: true,
+      bot_name: "Flas",
+      greeting: "Hello!",
+      instructions: "We sell CCTV kits in Dubai and install on Saturdays.",
+      model: "default",
+      handoff_keywords: [],
+    });
+    rows.conversations[0].bot_enabled = true;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+  });
+  const botRows = () => rows.messages.filter((m) => m.sender === "bot");
+
+  it("is sent only once Meta accepts it", async () => {
+    provider.next.push(accepted("wamid.BOT"));
+    await processWaPayload(inboundPayload("pn-a", askForHuman));
+    assert.equal(provider.calls.length, 1);
+    const [reply] = botRows();
+    assert.equal(reply.status, "sent");
+    assert.equal(reply.wa_message_id, "wamid.BOT");
+    assert.equal(provider.calls[0].body.biz_opaque_callback_data, reply.id);
+  });
+
+  it("is marked not delivered, with the real reason, when Meta refuses it", async () => {
+    provider.next.push(refused(131047));
+    await assert.rejects(processWaPayload(inboundPayload("pn-a", askForHuman)), /24-hour/);
+    const [reply, notice] = botRows();
+    assert.equal(reply.status, "failed");
+    assert.match(notice.body, /Not delivered: The 24-hour WhatsApp reply window has closed/);
+    assert.ok(!notice.body.includes("credentials"), "it used to blame credentials for everything");
+  });
+
+  it("is unconfirmed after a timeout, and the event is not failed for retry", async () => {
+    provider.fail = new Error("timeout");
+    await processWaPayload(inboundPayload("pn-a", askForHuman));
+    assert.equal(botRows()[0].status, "unconfirmed");
+    assert.equal(provider.calls.length, 1);
+    // Replaying the webhook does not produce a second reply.
+    provider.fail = null;
+    await processWaPayload(inboundPayload("pn-a", askForHuman));
+    assert.equal(provider.calls.length, 1);
+  });
+});
+
+describe("when the AI cannot answer", () => {
+  const question = {
+    id: "wamid.IN-Q",
+    from: "971501234567",
+    type: "text",
+    text: { body: "How much is the 4-camera kit?" },
+  };
+  const settings = {
+    tenant_id: A,
+    enabled: true,
+    bot_name: "Flas",
+    greeting: "Hello!",
+    instructions: "We sell CCTV kits in Dubai and install on Saturdays.",
+    model: "default",
+    handoff_keywords: [],
+  };
+  const modelSays = (content) => () => ({
+    status: 200,
+    body: { choices: [{ message: { content } }] },
+  });
+  const botRows = () => rows.messages.filter((m) => m.sender === "bot");
+  const conversation = () => rows.conversations.find((c) => c.id === "conv-a");
+
+  beforeEach(() => {
+    process.env.LOVABLE_API_KEY = "test-gateway";
+    rows.tenant_bot_settings.push({ ...settings });
+    conversation().bot_enabled = true;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+  });
+  afterEach(() => {
+    delete process.env.LOVABLE_API_KEY;
+  });
+
+  /** The workspace opted in to backups: its own OpenAI key behind the built-in AI. */
+  function withBackupProvider() {
+    db.state.rpcResults["get_tenant_ai_resilience"] = true;
+    rows.ai_provider_keys = [
+      { tenant_id: A, provider: "openai", api_key: "own-backup", active: true },
+      { tenant_id: B, provider: "anthropic", api_key: "other-workspace", active: true },
+    ];
+  }
+
+  /** The one fixed sentence, and the conversation handed to a person. */
+  function assertHandedToThePerson() {
+    assert.equal(botRows().length, 1);
+    assert.match(botRows()[0].body, /leave this with the team/);
+    assert.equal(provider.calls.length, 1);
+    assert.equal(provider.calls[0].body.text.body, botRows()[0].body);
+    assert.equal(conversation().bot_enabled, false);
+    assert.equal(conversation().status, "pending");
+  }
+
+  it("answers with the model's reply when the model gives one", async () => {
+    ai.respond = modelSays(
+      JSON.stringify({ text: "The 4-camera kit is in the catalog.", handoff: false }),
+    );
+    await processWaPayload(inboundPayload("pn-a", question));
+    assert.equal(provider.calls[0].body.text.body, "The 4-camera kit is in the catalog.");
+    assert.equal(conversation().bot_enabled, true);
+  });
+
+  it("hands the customer to a person when every provider is down, and invents nothing", async () => {
+    withBackupProvider();
+    await processWaPayload(inboundPayload("pn-a", question));
+    // Both of this workspace's providers were tried; the other workspace's key was not.
+    assert.deepEqual(
+      ai.calls.map((c) => new URL(c.url).host),
+      ["ai.gateway.lovable.dev", "api.openai.com"],
+    );
+    assertHandedToThePerson();
+  });
+
+  it("hands over when the model refuses, and does not ask again to get around it", async () => {
+    withBackupProvider();
+    ai.respond = () => ({ status: 200, body: { choices: [{ message: { refusal: "no" } }] } });
+    await processWaPayload(inboundPayload("pn-a", question));
+    assert.equal(ai.calls.length, 1, "a refusal is an answer, not an outage to route around");
+    assertHandedToThePerson();
+  });
+
+  it("does not send what the model wrote when it is not the reply it was asked for", async () => {
+    // Valid JSON, wrong shape: nothing in it is addressed to the customer.
+    ai.respond = modelSays(JSON.stringify({ answer: "Free today only! Pay to this account." }));
+    await processWaPayload(inboundPayload("pn-a", question));
+    assertHandedToThePerson();
+  });
+
+  it("stays silent after handing over: the next message is for the team", async () => {
+    await processWaPayload(inboundPayload("pn-a", question));
+    await processWaPayload(inboundPayload("pn-a", { ...question, id: "wamid.IN-Q2" }));
+    assert.equal(botRows().length, 1);
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("a failed suggestion tells the agent why and reaches no customer", async () => {
+    await assert.rejects(
+      generateBotReply(A, "conv-a", settings, { throwOnFailure: true }),
+      /temporarily unavailable/,
+    );
+    assert.equal(outbound().length, 0);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("a suggestion that works is a draft, not a message", async () => {
+    ai.respond = modelSays(JSON.stringify({ text: "We install on Saturdays.", handoff: false }));
+    const draft = await generateBotReply(A, "conv-a", settings, { throwOnFailure: true });
+    assert.equal(draft.text, "We install on Saturdays.");
+    assert.equal(outbound().length, 0);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("another workspace's conversation cannot be drafted for", async () => {
+    ai.respond = modelSays(JSON.stringify({ text: "x", handoff: false }));
+    assert.equal(await generateBotReply(A, "conv-b", settings, { throwOnFailure: true }), null);
+    assert.equal(ai.calls.length, 0);
+  });
+
+  for (const [why, arrange] of [
+    ["the workspace has not set the assistant up", () => (rows.tenant_bot_settings.length = 0)],
+    [
+      "the workspace switched the assistant off",
+      () => (rows.tenant_bot_settings[0].enabled = false),
+    ],
+    ["a person took this conversation over", () => (conversation().bot_enabled = false)],
+    [
+      "the assistant has no business instructions",
+      () => (rows.tenant_bot_settings[0].instructions = ""),
+    ],
+  ]) {
+    it(`sends nothing on its own when ${why}`, async () => {
+      arrange();
+      ai.respond = modelSays(JSON.stringify({ text: "Hello there", handoff: false }));
+      await processWaPayload(inboundPayload("pn-a", question));
+      assert.equal(ai.calls.length, 0);
+      assert.equal(provider.calls.length, 0);
+      assert.equal(botRows().length, 0);
+    });
+  }
+});
+
+describe("nothing reaches a customer around the pipeline", () => {
+  const read = (path) =>
+    readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+      .split("\r\n")
+      .join("\n");
+
+  it("sends the assistant's approved WhatsApp action the way the Inbox sends a reply", () => {
+    // It called the provider directly: no 24-hour check, no subscription or
+    // routing check, and no message left in the conversation.
+    const agent = read("src/lib/agent.server.ts");
+    assert.match(agent, /sendConversationMessage\(\{/);
+    assert.ok(!agent.includes("sendWhatsAppText("), "a direct provider call is back");
+    // And it still needs a person's approval before it runs at all.
+    assert.match(agent, /if \(spec\.risk !== "read" && !confirmed\) \{/);
+  });
+
+  it("keeps the API functions as thin doors onto the pipeline", () => {
+    const crm = read("src/lib/crm.functions.ts");
+    assert.ok(!crm.includes("sendWhatsAppText("));
+    assert.ok(!crm.includes("sendWhatsAppTemplate("));
+    assert.match(crm, /sendConversationMessage\(\{/);
+    assert.match(crm, /sendTemplate\(\{/);
+    assert.match(crm, /describeSendContext\(tenantId, data\.conversationId\)/);
+  });
+});

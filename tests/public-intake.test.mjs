@@ -33,7 +33,17 @@ globalThis.publicIntake = {
 beforeEach(() => {
   rows = {
     organizations: [{ id: "company-1", suspended: false, subscription_status: "active" }],
-    wa_numbers: [{ id: "num-1", label: "Sales line", active: true, tenant_id: "company-1" }],
+    wa_numbers: [
+      {
+        id: "num-1",
+        label: "Sales line",
+        active: true,
+        is_default: true,
+        tenant_id: "company-1",
+        phone_number_id: "pn-1",
+        access_token: "token-1",
+      },
+    ],
     contacts: [],
     messages: [],
     leads: [],
@@ -51,14 +61,24 @@ describe("a WhatsApp template needs recorded consent, whoever it is addressed to
   // Reported: a template sent to a typed-in number that is not in Contacts passed
   // every check, because the consent rule only ran when a contact existed.
   it("refuses a template to a number that is not a saved contact", async () => {
-    const check = await checkSendPermission({ waNumberId: "num-1", isTemplate: true });
+    const check = await checkSendPermission({
+      tenantId: "company-1",
+      waNumberId: "num-1",
+      isTemplate: true,
+    });
     assert.equal(check.allowed, false);
     assert.match(check.reasons.join(" "), /not saved as a contact with recorded opt-in consent/i);
   });
 
   it("refuses a template to a contact who never opted in", async () => {
-    rows.contacts.push({ id: "c-1", tenant_id: "company-1", consent_given: false });
+    rows.contacts.push({
+      id: "c-1",
+      tenant_id: "company-1",
+      consent_given: false,
+      phone: "+971501234567",
+    });
     const check = await checkSendPermission({
+      tenantId: "company-1",
       contactId: "c-1",
       waNumberId: "num-1",
       isTemplate: true,
@@ -69,8 +89,14 @@ describe("a WhatsApp template needs recorded consent, whoever it is addressed to
 
   it("still allows a template to a contact who did opt in", async () => {
     // Guards the fix from over-blocking: consent is recorded, so it may go.
-    rows.contacts.push({ id: "c-1", tenant_id: "company-1", consent_given: true });
+    rows.contacts.push({
+      id: "c-1",
+      tenant_id: "company-1",
+      consent_given: true,
+      phone: "+971501234567",
+    });
     const check = await checkSendPermission({
+      tenantId: "company-1",
       contactId: "c-1",
       waNumberId: "num-1",
       isTemplate: true,
@@ -80,13 +106,22 @@ describe("a WhatsApp template needs recorded consent, whoever it is addressed to
   });
 
   it("does not apply the consent rule to an ordinary reply", async () => {
-    const check = await checkSendPermission({ waNumberId: "num-1", isTemplate: false });
+    const check = await checkSendPermission({
+      tenantId: "company-1",
+      waNumberId: "num-1",
+      isTemplate: false,
+    });
     assert.equal(check.allowed, true);
   });
 });
 
 describe("the routed WhatsApp line is read from this workspace's own leads", () => {
-  const consented = { id: "c-1", tenant_id: "company-1", consent_given: true };
+  const consented = {
+    id: "c-1",
+    tenant_id: "company-1",
+    consent_given: true,
+    phone: "+971501234567",
+  };
 
   it("applies the routing rule even when the contact has several leads", async () => {
     // A contact who used two email addresses has two leads. maybeSingle() then
@@ -110,6 +145,7 @@ describe("the routed WhatsApp line is read from this workspace's own leads", () 
       },
     );
     const check = await checkSendPermission({
+      tenantId: "company-1",
       contactId: "c-1",
       waNumberId: "num-1",
       isTemplate: false,
@@ -137,6 +173,7 @@ describe("the routed WhatsApp line is read from this workspace's own leads", () 
       },
     );
     const check = await checkSendPermission({
+      tenantId: "company-1",
       contactId: "c-1",
       waNumberId: "num-1",
       isTemplate: false,
@@ -154,6 +191,7 @@ describe("the routed WhatsApp line is read from this workspace's own leads", () 
       created_at: "2026-01-01T00:00:00Z",
     });
     const check = await checkSendPermission({
+      tenantId: "company-1",
       contactId: "c-1",
       waNumberId: "num-1",
       isTemplate: false,
@@ -276,26 +314,33 @@ describe("the activation page prints no markup that was typed into a site name",
 });
 
 describe("a WhatsApp message has an honest, durable CRM record", () => {
+  // The behaviour itself is run in tests/whatsapp-reliability.test.mjs. These
+  // hold the order of the steps in the source.
   it("stores an agent's message before Meta is called, then records the outcome", () => {
     const wa = read("src/lib/wa.server.ts");
-    assert.match(wa, /status: "sending" \| "sent" \| "failed" = "sent"/);
     assert.match(wa, /tenant_id: tenantId,\n\s+status,/);
     assert.match(wa, /export async function completeOutboundDelivery/);
-    const crm = read("src/lib/crm.functions.ts");
-    assert.match(crm, /null,\n\s+"sending",/);
-    assert.match(
-      crm,
-      /completeOutboundDelivery\(outboundId, waId, deliveryError \? "failed" : "sent"\)/,
+    const pipeline = read("src/lib/wa-send.server.ts");
+    const saved = pipeline.indexOf('"sending",');
+    const handedOver = pipeline.indexOf("await args.deliver(");
+    const recorded = pipeline.indexOf(
+      "await completeOutboundDelivery(messageId, waId, status, tenantId)",
     );
+    assert.ok(
+      saved > 0 && handedOver > saved,
+      "the message is saved before the provider is called",
+    );
+    assert.ok(recorded > handedOver, "the provider's answer is recorded afterwards");
+    const crm = read("src/lib/crm.functions.ts");
+    assert.match(crm, /sendConversationMessage\(\{/);
   });
 
   it("marks the bot's already-stored reply failed when the send is refused", () => {
     const monitoring = read("src/lib/monitoring.server.ts");
-    assert.match(
-      monitoring,
-      /update\(\{ status: "failed" \}\)\s*\n\s*\.eq\("id", replyMessageId\)/,
-    );
-    assert.match(monitoring, /"bot",\n\s+null,\n\s+null,\n\s+"failed",/);
+    assert.match(monitoring, /await completeOutboundDelivery\(\s*replyMessageId,/);
+    // The notice under it gives Meta's actual reason, not a guess.
+    assert.match(monitoring, /`\(Not delivered: \$\{outcome\.message\}\)`/);
+    assert.ok(!monitoring.includes("check WhatsApp credentials"));
   });
 
   it("shows a failed message as not delivered in the inbox", () => {

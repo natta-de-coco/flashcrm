@@ -18,7 +18,8 @@ const stubs = {
       globalThis.publicIntake.emails.push({ tenantId, ...message });
       return globalThis.publicIntake.emailResult;
     }`,
-  "secret-box.server": "export async function openSecret() { return null; }",
+  // A stored token is its own plaintext here, so a connected number has one.
+  "secret-box.server": "export async function openSecret(value) { return value || null; }",
 };
 
 const boundaries = {

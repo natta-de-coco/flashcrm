@@ -381,8 +381,11 @@ describe("one place answers whose number this is", () => {
   });
 
   it("is what the template send uses, so a saved contact is not called unknown", () => {
-    const crm = read("src/lib/crm.functions.ts");
+    // The template send lives in the send pipeline now; the API function
+    // only names the workspace and hands over.
+    const crm = read("src/lib/wa-send.server.ts");
     assert.match(crm, /resolveContactByPhone/);
+    assert.match(read("src/lib/crm.functions.ts"), /sendTemplate\(\{/);
     assert.ok(
       !/\.eq\("phone", phone\)/.test(crm),
       "comparing the raw string made a contact saved in another format invisible",

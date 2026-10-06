@@ -14,7 +14,7 @@
     "test:capabilities": "node scripts/build-registry-bundle.mjs && node --test tests/capability-registry.test.mjs",
     "docs:capabilities": "node scripts/generate-capability-matrix.mjs",
     "test:connection-state": "node scripts/build-state-bundle.mjs && node --test tests/connection-state.test.mjs",
-    "test": "npm run test:capabilities && npm run test:connection-state && npm run test:oauth-security && npm run test:authorize-params && npm run test:qa && npm run test:forms && npm run test:contacts && npm run test:providers && npm run test:secrets && npm run test:targets && npm run test:reports && npm run test:subscriptions && npm run test:audit-punchlist && npm run test:homepage-widget && npm run test:onboarding && npm run test:bot-context && node --test tests/connection-handoff.test.mjs tests/social-thread.test.mjs tests/connection-outcome.test.mjs && npm run test:i18n && npm run test:stale-chunk && npm run test:whatsapp-numbers && npm run test:public-intake && npm run test:campaign-audience && npm run test:invoices",
+    "test": "npm run test:capabilities && npm run test:connection-state && npm run test:oauth-security && npm run test:authorize-params && npm run test:qa && npm run test:forms && npm run test:contacts && npm run test:providers && npm run test:secrets && npm run test:targets && npm run test:reports && npm run test:subscriptions && npm run test:audit-punchlist && npm run test:homepage-widget && npm run test:onboarding && npm run test:bot-context && node --test tests/connection-handoff.test.mjs tests/social-thread.test.mjs tests/connection-outcome.test.mjs && npm run test:i18n && npm run test:stale-chunk && npm run test:whatsapp-numbers && npm run test:public-intake && npm run test:campaign-audience && npm run test:invoices && npm run test:whatsapp",
     "test:oauth-security": "node scripts/build-state-bundle.mjs && node --test tests/oauth-security.test.mjs",
     "test:authorize-params": "node scripts/build-state-bundle.mjs && node --test tests/oauth-authorize-params.test.mjs",
     "test:qa": "node scripts/build-state-bundle.mjs && node --test tests/qa-regressions.test.mjs",
@@ -34,7 +34,8 @@
     "test:whatsapp-numbers": "node scripts/build-onboarding-bundle.mjs && node --test tests/whatsapp-numbers.test.mjs",
     "test:campaign-audience": "node --test tests/campaign-audience.test.mjs",
     "test:invoices": "node scripts/build-invoice-bundle.mjs && node --test tests/invoices.test.mjs",
-    "test:i18n": "node scripts/build-i18n-bundle.mjs && node --test tests/i18n.test.mjs"
+    "test:i18n": "node scripts/build-i18n-bundle.mjs && node --test tests/i18n.test.mjs",
+    "test:whatsapp": "node scripts/build-whatsapp-bundle.mjs && node --test tests/whatsapp-reliability.test.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

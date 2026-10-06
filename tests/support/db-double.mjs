@@ -34,6 +34,15 @@ export function createDb() {
       this.filters.push((r) => r[key] !== value);
       return this;
     }
+    in(key, values) {
+      this.filters.push((r) => values.includes(r[key]));
+      return this;
+    }
+    is(key, value) {
+      // Only IS NULL is used by the code under test.
+      if (value === null) this.filters.push((r) => r[key] == null);
+      return this;
+    }
     gte(key, value) {
       this.filters.push((r) => String(r[key] ?? "") >= value);
       return this;
@@ -71,6 +80,10 @@ export function createDb() {
       this.patch = patch;
       return this;
     }
+    delete() {
+      this.mode = "delete";
+      return this;
+    }
     upsert(payload, { onConflict } = {}) {
       this.mode = "upsert";
       this.payload = payload;
@@ -94,6 +107,9 @@ export function createDb() {
       const table = (state.rows[this.table] ??= []);
       let found = table.filter((r) => this.filters.every((f) => f(r)));
       if (this.mode === "update") for (const r of found) Object.assign(r, this.patch);
+      if (this.mode === "delete") {
+        for (const r of found) table.splice(table.indexOf(r), 1);
+      }
       if (this.mode === "insert") {
         // A table can declare the unique key the real schema has, because code
         // that relies on a unique violation (23505) to stay correct under
