@@ -15,9 +15,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   allTimeZones,
   complianceFor,
+  countryName,
   countryOption,
   COUNTRIES,
   CURRENCIES,
+  currencyName,
   formatMoney,
   LANGUAGES,
   resolveTenantLocale,
@@ -29,21 +31,12 @@ import { useServerFn } from "@tanstack/react-start";
 import { Globe2, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
-const COUNTRY_OPTIONS: SearchableOption[] = COUNTRIES.map((c) => ({
-  value: c.code,
-  label: c.name,
-  // "+971" and "AE" both find the UAE.
-  keywords: [c.code, `+${c.callingCode}`],
-}));
-
-const CURRENCY_OPTIONS: SearchableOption[] = CURRENCIES.map((c) => ({
-  value: c.code,
-  label: `${c.code} — ${c.label}`,
-  keywords: [c.symbol],
-}));
+import { useI18n } from "@/hooks/useI18n";
+import { useTenant } from "@/hooks/useTenant";
 
 export function RegionCard() {
+  const { t, tr, tx, language } = useI18n();
+  const { refresh } = useTenant();
   const qc = useQueryClient();
   const save = useServerFn(saveWorkspaceRegion);
   const region = useQuery({ queryKey: ["workspace-region"], queryFn: () => getWorkspaceRegion() });
@@ -64,13 +57,41 @@ export function RegionCard() {
   const mutation = useMutation({
     mutationFn: async () => save({ data: { country, currency, locale, timezone } }),
     onSuccess: () => {
-      toast.success("Regional settings saved — amounts, dates and AI replies now follow them.");
+      // It used to promise that AI replies follow the language. They do not:
+      // the chatbot answers in the customer's own language.
+      toast.success(t("regionCard.regionalSettingsSaved"));
       void qc.invalidateQueries({ queryKey: ["workspace-region"] });
+      // The workspace record is loaded once per signed-in user, so the saved
+      // company language would not reach anyone -- this admin included --
+      // until a full reload.
+      void refresh();
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const preview = resolveTenantLocale({ country, currency, locale, timezone });
+
+  // Named and sorted in the reader's language. The English name, the ISO code
+  // and the calling code still find a country: "UAE", "AE" and "+971" all work
+  // whichever language the list is shown in.
+  const countryOptions = useMemo<SearchableOption[]>(() => {
+    const options = COUNTRIES.map((c) => ({
+      value: c.code,
+      label: countryName(c.code, language),
+      keywords: [c.name, c.code, `+${c.callingCode}`],
+    }));
+    return options.sort((a, b) => a.label.localeCompare(b.label, sortLocale(language)));
+  }, [language]);
+
+  const currencyOptions = useMemo<SearchableOption[]>(
+    () =>
+      CURRENCIES.map((c) => ({
+        value: c.code,
+        label: `${c.code} — ${currencyName(c.code, language)}`,
+        keywords: [c.label, c.symbol],
+      })),
+    [language],
+  );
 
   // Every zone, not one per country, with the country's own default first and
   // the GMT offset shown so "Los Angeles" and "GMT-7" both find Pacific time.
@@ -95,12 +116,9 @@ export function RegionCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Globe2 className="size-4 text-primary" /> Region, currency &amp; language
+          <Globe2 className="size-4 text-primary" /> {t("regionCard.regionCurrencyLanguage")}
         </CardTitle>
-        <CardDescription>
-          Flas adapts to where your business operates: invoices, dates, campaign timing and the
-          marketing rules we enforce all follow this.
-        </CardDescription>
+        <CardDescription>{t("regionCard.flasAdaptsToWhereYour")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {region.isLoading ? (
@@ -108,14 +126,14 @@ export function RegionCard() {
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label>Country</Label>
+              <div className="grid content-start gap-1.5">
+                <Label>{t("regionCard.country")}</Label>
                 <SearchableSelect
-                  ariaLabel="Country"
+                  ariaLabel={t("regionCard.country")}
                   value={country}
-                  options={COUNTRY_OPTIONS}
-                  searchPlaceholder="Search by name, code or +calling code…"
-                  emptyText="No country matches."
+                  options={countryOptions}
+                  searchPlaceholder={t("regionCard.searchCountry")}
+                  emptyText={t("regionCard.noCountryMatches")}
                   onChange={(value) => {
                     setCountry(value);
                     const option = countryOption(value);
@@ -126,19 +144,19 @@ export function RegionCard() {
                   }}
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label>Currency</Label>
+              <div className="grid content-start gap-1.5">
+                <Label>{t("regionCard.currency")}</Label>
                 <SearchableSelect
-                  ariaLabel="Currency"
+                  ariaLabel={t("regionCard.currency")}
                   value={currency}
-                  options={CURRENCY_OPTIONS}
-                  searchPlaceholder="Search currencies…"
-                  emptyText="No currency matches."
+                  options={currencyOptions}
+                  searchPlaceholder={t("regionCard.searchCurrency")}
+                  emptyText={t("regionCard.noCurrencyMatches")}
                   onChange={setCurrency}
                 />
               </div>
-              <div className="grid gap-1.5">
-                <Label>Language</Label>
+              <div className="grid content-start gap-1.5">
+                <Label>{t("regionCard.companyLanguage")}</Label>
                 <Select value={locale} onValueChange={setLocale}>
                   <SelectTrigger>
                     <SelectValue />
@@ -151,35 +169,43 @@ export function RegionCard() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t("regionCard.theInterfaceLanguageForTeammates")}
+                </p>
               </div>
-              <div className="grid gap-1.5">
-                <Label>Timezone</Label>
+              <div className="grid content-start gap-1.5">
+                <Label>{t("regionCard.timezone")}</Label>
                 <SearchableSelect
-                  ariaLabel="Timezone"
+                  ariaLabel={t("regionCard.timezone")}
                   value={timezone}
                   options={timezoneOptions}
-                  searchPlaceholder="Search a city or GMT offset…"
-                  emptyText="No timezone matches."
+                  searchPlaceholder={t("regionCard.searchTimezone")}
+                  emptyText={t("regionCard.noTimezoneMatches")}
                   onChange={setTimezone}
                 />
               </div>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Preview: {formatMoney(1999.5, preview)} ·{" "}
-              {new Intl.DateTimeFormat(`${locale}-${country}`, {
-                dateStyle: "long",
-                timeZone: timezone,
-              }).format(new Date())}
+              {tr("regionCard.preview", {
+                formatMoney: formatMoney(1999.5, preview),
+                format: new Intl.DateTimeFormat(`${locale}-${country}`, {
+                  dateStyle: "long",
+                  timeZone: timezone,
+                }).format(new Date()),
+              })}
             </p>
 
             <div className="rounded-lg border bg-muted/40 p-3">
               <p className="flex items-center gap-2 text-sm font-semibold">
-                <ShieldCheck className="size-4 text-primary" /> {compliance.label}
+                <ShieldCheck className="size-4 text-primary" />{" "}
+                {tx(`regionCard.compliance.${compliance.region}.label`, compliance.label)}
               </p>
               <ul className="mt-1.5 grid gap-1 text-xs text-muted-foreground">
-                {compliance.rules.map((rule) => (
-                  <li key={rule}>• {rule}</li>
+                {compliance.rules.map((rule, i) => (
+                  <li key={rule}>
+                    • {tx(`regionCard.compliance.${compliance.region}.rule.${i}`, rule)}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -189,13 +215,22 @@ export function RegionCard() {
               disabled={mutation.isPending}
               onClick={() => mutation.mutate()}
             >
-              {mutation.isPending ? "Saving…" : "Save regional settings"}
+              {mutation.isPending ? t("regionCard.saving") : t("regionCard.saveRegionalSettings")}
             </Button>
           </>
         )}
       </CardContent>
     </Card>
   );
+}
+
+/** The interface language as a locale the engine can sort by; English if it cannot. */
+function sortLocale(language: string): string {
+  try {
+    return Intl.Collator.supportedLocalesOf([language])[0] ?? "en";
+  } catch {
+    return "en";
+  }
 }
 
 /** "GMT+4" for Asia/Dubai, right now: offsets move with daylight saving. */

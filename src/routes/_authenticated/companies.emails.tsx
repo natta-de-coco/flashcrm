@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { formatMomentUnambiguous } from "@/lib/locale";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * Super-admin only. Global email delivery log across every tenant.
@@ -72,6 +73,7 @@ function statusBadge(status: string) {
 }
 
 function SuperAdminEmailLog() {
+  const { t, tr } = useI18n();
   const { isSuperAdmin, loading } = useAuth();
   const navigate = useNavigate();
   const [rows, setRows] = useState<LogRow[]>([]);
@@ -116,7 +118,11 @@ function SuperAdminEmailLog() {
   }, [isSuperAdmin]);
 
   if (loading || !isSuperAdmin) {
-    return <main className="p-6 text-sm text-muted-foreground">Checking access…</main>;
+    return (
+      <main className="p-6 text-sm text-muted-foreground">
+        {t("companiesEmails.checkingAccess")}
+      </main>
+    );
   }
 
   const filtered = filter
@@ -131,39 +137,39 @@ function SuperAdminEmailLog() {
   return (
     <main className="mx-auto max-w-6xl space-y-6 p-6">
       <div>
-        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Email delivery log</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+          {t("companiesEmails.emailDeliveryLog")}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Every mail dispatched across every tenant. Super-admin only. Use this to troubleshoot
-          missing OTPs, bounced verification emails, or complaints.
+          {t("companiesEmails.everyMailDispatchedAcrossEvery")}
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent OTP / verification attempts</CardTitle>
-          <CardDescription>
-            Server-side rate limits: 60s cooldown, 5/hour and 20/day per email+kind. Rejections
-            appear here so you can spot brute-force or looped signups.
-          </CardDescription>
+          <CardTitle>{t("companiesEmails.recentOtpVerificationAttempts")}</CardTitle>
+          <CardDescription>{t("companiesEmails.serverSideRateLimits60s")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>When</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Kind</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Reject reason</TableHead>
-                  <TableHead>IP</TableHead>
+                  <TableHead>{t("companiesEmails.when")}</TableHead>
+                  <TableHead>{t("companiesEmails.email")}</TableHead>
+                  <TableHead>{t("companiesEmails.kind")}</TableHead>
+                  <TableHead>{t("companiesEmails.status")}</TableHead>
+                  <TableHead>{t("companiesEmails.rejectReason")}</TableHead>
+                  <TableHead>{t("companiesEmails.ip")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {otps.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-xs text-muted-foreground">
-                      {loadingRows ? "Loading…" : "No OTP attempts recorded yet."}
+                      {loadingRows
+                        ? t("companiesEmails.loading")
+                        : t("companiesEmails.noOtpAttemptsRecordedYet")}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -192,16 +198,19 @@ function SuperAdminEmailLog() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Email delivery events</CardTitle>
+          <CardTitle>{t("companiesEmails.emailDeliveryEvents")}</CardTitle>
           <CardDescription>
-            Provider-side status: <em>sent</em> means dispatched; <em>bounced</em> /{" "}
-            <em>complained</em> / <em>failed</em> means the recipient will not have received it.
-            Filter by recipient or subject.
+            {tr("companiesEmails.providerSideStatusMeansDispatched", {
+              em: <em>{t("companiesEmails.sent")}</em>,
+              em2: <em>{t("companiesEmails.bounced")}</em>,
+              em3: <em>{t("companiesEmails.complained")}</em>,
+              em4: <em>{t("companiesEmails.failed")}</em>,
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input
-            placeholder="Filter by recipient / subject / template"
+            placeholder={t("companiesEmails.filterByRecipientSubjectTemplate")}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="max-w-md"
@@ -210,20 +219,22 @@ function SuperAdminEmailLog() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>When</TableHead>
-                  <TableHead>Tenant</TableHead>
-                  <TableHead>Recipient</TableHead>
-                  <TableHead>Template</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Error</TableHead>
+                  <TableHead>{t("companiesEmails.when")}</TableHead>
+                  <TableHead>{t("companiesEmails.tenant")}</TableHead>
+                  <TableHead>{t("companiesEmails.recipient")}</TableHead>
+                  <TableHead>{t("companiesEmails.template")}</TableHead>
+                  <TableHead>{t("companiesEmails.provider")}</TableHead>
+                  <TableHead>{t("companiesEmails.status")}</TableHead>
+                  <TableHead>{t("companiesEmails.error")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-xs text-muted-foreground">
-                      {loadingRows ? "Loading…" : "No email events recorded yet."}
+                      {loadingRows
+                        ? t("companiesEmails.loading")
+                        : t("companiesEmails.noEmailEventsRecordedYet")}
                     </TableCell>
                   </TableRow>
                 ) : (

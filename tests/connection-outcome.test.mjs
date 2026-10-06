@@ -9,6 +9,8 @@ import { describe, it } from "node:test";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
+import { i18nModules } from "./support/i18n-double.mjs";
+
 function load(relative, modules = {}) {
   const source = readFileSync(new URL(relative, import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, {
@@ -34,6 +36,8 @@ const screen = load("../src/components/integrations/ConnectionOutcome.tsx", {
   },
   "@/lib/oauth-outcome": outcome,
   "@/lib/connections-catalog": { CONNECTORS },
+  // The screen is read in English, from the real message files.
+  ...i18nModules,
 });
 
 function nodes(tree) {

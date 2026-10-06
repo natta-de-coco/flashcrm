@@ -17,6 +17,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
 
 const SITE = "https://flas.mobidigisol.com";
 const TITLE = "Features — shared WhatsApp inbox, AI chatbot, invoicing | Flas CRM";
@@ -169,6 +170,7 @@ export const Route = createFileRoute("/features")({
 });
 
 function Features() {
+  const { t, tx } = useI18n();
   useReveal();
 
   return (
@@ -176,19 +178,18 @@ function Features() {
       <main>
         <section className="relative isolate overflow-hidden">
           <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-            <div className="flas-drift absolute -left-32 -top-32 size-[26rem] rounded-full bg-brand/20 blur-3xl" />
+            <div className="flas-drift absolute -start-32 -top-32 size-[26rem] rounded-full bg-brand/20 blur-3xl" />
           </div>
           <div className="mx-auto max-w-3xl px-6 py-20 text-center">
             <h1 data-reveal className="text-4xl font-bold tracking-tight sm:text-5xl">
-              The whole path, from first message to paid invoice
+              {t("features.theWholePathFromFirst")}
             </h1>
             <p
               data-reveal
               style={{ ["--reveal-delay" as string]: "60ms" }}
               className="mx-auto mt-4 max-w-xl text-base text-muted-foreground"
             >
-              Twelve modules, grouped by the job they do rather than listed as a grid of equal
-              squares. Every one of them is on every plan.
+              {t("features.twelveModulesGroupedByThe")}
             </p>
           </div>
         </section>
@@ -201,14 +202,14 @@ function Features() {
             <div className="mx-auto max-w-6xl px-6">
               <div className="max-w-2xl">
                 <h2 data-reveal className="text-2xl font-bold">
-                  {group.name}
+                  {tx(`features.group.${gi}.name`, group.name)}
                 </h2>
                 <p
                   data-reveal
                   style={{ ["--reveal-delay" as string]: "40ms" }}
                   className="mt-2 text-sm text-muted-foreground"
                 >
-                  {group.lede}
+                  {tx(`features.group.${gi}.lede`, group.lede)}
                 </p>
               </div>
 
@@ -223,8 +224,12 @@ function Features() {
                     <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand transition-transform duration-300 group-hover:scale-110">
                       <item.icon className="size-5" />
                     </span>
-                    <h3 className="mt-4 text-base font-semibold">{item.title}</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">{item.body}</p>
+                    <h3 className="mt-4 text-base font-semibold">
+                      {tx(`features.item.${gi}.${i}.title`, item.title)}
+                    </h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {tx(`features.item.${gi}.${i}.body`, item.body)}
+                    </p>
                   </article>
                 ))}
               </div>
@@ -234,15 +239,14 @@ function Features() {
 
         <section className="mx-auto max-w-3xl px-6 py-20 text-center">
           <h2 data-reveal className="text-3xl font-bold">
-            See it with your own conversations
+            {t("features.seeItWithYourOwn")}
           </h2>
           <p
             data-reveal
             style={{ ["--reveal-delay" as string]: "60ms" }}
             className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground"
           >
-            One month free, no card needed to start. If you still need your WhatsApp number
-            approved, we do that too.
+            {t("features.oneMonthFreeNoCard")}
           </p>
           <div
             data-reveal
@@ -251,14 +255,14 @@ function Features() {
           >
             <Button asChild size="lg" className="flas-sheen relative overflow-hidden">
               <Link to="/auth">
-                Start free <ArrowRight className="size-4" />
+                {t("features.startFree")} <ArrowRight className="size-4" />
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link to="/whatsapp-business-api">Get my number approved</Link>
+              <Link to="/whatsapp-business-api">{t("features.getMyNumberApproved")}</Link>
             </Button>
             <Button asChild size="lg" variant="ghost">
-              <Link to="/pricing">See pricing</Link>
+              <Link to="/pricing">{t("features.seePricing")}</Link>
             </Button>
           </div>
         </section>

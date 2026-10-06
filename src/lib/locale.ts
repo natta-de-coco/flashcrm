@@ -489,6 +489,24 @@ export function countryName(code: string | null | undefined, language = "en"): s
   }
 }
 
+/**
+ * A currency's name in the interface language: "UAE Dirham" in English,
+ * "درهم إماراتي" in Arabic. From the platform's own data, like countryName, so
+ * every currency in the picker is named without a hand-kept list. Falls back
+ * to the English label when the engine has no name for it.
+ */
+export function currencyName(code: string | null | undefined, language = "en"): string {
+  const upper = (code ?? "").toUpperCase();
+  const english = CURRENCIES.find((c) => c.code === upper)?.label ?? upper;
+  if (!upper || language === "en") return english;
+  try {
+    const name = new Intl.DisplayNames([language], { type: "currency" }).of(upper);
+    return name && name !== upper ? name : english;
+  } catch {
+    return english;
+  }
+}
+
 /** True when the zone is a real IANA zone this engine can format in. */
 export function isValidTimeZone(zone: string | null | undefined): boolean {
   if (!zone) return false;

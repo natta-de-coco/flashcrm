@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/hooks/useI18n";
 
 import { supabase } from "@/integrations/supabase/client";
 import { resendVerification } from "@/lib/otp-resend.functions";
@@ -40,6 +42,7 @@ function AuthPage() {
   const search = Route.useSearch();
   const dest = safePath(search.redirect);
   const { session } = useAuth();
+  const { t } = useI18n();
   const runResend = useServerFn(resendVerification);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -91,7 +94,7 @@ function AuthPage() {
   async function requestPasswordReset(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) {
-      toast.error("Enter your email address first.");
+      toast.error(t("auth.enterEmailFirst"));
       return;
     }
     setBusy(true);
@@ -103,7 +106,7 @@ function AuthPage() {
       toast.error(error.message);
       return;
     }
-    toast.success("If an account exists, a password reset link has been sent.");
+    toast.success(t("auth.resetSent"));
     setForgotOpen(false);
   }
 
@@ -124,12 +127,12 @@ function AuthPage() {
       });
       resendAttempts.current += 1;
       setResendSeconds(60);
-      toast.success("A new verification email has been sent.");
+      toast.success(t("auth.verificationResent"));
     } catch (e) {
       // Server returns a uniform "if account exists..." message on the
       // failure path to prevent account enumeration. Cooldown / limit
       // errors are the informative ones the user actually needs.
-      toast.error(e instanceof Error ? e.message : "Could not resend.");
+      toast.error(e instanceof Error ? e.message : t("auth.resendFailed"));
     } finally {
       setBusy(false);
     }
@@ -173,27 +176,22 @@ function AuthPage() {
     }
     setVerificationPending(true);
     setResendSeconds(60);
-    toast.success(`Check ${email} for your Flas verification email.`);
+    toast.success(t("auth.checkInboxFor", { email }));
   }
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-2">
+    <main className="relative grid min-h-screen lg:grid-cols-2">
+      {/* The first screen a new user sees, so the language choice is here too. */}
+      <LanguageSwitcher className="absolute end-4 top-4 z-10" />
       <div className="hidden flex-col justify-between bg-sidebar p-12 text-sidebar-foreground lg:flex">
         <div className="w-fit rounded-md bg-white px-4 py-2 shadow-sm">
           <FlasWordmark className="h-10 w-auto" />
         </div>
         <div className="space-y-4">
-          <h1 className="text-4xl font-extrabold leading-tight">
-            Every WhatsApp conversation, in one shared inbox.
-          </h1>
-          <p className="max-w-md text-sidebar-foreground/70">
-            Live WhatsApp monitoring, an AI chatbot that answers instantly, website chat, and a lead
-            pipeline your team actually keeps up to date.
-          </p>
+          <h1 className="text-4xl font-extrabold leading-tight">{t("auth.heroTitle")}</h1>
+          <p className="max-w-md text-sidebar-foreground/70">{t("auth.heroBody")}</p>
         </div>
-        <p className="text-xs text-sidebar-foreground/50">
-          The first account created becomes the workspace admin.
-        </p>
+        <p className="text-xs text-sidebar-foreground/50">{t("auth.firstAccountAdmin")}</p>
       </div>
 
       <div className="flex items-center justify-center p-6">
@@ -201,10 +199,10 @@ function AuthPage() {
           <Tabs defaultValue="signin">
             <TabsList className="w-full">
               <TabsTrigger className="flex-1" value="signin">
-                Sign in
+                {t("auth.tab.signIn")}
               </TabsTrigger>
               <TabsTrigger className="flex-1" value="signup">
-                Create account
+                {t("auth.tab.signUp")}
               </TabsTrigger>
             </TabsList>
 
@@ -212,7 +210,7 @@ function AuthPage() {
               {mfaFactorId ? (
                 <form onSubmit={verifyMfa} className="space-y-4 pt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="mfa">Two-factor code</Label>
+                    <Label htmlFor="mfa">{t("auth.mfaCode")}</Label>
                     <Input
                       id="mfa"
                       inputMode="numeric"
@@ -222,16 +220,14 @@ function AuthPage() {
                       value={mfaCode}
                       onChange={(e) => setMfaCode(e.target.value)}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Enter the 6-digit code from your authenticator app.
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t("auth.mfaHint")}</p>
                   </div>
                   <Button
                     type="submit"
                     className="w-full"
                     disabled={busy || mfaCode.trim().length !== 6}
                   >
-                    Verify and sign in
+                    {t("auth.mfaVerify")}
                   </Button>
                   <Button
                     type="button"
@@ -243,13 +239,13 @@ function AuthPage() {
                       setMfaCode("");
                     }}
                   >
-                    Back
+                    {t("auth.back")}
                   </Button>
                 </form>
               ) : forgotOpen ? (
                 <form onSubmit={requestPasswordReset} className="space-y-4 pt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="reset-email">Work email</Label>
+                    <Label htmlFor="reset-email">{t("auth.workEmail")}</Label>
                     <Input
                       id="reset-email"
                       type="email"
@@ -260,7 +256,7 @@ function AuthPage() {
                     />
                   </div>
                   <Button type="submit" className="w-full" disabled={busy}>
-                    {busy ? "Sending reset link…" : "Send password reset link"}
+                    {busy ? t("auth.sendingReset") : t("auth.sendReset")}
                   </Button>
                   <Button
                     type="button"
@@ -268,13 +264,13 @@ function AuthPage() {
                     className="w-full"
                     onClick={() => setForgotOpen(false)}
                   >
-                    Back to sign in
+                    {t("auth.backToSignIn")}
                   </Button>
                 </form>
               ) : (
                 <form onSubmit={signIn} className="space-y-4 pt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email">Work email</Label>
+                    <Label htmlFor="email">{t("auth.workEmail")}</Label>
                     <Input
                       id="email"
                       type="email"
@@ -284,7 +280,7 @@ function AuthPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="password">{t("auth.password")}</Label>
                     <Input
                       id="password"
                       type="password"
@@ -294,7 +290,7 @@ function AuthPage() {
                     />
                   </div>
                   <Button type="submit" className="w-full" disabled={busy}>
-                    {busy ? "Signing in…" : "Sign in"}
+                    {busy ? t("auth.signingIn") : t("auth.signIn")}
                   </Button>
                   <Button
                     type="button"
@@ -302,7 +298,7 @@ function AuthPage() {
                     className="h-auto w-full p-0"
                     onClick={() => setForgotOpen(true)}
                   >
-                    Forgot your password?
+                    {t("auth.forgotPassword")}
                   </Button>
                 </form>
               )}
@@ -312,10 +308,9 @@ function AuthPage() {
               {verificationPending ? (
                 <div className="space-y-4 pt-5 text-center">
                   <div>
-                    <h2 className="font-semibold">Check your email</h2>
+                    <h2 className="font-semibold">{t("auth.checkEmail")}</h2>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      We sent a verification link to{" "}
-                      <span className="font-medium text-foreground">{email}</span>.
+                      {t("auth.verificationSentTo", { email })}
                     </p>
                   </div>
                   <Button
@@ -326,10 +321,10 @@ function AuthPage() {
                     onClick={resendVerificationEmail}
                   >
                     {resendAttempts.current >= 5
-                      ? "Resend limit reached"
+                      ? t("auth.resendLimit")
                       : resendSeconds > 0
-                        ? `Resend available in ${resendSeconds}s`
-                        : "Resend verification email"}
+                        ? t("auth.resendIn", { seconds: resendSeconds })
+                        : t("auth.resend")}
                   </Button>
                   <Button
                     type="button"
@@ -337,13 +332,13 @@ function AuthPage() {
                     className="w-full"
                     onClick={() => setVerificationPending(false)}
                   >
-                    Use a different email
+                    {t("auth.differentEmail")}
                   </Button>
                 </div>
               ) : (
                 <form onSubmit={signUp} className="space-y-4 pt-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Full name</Label>
+                    <Label htmlFor="name">{t("auth.fullName")}</Label>
                     <Input
                       id="name"
                       value={fullName}
@@ -351,7 +346,7 @@ function AuthPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email2">Work email</Label>
+                    <Label htmlFor="email2">{t("auth.workEmail")}</Label>
                     <Input
                       id="email2"
                       type="email"
@@ -361,7 +356,7 @@ function AuthPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="password2">Password</Label>
+                    <Label htmlFor="password2">{t("auth.password")}</Label>
                     <Input
                       id="password2"
                       type="password"
@@ -372,7 +367,7 @@ function AuthPage() {
                     />
                   </div>
                   <Button type="submit" className="w-full" disabled={busy}>
-                    {busy ? "Creating account…" : "Create account"}
+                    {busy ? t("auth.creatingAccount") : t("auth.createAccount")}
                   </Button>
                 </form>
               )}
@@ -380,13 +375,13 @@ function AuthPage() {
           </Tabs>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            By continuing you agree to our{" "}
+            {t("auth.agreePrefix")}{" "}
             <Link to="/terms" className="underline">
-              Terms
+              {t("auth.terms")}
             </Link>{" "}
-            and{" "}
+            {t("auth.and")}{" "}
             <Link to="/privacy" className="underline">
-              Privacy Policy
+              {t("auth.privacy")}
             </Link>
             .
           </p>

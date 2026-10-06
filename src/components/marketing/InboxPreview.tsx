@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Bot, Check, CheckCheck } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * An animated mock of the Flas inbox, for the landing hero.
@@ -44,6 +45,7 @@ const SCRIPT: Turn[] = [
 const TOTAL = SCRIPT.reduce((sum, t) => sum + t.delay, 0);
 
 export function InboxPreview() {
+  const i18n = useI18n();
   const ref = useRef<HTMLDivElement>(null);
   // -1 renders the empty thread; SCRIPT.length renders all of it.
   const [shown, setShown] = useState(-1);
@@ -116,16 +118,19 @@ export function InboxPreview() {
         <div className="flex items-center gap-3 border-b border-border/60 bg-card/60 px-4 py-3">
           <img
             src="/store-avatar.png"
-            alt="A to Z Security Trading"
+            alt={i18n.t("inboxPreview.aToZSecurityTrading")}
             width={36}
             height={36}
             className="size-9 shrink-0 rounded-full object-cover ring-1 ring-border"
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">A to Z Security Trading</p>
+            <p className="truncate text-sm font-semibold">
+              {i18n.t("inboxPreview.aToZSecurityTrading")}
+            </p>
             <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span className="size-1.5 rounded-full bg-brand" />
-              WhatsApp Business
+              {i18n.tr("inboxPreview.whatsappBusiness", {
+                span: <span className="size-1.5 rounded-full bg-brand" />,
+              })}
             </p>
           </div>
         </div>
@@ -150,8 +155,8 @@ export function InboxPreview() {
                 <div
                   className={
                     mine
-                      ? "max-w-[82%] rounded-2xl rounded-br-sm bg-brand px-3 py-2 text-[13px] leading-snug text-brand-foreground shadow-sm"
-                      : "max-w-[82%] rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-[13px] leading-snug shadow-sm"
+                      ? "max-w-[82%] rounded-2xl rounded-ee-sm bg-brand px-3 py-2 text-[13px] leading-snug text-brand-foreground shadow-sm"
+                      : "max-w-[82%] rounded-2xl rounded-es-sm bg-muted px-3 py-2 text-[13px] leading-snug shadow-sm"
                   }
                 >
                   {turn.from === "bot" && (
@@ -160,9 +165,11 @@ export function InboxPreview() {
                     </span>
                   )}
                   {turn.from === "agent" && (
-                    <span className="mb-1 block text-[10px] font-semibold opacity-80">Fatima</span>
+                    <span className="mb-1 block text-[10px] font-semibold opacity-80">
+                      {i18n.t("inboxPreview.fatima")}
+                    </span>
                   )}
-                  {turn.text}
+                  {i18n.tx(`inboxPreview.turn.${i}`, turn.text)}
                   {mine && (
                     <span className="mt-1 flex justify-end opacity-70">
                       {turn.from === "agent" ? (
@@ -205,22 +212,21 @@ export function InboxPreview() {
 
       {/* Two floating chips that say what just happened in the thread. */}
       <span
-        className="flas-drift absolute -left-20 top-1/3 hidden items-center gap-1.5 rounded-full border border-white/40 bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-lg backdrop-blur-md lg:flex dark:border-white/10"
+        className="flas-drift absolute -start-20 top-1/3 hidden items-center gap-1.5 rounded-full border border-white/40 bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-lg backdrop-blur-md lg:flex dark:border-white/10"
         style={{ animationDelay: "-2s" }}
       >
-        <Bot className="size-3.5 text-brand" /> AI replied in 2s
+        <Bot className="size-3.5 text-brand" /> {i18n.t("inboxPreview.aiRepliedIn2s")}
       </span>
       <span
-        className="flas-drift absolute -right-16 bottom-12 hidden items-center gap-1.5 rounded-full border border-white/40 bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-lg backdrop-blur-md lg:flex dark:border-white/10"
+        className="flas-drift absolute -end-16 bottom-12 hidden items-center gap-1.5 rounded-full border border-white/40 bg-card/90 px-3 py-1.5 text-[11px] font-medium shadow-lg backdrop-blur-md lg:flex dark:border-white/10"
         style={{ animationDelay: "-5s" }}
       >
-        <span className="size-1.5 rounded-full bg-brand" /> Quotation sent
+        {i18n.tr("inboxPreview.quotationSent", {
+          span: <span className="size-1.5 rounded-full bg-brand" />,
+        })}
       </span>
 
-      <span className="sr-only">
-        An illustration of the Flas shared inbox: a customer asks about stock, Flas AI answers with
-        price and availability, then an agent takes over to book installation.
-      </span>
+      <span className="sr-only">{i18n.t("inboxPreview.anIllustrationOfTheFlas")}</span>
     </div>
   );
 }

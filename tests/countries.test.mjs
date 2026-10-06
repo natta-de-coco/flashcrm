@@ -300,3 +300,109 @@ describe("a searchable picker's list is as wide as the field it opens from", () 
     assert.ok(!/-\[--[a-z]/.test(picker), "a bare --variable in square brackets does nothing");
   });
 });
+
+const readSource = (relative) =>
+  readFileSync(new URL(relative, import.meta.url), "utf8")
+    .split("\r\n")
+    .join("\n");
+
+describe("currency names follow the reader's language", () => {
+  it("is the English label by default", () => {
+    const aed = CURRENCIES.find((c) => c.code === "AED");
+    assert.equal(locale.currencyName("AED"), aed.label);
+    assert.equal(locale.currencyName("aed"), aed.label, "the code is case-insensitive");
+  });
+
+  it("reads Arabic for an Arabic reader", () => {
+    const name = locale.currencyName("AED", "ar");
+    assert.match(name, /[؀-ۿ]/, "expected Arabic script");
+  });
+
+  it("falls back to what it was given rather than printing nothing", () => {
+    assert.equal(locale.currencyName("ZZZ", "ar"), "ZZZ");
+    assert.equal(locale.currencyName(null, "ar"), "");
+  });
+});
+
+describe("the Region card after the five-language merge", () => {
+  const card = readSource("../src/components/settings/RegionCard.tsx");
+  const picker = readSource("../src/components/ui/searchable-select.tsx");
+  const messages = readSource("../src/lib/i18n/screens/region-card.ts");
+
+  it("keeps a searchable picker for country, currency and timezone", () => {
+    assert.equal(card.split("<SearchableSelect").length - 1, 3);
+    assert.match(card, /options=\{countryOptions\}/);
+    assert.match(card, /options=\{currencyOptions\}/);
+    assert.match(card, /options=\{timezoneOptions\}/);
+    assert.match(card, /allTimeZones\(\)/, "every zone, not one per country");
+  });
+
+  it("names countries in the reader's language and still finds them in English", () => {
+    assert.match(card, /label: countryName\(c\.code, language\)/);
+    // The English name, the ISO code and the calling code are search keywords,
+    // so "UAE", "AE" and "+971" work in any interface language.
+    assert.match(card, /keywords: \[c\.name, c\.code, `\+\$\{c\.callingCode\}`\]/);
+    assert.match(card, /currencyName\(c\.code, language\)/);
+  });
+
+  it("has no English of its own in the picker", () => {
+    // The picker's texts are required props: a caller cannot leave one out
+    // and ship an untranslated "Search…".
+    assert.ok(!picker.includes('"Search…"'), "an English default search placeholder");
+    assert.ok(!picker.includes('"Nothing matches."'), "an English default empty text");
+    assert.match(picker, /searchPlaceholder: string;/);
+    assert.match(picker, /emptyText: string;/);
+    for (const key of [
+      "regionCard.searchCountry",
+      "regionCard.noCountryMatches",
+      "regionCard.searchCurrency",
+      "regionCard.noCurrencyMatches",
+      "regionCard.searchTimezone",
+      "regionCard.noTimezoneMatches",
+    ]) {
+      assert.ok(card.includes(`t("${key}")`), `${key} is not used`);
+      assert.ok(messages.includes(`"${key}"`), `${key} has no message`);
+    }
+  });
+
+  it("keeps what the language work added: honest toast, refreshed workspace", () => {
+    assert.match(card, /toast\.success\(t\("regionCard\.regionalSettingsSaved"\)\)/);
+    assert.match(card, /void refresh\(\);/);
+    assert.ok(!card.includes("AI replies now follow"), "the old promise about AI replies is back");
+  });
+
+  it("says each region's marketing rules in the message file exactly as the library has them", () => {
+    // The card looks the rules up by region; English must stay the library's
+    // own wording, and every rule needs a message or it shows untranslated.
+    for (const [region, profile] of Object.entries(locale.COMPLIANCE)) {
+      assert.ok(
+        messages.includes(
+          `"regionCard.compliance.${region}.label": ${JSON.stringify(profile.label)}`,
+        ),
+        `${region} label`,
+      );
+      profile.rules.forEach((rule, i) => {
+        assert.ok(messages.includes(JSON.stringify(rule)), `${region} rule ${i}: ${rule}`);
+        assert.ok(messages.includes(`"regionCard.compliance.${region}.rule.${i}"`));
+      });
+    }
+  });
+});
+
+describe("regional settings belong to the caller's own workspace", () => {
+  const server = readSource("../src/lib/workspace.functions.ts");
+
+  it("takes the workspace from the signed-in user, never from the request", () => {
+    // Both functions look the tenant up from the caller's profile. Nothing the
+    // browser sends can name another company's row.
+    assert.equal(server.split('.eq("id", context.userId)').length - 1, 2);
+    assert.equal(server.split('.eq("id", profile.tenant_id)').length - 1, 2);
+    assert.ok(!/data\.tenant_?[iI]d|data\.organization/.test(server), "a tenant id from input");
+    const accepted = Object.keys(RegionSchema.shape ?? {});
+    assert.deepEqual([...accepted].sort(), ["country", "currency", "locale", "timezone"]);
+  });
+
+  it("lets only a company admin change them", () => {
+    assert.match(server, /\["company_admin", "super_admin"\]\.includes\(profile\.staff_role/);
+  });
+});

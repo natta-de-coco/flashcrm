@@ -26,20 +26,23 @@ type Props = {
   value: string;
   onChange: (value: string) => void;
   options: SearchableOption[];
+  /** Shown on the trigger when nothing is chosen yet. */
   placeholder?: string;
-  searchPlaceholder?: string;
-  emptyText?: string;
+  // The three texts below have no English default on purpose: the caller owns
+  // the words, so a picker cannot ship untranslated by leaving a prop out.
+  searchPlaceholder: string;
+  emptyText: string;
   /** For the trigger, since it is a button and not a labelled input. */
-  ariaLabel?: string;
+  ariaLabel: string;
 };
 
 export function SearchableSelect({
   value,
   onChange,
   options,
-  placeholder = "Choose…",
-  searchPlaceholder = "Search…",
-  emptyText = "Nothing matches.",
+  placeholder,
+  searchPlaceholder,
+  emptyText,
   ariaLabel,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -56,7 +59,7 @@ export function SearchableSelect({
           aria-label={ariaLabel}
           className="w-full justify-between font-normal"
         >
-          <span className="truncate">{selected?.label ?? value ?? placeholder}</span>
+          <span className="truncate">{selected?.label ?? (value || placeholder || ariaLabel)}</span>
           <ChevronsUpDown className="ms-2 size-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>

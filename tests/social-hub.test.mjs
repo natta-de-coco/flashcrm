@@ -401,7 +401,9 @@ describe("a saved draft can be found and rewritten", () => {
     assert.ok(composer.length > 0);
     assert.ok(composer.includes("groupPostsByState"), "the composer shows the saved drafts");
     assert.ok(composer.includes("updateSocialPost") || source.includes("updateSocialPost"));
-    assert.ok(composer.includes("Your drafts"));
+    // Said through a translation key now; the English is still these words.
+    assert.ok(composer.includes("social.yourDrafts"));
+    assert.match(read("src/lib/i18n/screens/social.ts"), /"social\.yourDrafts": "Your drafts"/);
     assert.ok(composer.includes("onEdit"), "a draft can be loaded back into the composer");
   });
 

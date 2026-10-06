@@ -43,6 +43,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-parameters";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   head: () => ({
@@ -66,6 +67,7 @@ export const Route = createFileRoute("/_authenticated/inbox")({
 });
 
 function InboxPage() {
+  const i18n = useI18n();
   const { user } = useAuth();
   const qc = useQueryClient();
   // Seeded from the link, and followed afterwards: opening a contact's chat
@@ -346,13 +348,14 @@ function InboxPage() {
     mutationFn: async (body: string) => send({ data: { conversationId: activeId!, body } }),
     onSuccess: (res) => {
       if (res.blockedReasons?.length) {
-        toast.error("Message blocked by safety rules", {
+        toast.error(i18n.t("inbox.messageBlockedBySafetyRules"), {
           description: res.blockedReasons.join(" "),
         });
         return;
       }
       setDraft("");
-      if (res.deliveryError) toast.warning(`Saved, but not delivered: ${res.deliveryError}`);
+      if (res.deliveryError)
+        toast.warning(i18n.t("inbox.savedButNotDelivered", { deliveryError: res.deliveryError }));
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
@@ -418,7 +421,7 @@ function InboxPage() {
       logAction("reminder.create", { note: reminderNote || "Follow up", due: reminderDue });
       setReminderNote("");
       setReminderDue("");
-      toast.success("Follow-up reminder set");
+      toast.success(i18n.t("inbox.followUpReminderSet"));
       void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -431,14 +434,14 @@ function InboxPage() {
       }),
     onSuccess: (res) => {
       if (res.blockedReasons?.length) {
-        toast.error("Template blocked by safety rules", {
+        toast.error(i18n.t("inbox.templateBlockedBySafetyRules"), {
           description: res.blockedReasons.join(" "),
         });
         return;
       }
       setTemplateId("");
       setTemplateVariables([]);
-      toast.success("Template accepted by WhatsApp. Delivery confirmation is pending.");
+      toast.success(i18n.t("inbox.templateAcceptedByWhatsappDelivery"));
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
@@ -464,7 +467,7 @@ function InboxPage() {
     onSuccess: (res) => {
       setDraft((d) => (d ? `${d}\n\n${res.body}` : res.body));
       setSelectedProductIds([]);
-      toast.success("Catalog message inserted — press Send to deliver");
+      toast.success(i18n.t("inbox.catalogMessageInsertedPressSend"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -519,7 +522,7 @@ function InboxPage() {
       ]),
     );
     logAction("conversations.export", { rows: rows.length });
-    toast.success("Conversations CSV downloaded");
+    toast.success(i18n.t("inbox.conversationsCsvDownloaded"));
   }
 
   function exportTranscript() {
@@ -542,14 +545,14 @@ function InboxPage() {
       ]),
     );
     logAction("transcript.export", { rows: rows.length });
-    toast.success("Transcript CSV downloaded");
+    toast.success(i18n.t("inbox.transcriptCsvDownloaded"));
   }
 
   if (channel === "social") {
     return (
       <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 flex-col lg:h-[100dvh]">
         <div className="flex items-center gap-2 border-b bg-card px-4 py-3">
-          <h1 className="text-lg font-bold">Inbox</h1>
+          <h1 className="text-lg font-bold">{i18n.t("inbox.inbox")}</h1>
           <ChannelSwitch channel={channel} onChange={setChannel} pending={socialPending} />
         </div>
         <SocialInbox />
@@ -562,14 +565,14 @@ function InboxPage() {
       {/* Conversation list */}
       <div
         className={cn(
-          "w-full shrink-0 flex-col border-r bg-card lg:flex lg:max-w-sm",
+          "w-full shrink-0 flex-col border-e bg-card lg:flex lg:max-w-sm",
           active ? "hidden" : "flex",
         )}
       >
         <div className="space-y-3 border-b p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <h1 className="text-lg font-bold">Inbox</h1>
+              <h1 className="text-lg font-bold">{i18n.t("inbox.inbox")}</h1>
               <ChannelSwitch channel={channel} onChange={setChannel} pending={socialPending} />
               <span
                 className={cn(
@@ -583,9 +586,11 @@ function InboxPage() {
                 title={
                   liveStatus === "live"
                     ? lastEventAt
-                      ? `Live · last update ${new Date(lastEventAt).toLocaleTimeString()}`
-                      : "Live — new messages arrive instantly"
-                    : "Reconnecting — checking for new messages every 10 seconds"
+                      ? i18n.t("inbox.liveLastUpdate", {
+                          toLocaleTimeString: new Date(lastEventAt).toLocaleTimeString(),
+                        })
+                      : i18n.t("inbox.liveNewMessagesArriveInstantly")
+                    : i18n.t("inbox.reconnectingCheckingForNewMessages")
                 }
               >
                 <span
@@ -599,10 +604,10 @@ function InboxPage() {
                   )}
                 />
                 {liveStatus === "live"
-                  ? "Live"
+                  ? i18n.t("inbox.live")
                   : liveStatus === "connecting"
-                    ? "Connecting"
-                    : "Polling"}
+                    ? i18n.t("inbox.connecting")
+                    : i18n.t("inbox.polling")}
               </span>
             </div>
             <Button
@@ -610,17 +615,17 @@ function InboxPage() {
               size="sm"
               onClick={exportConversations}
               disabled={(conversations.data ?? []).length === 0}
-              title="Download all conversations as CSV"
+              title={i18n.t("inbox.downloadAllConversationsAsCsv")}
             >
               <Download className="size-4" /> CSV
             </Button>
           </div>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-9"
-              placeholder="Search chats"
-              aria-label="Search conversations"
+              className="ps-9"
+              placeholder={i18n.t("inbox.searchChats")}
+              aria-label={i18n.t("inbox.searchConversations")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -645,11 +650,13 @@ function InboxPage() {
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {conversations.isLoading && (
-            <p className="p-4 text-sm text-muted-foreground">Loading conversations…</p>
+            <p className="p-4 text-sm text-muted-foreground">
+              {i18n.t("inbox.loadingConversations")}
+            </p>
           )}
           {!conversations.isLoading && list.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">
-              No conversations yet. Messages from WhatsApp and the website widget land here.
+              {i18n.t("inbox.noConversationsYetMessagesFrom")}
             </p>
           )}
           {list.map((c) => (
@@ -657,13 +664,13 @@ function InboxPage() {
               key={c.id}
               onClick={() => setActiveId(c.id)}
               className={cn(
-                "flex w-full flex-col gap-1 border-b px-4 py-3 text-left transition-colors hover:bg-muted/60",
+                "flex w-full flex-col gap-1 border-b px-4 py-3 text-start transition-colors hover:bg-muted/60",
                 activeId === c.id && "bg-secondary",
               )}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-semibold">
-                  {c.contacts?.name ?? "Unknown"}
+                  {c.contacts?.name ?? i18n.t("inbox.unknown")}
                 </span>
                 <span className="shrink-0 text-[11px] text-muted-foreground">
                   {new Date(c.last_message_at).toLocaleTimeString([], {
@@ -673,12 +680,12 @@ function InboxPage() {
                 </span>
               </div>
               <span className="truncate text-xs text-muted-foreground">
-                {c.last_message_preview ?? "No messages yet"}
+                {c.last_message_preview ?? i18n.t("inbox.noMessagesYet")}
               </span>
               <div className="flex items-center gap-1.5 pt-1">
                 <Badge variant="secondary" className="gap-1 text-[10px]">
                   {c.channel === "web" ? <Globe className="size-3" /> : null}
-                  {c.channel === "web" ? "Website" : "WhatsApp"}
+                  {c.channel === "web" ? i18n.t("inbox.website") : "WhatsApp"}
                 </Badge>
                 {c.wa_numbers && (
                   <Badge variant="outline" className="gap-1 text-[10px]">
@@ -688,7 +695,7 @@ function InboxPage() {
                 )}
                 {c.bot_enabled && (
                   <Badge className="gap-1 bg-brand text-brand-foreground text-[10px]">
-                    <Bot className="size-3" /> Bot
+                    <Bot className="size-3" /> {i18n.t("inbox.bot")}
                   </Badge>
                 )}
                 {c.unread_count > 0 && (
@@ -706,7 +713,7 @@ function InboxPage() {
       <div className={cn("min-w-0 flex-1 flex-col lg:flex", active ? "flex" : "hidden")}>
         {!active ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
-            Select a conversation to start monitoring.
+            {i18n.t("inbox.selectAConversationToStart")}
           </div>
         ) : (
           <>
@@ -715,16 +722,16 @@ function InboxPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="-ml-2 shrink-0 lg:hidden"
+                  className="-ms-2 shrink-0 lg:hidden"
                   onClick={() => setActiveId(null)}
-                  aria-label="Back to conversations"
+                  aria-label={i18n.t("inbox.backToConversations")}
                 >
                   <ChevronLeft className="size-5" />
                 </Button>
                 <div className="min-w-0">
                   <h2 className="truncate font-semibold">{active.contacts?.name}</h2>
                   <p className="truncate text-xs text-muted-foreground">
-                    {active.contacts?.phone ?? "Website visitor"}
+                    {active.contacts?.phone ?? i18n.t("inbox.websiteVisitor")}
                     {active.contacts?.company ? ` · ${active.contacts.company}` : ""}
                   </p>
                 </div>
@@ -735,16 +742,16 @@ function InboxPage() {
                   size="sm"
                   onClick={() => setShowTools((v) => !v)}
                   aria-expanded={showTools}
-                  aria-label="Show message tools"
+                  aria-label={i18n.t("inbox.showMessageTools")}
                 >
-                  <Settings2 className="size-4" /> Tools
+                  <Settings2 className="size-4" /> {i18n.t("inbox.tools")}
                 </Button>
                 <label className="flex items-center gap-2 text-xs font-medium">
                   <Switch
                     checked={active.bot_enabled}
                     onCheckedChange={(v) => void updateConversation({ bot_enabled: v })}
                   />
-                  AI auto-reply
+                  {i18n.t("inbox.aiAutoReply")}
                 </label>
                 <label className="flex items-center gap-2 text-xs font-medium">
                   <Switch
@@ -753,9 +760,9 @@ function InboxPage() {
                       autoTranslateStartedAt.current = enabled ? Date.now() : null;
                       setAutoTranslate(enabled);
                     }}
-                    aria-label="Auto-translate new incoming messages"
+                    aria-label={i18n.t("inbox.autoTranslateNewIncomingMessages")}
                   />
-                  Auto-translate new
+                  {i18n.t("inbox.autoTranslateNew")}
                 </label>
                 <div className="flex gap-1">
                   {(["open", "pending", "closed"] as const).map((s) => (
@@ -775,21 +782,21 @@ function InboxPage() {
                   size="sm"
                   onClick={exportTranscript}
                   disabled={(messages.data ?? []).length === 0}
-                  title="Download this chat as CSV"
+                  title={i18n.t("inbox.downloadThisChatAsCsv")}
                 >
-                  <Download className="size-4" /> Transcript
+                  <Download className="size-4" /> {i18n.t("inbox.transcript")}
                 </Button>
                 <select
                   className="h-9 rounded-md border bg-background px-2 text-xs"
                   value={active.assigned_to ?? ""}
                   onChange={(e) => void updateConversation({ assigned_to: e.target.value || null })}
                 >
-                  <option value="">Unassigned</option>
+                  <option value="">{i18n.t("inbox.unassigned")}</option>
                   {(team.data ?? []).map((member) => (
                     <option key={member.id} value={member.id}>
                       {member.id === user?.id
-                        ? "Me"
-                        : member.full_name || member.email || "Teammate"}
+                        ? i18n.t("inbox.me")
+                        : member.full_name || member.email || i18n.t("inbox.teammate")}
                     </option>
                   ))}
                 </select>
@@ -808,15 +815,18 @@ function InboxPage() {
                 {(active.tags ?? []).map((tag) => (
                   <Badge key={tag} variant="secondary" className="gap-1">
                     {tag}
-                    <button aria-label={`Remove ${tag}`} onClick={() => removeTag(tag)}>
+                    <button
+                      aria-label={i18n.t("inbox.remove", { tag: tag })}
+                      onClick={() => removeTag(tag)}
+                    >
                       <X className="size-3" />
                     </button>
                   </Badge>
                 ))}
                 <Input
                   className="h-8 w-40"
-                  placeholder="Add tag"
-                  aria-label="Add conversation tag"
+                  placeholder={i18n.t("inbox.addTag")}
+                  aria-label={i18n.t("inbox.addConversationTag")}
                   value={tagDraft}
                   onChange={(e) => setTagDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -832,13 +842,13 @@ function InboxPage() {
                 <select
                   className="h-8 rounded-md border bg-background px-2 text-xs"
                   value={templateId}
-                  aria-label="Approved WhatsApp template"
+                  aria-label={i18n.t("inbox.approvedWhatsappTemplate")}
                   onChange={(e) => {
                     setTemplateId(e.target.value);
                     setTemplateVariables([]);
                   }}
                 >
-                  <option value="">Send approved template…</option>
+                  <option value="">{i18n.t("inbox.sendApprovedTemplate")}</option>
                   {(templates.data ?? []).map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name} ({t.language})
@@ -861,16 +871,16 @@ function InboxPage() {
                   ) : (
                     <Send className="size-4" />
                   )}
-                  Send template
+                  {i18n.t("inbox.sendTemplate")}
                 </Button>
               </div>
 
               {selectedTemplate && (
                 <div className="space-y-2 rounded-md border p-3">
-                  <p className="text-sm font-medium">Personalize your template</p>
+                  <p className="text-sm font-medium">{i18n.t("inbox.personalizeYourTemplate")}</p>
                   {Array.from({ length: parameterCount }, (_, index) => (
                     <label key={index} className="block text-sm">
-                      Variable {index + 1}
+                      {i18n.tr("inbox.variable", { value: index + 1 })}
                       <Input
                         maxLength={500}
                         value={templateVariables[index] ?? ""}
@@ -889,12 +899,15 @@ function InboxPage() {
                       {templateProblem}
                     </p>
                   ) : (
-                    <p className="whitespace-pre-wrap text-sm" aria-label="Message preview">
+                    <p
+                      className="whitespace-pre-wrap text-sm"
+                      aria-label={i18n.t("inbox.messagePreview")}
+                    >
                       {templatePreview}
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Review the message before pressing Send template.
+                    {i18n.t("inbox.reviewTheMessageBeforePressing")}
                   </p>
                 </div>
               )}
@@ -904,8 +917,8 @@ function InboxPage() {
                   <Package className="size-4 text-muted-foreground" />
                   <Input
                     className="h-8 w-48"
-                    placeholder="Search products"
-                    aria-label="Search catalog products"
+                    placeholder={i18n.t("inbox.searchProducts")}
+                    aria-label={i18n.t("inbox.searchCatalogProducts")}
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                   />
@@ -920,7 +933,7 @@ function InboxPage() {
                     ) : (
                       <Send className="size-4" />
                     )}
-                    Insert catalog message
+                    {i18n.t("inbox.insertCatalogMessage")}
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -966,7 +979,9 @@ function InboxPage() {
                       );
                     })}
                   {(products.data ?? []).length === 0 && (
-                    <p className="text-xs text-muted-foreground">No products in catalog yet.</p>
+                    <p className="text-xs text-muted-foreground">
+                      {i18n.t("inbox.noProductsInCatalogYet")}
+                    </p>
                   )}
                 </div>
               </div>
@@ -975,8 +990,8 @@ function InboxPage() {
                 <Bell className="size-4 text-muted-foreground" />
                 <Input
                   className="h-8 w-56"
-                  placeholder="Follow-up note"
-                  aria-label="Follow-up note"
+                  placeholder={i18n.t("inbox.followUpNote")}
+                  aria-label={i18n.t("inbox.followUpNote")}
                   value={reminderNote}
                   onChange={(e) => setReminderNote(e.target.value)}
                 />
@@ -992,7 +1007,7 @@ function InboxPage() {
                   disabled={!reminderDue || addReminder.isPending}
                   onClick={() => addReminder.mutate()}
                 >
-                  Set reminder
+                  {i18n.t("inbox.setReminder")}
                 </Button>
               </div>
 
@@ -1008,13 +1023,14 @@ function InboxPage() {
                     >
                       <span className="truncate">
                         {r.note} · {new Date(r.due_at).toLocaleString()}
-                        {!r.done && new Date(r.due_at) < new Date() ? " · overdue" : ""}
+                        {!r.done && new Date(r.due_at) < new Date() ? i18n.t("inbox.overdue") : ""}
                       </span>
                       <button
                         className="flex items-center gap-1 font-medium text-brand"
                         onClick={() => void toggleReminderDone(r.id, !r.done)}
                       >
-                        <Check className="size-3" /> {r.done ? "Reopen" : "Done"}
+                        <Check className="size-3" />{" "}
+                        {r.done ? i18n.t("inbox.reopen") : i18n.t("inbox.done")}
                       </button>
                     </li>
                   ))}
@@ -1044,7 +1060,7 @@ function InboxPage() {
                     >
                       {m.sender === "bot" && (
                         <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                          <Bot className="size-3" /> Assistant
+                          <Bot className="size-3" /> {i18n.t("inbox.assistant")}
                         </span>
                       )}
                       <p className="whitespace-pre-wrap break-words">{m.body}</p>
@@ -1052,8 +1068,10 @@ function InboxPage() {
                         <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
                           <p className="mb-1 font-semibold opacity-70">
                             {m.detected_language
-                              ? `Translated from ${m.detected_language}`
-                              : "Translation"}
+                              ? i18n.t("inbox.translatedFrom", {
+                                  detectedlanguage: m.detected_language,
+                                })
+                              : i18n.t("inbox.translation")}
                           </p>
                           <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
                         </div>
@@ -1077,10 +1095,10 @@ function InboxPage() {
                         >
                           <Languages className="size-3" />
                           {showTranslation
-                            ? "Hide"
+                            ? i18n.t("inbox.hide")
                             : hasTranslation
-                              ? "Show translation"
-                              : "Translate"}
+                              ? i18n.t("inbox.showTranslation")
+                              : i18n.t("inbox.translate")}
                         </button>
                         <span className="text-[10px] opacity-60">
                           {new Date(m.created_at).toLocaleTimeString([], {
@@ -1100,11 +1118,11 @@ function InboxPage() {
             <div className="space-y-2 border-t bg-card p-4">
               <Textarea
                 rows={2}
-                aria-label="Reply to conversation"
+                aria-label={i18n.t("inbox.replyToConversation")}
                 placeholder={
                   whatsappReplyWindowOpen
-                    ? "Write a reply…"
-                    : "Use an approved template to re-open this WhatsApp conversation…"
+                    ? i18n.t("inbox.writeAReply")
+                    : i18n.t("inbox.useAnApprovedTemplateTo")
                 }
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
@@ -1117,8 +1135,7 @@ function InboxPage() {
               />
               {!whatsappReplyWindowOpen && (
                 <p role="status" className="text-sm text-muted-foreground">
-                  This customer has not messaged in the past 24 hours. WhatsApp requires an approved
-                  template before you can send a normal reply.
+                  {i18n.t("inbox.thisCustomerHasNotMessaged")}
                 </p>
               )}
               <div className="flex items-center justify-between">
@@ -1133,14 +1150,14 @@ function InboxPage() {
                   ) : (
                     <Sparkles className="size-4" />
                   )}
-                  Suggest reply
+                  {i18n.t("inbox.suggestReply")}
                 </Button>
                 <Button
                   onClick={() => draft.trim() && sendMutation.mutate(draft.trim())}
                   disabled={sendMutation.isPending || !draft.trim() || !whatsappReplyWindowOpen}
                 >
                   <Send className="size-4" />
-                  Send
+                  {i18n.t("inbox.send")}
                 </Button>
               </div>
             </div>
@@ -1153,34 +1170,35 @@ function InboxPage() {
 
 /** Shows what Meta has actually reported for an outbound WhatsApp message. */
 function DeliveryState({ status }: { status: string | null | undefined }) {
+  const i18n = useI18n();
   if (status === "sending") {
-    return <span className="text-[10px] text-muted-foreground">Sending…</span>;
+    return <span className="text-[10px] text-muted-foreground">{i18n.t("inbox.sending")}</span>;
   }
   if (status === "failed") {
     return (
       <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
-        <AlertTriangle className="size-3" /> Not delivered
+        <AlertTriangle className="size-3" /> {i18n.t("inbox.notDelivered")}
       </span>
     );
   }
   if (status === "read") {
     return (
       <span className="flex items-center gap-1 text-[10px] font-semibold text-brand">
-        <CheckCheck className="size-3" /> Read
+        <CheckCheck className="size-3" /> {i18n.t("inbox.read")}
       </span>
     );
   }
   if (status === "delivered") {
     return (
       <span className="flex items-center gap-1 text-[10px] font-semibold opacity-70">
-        <CheckCheck className="size-3" /> Delivered
+        <CheckCheck className="size-3" /> {i18n.t("inbox.delivered")}
       </span>
     );
   }
   if (status === "sent") {
     return (
       <span className="flex items-center gap-1 text-[10px] font-semibold opacity-70">
-        <Check className="size-3" /> Sent
+        <Check className="size-3" /> {i18n.t("inbox.sent")}
       </span>
     );
   }

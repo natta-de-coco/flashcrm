@@ -19,6 +19,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Globe, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 type WpSite = {
   id: string;
@@ -31,6 +32,7 @@ type WpSite = {
 
 /** Settings card: manage WordPress connections used by the SEO Studio. */
 export function WordPressSitesCard() {
+  const { t } = useI18n();
   const { isAdmin, user } = useAuth();
   const { tenant } = useTenant();
   const qc = useQueryClient();
@@ -74,7 +76,7 @@ export function WordPressSitesCard() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("WordPress site connected");
+      toast.success(t("wordPressSitesCard.wordpressSiteConnected"));
       setForm({
         label: "",
         site_url: "",
@@ -86,7 +88,8 @@ export function WordPressSitesCard() {
       setTestResult(null);
       qc.invalidateQueries({ queryKey: ["wordpress_sites"] });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not save site"),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : t("wordPressSitesCard.couldNotSaveSite")),
   });
 
   const removeSite = useMutation({
@@ -95,7 +98,8 @@ export function WordPressSitesCard() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wordpress_sites"] }),
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not remove site"),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : t("wordPressSitesCard.couldNotRemoveSite")),
   });
 
   const testMutation = useMutation({
@@ -111,24 +115,19 @@ export function WordPressSitesCard() {
       setTestResult(
         `Connected as ${r.user}. Found ${r.categories.length} categories and ${r.tags.length} tags.`,
       );
-      toast.success("Connection works");
+      toast.success(t("wordPressSitesCard.connectionWorks"));
     },
     onError: (e) => {
       setTestResult(null);
-      toast.error(e instanceof Error ? e.message : "Connection failed");
+      toast.error(e instanceof Error ? e.message : t("wordPressSitesCard.connectionFailed"));
     },
   });
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">WordPress sites</CardTitle>
-        <CardDescription>
-          Connect WordPress for one-click publishing from the SEO Studio. Create an application
-          password in WordPress → Users → Profile → Application Passwords. Once saved, the password
-          can't be read back through the app or its API — only used server-side to publish on your
-          behalf.
-        </CardDescription>
+        <CardTitle className="text-base">{t("wordPressSitesCard.wordpressSites")}</CardTitle>
+        <CardDescription>{t("wordPressSitesCard.connectWordpressForOneClick")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {(sites.data ?? []).map((s) => (
@@ -147,14 +146,14 @@ export function WordPressSitesCard() {
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="text-[10px] capitalize">
-                {s.seo_plugin === "none" ? "no SEO plugin" : s.seo_plugin}
+                {s.seo_plugin === "none" ? t("wordPressSitesCard.noSeoPlugin") : s.seo_plugin}
               </Badge>
               {isAdmin && (
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => removeSite.mutate(s.id)}
-                  aria-label={`Remove ${s.label}`}
+                  aria-label={t("wordPressSitesCard.remove", { label: s.label })}
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -167,16 +166,16 @@ export function WordPressSitesCard() {
           <div className="grid gap-2 rounded-lg border border-dashed p-3">
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="wp_label">Label</Label>
+                <Label htmlFor="wp_label">{t("wordPressSitesCard.label")}</Label>
                 <Input
                   id="wp_label"
-                  placeholder="Main blog"
+                  placeholder={t("wordPressSitesCard.mainBlog")}
                   value={form.label}
                   onChange={(e) => setForm({ ...form, label: e.target.value })}
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="wp_url">Site URL</Label>
+                <Label htmlFor="wp_url">{t("wordPressSitesCard.siteUrl")}</Label>
                 <Input
                   id="wp_url"
                   placeholder="https://example.com"
@@ -185,7 +184,7 @@ export function WordPressSitesCard() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="wp_user">WordPress username</Label>
+                <Label htmlFor="wp_user">{t("wordPressSitesCard.wordpressUsername")}</Label>
                 <Input
                   id="wp_user"
                   value={form.username}
@@ -193,17 +192,17 @@ export function WordPressSitesCard() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="wp_pass">Application password</Label>
+                <Label htmlFor="wp_pass">{t("wordPressSitesCard.applicationPassword")}</Label>
                 <Input
                   id="wp_pass"
                   type="password"
-                  placeholder="xxxx xxxx xxxx xxxx"
+                  placeholder={"xxxx xxxx xxxx xxxx"}
                   value={form.app_password}
                   onChange={(e) => setForm({ ...form, app_password: e.target.value })}
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="wp_author">Default author (optional)</Label>
+                <Label htmlFor="wp_author">{t("wordPressSitesCard.defaultAuthorOptional")}</Label>
                 <Input
                   id="wp_author"
                   value={form.default_author}
@@ -211,7 +210,7 @@ export function WordPressSitesCard() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label>SEO plugin</Label>
+                <Label>{t("wordPressSitesCard.seoPlugin")}</Label>
                 <Select
                   value={form.seo_plugin}
                   onValueChange={(v) => setForm({ ...form, seo_plugin: v })}
@@ -223,7 +222,7 @@ export function WordPressSitesCard() {
                     <SelectItem value="yoast">Yoast SEO</SelectItem>
                     <SelectItem value="rankmath">RankMath</SelectItem>
                     <SelectItem value="seopress">SEOPress</SelectItem>
-                    <SelectItem value="none">None / native</SelectItem>
+                    <SelectItem value="none">{t("wordPressSitesCard.noneNative")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -238,7 +237,9 @@ export function WordPressSitesCard() {
                 }
                 onClick={() => testMutation.mutate()}
               >
-                {testMutation.isPending ? "Testing…" : "Test connection"}
+                {testMutation.isPending
+                  ? t("wordPressSitesCard.testing")
+                  : t("wordPressSitesCard.testConnection")}
               </Button>
               <Button
                 size="sm"
@@ -247,7 +248,9 @@ export function WordPressSitesCard() {
                 }
                 onClick={() => addSite.mutate()}
               >
-                {addSite.isPending ? "Saving…" : "Connect site"}
+                {addSite.isPending
+                  ? t("wordPressSitesCard.saving")
+                  : t("wordPressSitesCard.connectSite")}
               </Button>
             </div>
           </div>

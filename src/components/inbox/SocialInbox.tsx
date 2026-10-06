@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 type Interaction = {
   id: string;
@@ -48,6 +49,7 @@ const STATUS_FILTERS = ["open", "replied", "archived", "all"] as const;
 
 /** Social DMs and comments handled inside the unified inbox. */
 export function SocialInbox() {
+  const i18n = useI18n();
   const qc = useQueryClient();
   const load = useServerFn(getSocialHub);
   const suggest = useServerFn(suggestSocialReply);
@@ -97,7 +99,7 @@ export function SocialInbox() {
     mutationFn: (id: string) => suggest({ data: { id } }),
     onSuccess: (res) => {
       setReply(res.suggestion);
-      toast.success("Flas AI drafted a reply");
+      toast.success(i18n.t("socialInbox.flasAiDraftedAReply"));
       refresh();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -113,8 +115,8 @@ export function SocialInbox() {
       setReply("");
       toast.success(
         res.metaDelivered
-          ? "Reply published"
-          : "Saved in FLAS, but not sent: Messenger replies aren't available yet. Reply from Facebook for now.",
+          ? i18n.t("socialInbox.replyPublished")
+          : i18n.t("socialInbox.savedInFlasButNot"),
       );
       refresh();
     },
@@ -134,16 +136,16 @@ export function SocialInbox() {
     <div className="flex min-h-0 flex-1">
       <div
         className={cn(
-          "w-full shrink-0 flex-col border-r bg-card lg:flex lg:max-w-sm",
+          "w-full shrink-0 flex-col border-e bg-card lg:flex lg:max-w-sm",
           active ? "hidden" : "flex",
         )}
       >
         <div className="space-y-3 border-b p-4">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-9"
-              placeholder="Search DMs and comments"
+              className="ps-9"
+              placeholder={i18n.t("socialInbox.searchDmsAndComments")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -160,7 +162,11 @@ export function SocialInbox() {
                     : "bg-muted text-muted-foreground hover:bg-secondary",
                 )}
               >
-                {k === "all" ? "All" : k === "dm" ? "DMs" : "Comments"}
+                {k === "all"
+                  ? i18n.t("socialInbox.all")
+                  : k === "dm"
+                    ? i18n.t("socialInbox.dms")
+                    : i18n.t("socialInbox.comments")}
               </button>
             ))}
           </div>
@@ -184,14 +190,16 @@ export function SocialInbox() {
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {hub.isLoading ? (
-            <p className="p-4 text-sm text-muted-foreground">Loading social messages…</p>
+            <p className="p-4 text-sm text-muted-foreground">
+              {i18n.t("socialInbox.loadingSocialMessages")}
+            </p>
           ) : accounts.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">
-              Connect a social account in the Social Hub to see DMs and comments here.
+              {i18n.t("socialInbox.connectASocialAccountIn")}
             </p>
           ) : threads.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">
-              Nothing here — try another filter or sync your accounts.
+              {i18n.t("socialInbox.nothingHereTryAnotherFilter")}
             </p>
           ) : (
             threads.map((t) => {
@@ -206,13 +214,13 @@ export function SocialInbox() {
                     setReply(head.ai_suggestion ?? "");
                   }}
                   className={cn(
-                    "flex w-full flex-col gap-0.5 border-b p-4 text-left transition-colors hover:bg-muted/60",
+                    "flex w-full flex-col gap-0.5 border-b p-4 text-start transition-colors hover:bg-muted/60",
                     activeId === t.key && "bg-muted",
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold">
-                      {head.author_name ?? head.author_handle ?? "Unknown"}
+                      {head.author_name ?? head.author_handle ?? i18n.t("socialInbox.unknown")}
                     </span>
                     <span className="shrink-0 text-[11px] text-muted-foreground">
                       {new Date(t.latest.created_at).toLocaleDateString()}
@@ -222,7 +230,7 @@ export function SocialInbox() {
                     {/* Whose line this is matters: the last word in a thread is
                         often ours, and reading it as the customer's is what made
                         answered conversations look unanswered. */}
-                    {t.latest.direction === "out" ? "You: " : ""}
+                    {t.latest.direction === "out" ? i18n.t("socialInbox.you") : ""}
                     {t.latest.body}
                   </span>
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -232,7 +240,9 @@ export function SocialInbox() {
                       ) : (
                         <AtSign className="size-3" />
                       )}
-                      {t.latest.kind === "dm" ? "DM" : "Comment"}
+                      {t.latest.kind === "dm"
+                        ? i18n.t("socialInbox.dm")
+                        : i18n.t("socialInbox.comment")}
                     </Badge>
                     {acc ? (
                       <Badge variant="outline" className="text-[10px] capitalize">
@@ -241,11 +251,13 @@ export function SocialInbox() {
                     ) : null}
                     {t.items.length > 1 ? (
                       <Badge variant="outline" className="text-[10px]">
-                        {t.items.length} messages
+                        {i18n.tr("socialInbox.messages", { length: t.items.length })}
                       </Badge>
                     ) : null}
                     {state === "open" ? (
-                      <Badge className="bg-brand text-brand-foreground text-[10px]">Waiting</Badge>
+                      <Badge className="bg-brand text-brand-foreground text-[10px]">
+                        {i18n.t("socialInbox.waiting")}
+                      </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px] capitalize">
                         {state}
@@ -261,7 +273,7 @@ export function SocialInbox() {
 
       {!active ? (
         <div className="hidden flex-1 place-items-center text-sm text-muted-foreground lg:grid">
-          Select a DM or comment to reply
+          {i18n.t("socialInbox.selectADmOrComment")}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
@@ -272,18 +284,37 @@ export function SocialInbox() {
                   activeInbound?.author_handle ??
                   active.latest.author_name ??
                   active.latest.author_handle ??
-                  "Unknown"}
+                  i18n.t("socialInbox.unknown")}
               </h2>
               <p className="truncate text-xs text-muted-foreground">
-                {accountById.get(active.latest.account_id)?.platform ?? "social"} ·{" "}
-                {active.latest.kind === "dm" ? "Direct message" : "Comment"} · {active.items.length}{" "}
-                message{active.items.length === 1 ? "" : "s"} ·{" "}
-                {new Date(active.latest.created_at).toLocaleString()}
+                {active.items.length === 1
+                  ? i18n.tr("socialInbox.message", {
+                      value:
+                        accountById.get(active.latest.account_id)?.platform ??
+                        i18n.t("socialInbox.social"),
+                      value2:
+                        active.latest.kind === "dm"
+                          ? i18n.t("socialInbox.directMessage")
+                          : i18n.t("socialInbox.comment"),
+                      length: active.items.length,
+                      toLocaleString: new Date(active.latest.created_at).toLocaleString(),
+                    })
+                  : i18n.tr("socialInbox.messages2", {
+                      value:
+                        accountById.get(active.latest.account_id)?.platform ??
+                        i18n.t("socialInbox.social"),
+                      value2:
+                        active.latest.kind === "dm"
+                          ? i18n.t("socialInbox.directMessage")
+                          : i18n.t("socialInbox.comment"),
+                      length: active.items.length,
+                      toLocaleString: new Date(active.latest.created_at).toLocaleString(),
+                    })}
               </p>
             </div>
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" onClick={() => setActiveId(null)}>
-                Back
+                {i18n.t("socialInbox.back")}
               </Button>
               <Button
                 variant="outline"
@@ -291,7 +322,7 @@ export function SocialInbox() {
                 onClick={() => activeInbound && archive.mutate(activeInbound.id)}
                 disabled={archive.isPending || !activeInbound}
               >
-                <Archive className="size-4" /> Archive
+                <Archive className="size-4" /> {i18n.t("socialInbox.archive")}
               </Button>
             </div>
           </header>
@@ -302,21 +333,23 @@ export function SocialInbox() {
                 thread with history read as a single unanswered question. */}
             {active.items.map((i) =>
               i.direction === "out" ? (
-                <div key={i.id} className="ml-auto max-w-[75%] space-y-1">
-                  <div className="rounded-2xl rounded-tr-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
+                <div key={i.id} className="ms-auto max-w-[75%] space-y-1">
+                  <div className="rounded-2xl rounded-se-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
                     {i.body}
                   </div>
-                  <p className="px-1 text-right text-[11px] text-muted-foreground">
-                    {i.author_name ?? "You"} · {new Date(i.created_at).toLocaleString()}
+                  <p className="px-1 text-end text-[11px] text-muted-foreground">
+                    {i.author_name ?? i18n.t("socialInbox.you2")} ·{" "}
+                    {new Date(i.created_at).toLocaleString()}
                   </p>
                 </div>
               ) : (
                 <div key={i.id} className="max-w-[75%] space-y-1">
-                  <div className="rounded-2xl rounded-tl-sm border bg-card p-3 text-sm leading-relaxed">
+                  <div className="rounded-2xl rounded-ss-sm border bg-card p-3 text-sm leading-relaxed">
                     {i.body}
                   </div>
                   <p className="px-1 text-[11px] text-muted-foreground">
-                    {i.author_name ?? "Customer"} · {new Date(i.created_at).toLocaleString()}
+                    {i.author_name ?? i18n.t("socialInbox.customer")} ·{" "}
+                    {new Date(i.created_at).toLocaleString()}
                   </p>
                 </div>
               ),
@@ -329,16 +362,19 @@ export function SocialInbox() {
                   .map((i) => {
                     const delivery = replyDelivery(i);
                     return (
-                      <div key={i.id} className="ml-auto max-w-[75%] space-y-1">
-                        <div className="rounded-2xl rounded-tr-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
+                      <div key={i.id} className="ms-auto max-w-[75%] space-y-1">
+                        <div className="rounded-2xl rounded-se-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
                           {i.body}
                         </div>
-                        <p className="px-1 text-right text-[11px] text-muted-foreground">
-                          You · {new Date(i.created_at).toLocaleString()}
-                          {delivery === "sent" ? " · Sent" : ""}
-                          {delivery === "not_sent"
-                            ? " · Saved in FLAS, not sent. Reply from the platform for now."
-                            : ""}
+                        <p className="px-1 text-end text-[11px] text-muted-foreground">
+                          {i18n.tr("socialInbox.you3", {
+                            toLocaleString: new Date(i.created_at).toLocaleString(),
+                            value: delivery === "sent" ? i18n.t("socialInbox.sent") : "",
+                            value2:
+                              delivery === "not_sent"
+                                ? i18n.t("socialInbox.savedInFlasNotSent")
+                                : "",
+                          })}
                         </p>
                       </div>
                     );
@@ -346,7 +382,7 @@ export function SocialInbox() {
               : null}
             {threadStatus(active) === "replied" ? (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Check className="size-3.5" /> Replied
+                <Check className="size-3.5" /> {i18n.t("socialInbox.replied")}
               </p>
             ) : null}
           </div>
@@ -356,13 +392,12 @@ export function SocialInbox() {
                 would name our own message as the one being answered. */}
             {!activeInbound ? (
               <p className="text-xs text-muted-foreground">
-                Nothing to reply to — this conversation holds only messages you sent. It will accept
-                a reply once the customer writes back.
+                {i18n.t("socialInbox.nothingToReplyToThis")}
               </p>
             ) : null}
             <Textarea
               rows={3}
-              placeholder="Write your reply…"
+              placeholder={i18n.t("socialInbox.writeYourReply")}
               value={reply}
               onChange={(e) => setReply(e.target.value)}
               disabled={!activeInbound}
@@ -379,7 +414,7 @@ export function SocialInbox() {
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Flas AI reply
+                {i18n.t("socialInbox.flasAiReply")}
               </Button>
               <Button
                 size="sm"
@@ -391,7 +426,7 @@ export function SocialInbox() {
                 ) : (
                   <Send className="size-4" />
                 )}
-                Send reply
+                {i18n.t("socialInbox.sendReply")}
               </Button>
             </div>
           </div>

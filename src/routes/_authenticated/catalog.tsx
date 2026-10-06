@@ -13,6 +13,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Package, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authenticated/catalog")({
   head: () => ({
@@ -86,6 +88,13 @@ const emptyForm = {
 };
 
 function CatalogPage() {
+  const { t, tr } = useI18n();
+  // The stored category stays the English name; only what is shown is translated,
+  // so a category a company typed itself is printed as they wrote it.
+  const categoryLabel = (category: string) => {
+    const key = `catalog.cat.${(CATALOG_CATEGORIES as readonly string[]).indexOf(category)}`;
+    return hasMessage(key) ? t(key as MessageKey) : category;
+  };
   const qc = useQueryClient();
   // Prices are shown in the workspace currency; a bare number sat next to the
   // SKU badge and read as one value, e.g. "31390 368".
@@ -126,7 +135,7 @@ function CatalogPage() {
     onSuccess: () => {
       setForm(emptyForm);
       void qc.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Product added to the catalog");
+      toast.success(t("catalog.productAddedToTheCatalog"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -141,7 +150,7 @@ function CatalogPage() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Product removed");
+      toast.success(t("catalog.productRemoved"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -149,18 +158,16 @@ function CatalogPage() {
   return (
     <main className="flex-1 space-y-6 p-6">
       <header>
-        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Product Catalog</h1>
-        <p className="text-sm text-muted-foreground">
-          The products your team quotes, pitches and attaches to portfolio outreach.
-        </p>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+          {t("catalog.productCatalog")}
+        </h1>
+        <p className="text-sm text-muted-foreground">{t("catalog.theProductsYourTeamQuotes")}</p>
       </header>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Product categories</CardTitle>
-          <CardDescription>
-            Keep equipment in the same groups customers use when they ask for a solution.
-          </CardDescription>
+          <CardTitle className="text-base">{t("catalog.productCategories")}</CardTitle>
+          <CardDescription>{t("catalog.keepEquipmentInTheSame")}</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <Button
@@ -168,7 +175,7 @@ function CatalogPage() {
             variant={categoryFilter === "all" ? "default" : "outline"}
             onClick={() => setCategoryFilter("all")}
           >
-            All ({products.length})
+            {tr("catalog.all", { length: products.length })}
           </Button>
           {CATALOG_CATEGORIES.map((category) => {
             const count = products.filter(
@@ -181,7 +188,7 @@ function CatalogPage() {
                 variant={categoryFilter === category ? "default" : "outline"}
                 onClick={() => setCategoryFilter(category)}
               >
-                {category} ({count})
+                {categoryLabel(category)} ({count})
               </Button>
             );
           })}
@@ -191,22 +198,22 @@ function CatalogPage() {
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Add a product</CardTitle>
-            <CardDescription>Title is required, everything else is optional.</CardDescription>
+            <CardTitle className="text-base">{t("catalog.addAProduct")}</CardTitle>
+            <CardDescription>{t("catalog.titleIsRequiredEverythingElse")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="p-title">Title</Label>
+              <Label htmlFor="p-title">{t("catalog.title")}</Label>
               <Input
                 id="p-title"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="Industrial LED floodlight"
+                placeholder={t("catalog.industrialLedFloodlight")}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="p-sku">SKU</Label>
+                <Label htmlFor="p-sku">{t("catalog.sku")}</Label>
                 <Input
                   id="p-sku"
                   value={form.sku}
@@ -215,7 +222,7 @@ function CatalogPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="p-price">Price</Label>
+                <Label htmlFor="p-price">{t("catalog.price")}</Label>
                 <Input
                   id="p-price"
                   type="number"
@@ -228,23 +235,23 @@ function CatalogPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="p-category">Category</Label>
+              <Label htmlFor="p-category">{t("catalog.category")}</Label>
               <select
                 id="p-category"
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 className="h-9 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">Choose a category</option>
+                <option value="">{t("catalog.chooseACategory")}</option>
                 {CATALOG_CATEGORIES.map((category) => (
                   <option key={category} value={category}>
-                    {category}
+                    {categoryLabel(category)}
                   </option>
                 ))}
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="p-image">Image URL</Label>
+              <Label htmlFor="p-image">{t("catalog.imageUrl")}</Label>
               <Input
                 id="p-image"
                 value={form.image}
@@ -253,17 +260,17 @@ function CatalogPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="p-desc">Description</Label>
+              <Label htmlFor="p-desc">{t("catalog.description")}</Label>
               <Textarea
                 id="p-desc"
                 rows={4}
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Short selling description used by the AI assistant."
+                placeholder={t("catalog.shortSellingDescriptionUsedBy")}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="p-source">Website source page</Label>
+              <Label htmlFor="p-source">{t("catalog.websiteSourcePage")}</Label>
               <Input
                 id="p-source"
                 value={form.sourceUrl}
@@ -271,8 +278,7 @@ function CatalogPage() {
                 placeholder="https://your-site.com/product/..."
               />
               <p className="text-xs text-muted-foreground">
-                Optional. Save the original product page so the team can verify specifications
-                before quoting.
+                {t("catalog.optionalSaveTheOriginalProduct")}
               </p>
             </div>
             <Button
@@ -281,7 +287,7 @@ function CatalogPage() {
               onClick={() => createProduct.mutate()}
             >
               <Plus className="size-4" />
-              Add product
+              {t("catalog.addProduct")}
             </Button>
             {productFormError(form) ? (
               <p className="text-xs text-destructive">{productFormError(form)}</p>
@@ -291,18 +297,23 @@ function CatalogPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Catalog</CardTitle>
+            <CardTitle className="text-base">{t("catalog.catalog")}</CardTitle>
             <CardDescription>
-              {visibleProducts.length} product(s)
-              {categoryFilter !== "all" ? ` in ${categoryFilter}` : ""}
+              {tr("catalog.productS", {
+                length: visibleProducts.length,
+                value:
+                  categoryFilter !== "all"
+                    ? t("catalog.in", { categoryFilter: categoryLabel(categoryFilter) })
+                    : "",
+              })}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {isLoading && <p className="text-sm text-muted-foreground">Loading catalog…</p>}
+            {isLoading && (
+              <p className="text-sm text-muted-foreground">{t("catalog.loadingCatalog")}</p>
+            )}
             {!isLoading && visibleProducts.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No products yet. Add your first one to start building portfolio pitches.
-              </p>
+              <p className="text-sm text-muted-foreground">{t("catalog.noProductsYetAddYour")}</p>
             )}
             {visibleProducts.map((product) => (
               <div
@@ -326,7 +337,9 @@ function CatalogPage() {
                     <p className="font-medium">{product.title}</p>
                     {product.sku && <Badge variant="outline">{product.sku}</Badge>}
                     {productCategory(product) && (
-                      <Badge variant="outline">{productCategory(product)}</Badge>
+                      <Badge variant="outline">
+                        {categoryLabel(productCategory(product) ?? "")}
+                      </Badge>
                     )}
                     {product.price !== null && (
                       <Badge variant="secondary">
@@ -346,14 +359,14 @@ function CatalogPage() {
                       rel="noreferrer"
                       className="mt-1 block truncate text-xs text-primary underline"
                     >
-                      View source page
+                      {t("catalog.viewSourcePage")}
                     </a>
                   )}
                 </div>
                 <Button
                   size="icon"
                   variant="ghost"
-                  aria-label={`Delete ${product.title}`}
+                  aria-label={t("catalog.delete", { title: product.title })}
                   onClick={() => removeProduct.mutate(product.id)}
                 >
                   <Trash2 className="size-4" />

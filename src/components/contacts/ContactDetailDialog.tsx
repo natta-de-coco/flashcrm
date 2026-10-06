@@ -42,13 +42,9 @@ import {
   saveContactNotes,
   setPrimaryIdentity,
 } from "@/lib/contact-identities.functions";
-import {
-  formatStageMoney,
-  inboxConversationHref,
-  reachLines,
-  reachSummary,
-} from "@/lib/contacts-view";
-import { STAGES } from "@/lib/crm-types";
+import { formatStageMoney, inboxConversationHref, reachLines } from "@/lib/contacts-view";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage } from "@/lib/i18n";
 import { openContactWhatsApp } from "@/lib/whatsapp-conversations.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -66,6 +62,7 @@ type Props = {
 export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Props) {
   const qc = useQueryClient();
   const { tenant } = useTenant();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const openWhatsApp = useServerFn(openContactWhatsApp);
   const startChat = useMutation({
@@ -134,7 +131,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     onSuccess: () => {
       setValue("");
       setLabel("");
-      toast.success(kind === "phone" ? "Number added" : "Email added");
+      toast.success(kind === "phone" ? t("contactCard.numberAdded") : t("contactCard.emailAdded"));
       refresh();
     },
     onError: fail,
@@ -152,7 +149,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     onSuccess: () => {
       setBranchName("");
       setBranchCity("");
-      toast.success("Branch added");
+      toast.success(t("contactCard.branchAdded"));
       refresh();
     },
     onError: fail,
@@ -178,7 +175,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     mutationFn: () => saveNotes({ data: { contactId: contactId!, notes } }),
     onSuccess: () => {
       setNotesTouched(false);
-      toast.success("Notes saved");
+      toast.success(t("contactCard.notesSaved"));
       refresh();
     },
     onError: fail,
@@ -191,7 +188,28 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
   const lines = reachLines(contact ?? {}, identities);
   const branchNameFor = (id: string | null) =>
     id ? (branches.find((b) => b.id === id)?.name ?? null) : null;
-  const stageLabel = STAGES.find((s) => s.id === contact?.stage)?.label ?? contact?.stage ?? null;
+  const stageLabel = contact?.stage
+    ? hasMessage(`stage.${contact.stage}`)
+      ? t(`stage.${contact.stage}`)
+      : contact.stage
+    : null;
+  // Counted here rather than by reachSummary(), so the words are the reader's.
+  const phoneCount = lines.filter((line) => line.kind === "phone").length;
+  const emailCount = lines.filter((line) => line.kind === "email").length;
+  const reachText = [
+    phoneCount === 0
+      ? null
+      : phoneCount === 1
+        ? t("contactCard.reach.phoneOne")
+        : t("contactCard.reach.phoneMany", { count: phoneCount }),
+    emailCount === 0
+      ? null
+      : emailCount === 1
+        ? t("contactCard.reach.emailOne")
+        : t("contactCard.reach.emailMany", { count: emailCount }),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const newestConversation = conversations[0] ?? null;
 
   return (
@@ -201,19 +219,15 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
           <DialogTitle>{contact?.name || contactName}</DialogTitle>
           <DialogDescription>
             {contact?.company ? `${contact.company} — ` : ""}
-            Any number listed here reaches this contact — a message from it lands in the same
-            conversation instead of creating a duplicate.
+            {t("contactCard.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-2">
           <Button onClick={() => startChat.mutate()} disabled={!contactId || startChat.isPending}>
-            {startChat.isPending ? "Opening WhatsApp…" : "Open WhatsApp conversation"}
+            {startChat.isPending ? t("contactCard.openingWhatsApp") : t("contactCard.openWhatsApp")}
           </Button>
-          <p className="text-xs text-muted-foreground">
-            Review your message in the inbox before sending. A new conversation needs an approved
-            template.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("contactCard.reviewNote")}</p>
         </div>
         {detail.isLoading && <Skeleton className="h-40 w-full" />}
 
@@ -225,26 +239,26 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                 <span className="text-sm font-semibold text-brand">
                   {formatStageMoney(Number(contact?.value ?? 0), tenant?.currency)}
                 </span>
-                <span className="text-xs text-muted-foreground">{reachSummary(lines)}</span>
+                <span className="text-xs text-muted-foreground">{reachText}</span>
                 {contact?.consent_given ? (
                   <Badge variant="outline" className="text-[10px]">
-                    Consented
+                    {t("contacts.consented")}
                     {contact.consent_at
                       ? ` · ${new Date(contact.consent_at).toLocaleDateString()}`
                       : ""}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    No consent recorded — cannot be messaged
+                    {t("contactCard.noConsent")}
                   </Badge>
                 )}
               </div>
               {(contact?.tags ?? []).length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Tag className="size-3 shrink-0 text-muted-foreground" />
-                  {(contact?.tags ?? []).map((t: string) => (
-                    <Badge key={t} variant="outline" className="text-[10px]">
-                      {t}
+                  {(contact?.tags ?? []).map((tag: string) => (
+                    <Badge key={tag} variant="outline" className="text-[10px]">
+                      {tag}
                     </Badge>
                   ))}
                 </div>
@@ -254,12 +268,12 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                   {/* A link to the shared inbox, not a composer of its own: one
                       send path means one audit trail and one consent check. */}
                   <a href={inboxConversationHref(newestConversation.id)}>
-                    <MessageSquare className="size-4" /> Message in Inbox
+                    <MessageSquare className="size-4" /> {t("contactCard.messageInInbox")}
                   </a>
                 </Button>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  No conversation yet — a thread appears here as soon as this contact messages you.
+                  {t("contactCard.noConversationYet")}
                 </p>
               )}
             </section>
@@ -267,11 +281,9 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
             <Separator />
 
             <section className="grid gap-2">
-              <h3 className="text-sm font-semibold">Numbers &amp; emails</h3>
+              <h3 className="text-sm font-semibold">{t("contactCard.numbersEmails")}</h3>
               {lines.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Nothing recorded yet. Add the numbers this customer messages you from.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("contactCard.nothingRecorded")}</p>
               )}
               {lines.map((row) => (
                 <div
@@ -286,7 +298,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                   <span className="min-w-0 flex-1 truncate">{row.value}</span>
                   {row.label && (
                     <Badge variant="outline" className="shrink-0 text-[10px]">
-                      {row.label}
+                      {row.fromContactRow ? t("contactCard.primaryOnRecord") : row.label}
                     </Badge>
                   )}
                   {branchNameFor(row.branchId) && (
@@ -296,18 +308,22 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                   )}
                   {row.isPrimary ? (
                     <Badge className="shrink-0 gap-1 text-[10px]">
-                      <Star className="size-2.5" /> Primary
+                      <Star className="size-2.5" /> {t("contactCard.primary")}
                     </Badge>
                   ) : (
                     <Button
                       size="sm"
                       variant="ghost"
                       className="h-7 px-2 text-xs"
-                      aria-label={`Make ${row.value} the primary ${row.kind}`}
+                      aria-label={
+                        row.kind === "phone"
+                          ? t("contactCard.makePrimaryPhone", { value: row.value })
+                          : t("contactCard.makePrimaryEmail", { value: row.value })
+                      }
                       disabled={primaryMutation.isPending}
                       onClick={() => primaryMutation.mutate({ id: row.id!, kind: row.kind })}
                     >
-                      Make primary
+                      {t("contactCard.makePrimary")}
                     </Button>
                   )}
                   {/* No id means the line came from contacts.phone/email rather
@@ -318,7 +334,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                       size="icon"
                       variant="ghost"
                       className="size-7 shrink-0"
-                      aria-label={`Remove ${row.value}`}
+                      aria-label={t("contactCard.remove", { value: row.value })}
                       disabled={removeIdentityMutation.isPending}
                       onClick={() => removeIdentityMutation.mutate(row.id!)}
                     >
@@ -330,24 +346,26 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
 
               <div className="grid gap-2 rounded-md border border-dashed p-2 sm:grid-cols-[7rem_1fr_8rem_auto]">
                 <Select value={kind} onValueChange={(v) => setKind(v as "phone" | "email")}>
-                  <SelectTrigger aria-label="Type" className="h-9">
+                  <SelectTrigger aria-label={t("contactCard.type")} className="h-9">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="phone">Phone</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="phone">{t("contactCard.phone")}</SelectItem>
+                    <SelectItem value="email">{t("contactCard.email")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Input
-                  aria-label={kind === "phone" ? "Phone number" : "Email address"}
+                  aria-label={
+                    kind === "phone" ? t("contactCard.phoneNumber") : t("contactCard.emailAddress")
+                  }
                   placeholder={kind === "phone" ? "+971 50 000 0000" : "name@company.com"}
                   autoComplete="off"
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
                 />
                 <Input
-                  aria-label="Label"
-                  placeholder="Office"
+                  aria-label={t("contactCard.label")}
+                  placeholder={t("contactCard.labelPlaceholder")}
                   autoComplete="off"
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
@@ -356,17 +374,15 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                   disabled={value.trim().length < 3 || identityMutation.isPending}
                   onClick={() => identityMutation.mutate()}
                 >
-                  Add
+                  {t("contactCard.add")}
                 </Button>
               </div>
             </section>
 
             <section className="grid gap-2">
-              <h3 className="text-sm font-semibold">Conversations</h3>
+              <h3 className="text-sm font-semibold">{t("contactCard.conversations")}</h3>
               {conversations.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No conversations yet with this contact.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("contactCard.noConversations")}</p>
               )}
               {conversations.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
@@ -376,7 +392,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                     <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" />
                   )}
                   <span className="min-w-0 flex-1 truncate">
-                    {c.last_message_preview || "No messages yet"}
+                    {c.last_message_preview || t("contactCard.noMessages")}
                     {c.last_message_at ? (
                       <span className="text-muted-foreground">
                         {" "}
@@ -385,24 +401,24 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                     ) : null}
                   </span>
                   <Badge variant="outline" className="shrink-0 text-[10px]">
-                    {c.status}
+                    {hasMessage(`contactCard.status.${c.status}`)
+                      ? t(`contactCard.status.${c.status}`)
+                      : c.status}
                   </Badge>
                   {c.unread_count > 0 && (
                     <Badge className="shrink-0 text-[10px]">{c.unread_count}</Badge>
                   )}
                   <Button asChild size="sm" variant="ghost" className="h-7 shrink-0 px-2 text-xs">
-                    <a href={inboxConversationHref(c.id)}>Open</a>
+                    <a href={inboxConversationHref(c.id)}>{t("contactCard.open")}</a>
                   </Button>
                 </div>
               ))}
             </section>
 
             <section className="grid gap-2">
-              <h3 className="text-sm font-semibold">Branches</h3>
+              <h3 className="text-sm font-semibold">{t("contactCard.branches")}</h3>
               {branches.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No branches. Add one when a customer trades from more than one location.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("contactCard.noBranches")}</p>
               )}
               {branches.map((b) => (
                 <div key={b.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
@@ -415,7 +431,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                     size="icon"
                     variant="ghost"
                     className="size-7 shrink-0"
-                    aria-label={`Remove branch ${b.name}`}
+                    aria-label={t("contactCard.removeBranch", { name: b.name })}
                     disabled={removeBranchMutation.isPending}
                     onClick={() => removeBranchMutation.mutate(b.id)}
                   >
@@ -425,15 +441,15 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
               ))}
               <div className="grid gap-2 rounded-md border border-dashed p-2 sm:grid-cols-[1fr_1fr_auto]">
                 <Input
-                  aria-label="Branch name"
-                  placeholder="Deira branch"
+                  aria-label={t("contactCard.branchName")}
+                  placeholder={t("contactCard.branchNamePlaceholder")}
                   autoComplete="off"
                   value={branchName}
                   onChange={(e) => setBranchName(e.target.value)}
                 />
                 <Input
-                  aria-label="Branch city"
-                  placeholder="Dubai"
+                  aria-label={t("contactCard.branchCity")}
+                  placeholder={t("contactCard.branchCityPlaceholder")}
                   autoComplete="off"
                   value={branchCity}
                   onChange={(e) => setBranchCity(e.target.value)}
@@ -442,19 +458,19 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                   disabled={branchName.trim().length < 1 || branchMutation.isPending}
                   onClick={() => branchMutation.mutate()}
                 >
-                  Add branch
+                  {t("contactCard.addBranch")}
                 </Button>
               </div>
             </section>
 
             <section className="grid gap-2">
               <Label htmlFor="contact-notes" className="text-sm font-semibold">
-                Notes
+                {t("contactCard.notes")}
               </Label>
               <Textarea
                 id="contact-notes"
                 rows={4}
-                placeholder="What this customer buys, who to ask for, anything the next person needs."
+                placeholder={t("contactCard.notesPlaceholder")}
                 value={notes}
                 onChange={(e) => {
                   setNotesTouched(true);
@@ -467,7 +483,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                 disabled={!notesTouched || notesMutation.isPending}
                 onClick={() => notesMutation.mutate()}
               >
-                Save notes
+                {t("contactCard.saveNotes")}
               </Button>
             </section>
           </div>

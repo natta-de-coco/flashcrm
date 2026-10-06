@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useReveal } from "@/hooks/useReveal";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { ArrowRight, Check, ChevronDown, Minus } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
 
 const SITE = "https://flas.mobidigisol.com";
 const TITLE = "Pricing — WhatsApp CRM from $20/month | Flas CRM";
@@ -129,6 +130,7 @@ export const Route = createFileRoute("/pricing")({
 });
 
 function Pricing() {
+  const { t, tr, tx } = useI18n();
   useReveal();
 
   return (
@@ -136,24 +138,23 @@ function Pricing() {
       <main>
         <section className="relative isolate overflow-hidden">
           <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-            <div className="flas-drift absolute -left-32 -top-32 size-[26rem] rounded-full bg-brand/20 blur-3xl" />
+            <div className="flas-drift absolute -start-32 -top-32 size-[26rem] rounded-full bg-brand/20 blur-3xl" />
             <div
-              className="flas-drift absolute -right-24 top-0 size-[20rem] rounded-full bg-brand/12 blur-3xl"
+              className="flas-drift absolute -end-24 top-0 size-[20rem] rounded-full bg-brand/12 blur-3xl"
               style={{ animationDelay: "-4s" }}
             />
           </div>
 
           <div className="mx-auto max-w-3xl px-6 py-20 text-center">
             <h1 data-reveal className="text-4xl font-bold tracking-tight sm:text-5xl">
-              One price. Every feature. Everyone on your team.
+              {t("pricing.onePriceEveryFeatureEveryone")}
             </h1>
             <p
               data-reveal
               style={{ ["--reveal-delay" as string]: "60ms" }}
               className="mx-auto mt-4 max-w-xl text-base text-muted-foreground"
             >
-              No per-seat billing and no feature gates — the difference between plans is how you
-              pay, not what you get. Start with a free month.
+              {t("pricing.noPerSeatBillingAnd")}
             </p>
           </div>
         </section>
@@ -166,20 +167,22 @@ function Pricing() {
               className="rounded-3xl border bg-card p-7 shadow-panel transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
             >
               <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                Monthly
+                {t("pricing.monthly")}
               </h2>
               <p className="mt-4 flex items-baseline gap-2">
                 <span className="text-4xl font-bold">$20</span>
-                <span className="text-sm text-muted-foreground">/month</span>
+                <span className="text-sm text-muted-foreground">{t("pricing.month")}</span>
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                <span className="line-through">$30</span> for your first six months, then $30.
+                {tr("pricing.forYourFirstSixMonths", {
+                  span: <span className="line-through">$30</span>,
+                })}
               </p>
               <Button asChild size="lg" className="mt-6 w-full">
-                <Link to="/auth">Start free for one month</Link>
+                <Link to="/auth">{t("pricing.startFreeForOneMonth")}</Link>
               </Button>
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                Cancel any time · no card needed to start
+                {t("pricing.cancelAnyTimeNoCard")}
               </p>
             </div>
 
@@ -189,25 +192,26 @@ function Pricing() {
               style={{ ["--reveal-delay" as string]: "60ms" }}
               className="relative rounded-3xl border-2 border-brand bg-card p-7 shadow-lg transition-all duration-300 hover:-translate-y-1"
             >
-              <span className="absolute -top-3 left-7 rounded-full bg-brand px-3 py-1 text-[11px] font-bold text-brand-foreground">
-                Save $120
+              <span className="absolute -top-3 start-7 rounded-full bg-brand px-3 py-1 text-[11px] font-bold text-brand-foreground">
+                {t("pricing.save120")}
               </span>
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-brand">Yearly</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-widest text-brand">
+                {t("pricing.yearly")}
+              </h2>
               <p className="mt-4 flex items-baseline gap-2">
                 <span className="text-4xl font-bold">$240</span>
-                <span className="text-sm text-muted-foreground">/year</span>
+                <span className="text-sm text-muted-foreground">{t("pricing.year")}</span>
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                <span className="line-through">$360</span> — works out at $20 a month, held for the
-                full year.
+                {tr("pricing.worksOutAt20A", { span: <span className="line-through">$360</span> })}
               </p>
               <Button asChild size="lg" className="mt-6 w-full">
                 <Link to="/auth">
-                  Start free for one month <ArrowRight className="size-4" />
+                  {t("pricing.startFreeForOneMonth")} <ArrowRight className="size-4" />
                 </Link>
               </Button>
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                Pay by card, bank transfer or cash
+                {t("pricing.payByCardBankTransfer")}
               </p>
             </div>
           </div>
@@ -218,12 +222,12 @@ function Pricing() {
             className="mt-6 rounded-3xl border bg-muted/30 p-7"
             style={{ ["--reveal-delay" as string]: "100ms" }}
           >
-            <h2 className="text-lg font-bold">Included on both plans</h2>
+            <h2 className="text-lg font-bold">{t("pricing.includedOnBothPlans")}</h2>
             <ul className="mt-5 grid gap-2.5 sm:grid-cols-2">
-              {INCLUDED.map((item) => (
+              {INCLUDED.map((item, i) => (
                 <li key={item} className="flex gap-2.5 text-sm">
                   <Check className="mt-0.5 size-4 shrink-0 text-brand" />
-                  <span className="text-muted-foreground">{item}</span>
+                  <span className="text-muted-foreground">{tx(`pricing.included.${i}`, item)}</span>
                 </li>
               ))}
             </ul>
@@ -231,16 +235,20 @@ function Pricing() {
             <div className="mt-6 flex gap-2.5 rounded-xl border border-dashed p-4 text-sm">
               <Minus className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <p className="text-muted-foreground">
-                <span className="font-medium text-foreground">Not included:</span> WhatsApp&apos;s
-                own per-message fees. Meta bills those directly and they vary by country — see{" "}
-                <Link
-                  to="/blog/$slug"
-                  params={{ slug: "whatsapp-business-app-vs-api" }}
-                  className="text-brand underline underline-offset-2"
-                >
-                  our guide on what the API actually costs
-                </Link>
-                .
+                {tr("pricing.whatsappSOwnPerMessage", {
+                  span: (
+                    <span className="font-medium text-foreground">{t("pricing.notIncluded")}</span>
+                  ),
+                  link: (
+                    <Link
+                      to="/blog/$slug"
+                      params={{ slug: "whatsapp-business-app-vs-api" }}
+                      className="text-brand underline underline-offset-2"
+                    >
+                      {t("pricing.ourGuideOnWhatThe")}
+                    </Link>
+                  ),
+                })}
               </p>
             </div>
           </div>
@@ -249,7 +257,7 @@ function Pricing() {
         <section className="border-y bg-muted/30 py-20">
           <div className="mx-auto max-w-3xl px-6">
             <h2 data-reveal className="text-center text-3xl font-bold">
-              Pricing questions
+              {t("pricing.pricingQuestions")}
             </h2>
             <div className="mt-10 grid gap-3">
               {FAQS.map((f, i) => (
@@ -259,14 +267,16 @@ function Pricing() {
                   style={{ ["--reveal-delay" as string]: `${Math.min(i, 5) * 40}ms` }}
                   className="group rounded-2xl border bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left font-semibold [&::-webkit-details-marker]:hidden">
-                    {f.q}
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-start font-semibold [&::-webkit-details-marker]:hidden">
+                    {tx(`pricing.faq.${i}.q`, f.q)}
                     <ChevronDown
                       aria-hidden
                       className="size-4 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-180"
                     />
                   </summary>
-                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    {tx(`pricing.faq.${i}.a`, f.a)}
+                  </p>
                 </details>
               ))}
             </div>
@@ -275,15 +285,14 @@ function Pricing() {
 
         <section className="mx-auto max-w-3xl px-6 py-20 text-center">
           <h2 data-reveal className="text-3xl font-bold">
-            Try it with your own number
+            {t("pricing.tryItWithYourOwn")}
           </h2>
           <p
             data-reveal
             style={{ ["--reveal-delay" as string]: "60ms" }}
             className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground"
           >
-            A month is long enough to move a real team onto it. If you would rather we set it up —
-            including the Meta approvals — ask for a quotation.
+            {t("pricing.aMonthIsLongEnough")}
           </p>
           <div
             data-reveal
@@ -291,11 +300,11 @@ function Pricing() {
             className="mt-7 flex flex-wrap justify-center gap-3"
           >
             <Button asChild size="lg" className="flas-sheen relative overflow-hidden">
-              <Link to="/auth">Start free for one month</Link>
+              <Link to="/auth">{t("pricing.startFreeForOneMonth")}</Link>
             </Button>
             <Button asChild size="lg" variant="outline">
               <Link to="/" hash="quote">
-                Request a quotation
+                {t("pricing.requestAQuotation")}
               </Link>
             </Button>
           </div>

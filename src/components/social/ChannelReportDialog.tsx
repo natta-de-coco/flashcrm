@@ -24,6 +24,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { BarChart3 } from "lucide-react";
 import { useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
 
 /** Mirrors REPORT_PLATFORMS in reports.server.ts, which the browser cannot import. */
 export const REPORT_PLATFORMS: ReadonlySet<string> = new Set([
@@ -56,6 +57,7 @@ function formatValue(value: number, format: Format, currency?: string): string {
 }
 
 export function ChannelReportDialog({ accountId, label }: { accountId: string; label: string }) {
+  const i18n = useI18n();
   const [open, setOpen] = useState(false);
   const load = useServerFn(getChannelReport);
   const report = useQuery({
@@ -75,10 +77,10 @@ export function ChannelReportDialog({ accountId, label }: { accountId: string; l
           size="sm"
           variant="outline"
           className="gap-1"
-          aria-label={`Open the report for ${label}`}
+          aria-label={i18n.t("channelReportDialog.openTheReportFor", { label: label })}
         >
           <BarChart3 className="size-3.5" />
-          Report
+          {i18n.t("channelReportDialog.report")}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
@@ -86,8 +88,8 @@ export function ChannelReportDialog({ accountId, label }: { accountId: string; l
           <DialogTitle>{label}</DialogTitle>
           <DialogDescription>
             {data
-              ? `${data.from} to ${data.to}, from the platform's own reporting.`
-              : "The last 28 days, from the platform's own reporting."}
+              ? i18n.t("channelReportDialog.toFromThePlatformS", { from: data.from, to: data.to })
+              : i18n.t("channelReportDialog.theLast28DaysFrom")}
           </DialogDescription>
         </DialogHeader>
 
@@ -118,14 +120,16 @@ export function ChannelReportDialog({ accountId, label }: { accountId: string; l
             <div>
               <p className="mb-2 text-sm font-semibold">{data.table.title}</p>
               {data.table.rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No data for this period.</p>
+                <p className="text-sm text-muted-foreground">
+                  {i18n.t("channelReportDialog.noDataForThisPeriod")}
+                </p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
+                      <TableHead>{i18n.t("channelReportDialog.name")}</TableHead>
                       {data.table.columns.map((c) => (
-                        <TableHead key={c.key} className="text-right">
+                        <TableHead key={c.key} className="text-end">
                           {c.label}
                         </TableHead>
                       ))}
@@ -136,7 +140,7 @@ export function ChannelReportDialog({ accountId, label }: { accountId: string; l
                       <TableRow key={`${row.label}-${i}`}>
                         <TableCell className="max-w-[16rem] truncate">{row.label}</TableCell>
                         {data.table.columns.map((c) => (
-                          <TableCell key={c.key} className="text-right tabular-nums">
+                          <TableCell key={c.key} className="text-end tabular-nums">
                             {formatValue(row.values[c.key] ?? 0, c.format, currency)}
                           </TableCell>
                         ))}

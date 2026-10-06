@@ -15,6 +15,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CalendarClock, FileText, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/content")({
   head: () => ({
@@ -88,6 +89,7 @@ const emptyForm = {
 };
 
 function ContentPage() {
+  const { t, tr, tx } = useI18n();
   const qc = useQueryClient();
   const { user } = useAuth();
   const [form, setForm] = useState(emptyForm);
@@ -128,7 +130,7 @@ function ContentPage() {
     onSuccess: (_data, status) => {
       setForm(emptyForm);
       void qc.invalidateQueries({ queryKey: ["content_posts"] });
-      toast.success(status === "scheduled" ? "Post scheduled" : "Draft saved");
+      toast.success(status === "scheduled" ? t("content.postScheduled") : t("content.draftSaved"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -149,7 +151,7 @@ function ContentPage() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["content_posts"] });
-      toast.success("Post deleted");
+      toast.success(t("content.postDeleted"));
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -157,41 +159,41 @@ function ContentPage() {
   return (
     <main className="flex-1 space-y-6 p-6">
       <header>
-        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Content & SEO</h1>
-        <p className="text-sm text-muted-foreground">
-          Write once, schedule to multiple platforms, and keep SEO metadata attached to every post.
-        </p>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+          {t("content.contentSeo")}
+        </h1>
+        <p className="text-sm text-muted-foreground">{t("content.writeOnceScheduleToMultiple")}</p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">New post</CardTitle>
-            <CardDescription>Save as a draft or schedule it for later.</CardDescription>
+            <CardTitle className="text-base">{t("content.newPost")}</CardTitle>
+            <CardDescription>{t("content.saveAsADraftOr")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="c-title">Title</Label>
+              <Label htmlFor="c-title">{t("content.title")}</Label>
               <Input
                 id="c-title"
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="5 ways distributors cut lighting costs"
+                placeholder={t("content.5WaysDistributorsCutLighting")}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="c-body">Body</Label>
+              <Label htmlFor="c-body">{t("content.body")}</Label>
               <Textarea
                 id="c-body"
                 rows={6}
                 value={form.body}
                 onChange={(e) => setForm({ ...form, body: e.target.value })}
-                placeholder="Write your post…"
+                placeholder={t("content.writeYourPost")}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label>Publish to</Label>
+              <Label>{t("content.publishTo")}</Label>
               <div className="flex flex-wrap gap-1.5">
                 {PLATFORMS.map((p) => {
                   const on = platforms.includes(p.id);
@@ -200,7 +202,7 @@ function ContentPage() {
                       key={p.id}
                       type="button"
                       size="sm"
-                      title={p.hint}
+                      title={tx(`content.platform.${p.id}.hint`, p.hint)}
                       variant={on ? "default" : "outline"}
                       onClick={() =>
                         setPlatforms(
@@ -208,20 +210,16 @@ function ContentPage() {
                         )
                       }
                     >
-                      {p.label}
+                      {tx(`content.platform.${p.id}.label`, p.label)}
                     </Button>
                   );
                 })}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Website is the Flas-hosted blog feed. WordPress pushes the same article into your
-                own site through the Flas plugin. Social targets require the account to be linked in
-                Integrations first.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("content.websiteIsTheFlasHosted")}</p>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="c-when">Schedule for</Label>
+              <Label htmlFor="c-when">{t("content.scheduleFor")}</Label>
               <Input
                 id="c-when"
                 type="datetime-local"
@@ -232,36 +230,36 @@ function ContentPage() {
 
             <div className="space-y-3 rounded-lg border p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                SEO metadata
+                {t("content.seoMetadata")}
               </p>
               <div className="space-y-1.5">
-                <Label htmlFor="c-seo-title">SEO title</Label>
+                <Label htmlFor="c-seo-title">{t("content.seoTitle")}</Label>
                 <Input
                   id="c-seo-title"
                   maxLength={60}
                   value={form.seoTitle}
                   onChange={(e) => setForm({ ...form, seoTitle: e.target.value })}
-                  placeholder="Under 60 characters"
+                  placeholder={t("content.under60Characters")}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="c-seo-desc">Meta description</Label>
+                <Label htmlFor="c-seo-desc">{t("content.metaDescription")}</Label>
                 <Textarea
                   id="c-seo-desc"
                   rows={2}
                   maxLength={160}
                   value={form.seoDescription}
                   onChange={(e) => setForm({ ...form, seoDescription: e.target.value })}
-                  placeholder="Under 160 characters"
+                  placeholder={t("content.under160Characters")}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="c-seo-kw">Keywords</Label>
+                <Label htmlFor="c-seo-kw">{t("content.keywords")}</Label>
                 <Input
                   id="c-seo-kw"
                   value={form.seoKeywords}
                   onChange={(e) => setForm({ ...form, seoKeywords: e.target.value })}
-                  placeholder="comma, separated, keywords"
+                  placeholder={t("content.commaSeparatedKeywords")}
                 />
               </div>
             </div>
@@ -274,7 +272,7 @@ function ContentPage() {
                 title={contentDraftBlocker(form) ?? undefined}
                 onClick={() => savePost.mutate("draft")}
               >
-                Save draft
+                {t("content.saveDraft")}
               </Button>
               <Button
                 className="flex-1 gap-2"
@@ -285,7 +283,7 @@ function ContentPage() {
                 onClick={() => savePost.mutate("scheduled")}
               >
                 <CalendarClock className="size-4" />
-                Schedule
+                {t("content.schedule")}
               </Button>
             </div>
           </CardContent>
@@ -293,21 +291,23 @@ function ContentPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Posts</CardTitle>
-            <CardDescription>{posts.length} post(s)</CardDescription>
+            <CardTitle className="text-base">{t("content.posts")}</CardTitle>
+            <CardDescription>{tr("content.postS", { length: posts.length })}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {isLoading && <p className="text-sm text-muted-foreground">Loading posts…</p>}
+            {isLoading && (
+              <p className="text-sm text-muted-foreground">{t("content.loadingPosts")}</p>
+            )}
             {!isLoading && posts.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                Nothing here yet. Draft your first post on the left.
+                {t("content.nothingHereYetDraftYour")}
               </p>
             )}
             {posts.map((post) => (
               <div key={post.id} className="rounded-lg border p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <FileText className="size-4 text-muted-foreground" />
-                  <p className="font-medium">{post.title ?? "Untitled post"}</p>
+                  <p className="font-medium">{post.title ?? t("content.untitledPost")}</p>
                   <Badge
                     variant={
                       (STATUS_STYLE[post.status] ?? "secondary") as
@@ -315,7 +315,7 @@ function ContentPage() {
                     }
                     className="capitalize"
                   >
-                    {post.status}
+                    {tx(`content.status.${post.status}`, post.status)}
                   </Badge>
                   {post.platforms.map((p) => (
                     <Badge key={p} variant="outline" className="capitalize">
@@ -338,7 +338,7 @@ function ContentPage() {
                       variant="secondary"
                       onClick={() => setStatus.mutate({ id: post.id, status: "published" })}
                     >
-                      Mark published
+                      {t("content.markPublished")}
                     </Button>
                   )}
                   <Button
@@ -348,7 +348,7 @@ function ContentPage() {
                     onClick={() => removePost.mutate(post.id)}
                   >
                     <Trash2 className="size-3.5" />
-                    Delete
+                    {t("content.delete")}
                   </Button>
                 </div>
               </div>

@@ -16,6 +16,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, Copy, ExternalLink, KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export type ProviderKey = "meta" | "google" | "linkedin" | "tiktok" | "twitter" | "pinterest";
 
@@ -79,6 +80,7 @@ export function redirectUri() {
 }
 
 function CopyRow({ label, value }: { label: string; value: string }) {
+  const { t } = useI18n();
   return (
     <div className="grid gap-1">
       <Label className="text-xs">{label}</Label>
@@ -91,10 +93,10 @@ function CopyRow({ label, value }: { label: string; value: string }) {
           className="h-8 shrink-0 gap-1 text-xs"
           onClick={() => {
             void navigator.clipboard.writeText(value);
-            toast.success(`${label} copied`);
+            toast.success(t("platformAppsCard.copied", { label: label }));
           }}
         >
-          <Copy className="size-3" /> Copy
+          <Copy className="size-3" /> {t("platformAppsCard.copy")}
         </Button>
       </div>
     </div>
@@ -111,6 +113,7 @@ export function PlatformAppKeysDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const save = useServerFn(savePlatformApp);
   const [clientId, setClientId] = useState("");
@@ -131,7 +134,7 @@ export function PlatformAppKeysDialog({
       });
     },
     onSuccess: () => {
-      toast.success("App keys saved — this platform can now be connected.");
+      toast.success(t("platformAppsCard.appKeysSavedThisPlatform"));
       void qc.invalidateQueries({ queryKey: ["connections"] });
       void qc.invalidateQueries({ queryKey: ["platform-apps"] });
       onOpenChange(false);
@@ -146,28 +149,30 @@ export function PlatformAppKeysDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-base">
-            {info ? `Connect your ${info.name} app` : "Platform app keys"}
+            {info
+              ? t("platformAppsCard.connectYourApp", { name: info.name })
+              : t("platformAppsCard.platformAppKeys")}
           </DialogTitle>
-          <DialogDescription>
-            Flas uses your own developer app so your data and rate limits stay yours. Create the
-            app, paste the redirect URL below into it, then paste the two keys here.
-          </DialogDescription>
+          <DialogDescription>{t("platformAppsCard.flasUsesYourOwnDeveloper")}</DialogDescription>
         </DialogHeader>
 
         {info ? (
           <div className="grid gap-3">
             <ol className="grid gap-1 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-              <li>1. Open the developer console and create (or open) an app.</li>
-              <li>2. Add the redirect URL below as an allowed OAuth redirect URI.</li>
+              <li>{t("platformAppsCard.1OpenTheDeveloperConsole")}</li>
+              <li>{t("platformAppsCard.2AddTheRedirectUrl")}</li>
               <li>
-                3. Copy the {info.idLabel} and {info.secretLabel} into the fields here.
+                {tr("platformAppsCard.3CopyTheAndInto", {
+                  idLabel: info.idLabel,
+                  secretLabel: info.secretLabel,
+                })}
               </li>
-              <li>4. Save — then press Connect on any {info.covers} card.</li>
+              <li>{tr("platformAppsCard.4SaveThenPressConnect", { covers: info.covers })}</li>
             </ol>
-            <CopyRow label="Redirect URL" value={redirectUri()} />
+            <CopyRow label={t("platformAppsCard.redirectUrl")} value={redirectUri()} />
             <Button asChild size="sm" variant="outline" className="w-fit gap-1 text-xs">
               <a href={info.consoleUrl} target="_blank" rel="noreferrer noopener">
-                Open developer console <ExternalLink className="size-3" />
+                {t("platformAppsCard.openDeveloperConsole")} <ExternalLink className="size-3" />
               </a>
             </Button>
             <div className="grid gap-2">
@@ -189,8 +194,7 @@ export function PlatformAppKeysDialog({
                 autoComplete="new-password"
               />
               <p className="text-[11px] text-muted-foreground">
-                Stored encrypted against your workspace only — never shown again and never sent to
-                the browser.
+                {t("platformAppsCard.storedEncryptedAgainstYourWorkspace")}
               </p>
             </div>
             <Button
@@ -199,7 +203,9 @@ export function PlatformAppKeysDialog({
               }
               onClick={() => mutation.mutate()}
             >
-              {mutation.isPending ? "Saving…" : "Save app keys"}
+              {mutation.isPending
+                ? t("platformAppsCard.saving")
+                : t("platformAppsCard.saveAppKeys")}
             </Button>
           </div>
         ) : null}
@@ -210,6 +216,7 @@ export function PlatformAppKeysDialog({
 
 /** Overview of every OAuth provider family and whether it can be authorized. */
 export function PlatformAppsCard({ providerReady }: { providerReady?: ProviderReady }) {
+  const { t } = useI18n();
   const apps = useQuery({ queryKey: ["platform-apps"], queryFn: () => listPlatformApps() });
   const [provider, setProvider] = useState<ProviderKey | null>(null);
   const configured = new Set((apps.data ?? []).map((a) => a.provider));
@@ -218,15 +225,12 @@ export function PlatformAppsCard({ providerReady }: { providerReady?: ProviderRe
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <KeyRound className="size-4 text-primary" /> Platform app keys
+          <KeyRound className="size-4 text-primary" /> {t("platformAppsCard.platformAppKeys")}
         </CardTitle>
-        <CardDescription>
-          Each platform requires its own developer app before it will let Flas in. Add the keys once
-          per family — every account under it then connects in one click.
-        </CardDescription>
+        <CardDescription>{t("platformAppsCard.eachPlatformRequiresItsOwn")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-2">
-        <CopyRow label="Redirect URL for every platform" value={redirectUri()} />
+        <CopyRow label={t("platformAppsCard.redirectUrlForEveryPlatform")} value={redirectUri()} />
         <div className="grid gap-2 sm:grid-cols-2">
           {(Object.keys(PROVIDER_INFO) as ProviderKey[]).map((key) => {
             const ready = providerReady?.[key]?.ready ?? configured.has(key);
@@ -246,9 +250,9 @@ export function PlatformAppsCard({ providerReady }: { providerReady?: ProviderRe
                     {ready ? <CheckCircle2 className="size-3" /> : null}
                     {ready
                       ? source === "shared"
-                        ? "Ready (Flas shared app)"
-                        : "Ready (your app)"
-                      : "Keys needed"}
+                        ? t("platformAppsCard.readyFlasSharedApp")
+                        : t("platformAppsCard.readyYourApp")
+                      : t("platformAppsCard.keysNeeded")}
                   </Badge>
                 </div>
                 <Button
@@ -257,7 +261,9 @@ export function PlatformAppsCard({ providerReady }: { providerReady?: ProviderRe
                   className="h-7 shrink-0 px-2 text-xs"
                   onClick={() => setProvider(key)}
                 >
-                  {configured.has(key) ? "Replace" : "Add keys"}
+                  {configured.has(key)
+                    ? t("platformAppsCard.replace")
+                    : t("platformAppsCard.addKeys")}
                 </Button>
               </div>
             );

@@ -30,6 +30,8 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -287,6 +289,7 @@ const FAQS = [
 const WHATSAPP = "https://wa.me/9710509630506";
 
 function Landing() {
+  const { t, tr, tx } = useI18n();
   useReveal();
 
   // The chat widget loads through <HomepageChatWidget />, only when the
@@ -303,10 +306,8 @@ function Landing() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <span className="flex min-w-0 items-center gap-3">
             <FlasWordmark className="h-8 max-w-28 sm:h-9 sm:max-w-36" />
-            <span className="hidden border-l border-border pl-3 text-[10px] font-medium leading-tight text-muted-foreground sm:block">
-              CRM by
-              <br />
-              Mobi Digital Solutions
+            <span className="hidden border-s border-border ps-3 text-[10px] font-medium leading-tight text-muted-foreground sm:block">
+              {tr("home.crmByMobiDigitalSolutions", { br: <br /> })}
             </span>
           </span>
           <nav className="flex items-center gap-4">
@@ -314,28 +315,29 @@ function Landing() {
               to="/features"
               className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
-              Features
+              {t("home.features")}
             </Link>
             <Link
               to="/pricing"
               className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
-              Pricing
+              {t("home.pricing")}
             </Link>
             <Link
               to="/blog"
               className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
-              Guides
+              {t("home.guides")}
             </Link>
             <a
               href="#quote"
               className="hidden text-sm text-muted-foreground transition-colors hover:text-foreground sm:inline"
             >
-              Get a quote
+              {t("home.getAQuote")}
             </a>
+            <LanguageSwitcher compact />
             <Button asChild size="sm">
-              <Link to="/auth">Open app</Link>
+              <Link to="/auth">{t("home.openApp")}</Link>
             </Button>
           </nav>
         </div>
@@ -348,28 +350,31 @@ function Landing() {
             them would be noise. */}
         <section className="relative isolate overflow-hidden">
           <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
-            <div className="flas-drift absolute -left-24 -top-24 size-[28rem] rounded-full bg-brand/25 blur-3xl" />
+            <div className="flas-drift absolute -start-24 -top-24 size-[28rem] rounded-full bg-brand/25 blur-3xl" />
             <div
-              className="flas-drift absolute -right-20 top-10 size-[22rem] rounded-full bg-brand/15 blur-3xl"
+              className="flas-drift absolute -end-20 top-10 size-[22rem] rounded-full bg-brand/15 blur-3xl"
               style={{ animationDelay: "-3s" }}
             />
             <div
-              className="flas-drift absolute bottom-0 left-1/3 size-[18rem] rounded-full bg-brand-deep/10 blur-3xl"
+              className="flas-drift absolute bottom-0 start-1/3 size-[18rem] rounded-full bg-brand-deep/10 blur-3xl"
               style={{ animationDelay: "-6s" }}
             />
           </div>
 
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 sm:py-24 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
-            <div className="text-center lg:text-left">
+            <div className="text-center lg:text-start">
               <span
                 data-reveal
                 className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand"
               >
-                <span className="relative flex size-2">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-70" />
-                  <span className="relative inline-flex size-2 rounded-full bg-brand" />
-                </span>
-                WhatsApp Cloud API · Flas AI · Social inbox · Invoicing
+                {tr("home.whatsappCloudApiFlasAi", {
+                  span: (
+                    <span className="relative flex size-2">
+                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-70" />
+                      <span className="relative inline-flex size-2 rounded-full bg-brand" />
+                    </span>
+                  ),
+                })}
               </span>
 
               <h1
@@ -377,11 +382,13 @@ function Landing() {
                 style={{ ["--reveal-delay" as string]: "50ms" }}
                 className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl"
               >
-                The complete WhatsApp &amp;{" "}
-                <span className="bg-gradient-to-r from-brand to-brand-deep bg-clip-text text-transparent">
-                  AI growth CRM
-                </span>{" "}
-                for your business
+                {tr("home.theCompleteWhatsappForYour", {
+                  span: (
+                    <span className="bg-gradient-to-r from-brand to-brand-deep bg-clip-text text-transparent">
+                      {t("home.aiGrowthCrm")}
+                    </span>
+                  ),
+                })}
               </h1>
 
               <p
@@ -389,9 +396,7 @@ function Landing() {
                 style={{ ["--reveal-delay" as string]: "100ms" }}
                 className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground sm:text-lg lg:mx-0"
               >
-                Flas CRM brings every WhatsApp chat, social message, website lead, campaign, invoice
-                and SEO post into one workspace — with Flas AI writing, replying and advising
-                alongside your team. Built and supported by Mobi Digital Solutions.
+                {t("home.flasCrmBringsEveryWhatsapp")}
               </p>
 
               <div
@@ -401,11 +406,11 @@ function Landing() {
               >
                 <Button asChild size="lg" className="flas-sheen relative overflow-hidden">
                   <Link to="/auth">
-                    Start free for one month <ArrowRight className="size-4" />
+                    {t("home.startFreeForOneMonth")} <ArrowRight className="size-4" />
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
-                  <a href="#quote">Request a quotation</a>
+                  <a href="#quote">{t("home.requestAQuotation")}</a>
                 </Button>
               </div>
 
@@ -414,20 +419,16 @@ function Landing() {
                 style={{ ["--reveal-delay" as string]: "200ms" }}
                 className="mt-5 text-sm"
               >
-                <span className="text-muted-foreground line-through">$30/month</span>{" "}
-                <span className="font-semibold text-brand">
-                  $20/month for your first six months
-                </span>{" "}
-                <span className="text-muted-foreground">
-                  · or $240 a year instead of $360 · one month free first
-                </span>
+                <span className="text-muted-foreground line-through">{t("home.30Month")}</span>{" "}
+                <span className="font-semibold text-brand">{t("home.20MonthForYourFirst")}</span>{" "}
+                <span className="text-muted-foreground">{t("home.or240AYearInstead")}</span>
               </p>
               <p
                 data-reveal
                 style={{ ["--reveal-delay" as string]: "250ms" }}
                 className="mt-2 text-xs text-muted-foreground"
               >
-                Cancel any time · no card needed to start.
+                {t("home.cancelAnyTimeNoCard")}
               </p>
             </div>
 
@@ -444,7 +445,7 @@ function Landing() {
             reader can actually check for their own platform. */}
         <section className="border-y bg-muted/30 py-6">
           <p className="mb-4 text-center text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Connects to the platforms you already use
+            {t("home.connectsToThePlatformsYou")}
           </p>
           <div
             className="flas-marquee group relative overflow-hidden"
@@ -469,23 +470,21 @@ function Landing() {
             </div>
           </div>
           <p className="mx-auto mt-4 max-w-2xl px-6 text-center text-xs text-muted-foreground">
-            Every connection uses the platform&apos;s official API and its own secure login — with a
-            written setup guide inside the app, including what Meta, Google and TikTok require
-            before they will approve access.
+            {t("home.everyConnectionUsesThePlatform")}
           </p>
         </section>
 
         {/* ── Modules ───────────────────────────────────────────────────── */}
         <section id="modules" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-20">
           <h2 data-reveal className="text-center text-3xl font-bold">
-            Everything inside Flas CRM
+            {t("home.everythingInsideFlasCrm")}
           </h2>
           <p
             data-reveal
             style={{ ["--reveal-delay" as string]: "60ms" }}
             className="mx-auto mt-2 max-w-xl text-center text-sm text-muted-foreground"
           >
-            Twelve modules covering the whole path from a first message to a paid invoice.
+            {t("home.twelveModulesCoveringTheWhole")}
           </p>
 
           <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -501,8 +500,12 @@ function Landing() {
                 <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand transition-transform duration-300 group-hover:scale-110">
                   <m.icon className="size-5" />
                 </span>
-                <h3 className="mt-4 text-base font-semibold">{m.title}</h3>
-                <p className="mt-1.5 text-sm text-muted-foreground">{m.body}</p>
+                <h3 className="mt-4 text-base font-semibold">
+                  {tx(`home.module.${i}.title`, m.title)}
+                </h3>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {tx(`home.module.${i}.body`, m.body)}
+                </p>
               </article>
             ))}
           </div>
@@ -512,7 +515,7 @@ function Landing() {
         <section className="border-y bg-muted/30 py-20">
           <div className="mx-auto max-w-6xl px-6">
             <h2 data-reveal className="text-center text-3xl font-bold">
-              Live in three steps
+              {t("home.liveInThreeSteps")}
             </h2>
             <div className="mt-10 grid gap-6 lg:grid-cols-3">
               {STEPS.map((s, i) => (
@@ -525,12 +528,16 @@ function Landing() {
                   <span className="grid size-9 place-items-center rounded-full bg-brand text-sm font-bold text-brand-foreground">
                     {i + 1}
                   </span>
-                  <h3 className="mt-4 text-base font-bold">{s.title}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{s.body}</p>
+                  <h3 className="mt-4 text-base font-bold">
+                    {tx(`home.step.${i}.title`, s.title)}
+                  </h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {tx(`home.step.${i}.body`, s.body)}
+                  </p>
                   {i < STEPS.length - 1 && (
                     <ArrowRight
                       aria-hidden
-                      className="absolute -right-3 top-1/2 hidden size-6 -translate-y-1/2 text-brand/40 lg:block"
+                      className="absolute -end-3 top-1/2 hidden size-6 -translate-y-1/2 text-brand/40 lg:block"
                     />
                   )}
                 </div>
@@ -543,15 +550,14 @@ function Landing() {
         <section className="mx-auto max-w-6xl px-6 py-20">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div data-reveal>
-              <h2 className="text-3xl font-bold">Guides &amp; playbooks</h2>
+              <h2 className="text-3xl font-bold">{t("home.guidesPlaybooks")}</h2>
               <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                Practical writing on WhatsApp Business, lead capture and the approvals Meta actually
-                asks for — written from doing it, not from a keyword list.
+                {t("home.practicalWritingOnWhatsappBusiness")}
               </p>
             </div>
             <Button asChild variant="outline" data-reveal>
               <Link to="/blog">
-                Read all guides <ArrowRight className="size-4" />
+                {t("home.readAllGuides")} <ArrowRight className="size-4" />
               </Link>
             </Button>
           </div>
@@ -576,7 +582,7 @@ function Landing() {
                   {p.excerpt}
                 </p>
                 <span className="mt-4 text-xs text-muted-foreground">
-                  {p.readingMinutes} min read
+                  {tr("home.minRead", { readingMinutes: p.readingMinutes })}
                 </span>
               </Link>
             ))}
@@ -590,18 +596,20 @@ function Landing() {
         <section className="border-y bg-muted/30 py-20">
           <div className="mx-auto max-w-3xl px-6">
             <h2 data-reveal className="text-center text-3xl font-bold">
-              Questions people ask before signing up
+              {t("home.questionsPeopleAskBeforeSigning")}
             </h2>
             <p
               data-reveal
               style={{ ["--reveal-delay" as string]: "50ms" }}
               className="mt-2 text-center text-sm text-muted-foreground"
             >
-              Still unsure?{" "}
-              <a href="#quote" className="text-brand underline underline-offset-2">
-                Ask us directly
-              </a>{" "}
-              — we reply the same working day.
+              {tr("home.stillUnsureWeReplyThe", {
+                a: (
+                  <a href="#quote" className="text-brand underline underline-offset-2">
+                    {t("home.askUsDirectly")}
+                  </a>
+                ),
+              })}
             </p>
 
             <div className="mt-10 grid gap-3">
@@ -612,14 +620,16 @@ function Landing() {
                   style={{ ["--reveal-delay" as string]: `${Math.min(i, 5) * 40}ms` }}
                   className="group rounded-2xl border bg-card px-5 py-4 shadow-sm transition-colors hover:border-brand/40"
                 >
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left font-semibold [&::-webkit-details-marker]:hidden">
-                    {f.q}
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-start font-semibold [&::-webkit-details-marker]:hidden">
+                    {tx(`home.faq.${i}.q`, f.q)}
                     <ChevronDown
                       aria-hidden
                       className="size-4 shrink-0 text-muted-foreground transition-transform duration-300 group-open:rotate-180"
                     />
                   </summary>
-                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{f.a}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    {tx(`home.faq.${i}.a`, f.a)}
+                  </p>
                 </details>
               ))}
             </div>
@@ -631,15 +641,11 @@ function Landing() {
           <div className="grid gap-8 lg:grid-cols-2">
             <div data-reveal>
               <span className="inline-flex items-center gap-2 rounded-full bg-brand-soft px-3 py-1 text-xs font-semibold text-brand">
-                <ShoppingBag className="size-3.5" /> About Mobi Digital Solutions
+                <ShoppingBag className="size-3.5" /> {t("home.aboutMobiDigitalSolutions")}
               </span>
-              <h2 className="mt-4 text-2xl font-bold">
-                We don&apos;t just sell software — we build your digital engine
-              </h2>
+              <h2 className="mt-4 text-2xl font-bold">{t("home.weDonTJustSell")}</h2>
               <p className="mt-3 text-sm text-muted-foreground">
-                Mobi Digital Solutions builds and runs digital growth systems for businesses:
-                websites and e-commerce stores, WhatsApp and CRM automation, SEO and content, paid
-                social and search campaigns, and custom software like Flas CRM itself.
+                {t("home.mobiDigitalSolutionsBuildsAnd")}
               </p>
               <ul className="mt-4 grid gap-2 text-sm">
                 {[
@@ -659,12 +665,12 @@ function Landing() {
               <div className="mt-6 flex flex-wrap gap-3">
                 <Button asChild variant="outline">
                   <a href={WHATSAPP} target="_blank" rel="noreferrer noopener">
-                    <Phone className="size-4" /> Chat on WhatsApp
+                    <Phone className="size-4" /> {t("home.chatOnWhatsapp")}
                   </a>
                 </Button>
                 <Button asChild variant="ghost">
                   <a href="mailto:info@mobidigisol.com">
-                    <Mail className="size-4" /> info@mobidigisol.com
+                    <Mail className="size-4" /> {"info@mobidigisol.com"}
                   </a>
                 </Button>
               </div>
@@ -680,34 +686,29 @@ function Landing() {
       <StickyCta />
 
       <footer className="border-t py-8 text-center text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">
-          Flas CRM — a product of Mobi Digital Solutions
-        </p>
-        <p className="mt-1">
-          WhatsApp monitoring, AI chatbot, social inbox, leads, marketing, SEO and invoicing in one
-          workspace · flas.mobidigisol.com
-        </p>
+        <p className="font-medium text-foreground">{t("home.flasCrmAProductOf")}</p>
+        <p className="mt-1">{t("home.whatsappMonitoringAiChatbotSocial")}</p>
         <p className="mt-3 flex flex-wrap items-center justify-center gap-3">
           <Link to="/features" className="underline">
-            Features
+            {t("home.features")}
           </Link>
           <Link to="/pricing" className="underline">
-            Pricing
+            {t("home.pricing")}
           </Link>
           <Link to="/whatsapp-business-api" className="underline">
-            WhatsApp API
+            {t("home.whatsappApi")}
           </Link>
           <Link to="/blog" className="underline">
-            Guides
+            {t("home.guides")}
           </Link>
           <Link to="/privacy" className="underline">
-            Privacy Policy
+            {t("home.privacyPolicy")}
           </Link>
           <Link to="/terms" className="underline">
-            Terms of Service
+            {t("home.termsOfService")}
           </Link>
           <a href="mailto:info@mobidigisol.com" className="underline">
-            Contact
+            {t("home.contact")}
           </a>
         </p>
       </footer>
@@ -721,6 +722,7 @@ function Landing() {
  * the full brief in one place.
  */
 function QuoteForm() {
+  const { t } = useI18n();
   const [f, setF] = useState({
     name: "",
     company: "",
@@ -743,34 +745,31 @@ function QuoteForm() {
   return (
     <div id="quote" className="scroll-mt-20 rounded-2xl border bg-card p-6 shadow-panel">
       <h2 className="flex items-center gap-2 text-xl font-bold">
-        <FileText className="size-5 text-brand" /> Request a quotation
+        <FileText className="size-5 text-brand" /> {t("home.requestAQuotation")}
       </h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Tell us what you need — Flas CRM setup, a website, WhatsApp API approval, SEO or a custom
-        build. We reply the same working day.
-      </p>
+      <p className="mt-1 text-sm text-muted-foreground">{t("home.tellUsWhatYouNeed")}</p>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="q-name">Your name</Label>
+          <Label htmlFor="q-name">{t("home.yourName")}</Label>
           <Input
             id="q-name"
             value={f.name}
             onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder="Basel Yacoub"
+            placeholder={t("home.baselYacoub")}
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="q-company">Company</Label>
+          <Label htmlFor="q-company">{t("home.company")}</Label>
           <Input
             id="q-company"
             value={f.company}
             onChange={(e) => setF({ ...f, company: e.target.value })}
-            placeholder="Your business name"
+            placeholder={t("home.yourBusinessName")}
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="q-email">Email</Label>
+          <Label htmlFor="q-email">{t("home.email")}</Label>
           <Input
             id="q-email"
             type="email"
@@ -780,7 +779,7 @@ function QuoteForm() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="q-phone">WhatsApp number</Label>
+          <Label htmlFor="q-phone">{t("home.whatsappNumber")}</Label>
           <Input
             id="q-phone"
             value={f.phone}
@@ -789,30 +788,30 @@ function QuoteForm() {
           />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="q-interest">What do you need?</Label>
+          <Label htmlFor="q-interest">{t("home.whatDoYouNeed")}</Label>
           <select
             id="q-interest"
             value={f.interest}
             onChange={(e) => setF({ ...f, interest: e.target.value })}
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option>Flas CRM subscription</option>
-            <option>Flas CRM + full setup &amp; training</option>
-            <option>WhatsApp Cloud API setup &amp; approval</option>
-            <option>Website / WordPress / Shopify</option>
-            <option>SEO &amp; content marketing</option>
-            <option>Meta / Google / TikTok ads</option>
-            <option>Custom software or portal</option>
+            <option>{t("home.flasCrmSubscription")}</option>
+            <option>{t("home.flasCrmFullSetupTraining")}</option>
+            <option>{t("home.whatsappCloudApiSetupApproval")}</option>
+            <option>{t("home.websiteWordpressShopify")}</option>
+            <option>{t("home.seoContentMarketing")}</option>
+            <option>{t("home.metaGoogleTiktokAds")}</option>
+            <option>{t("home.customSoftwareOrPortal")}</option>
           </select>
         </div>
         <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="q-msg">Details</Label>
+          <Label htmlFor="q-msg">{t("home.details")}</Label>
           <Textarea
             id="q-msg"
             rows={4}
             value={f.message}
             onChange={(e) => setF({ ...f, message: e.target.value })}
-            placeholder="Number of team members, how many WhatsApp numbers, which platforms you want connected…"
+            placeholder={t("home.numberOfTeamMembersHow")}
           />
         </div>
       </div>
@@ -824,7 +823,7 @@ function QuoteForm() {
             target="_blank"
             rel="noreferrer noopener"
           >
-            <Phone className="size-4" /> Send on WhatsApp
+            <Phone className="size-4" /> {t("home.sendOnWhatsapp")}
           </a>
         </Button>
         <Button asChild variant="outline">
@@ -833,13 +832,11 @@ function QuoteForm() {
               `Quotation request — ${f.interest}`,
             )}&body=${encodeURIComponent(summary)}`}
           >
-            <Mail className="size-4" /> Send by email
+            <Mail className="size-4" /> {t("home.sendByEmail")}
           </a>
         </Button>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Your details are only used to answer this enquiry.
-      </p>
+      <p className="mt-2 text-xs text-muted-foreground">{t("home.yourDetailsAreOnlyUsed")}</p>
     </div>
   );
 }

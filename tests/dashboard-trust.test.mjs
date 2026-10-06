@@ -390,8 +390,20 @@ describe("the fixes are wired into the routed screens", () => {
     const route = await read("src/routes/_authenticated/dashboard.tsx");
     assert.match(dashboard, /summariseHealth\(factors\)/);
     assert.doesNotMatch(dashboard, /factors\.reduce\(\(sum, f\) => sum \+ f\.score/);
-    assert.match(route, /HEALTH_METHOD_NOTE/);
-    assert.match(route, /briefSnapshotNote\(/);
+    // The card shows the method and the brief's snapshot note in the reader's
+    // language now; the English text must still be the module's own sentence,
+    // so the two cannot drift apart.
+    const messages = (await read("src/lib/i18n/screens/dashboard.ts")).split("\r\n").join("\n");
+    assert.match(route, /t\("dashboard\.health\.method"\)/);
+    assert.ok(
+      messages
+        .replace(/"\s*\n\s*"/g, "")
+        .replace(/\s*\n\s*/g, " ")
+        .includes(figures.HEALTH_METHOD_NOTE),
+      "the English method note must match HEALTH_METHOD_NOTE",
+    );
+    assert.match(route, /briefSnapshotKind\(/);
+    assert.match(route, /dashboard\.brief\.note\./);
   });
 
   test("M1, M2, M4: the Integrations tiles", async () => {

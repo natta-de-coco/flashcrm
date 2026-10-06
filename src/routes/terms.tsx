@@ -62,7 +62,7 @@ function TermsPage() {
 
         <section>
           <h2 className="text-lg font-semibold">4. Acceptable use</h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+          <ul className="mt-2 list-disc space-y-1 ps-5 text-muted-foreground">
             <li>Only message people who have given you consent to be contacted.</li>
             <li>
               Do not send spam, scams, adult, gambling or other content prohibited by the WhatsApp

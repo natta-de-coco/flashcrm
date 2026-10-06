@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/campaign-planner")({
   head: () => ({
@@ -95,9 +96,10 @@ function StatRow({ label, value }: { label: string; value: string }) {
 }
 
 function PlanView({ plan }: { plan: CampaignPlan }) {
+  const { t } = useI18n();
   function copyMessage() {
     void navigator.clipboard.writeText(plan.draftOpeningMessage);
-    toast.success("Draft message copied");
+    toast.success(t("campaignPlanner.draftMessageCopied"));
   }
 
   return (
@@ -107,7 +109,7 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
       {plan.targetSegments.length > 0 && (
         <div>
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <Users className="size-3.5" /> Target segments
+            <Users className="size-3.5" /> {t("campaignPlanner.targetSegments")}
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {plan.targetSegments.map((s, i) => (
@@ -126,7 +128,7 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
       {plan.recommendedChannels.length > 0 && (
         <div>
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <Radar className="size-3.5" /> Recommended channels
+            <Radar className="size-3.5" /> {t("campaignPlanner.recommendedChannels")}
           </p>
           <div className="grid gap-2">
             {plan.recommendedChannels.map((c, i) => (
@@ -150,7 +152,7 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
       {plan.geographicFocus.length > 0 ? (
         <div>
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <MapPin className="size-3.5" /> Geographic focus
+            <MapPin className="size-3.5" /> {t("campaignPlanner.geographicFocus")}
           </p>
           <div className="grid gap-2">
             {plan.geographicFocus.map((g, i) => (
@@ -163,15 +165,14 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          No usable geographic signal yet — connect more contacts with phone numbers, or add real
-          location tracking, to unlock area-level targeting.
+          {t("campaignPlanner.noUsableGeographicSignalYet")}
         </p>
       )}
 
       {plan.timing && (
         <div className="rounded-lg border p-2.5">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Timing
+            {t("campaignPlanner.timing")}
           </p>
           <p className="text-sm">{plan.timing}</p>
         </div>
@@ -180,7 +181,7 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
       {plan.messagingAngle && (
         <div className="rounded-lg border p-2.5">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Messaging angle
+            {t("campaignPlanner.messagingAngle")}
           </p>
           <p className="text-sm">{plan.messagingAngle}</p>
         </div>
@@ -190,7 +191,7 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
         <div className="rounded-lg border bg-muted/40 p-2.5">
           <div className="mb-1 flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <MessageSquareText className="size-3.5" /> Draft opening message
+              <MessageSquareText className="size-3.5" /> {t("campaignPlanner.draftOpeningMessage")}
             </p>
             <Button size="sm" variant="ghost" onClick={copyMessage}>
               <Copy className="size-3.5" />
@@ -203,9 +204,9 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
       {plan.risksOrGaps.length > 0 && (
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Risks &amp; data gaps
+            {t("campaignPlanner.risksDataGaps")}
           </p>
-          <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+          <ul className="list-disc space-y-1 ps-4 text-xs text-muted-foreground">
             {plan.risksOrGaps.map((r, i) => (
               <li key={i}>{r}</li>
             ))}
@@ -217,6 +218,7 @@ function PlanView({ plan }: { plan: CampaignPlan }) {
 }
 
 function CampaignPlannerPage() {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const [goal, setGoal] = useState("");
   const [product, setProduct] = useState("");
@@ -251,7 +253,7 @@ function CampaignPlannerPage() {
     },
     onSuccess: (res) => {
       setLatestPlan(res.plan);
-      toast.success("Campaign plan ready");
+      toast.success(t("campaignPlanner.campaignPlanReady"));
       void qc.invalidateQueries({ queryKey: ["campaign-plans"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -260,7 +262,7 @@ function CampaignPlannerPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => removePlan({ data: { id } }),
     onSuccess: () => {
-      toast.success("Plan removed");
+      toast.success(t("campaignPlanner.planRemoved"));
       void qc.invalidateQueries({ queryKey: ["campaign-plans"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -273,11 +275,10 @@ function CampaignPlannerPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
-          <Target className="size-6 text-brand" /> Campaign Planner
+          <Target className="size-6 text-brand" /> {t("campaignPlanner.campaignPlanner")}
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Describe what you're promoting. The plan below is grounded in your actual contacts, leads,
-          and connected social channels — never invented numbers.
+          {t("campaignPlanner.describeWhatYouRePromoting")}
         </p>
       </header>
 
@@ -285,34 +286,34 @@ function CampaignPlannerPage() {
         <div className="grid gap-4">
           <Section
             icon={Sparkles}
-            title="New campaign"
-            description="One or two sentences is enough — the more specific, the sharper the plan."
+            title={t("campaignPlanner.newCampaign")}
+            description={t("campaignPlanner.oneOrTwoSentencesIs")}
           >
             <div className="grid gap-1.5">
-              <Label htmlFor="goal">Campaign goal</Label>
+              <Label htmlFor="goal">{t("campaignPlanner.campaignGoal")}</Label>
               <Textarea
                 id="goal"
                 rows={3}
-                placeholder="e.g. Get 50 more bookings for our weekend detailing package this month"
+                placeholder={t("campaignPlanner.eGGet50More")}
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
               />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="product">Product / service (optional)</Label>
+                <Label htmlFor="product">{t("campaignPlanner.productServiceOptional")}</Label>
                 <Input
                   id="product"
-                  placeholder="e.g. Weekend detailing package"
+                  placeholder={t("campaignPlanner.eGWeekendDetailingPackage")}
                   value={product}
                   onChange={(e) => setProduct(e.target.value)}
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="budget">Budget / constraints (optional)</Label>
+                <Label htmlFor="budget">{t("campaignPlanner.budgetConstraintsOptional")}</Label>
                 <Input
                   id="budget"
-                  placeholder="e.g. AED 2,000, organic + one boosted post"
+                  placeholder={t("campaignPlanner.eGAed2000")}
                   value={budgetNote}
                   onChange={(e) => setBudgetNote(e.target.value)}
                 />
@@ -328,7 +329,7 @@ function CampaignPlannerPage() {
               ) : (
                 <Sparkles className="size-4" />
               )}
-              Generate plan
+              {t("campaignPlanner.generatePlan")}
             </Button>
           </Section>
 
@@ -343,13 +344,13 @@ function CampaignPlannerPage() {
           )}
 
           {latestPlan && !generateMutation.isPending && (
-            <Section icon={TrendingUp} title="Latest plan">
+            <Section icon={TrendingUp} title={t("campaignPlanner.latestPlan")}>
               <PlanView plan={latestPlan} />
             </Section>
           )}
 
           {(plans.data ?? []).length > 0 && (
-            <Section icon={History} title="Past plans">
+            <Section icon={History} title={t("campaignPlanner.pastPlans")}>
               <div className="grid gap-2">
                 {(plans.data ?? []).map((row) => (
                   <details key={row.id} className="rounded-lg border p-2.5">
@@ -384,22 +385,25 @@ function CampaignPlannerPage() {
         <div className="grid gap-4">
           <Section
             icon={Users}
-            title="Audience, right now"
-            description="Computed from your real contacts and leads."
+            title={t("campaignPlanner.audienceRightNow")}
+            description={t("campaignPlanner.computedFromYourRealContacts")}
           >
             {intel.isLoading ? (
               <Skeleton className="h-24 w-full" />
             ) : segments ? (
               <>
-                <StatRow label="Total contacts" value={segments.totalContacts.toLocaleString()} />
                 <StatRow
-                  label="Consent rate (leads)"
+                  label={t("campaignPlanner.totalContacts")}
+                  value={segments.totalContacts.toLocaleString()}
+                />
+                <StatRow
+                  label={t("campaignPlanner.consentRateLeads")}
                   value={`${Math.round(segments.consentedShare * 100)}%`}
                 />
                 {segments.bySource.length > 0 && (
                   <div>
                     <p className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      By source
+                      {t("campaignPlanner.bySource")}
                     </p>
                     {segments.bySource.map((s) => (
                       <StatRow key={s.source} label={s.source} value={s.count.toLocaleString()} />
@@ -409,7 +413,7 @@ function CampaignPlannerPage() {
                 {segments.byCountry.length > 0 && (
                   <div>
                     <p className="mb-1 mt-2 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      <Globe2 className="size-3.5" /> By country (from phone code, approximate)
+                      <Globe2 className="size-3.5" /> {t("campaignPlanner.byCountryFromPhoneCode")}
                     </p>
                     {segments.byCountry.slice(0, 6).map((c) => (
                       <StatRow
@@ -422,14 +426,14 @@ function CampaignPlannerPage() {
                 )}
               </>
             ) : (
-              <p className="text-xs text-muted-foreground">No data yet.</p>
+              <p className="text-xs text-muted-foreground">{t("campaignPlanner.noDataYet")}</p>
             )}
           </Section>
 
           <Section
             icon={Radar}
-            title="Channel performance"
-            description="Ranked by real average engagement per post, not follower count alone."
+            title={t("campaignPlanner.channelPerformance")}
+            description={t("campaignPlanner.rankedByRealAverageEngagement")}
           >
             {intel.isLoading ? (
               <Skeleton className="h-24 w-full" />
@@ -439,20 +443,27 @@ function CampaignPlannerPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold capitalize">{c.platform}</span>
                     {c.audience != null && (
-                      <Badge variant="outline">{c.audience.toLocaleString()} audience</Badge>
+                      <Badge variant="outline">
+                        {tr("campaignPlanner.audience", {
+                          toLocaleString: c.audience.toLocaleString(),
+                        })}
+                      </Badge>
                     )}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {c.postsAnalyzed > 0
-                      ? `${c.postsAnalyzed} posts · avg ${c.avgEngagementPerPost} engagement, ${c.avgReach} reach`
-                      : "No posts synced yet"}
+                      ? t("campaignPlanner.postsAvgEngagementReach", {
+                          postsAnalyzed: c.postsAnalyzed,
+                          avgEngagementPerPost: c.avgEngagementPerPost,
+                          avgReach: c.avgReach,
+                        })
+                      : t("campaignPlanner.noPostsSyncedYet")}
                   </p>
                 </div>
               ))
             ) : (
               <p className="text-xs text-muted-foreground">
-                No connected social accounts yet — connect one from the Social Hub to unlock
-                channel-ranked recommendations.
+                {t("campaignPlanner.noConnectedSocialAccountsYet")}
               </p>
             )}
           </Section>

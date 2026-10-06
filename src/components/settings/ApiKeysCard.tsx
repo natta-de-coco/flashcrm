@@ -11,9 +11,11 @@ import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { formatDayUnambiguous } from "@/lib/locale";
+import { useI18n } from "@/hooks/useI18n";
 
 /** Admin UI for tenant-scoped API keys with per-key permissions. */
 export function ApiKeysCard({ origin }: { origin: string }) {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const listFn = useServerFn(listApiKeys);
   const createFn = useServerFn(createApiKey);
@@ -30,7 +32,7 @@ export function ApiKeysCard({ origin }: { origin: string }) {
     onSuccess: (res) => {
       setFreshKey(res.rawKey);
       setName("");
-      toast.success("API key created — copy it now, it is only shown once");
+      toast.success(t("settings.api.createdToast"));
       void qc.invalidateQueries({ queryKey: ["api-keys"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -39,7 +41,7 @@ export function ApiKeysCard({ origin }: { origin: string }) {
   const revoke = useMutation({
     mutationFn: (keyId: string) => revokeFn({ data: { keyId } }),
     onSuccess: () => {
-      toast.success("API key revoked");
+      toast.success(t("settings.api.revokedToast"));
       void qc.invalidateQueries({ queryKey: ["api-keys"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -54,22 +56,21 @@ export function ApiKeysCard({ origin }: { origin: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">API keys</CardTitle>
+        <CardTitle className="text-base">{t("settings.api.title")}</CardTitle>
         <CardDescription>
-          Give your other tools read access to this workspace. Each key is scoped — it only sees
-          this company&apos;s data, and only what you allow. Endpoint:{" "}
-          <code className="rounded bg-muted px-1">{origin}/api/public/v1/leads</code> (also{" "}
-          contacts, conversations, numbers) with{" "}
-          <code className="rounded bg-muted px-1">Authorization: Bearer flas_…</code>
+          {tr("settings.api.desc", {
+            endpoint: <code className="rounded bg-muted px-1">{origin}/api/public/v1/leads</code>,
+            header: <code className="rounded bg-muted px-1">Authorization: Bearer flas_…</code>,
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         <div className="grid gap-3 rounded-lg border p-3">
           <div className="grid gap-1.5">
-            <Label htmlFor="key_name">Key name</Label>
+            <Label htmlFor="key_name">{t("settings.api.keyName")}</Label>
             <Input
               id="key_name"
-              placeholder="e.g. Reporting dashboard"
+              placeholder={t("settings.api.keyNamePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -82,7 +83,7 @@ export function ApiKeysCard({ origin }: { origin: string }) {
                   checked={scopes.includes(scope)}
                   onChange={() => toggleScope(scope)}
                 />
-                {SCOPE_LABELS[scope]}
+                {t(`settings.api.scope.${scope}`)}
               </label>
             ))}
           </div>
@@ -91,19 +92,19 @@ export function ApiKeysCard({ origin }: { origin: string }) {
               disabled={name.trim().length < 2 || scopes.length === 0 || create.isPending}
               onClick={() => create.mutate()}
             >
-              <Plus className="size-4" /> Create key
+              <Plus className="size-4" /> {t("settings.api.create")}
             </Button>
           </div>
           {freshKey && (
             <div className="grid gap-1.5 rounded-md border border-brand/40 bg-brand/5 p-3">
-              <Label>Your new key — shown once, store it somewhere safe</Label>
+              <Label>{t("settings.api.newKey")}</Label>
               <div className="flex gap-2">
                 <Input readOnly value={freshKey} className="font-mono text-xs" />
                 <Button
                   variant="outline"
                   onClick={() => {
                     void navigator.clipboard.writeText(freshKey);
-                    toast.success("Copied");
+                    toast.success(t("settings.api.copied"));
                   }}
                 >
                   <Copy className="size-4" />
@@ -115,7 +116,7 @@ export function ApiKeysCard({ origin }: { origin: string }) {
 
         <div className="space-y-2">
           {(keys.data ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground">No API keys yet.</p>
+            <p className="text-sm text-muted-foreground">{t("settings.api.none")}</p>
           )}
           {(keys.data ?? []).map((k) => (
             <div
@@ -127,13 +128,13 @@ export function ApiKeysCard({ origin }: { origin: string }) {
                   <KeyRound className="size-3.5" />
                   {k.name}
                   <code className="text-xs font-normal text-muted-foreground">{k.prefix}…</code>
-                  {k.revoked_at && <Badge variant="destructive">revoked</Badge>}
+                  {k.revoked_at && <Badge variant="destructive">{t("settings.api.revoked")}</Badge>}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {(k.scopes ?? []).join(", ")}
                   {k.last_used_at
-                    ? ` · last used ${formatDayUnambiguous(k.last_used_at)}`
-                    : " · never used"}
+                    ? ` · ${t("settings.api.lastUsed", { date: formatDayUnambiguous(k.last_used_at) })}`
+                    : ` · ${t("settings.api.neverUsed")}`}
                 </p>
               </div>
               {!k.revoked_at && (
@@ -143,7 +144,7 @@ export function ApiKeysCard({ origin }: { origin: string }) {
                   onClick={() => revoke.mutate(k.id)}
                   disabled={revoke.isPending}
                 >
-                  <Trash2 className="size-3.5" /> Revoke
+                  <Trash2 className="size-3.5" /> {t("settings.api.revoke")}
                 </Button>
               )}
             </div>

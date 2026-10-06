@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * Widget preview.
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/widget-demo")({
 });
 
 function WidgetDemo() {
+  const { t, tr } = useI18n();
   const { siteKey } = Route.useSearch();
   const [origin, setOrigin] = useState("");
 
@@ -51,69 +53,64 @@ function WidgetDemo() {
           own website, so it should not look like part of Flas. */}
       <header className="border-b">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-          <span className="text-lg font-bold tracking-tight">Northline Trading</span>
+          <span className="text-lg font-bold tracking-tight">
+            {t("widgetDemo.northlineTrading")}
+          </span>
           <nav className="hidden gap-6 text-sm text-slate-500 sm:flex">
-            <span>Products</span>
-            <span>Services</span>
-            <span>About</span>
-            <span>Contact</span>
+            <span>{t("widgetDemo.products")}</span>
+            <span>{t("widgetDemo.services")}</span>
+            <span>{t("widgetDemo.about")}</span>
+            <span>{t("widgetDemo.contact")}</span>
           </nav>
         </div>
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-16">
         <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">
-          Widget preview
+          {t("widgetDemo.widgetPreview")}
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-          This is a stand-in for your website
+          {t("widgetDemo.thisIsAStandIn")}
         </h1>
         <p className="mt-4 max-w-2xl text-slate-600">
-          The chat launcher in the bottom-right corner is the real widget, loaded from{" "}
-          <code className="rounded bg-slate-100 px-1.5 py-0.5 text-sm">{origin}/widget.js</code>.
-          Open it and you will see exactly what a visitor sees.
+          {tr("widgetDemo.theChatLauncherInThe", {
+            code: (
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-sm">{origin}/widget.js</code>
+            ),
+          })}
         </p>
 
         {!siteKey ? (
           <div className="mt-8 rounded-xl border border-amber-300 bg-amber-50 p-5">
-            <p className="font-semibold">No site key supplied</p>
+            <p className="font-semibold">{t("widgetDemo.noSiteKeySupplied")}</p>
             <p className="mt-1.5 text-sm text-slate-700">
-              The widget needs a site key to know which workspace a conversation belongs to, so
-              nothing is loaded on this page. Open this preview from{" "}
-              <strong>Integrations → Website chat widget → Preview the widget</strong>, which passes
-              your key automatically. If you have no website added yet, create one first under{" "}
-              <strong>Add your website</strong>.
+              {tr("widgetDemo.theWidgetNeedsASite", {
+                strong: <strong>{t("widgetDemo.integrationsWebsiteChatWidgetPreview")}</strong>,
+                strong2: <strong>{t("widgetDemo.addYourWebsite")}</strong>,
+              })}
             </p>
           </div>
         ) : (
           <div className="mt-8 rounded-xl border border-emerald-300 bg-emerald-50 p-5">
-            <p className="font-semibold">Live widget loaded</p>
+            <p className="font-semibold">{t("widgetDemo.liveWidgetLoaded")}</p>
             <p className="mt-1.5 text-sm text-slate-700">
-              Messages you send here are real: they arrive in your Flas inbox and create a contact,
-              exactly as a visitor's would. Use a number you can recognise so it is easy to delete
-              afterwards.
+              {t("widgetDemo.messagesYouSendHereAre")}
             </p>
           </div>
         )}
 
-        <h2 className="mt-12 text-lg font-semibold">What the visitor is asked for</h2>
+        <h2 className="mt-12 text-lg font-semibold">{t("widgetDemo.whatTheVisitorIsAsked")}</h2>
         <ul className="mt-3 grid gap-2 text-sm text-slate-600">
-          <li>
-            • Name and WhatsApp number, before the first message — so a lead exists even if they
-            never type again.
-          </li>
-          <li>• Email, optional.</li>
-          <li>
-            • Marketing consent as a separate unticked box. Asking a question is not agreeing to
-            receive campaigns, and treating those as the same thing is what earns blocks.
-          </li>
-          <li>• A link to your privacy notice, shown before anything is submitted.</li>
+          <li>{t("widgetDemo.nameAndWhatsappNumberBefore")}</li>
+          <li>{t("widgetDemo.emailOptional")}</li>
+          <li>{t("widgetDemo.marketingConsentAsASeparate")}</li>
+          <li>{t("widgetDemo.aLinkToYourPrivacy")}</li>
         </ul>
 
         <div className="mt-16 grid gap-4 text-sm text-slate-400">
           <div className="h-24 rounded-lg bg-slate-50" />
           <div className="h-24 rounded-lg bg-slate-50" />
-          <p className="text-center">Filler content, so the launcher has a page to sit over.</p>
+          <p className="text-center">{t("widgetDemo.fillerContentSoTheLauncher")}</p>
         </div>
       </main>
     </div>

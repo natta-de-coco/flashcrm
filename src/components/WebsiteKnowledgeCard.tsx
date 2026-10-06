@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export function WebsiteKnowledgeCard() {
+  const { t } = useI18n();
   const { isAdmin } = useAuth();
   const { tenant } = useTenant();
   const client = useQueryClient();
@@ -24,7 +26,10 @@ export function WebsiteKnowledgeCard() {
     mutationFn: () => syncWebsiteNow({ data: { siteUrl: publicKnowledgeUrl(address) } }),
     onSuccess: (result) => {
       toast.success(
-        `Read ${result.pages} pages${result.skipped ? `; ${result.skipped} could not be read` : ""}. The assistant can now use them.`,
+        t("websiteKnowledgeCard.readPagesTheAssistantCan", {
+          pages: result.pages,
+          value: result.skipped ? `; ${result.skipped} could not be read` : "",
+        }),
       );
       void client.invalidateQueries({ queryKey: ["chatbot-website"] });
     },
@@ -36,16 +41,19 @@ export function WebsiteKnowledgeCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Teach the assistant from a website</CardTitle>
+        <CardTitle className="text-base">
+          {t("websiteKnowledgeCard.teachTheAssistantFromA")}
+        </CardTitle>
         <CardDescription>
-          Use public business information in replies. No website login or publishing connection
-          needed.
+          {t("websiteKnowledgeCard.usePublicBusinessInformationIn")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {isAdmin ? (
           <>
-            <Label htmlFor="knowledge-website">Public website or page address</Label>
+            <Label htmlFor="knowledge-website">
+              {t("websiteKnowledgeCard.publicWebsiteOrPageAddress")}
+            </Label>
             <Input
               id="knowledge-website"
               placeholder="https://your-business.com"
@@ -57,35 +65,30 @@ export function WebsiteKnowledgeCard() {
               onClick={() => read.mutate()}
               disabled={!address.trim() || read.isPending || !knowledge.data?.websiteReaderReady}
             >
-              {read.isPending ? "Reading your website…" : "Read website and use in replies"}
+              {read.isPending
+                ? t("websiteKnowledgeCard.readingYourWebsite")
+                : t("websiteKnowledgeCard.readWebsiteAndUseIn")}
             </Button>
             <p className="text-xs text-muted-foreground">
-              Reads this page and up to four related pages through FLAS’s website reader
-              (Firecrawl). Add only information your business is happy to use with customers. It
-              won’t read private pages or sign in.
+              {t("websiteKnowledgeCard.readsThisPageAndUp")}
             </p>
             {knowledge.isSuccess && !knowledge.data.websiteReaderReady && (
-              <p className="text-sm">
-                Your FLAS admin needs to enable website reading once. You can paste business
-                information into the instructions below meanwhile.
-              </p>
+              <p className="text-sm">{t("websiteKnowledgeCard.yourFlasAdminNeedsTo")}</p>
             )}
           </>
         ) : (
-          <p className="text-sm">
-            Your workspace admin can add or refresh the website used in replies.
-          </p>
+          <p className="text-sm">{t("websiteKnowledgeCard.yourWorkspaceAdminCanAdd")}</p>
         )}
         {knowledge.isError && (
           <p role="alert" className="text-sm text-destructive">
-            Website knowledge could not be loaded. Please refresh and try again.
+            {t("websiteKnowledgeCard.websiteKnowledgeCouldNotBe")}
           </p>
         )}
         {knowledge.data?.website && (
           <p className="text-sm">
             {knowledge.data.website.status === "ready"
-              ? `${knowledge.data.website.pages} pages ready to use`
-              : "Website knowledge is not ready to use"}
+              ? t("websiteKnowledgeCard.pagesReadyToUse", { pages: knowledge.data.website.pages })
+              : t("websiteKnowledgeCard.websiteKnowledgeIsNotReady")}
             {knowledge.data.website.last_synced_at &&
               ` · Last read ${new Date(knowledge.data.website.last_synced_at).toLocaleString()}`}
           </p>
@@ -98,8 +101,7 @@ export function WebsiteKnowledgeCard() {
           </ul>
         )}
         <p className="text-xs text-muted-foreground">
-          Website information is a saved snapshot. Refresh it after changes; live stock, order
-          status and prices still need confirmation when the information is missing.
+          {t("websiteKnowledgeCard.websiteInformationIsASaved")}
         </p>
       </CardContent>
     </Card>

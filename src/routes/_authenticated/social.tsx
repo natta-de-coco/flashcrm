@@ -71,6 +71,10 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
+
+type Translate = ReturnType<typeof useI18n>["t"];
 
 export const Route = createFileRoute("/_authenticated/social")({
   head: () => ({
@@ -247,7 +251,7 @@ function publishTruth(platform: string) {
 }
 
 /** First useful audience number from a sync, if any. */
-function audienceStat(stats: Account["stats"]): string | null {
+function audienceStat(stats: Account["stats"], t: Translate): string | null {
   if (!stats) return null;
   const order: [string, string][] = [
     ["followers", "followers"],
@@ -258,7 +262,9 @@ function audienceStat(stats: Account["stats"]): string | null {
   ];
   for (const [key, label] of order) {
     const value = stats[key];
-    if (typeof value === "number") return `${value.toLocaleString()} ${label}`;
+    if (typeof value === "number") {
+      return t(`social.stat.${label}` as MessageKey, { n: value.toLocaleString() });
+    }
   }
   return null;
 }
@@ -290,13 +296,13 @@ type Post = {
   shares: number;
 };
 
-function timeAgo(iso: string) {
+function timeAgo(iso: string, t: Translate) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return t("social.time.justNow");
+  if (mins < 60) return t("social.time.minutes", { n: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
+  if (hours < 24) return t("social.time.hours", { n: hours });
+  return t("social.time.days", { n: Math.round(hours / 24) });
 }
 
 /** A neutral globe for anything this screen has no icon for — never a guess. */
@@ -333,6 +339,7 @@ function toLocalInputValue(iso: string | null): string {
 }
 
 function SocialHubPage() {
+  const i18n = useI18n();
   const qc = useQueryClient();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -358,8 +365,8 @@ function SocialHubPage() {
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <PageHeader
-        title="Social Hub"
-        description="Run your client's whole social presence from here: reply to comments & DMs with Flas AI, write posts, and watch reach and audience grow."
+        title={i18n.t("social.socialHub")}
+        description={i18n.t("social.runYourClientSWhole")}
       />
 
       <ConnectionOutcome
@@ -374,18 +381,18 @@ function SocialHubPage() {
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList>
           <TabsTrigger value="inbox" className="gap-1.5">
-            <MessageCircle className="size-3.5" /> Comments & DMs
+            <MessageCircle className="size-3.5" /> {i18n.t("social.commentsDms")}
             {interactions.filter((i) => i.status === "open").length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[10px]">
+              <Badge variant="secondary" className="ms-1 text-[10px]">
                 {interactions.filter((i) => i.status === "open").length}
               </Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="composer" className="gap-1.5">
-            <PenSquare className="size-3.5" /> AI Composer
+            <PenSquare className="size-3.5" /> {i18n.t("social.aiComposer")}
           </TabsTrigger>
           <TabsTrigger value="reach" className="gap-1.5">
-            <Sparkles className="size-3.5" /> Reach & audience
+            <Sparkles className="size-3.5" /> {i18n.t("social.reachAudience")}
           </TabsTrigger>
         </TabsList>
 
@@ -418,6 +425,7 @@ function SocialHubPage() {
 /* ---------------- Accounts ---------------- */
 
 function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged: () => void }) {
+  const i18n = useI18n();
   const connect = useServerFn(connectSocialAccount);
   const remove = useServerFn(deleteSocialAccount);
   const sync = useServerFn(syncSocialAccountFn);
@@ -438,7 +446,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
   const connectMutation = useMutation({
     mutationFn: () => connect({ data: form }),
     onSuccess: () => {
-      toast.success("Account connected — press Sync to pull comments & DMs");
+      toast.success(i18n.t("social.accountConnectedPressSyncTo"));
       setForm({ platform: "instagram", label: "", externalId: "", accessToken: "" });
       setShowForm(false);
       onChanged();
@@ -460,7 +468,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
       else toast.error(summary.text);
       onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sync failed");
+      toast.error(e instanceof Error ? e.message : i18n.t("social.syncFailed"));
     } finally {
       setSyncingId(null);
     }
@@ -470,11 +478,8 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle className="text-base">Connected accounts</CardTitle>
-          <CardDescription>
-            Link Instagram, Facebook, YouTube, X, LinkedIn, TikTok and Google Business — then sync
-            to pull in comments, DMs, reviews, posts and audience stats.
-          </CardDescription>
+          <CardTitle className="text-base">{i18n.t("social.connectedAccounts")}</CardTitle>
+          <CardDescription>{i18n.t("social.linkInstagramFacebookYoutubeX")}</CardDescription>
         </div>
         {/* Connecting has one front door -- the guided flow on Connect & setup,
             which runs the platform's real login. This card used to offer a
@@ -484,11 +489,11 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
             long-lived tokens, but it is now clearly the fallback. */}
         <div className="flex items-center gap-2">
           <Button asChild size="sm">
-            <Link to="/connect">Connect an account</Link>
+            <Link to="/connect">{i18n.t("social.connectAnAccount")}</Link>
           </Button>
           {canPasteToken ? (
             <Button size="sm" variant="ghost" onClick={() => setShowForm((v) => !v)}>
-              {showForm ? "Close" : "Paste a token"}
+              {showForm ? i18n.t("social.close") : i18n.t("social.pasteAToken")}
             </Button>
           ) : null}
         </div>
@@ -497,15 +502,16 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
         {showForm && canPasteToken && (
           <div className="grid gap-3 rounded-lg border border-dashed p-4 sm:grid-cols-2">
             <p className="text-xs text-muted-foreground sm:col-span-2">
-              Advanced. Most accounts should be connected from{" "}
-              <Link to="/connect" className="underline underline-offset-2">
-                Connect &amp; setup
-              </Link>
-              , which runs the platform&apos;s own login and requests the right permissions. Use
-              this only when you already hold a long-lived token.
+              {i18n.tr("social.advancedMostAccountsShouldBe", {
+                link: (
+                  <Link to="/connect" className="underline underline-offset-2">
+                    {i18n.t("social.connectSetup")}
+                  </Link>
+                ),
+              })}
             </p>
             <div className="grid gap-1.5">
-              <Label>Platform</Label>
+              <Label>{i18n.t("social.platform")}</Label>
               <Select
                 value={form.platform}
                 onValueChange={(v) => setForm((f) => ({ ...f, platform: v as PlatformId }))}
@@ -525,12 +531,12 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="social-label">Display name</Label>
+              <Label htmlFor="social-label">{i18n.t("social.displayName")}</Label>
               <Input
                 id="social-label"
                 name="social-account-label"
                 autoComplete="off"
-                placeholder="e.g. Client's bakery IG"
+                placeholder={i18n.t("social.eGClientSBakery")}
                 value={form.label}
                 onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
               />
@@ -584,7 +590,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                 onClick={() => connectMutation.mutate()}
               >
                 {connectMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
-                Save account
+                {i18n.t("social.saveAccount")}
               </Button>
               {manualSocialFormError(form, platformMeta(form.platform)) ? (
                 <p className="mt-1.5 text-xs text-destructive">
@@ -592,7 +598,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                 </p>
               ) : null}
               <p className="mt-1.5 text-xs text-muted-foreground">
-                Tokens are stored server-side and are never shown back in the app.
+                {i18n.t("social.tokensAreStoredServerSide")}
               </p>
             </div>
           </div>
@@ -600,7 +606,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
 
         {accounts.length === 0 && !showForm && (
           <p className="text-sm text-muted-foreground">
-            No social accounts yet. Connect one to start managing comments, DMs and reach.
+            {i18n.t("social.noSocialAccountsYetConnect")}
           </p>
         )}
 
@@ -617,9 +623,11 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {!a.external_id
-                    ? "Sign-in done — choose which Page or account to use"
-                    : `${audienceStat(a.stats) ? `${audienceStat(a.stats)} · ` : ""}${
-                        a.last_synced_at ? `Synced ${timeAgo(a.last_synced_at)}` : "Never synced"
+                    ? i18n.t("social.signInDoneChooseWhich")
+                    : `${audienceStat(a.stats, i18n.t) ? `${audienceStat(a.stats, i18n.t)} · ` : ""}${
+                        a.last_synced_at
+                          ? i18n.t("social.synced", { timeAgo: timeAgo(a.last_synced_at, i18n.t) })
+                          : i18n.t("social.neverSynced")
                       }`}
                 </p>
               </div>
@@ -632,7 +640,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                   // "Add the Meta account ID and access token first", which is
                   // nonsense for a connection made by signing in.
                   <Button size="sm" variant="outline" asChild>
-                    <Link to="/connect">Finish connecting</Link>
+                    <Link to="/connect">{i18n.t("social.finishConnecting")}</Link>
                   </Button>
                 ) : REPORT_PLATFORMS.has(a.platform) ? (
                   <ChannelReportDialog accountId={a.id} label={a.label} />
@@ -649,7 +657,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                     ) : (
                       <RefreshCw className="size-3.5" />
                     )}
-                    Sync
+                    {i18n.t("social.sync")}
                   </Button>
                 )}
                 <Button
@@ -658,7 +666,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                   onClick={() => {
                     void remove({ data: { id: a.id } })
                       .then(() => {
-                        toast.success("Account removed");
+                        toast.success(i18n.t("social.accountRemoved"));
                         onChanged();
                       })
                       .catch((e: Error) => toast.error(e.message));
@@ -686,6 +694,7 @@ function InboxTab({
   accounts: Account[];
   onChanged: () => void;
 }) {
+  const i18n = useI18n();
   const suggest = useServerFn(suggestSocialReply);
   const send = useServerFn(sendSocialReply);
   const setStatus = useServerFn(updateInteractionStatus);
@@ -706,10 +715,10 @@ function InboxTab({
     try {
       const { suggestion } = await suggest({ data: { id: i.id } });
       setDrafts((d) => ({ ...d, [i.id]: suggestion }));
-      toast.success("Flas AI drafted a reply");
+      toast.success(i18n.t("social.flasAiDraftedAReply"));
       onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Drafting failed");
+      toast.error(e instanceof Error ? e.message : i18n.t("social.draftingFailed"));
     } finally {
       setBusyId(null);
     }
@@ -723,12 +732,12 @@ function InboxTab({
       const { metaDelivered } = await send({ data: { id: i.id, reply } });
       toast.success(
         metaDelivered
-          ? "Reply sent to the platform"
-          : "Reply recorded (platform delivery not confirmed)",
+          ? i18n.t("social.replySentToThePlatform")
+          : i18n.t("social.replyRecordedPlatformDeliveryNot"),
       );
       onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Send failed");
+      toast.error(e instanceof Error ? e.message : i18n.t("social.sendFailed"));
     } finally {
       setBusyId(null);
     }
@@ -744,7 +753,11 @@ function InboxTab({
             variant={filter === f ? "default" : "outline"}
             onClick={() => setFilter(f)}
           >
-            {f === "all" ? "All" : f === "comment" ? "Comments" : "DMs"}
+            {f === "all"
+              ? i18n.t("social.all")
+              : f === "comment"
+                ? i18n.t("social.comments")
+                : i18n.t("social.dms")}
           </Button>
         ))}
       </div>
@@ -752,8 +765,7 @@ function InboxTab({
       {visible.length === 0 && (
         <Card>
           <CardContent className="pt-6 text-sm text-muted-foreground">
-            Nothing here yet. Connect an account above and press Sync — new comments and DMs will
-            appear here with AI-suggested replies.
+            {i18n.t("social.nothingHereYetConnectAn")}
           </CardContent>
         </Card>
       )}
@@ -767,19 +779,21 @@ function InboxTab({
                 {accountLabel(i.account_id)}
               </Badge>
               <Badge variant="outline" className="text-[10px] uppercase">
-                {i.kind === "dm" ? "DM" : "Comment"}
+                {i.kind === "dm" ? i18n.t("social.dm") : i18n.t("social.comment")}
               </Badge>
               <Badge
                 variant={i.status === "open" ? "default" : "secondary"}
                 className="text-[10px] capitalize"
               >
-                {i.status}
+                {i18n.t(`social.status.${i.status}` as MessageKey)}
               </Badge>
-              <span className="ml-auto text-xs text-muted-foreground">{timeAgo(i.created_at)}</span>
+              <span className="ms-auto text-xs text-muted-foreground">
+                {timeAgo(i.created_at, i18n.t)}
+              </span>
             </div>
             <div>
               <p className="text-sm font-semibold">
-                {i.author_name ?? "Unknown"}
+                {i.author_name ?? i18n.t("social.unknown")}
                 {i.author_handle ? (
                   <span className="font-normal text-muted-foreground"> @{i.author_handle}</span>
                 ) : null}
@@ -809,7 +823,9 @@ function InboxTab({
                     ) : (
                       <Sparkles className="size-3.5" />
                     )}
-                    {i.ai_suggestion || drafts[i.id] ? "Redraft with Flas AI" : "Suggest reply"}
+                    {i.ai_suggestion || drafts[i.id]
+                      ? i18n.t("social.redraftWithFlasAi")
+                      : i18n.t("social.suggestReply")}
                   </Button>
                   {(drafts[i.id] ?? i.ai_suggestion) && (
                     <Button
@@ -818,7 +834,7 @@ function InboxTab({
                       disabled={busyId === i.id}
                       onClick={() => void handleSend(i)}
                     >
-                      <Send className="size-3.5" /> Send reply
+                      <Send className="size-3.5" /> {i18n.t("social.sendReply")}
                     </Button>
                   )}
                   <Button
@@ -831,7 +847,7 @@ function InboxTab({
                         .catch((e: Error) => toast.error(e.message));
                     }}
                   >
-                    <Archive className="size-3.5" /> Archive
+                    <Archive className="size-3.5" /> {i18n.t("social.archive")}
                   </Button>
                 </div>
               </div>
@@ -858,6 +874,7 @@ function ComposerTab({
   onEdit: (post: Post | null) => void;
   onChanged: () => void;
 }) {
+  const i18n = useI18n();
   const compose = useServerFn(composeSocialPost);
   const save = useServerFn(saveSocialPost);
   const update = useServerFn(updateSocialPost);
@@ -914,7 +931,7 @@ function ComposerTab({
       compose({ data: { topic: form.topic.trim(), tone: form.tone, platform: draft.platform } }),
     onSuccess: (res) => {
       setDraft((d) => ({ ...d, caption: res.caption }));
-      toast.success("Flas AI wrote your caption");
+      toast.success(i18n.t("social.flasAiWroteYourCaption"));
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -946,10 +963,10 @@ function ComposerTab({
     onSuccess: (_res, plan) => {
       toast.success(
         draft.id
-          ? "Draft updated"
+          ? i18n.t("social.draftUpdated")
           : plan
-            ? "Saved with a planned date — Flas will not post it for you"
-            : "Draft saved",
+            ? i18n.t("social.savedWithAPlannedDate")
+            : i18n.t("social.draftSaved"),
       );
       resetDraft();
       onChanged();
@@ -962,27 +979,23 @@ function ComposerTab({
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            {draft.id ? "Edit draft" : "Flas AI content writer"}
+            {draft.id ? i18n.t("social.editDraft") : i18n.t("social.flasAiContentWriter")}
           </CardTitle>
-          <CardDescription>
-            Describe the post goal — Flas AI knows the business profile and writes an on-brand
-            caption with hashtags and a call to action. Flas saves what you write; posting it is
-            still done in the platform&apos;s own app.
-          </CardDescription>
+          <CardDescription>{i18n.t("social.describeThePostGoalFlas")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="grid gap-1.5 sm:col-span-2">
-              <Label htmlFor="topic">Post topic or goal</Label>
+              <Label htmlFor="topic">{i18n.t("social.postTopicOrGoal")}</Label>
               <Input
                 id="topic"
-                placeholder="e.g. Announce weekend brunch menu, 20% off for WhatsApp subscribers"
+                placeholder={i18n.t("social.eGAnnounceWeekendBrunch")}
                 value={form.topic}
                 onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Tone</Label>
+              <Label>{i18n.t("social.tone")}</Label>
               <Select
                 value={form.tone}
                 onValueChange={(v) => setForm((f) => ({ ...f, tone: v as typeof form.tone }))}
@@ -991,10 +1004,10 @@ function ComposerTab({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="friendly">Friendly</SelectItem>
-                  <SelectItem value="professional">Professional</SelectItem>
-                  <SelectItem value="bold">Bold</SelectItem>
-                  <SelectItem value="playful">Playful</SelectItem>
+                  <SelectItem value="friendly">{i18n.t("social.friendly")}</SelectItem>
+                  <SelectItem value="professional">{i18n.t("social.professional")}</SelectItem>
+                  <SelectItem value="bold">{i18n.t("social.bold")}</SelectItem>
+                  <SelectItem value="playful">{i18n.t("social.playful")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1005,7 +1018,7 @@ function ComposerTab({
               account of that platform happened to be found first. */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
-              <Label>Account</Label>
+              <Label>{i18n.t("social.account")}</Label>
               <Select
                 value={draft.accountId ?? "none"}
                 onValueChange={(v) =>
@@ -1023,7 +1036,7 @@ function ComposerTab({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No account — keep as a draft</SelectItem>
+                  <SelectItem value="none">{i18n.t("social.noAccountKeepAsA")}</SelectItem>
                   {writableAccounts.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       <span className="flex items-center gap-2">
@@ -1035,16 +1048,18 @@ function ComposerTab({
               </Select>
               {writableAccounts.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  No account can carry a post yet.{" "}
-                  <Link to="/connect" className="underline underline-offset-2">
-                    Connect one
-                  </Link>
-                  .
+                  {i18n.tr("social.noAccountCanCarryA", {
+                    link: (
+                      <Link to="/connect" className="underline underline-offset-2">
+                        {i18n.t("social.connectOne")}
+                      </Link>
+                    ),
+                  })}
                 </p>
               ) : null}
             </div>
             <div className="grid gap-1.5">
-              <Label>Platform</Label>
+              <Label>{i18n.t("social.platform")}</Label>
               <Select
                 value={draft.platform}
                 disabled={draft.accountId !== null}
@@ -1065,7 +1080,9 @@ function ComposerTab({
               </Select>
               {draft.accountId !== null ? (
                 <p className="text-xs text-muted-foreground">
-                  Set by the account you picked: {platformDisplayName(draft.platform)}.
+                  {i18n.tr("social.setByTheAccountYou", {
+                    platformDisplayName: platformDisplayName(draft.platform),
+                  })}
                 </p>
               ) : null}
             </div>
@@ -1081,19 +1098,21 @@ function ComposerTab({
             ) : (
               <Sparkles className="size-4" />
             )}
-            {draft.caption ? "Rewrite with Flas AI" : "Draft with Flas AI"}
+            {draft.caption ? i18n.t("social.rewriteWithFlasAi") : i18n.t("social.draftWithFlasAi")}
           </Button>
 
           <div className="grid gap-2">
-            <Label htmlFor="social-caption">Caption</Label>
+            <Label htmlFor="social-caption">{i18n.t("social.caption")}</Label>
             <Textarea
               id="social-caption"
               rows={7}
-              placeholder="Write the caption here, or let Flas AI draft one above."
+              placeholder={i18n.t("social.writeTheCaptionHereOr")}
               value={draft.caption}
               onChange={(e) => setDraft((d) => ({ ...d, caption: e.target.value }))}
             />
-            <p className="text-xs text-muted-foreground">{draft.caption.length} characters</p>
+            <p className="text-xs text-muted-foreground">
+              {i18n.tr("social.characters", { length: draft.caption.length })}
+            </p>
           </div>
 
           {/* The honest state of publishing, per platform. Nothing in Flas sends
@@ -1101,8 +1120,10 @@ function ComposerTab({
           <div className="flex gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
             <Info className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              {reality.reason} Save it here and post it in {platformDisplayName(draft.platform)}
-              &apos;s own app when you are ready.
+              {i18n.tr("social.saveItHereAndPost", {
+                reason: reality.reason,
+                platformDisplayName: platformDisplayName(draft.platform),
+              })}
             </span>
           </div>
 
@@ -1113,11 +1134,11 @@ function ComposerTab({
               onClick={() => saveMutation.mutate(false)}
             >
               {saveMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
-              {draft.id ? "Save changes" : "Save as draft"}
+              {draft.id ? i18n.t("social.saveChanges") : i18n.t("social.saveAsDraft")}
             </Button>
             <div className="grid gap-1.5">
               <Label htmlFor="social-planned-at" className="text-xs font-normal">
-                Planned date (optional)
+                {i18n.t("social.plannedDateOptional")}
               </Label>
               <Input
                 id="social-planned-at"
@@ -1135,11 +1156,11 @@ function ComposerTab({
               }
               onClick={() => saveMutation.mutate(true)}
             >
-              {draft.id ? "Save with this plan" : "Save with a planned date"}
+              {draft.id ? i18n.t("social.saveWithThisPlan") : i18n.t("social.saveWithAPlannedDate")}
             </Button>
             {draft.id || draft.caption ? (
               <Button size="sm" variant="ghost" onClick={resetDraft}>
-                {draft.id ? "Stop editing" : "Clear"}
+                {draft.id ? i18n.t("social.stopEditing") : i18n.t("social.clear")}
               </Button>
             ) : null}
           </div>
@@ -1151,16 +1172,13 @@ function ComposerTab({
           audience" with a delete icon, where it could not be edited. */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Your drafts</CardTitle>
-          <CardDescription>
-            Everything written here and not yet posted. Planned dates are for your team — Flas does
-            not post for you.
-          </CardDescription>
+          <CardTitle className="text-base">{i18n.t("social.yourDrafts")}</CardTitle>
+          <CardDescription>{i18n.t("social.everythingWrittenHereAndNot")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2">
           {saved.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              No drafts yet. Anything you save above appears here, ready to edit.
+              {i18n.t("social.noDraftsYetAnythingYou")}
             </p>
           )}
           {saved.map((p) => (
@@ -1197,6 +1215,7 @@ function PostRow({
   onDeleted: () => void;
   remove: (args: { data: { id: string } }) => Promise<unknown>;
 }) {
+  const i18n = useI18n();
   const who = postAttribution(post, accounts);
   const editable = isEditablePost(post);
   return (
@@ -1213,14 +1232,19 @@ function PostRow({
         <p className="line-clamp-2 text-sm">{post.caption}</p>
         <p className="mt-1 text-xs text-muted-foreground">
           {post.published_at
-            ? `Published ${timeAgo(post.published_at)}`
+            ? i18n.t("social.published", { timeAgo: timeAgo(post.published_at, i18n.t) })
             : post.scheduled_at
-              ? `Planned for ${new Date(post.scheduled_at).toLocaleString()} — not posted by Flas`
-              : "Draft — not posted by Flas"}
+              ? i18n.t("social.plannedForNotPostedBy", {
+                  toLocaleString: new Date(post.scheduled_at).toLocaleString(),
+                })
+              : i18n.t("social.draftNotPostedByFlas")}
           {post.status === "published" ? (
             <>
-              {" · "}
-              {post.likes} likes · {post.comments_count} comments
+              {i18n.tr("social.likesComments", {
+                value: " · ",
+                likes: post.likes,
+                commentscount: post.comments_count,
+              })}
             </>
           ) : null}
         </p>
@@ -1230,21 +1254,28 @@ function PostRow({
           variant={post.status === "published" ? "default" : "secondary"}
           className="text-[10px]"
         >
-          {postStatusLabel(post.status)}
+          {hasMessage(`social.postStatus.${post.status}`)
+            ? i18n.t(`social.postStatus.${post.status}` as MessageKey)
+            : postStatusLabel(post.status)}
         </Badge>
         {editable && (
           <>
-            <Button size="icon" variant="ghost" title="Edit this draft" onClick={onEdit}>
+            <Button
+              size="icon"
+              variant="ghost"
+              title={i18n.t("social.editThisDraft")}
+              onClick={onEdit}
+            >
               <Pencil className="size-3.5" />
             </Button>
             <Button
               size="icon"
               variant="ghost"
-              title="Delete this draft"
+              title={i18n.t("social.deleteThisDraft")}
               onClick={() => {
                 void remove({ data: { id: post.id } })
                   .then(() => {
-                    toast.success("Post deleted");
+                    toast.success(i18n.t("social.postDeleted"));
                     onDeleted();
                   })
                   .catch((e: Error) => toast.error(e.message));
@@ -1274,6 +1305,7 @@ function ReachTab({
   onEdit: (post: Post) => void;
   onChanged: () => void;
 }) {
+  const i18n = useI18n();
   const remove = useServerFn(deleteSocialPost);
   const published = posts.filter((p) => p.status === "published");
   const totalReach = published.reduce((s, p) => s + p.reach, 0);
@@ -1321,17 +1353,12 @@ function ReachTab({
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Posts</CardTitle>
-            <CardDescription>
-              Drafts, planned posts and everything synced from the connected platforms — newest
-              first, labelled with the account each one belongs to.
-            </CardDescription>
+            <CardTitle className="text-base">{i18n.t("social.posts")}</CardTitle>
+            <CardDescription>{i18n.t("social.draftsPlannedPostsAndEverything")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2">
             {ordered.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No posts yet — draft one in the AI Composer or sync a connected account.
-              </p>
+              <p className="text-sm text-muted-foreground">{i18n.t("social.noPostsYetDraftOne")}</p>
             )}
             {ordered.map((p) => (
               <PostRow
@@ -1348,33 +1375,37 @@ function ReachTab({
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Audience</CardTitle>
-            <CardDescription>Who is talking to you and how fast you answer.</CardDescription>
+            <CardTitle className="text-base">{i18n.t("social.audience")}</CardTitle>
+            <CardDescription>{i18n.t("social.whoIsTalkingToYou")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm">
             <div className="flex justify-between">
-              <span>Open conversations</span>
+              <span>{i18n.t("social.openConversations")}</span>
               <span className="font-semibold">{open}</span>
             </div>
             <div className="flex justify-between">
-              <span>Replied</span>
+              <span>{i18n.t("social.replied")}</span>
               <span className="font-semibold">{replied}</span>
             </div>
             <div className="flex justify-between">
-              <span>Connected accounts</span>
+              <span>{i18n.t("social.connectedAccounts")}</span>
               <span className="font-semibold">{accounts.length}</span>
             </div>
             <div className="pt-2">
               <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Most engaged people
+                {i18n.t("social.mostEngagedPeople")}
               </p>
               {topAuthors.length === 0 && (
-                <p className="text-xs text-muted-foreground">No audience data yet.</p>
+                <p className="text-xs text-muted-foreground">
+                  {i18n.t("social.noAudienceDataYet")}
+                </p>
               )}
               {topAuthors.map(([name, count]) => (
                 <div key={name} className="flex justify-between py-0.5">
                   <span className="truncate">{name}</span>
-                  <span className="text-muted-foreground">{count} interactions</span>
+                  <span className="text-muted-foreground">
+                    {i18n.tr("social.interactions", { count: count })}
+                  </span>
                 </div>
               ))}
             </div>

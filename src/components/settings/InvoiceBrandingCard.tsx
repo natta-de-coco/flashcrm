@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { saveBillingProfile } from "@/lib/billing.functions";
 import { uploadInvoiceLogo } from "@/lib/invoice-branding.functions";
 import { Textarea } from "@/components/ui/textarea";
+import { useI18n } from "@/hooks/useI18n";
 
 const COMPANY_FIELDS = [
   ["legal_name", "Company legal name"],
@@ -35,6 +36,7 @@ const EMPTY_DETAILS = {
 
 /** A remote logo is used by the existing secure invoice PDF renderer. */
 export function InvoiceBrandingCard() {
+  const { t } = useI18n();
   const { tenant } = useTenant();
   const queryClient = useQueryClient();
   const saveBillingProfileFn = useServerFn(saveBillingProfile);
@@ -86,7 +88,7 @@ export function InvoiceBrandingCard() {
     },
     onSuccess: ({ logoUrl: uploaded }) => {
       setLogoUrl(uploaded);
-      toast.success("Logo uploaded and saved for new invoices and quotations");
+      toast.success(t("invoiceBrandingCard.logoUploadedAndSavedFor"));
       // Do not refetch here: doing so would erase company details being edited.
     },
     onError: (error: Error) => toast.error(error.message),
@@ -98,7 +100,7 @@ export function InvoiceBrandingCard() {
       await saveBillingProfileFn({ data: { logo_url: value || null, ...details } });
     },
     onSuccess: () => {
-      toast.success("Invoice branding and company details saved");
+      toast.success(t("invoiceBrandingCard.invoiceBrandingAndCompanyDetails"));
       void queryClient.invalidateQueries({ queryKey: ["invoice-branding", tenant?.id] });
     },
     onError: (error: Error) => toast.error(error.message),
@@ -108,16 +110,14 @@ export function InvoiceBrandingCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <ImagePlus className="size-5" /> Invoice branding
+          <ImagePlus className="size-5" /> {t("invoiceBrandingCard.invoiceBranding")}
         </CardTitle>
-        <CardDescription>
-          Your logo appears on newly created invoices and quotations.
-        </CardDescription>
+        <CardDescription>{t("invoiceBrandingCard.yourLogoAppearsOnNewly")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {settings.isError && (
           <p role="alert" className="text-sm text-destructive">
-            Could not load invoice settings. Refresh before making changes.
+            {t("invoiceBrandingCard.couldNotLoadInvoiceSettings")}
           </p>
         )}
         <div className="grid gap-3 sm:grid-cols-2">
@@ -145,7 +145,7 @@ export function InvoiceBrandingCard() {
             </div>
           ))}
         </div>
-        <Label htmlFor="invoice-terms">Default terms and conditions</Label>
+        <Label htmlFor="invoice-terms">{t("invoiceBrandingCard.defaultTermsAndConditions")}</Label>
         <Textarea
           id="invoice-terms"
           value={details.default_terms}
@@ -155,7 +155,9 @@ export function InvoiceBrandingCard() {
           }
         />
         <div className="space-y-1.5">
-          <Label htmlFor="invoice-logo-file">Upload your company logo</Label>
+          <Label htmlFor="invoice-logo-file">
+            {t("invoiceBrandingCard.uploadYourCompanyLogo")}
+          </Label>
           <Input
             id="invoice-logo-file"
             type="file"
@@ -167,18 +169,15 @@ export function InvoiceBrandingCard() {
               event.target.value = "";
             }}
           />
-          <p className="text-xs text-muted-foreground">
-            PNG or JPG, up to 2 MB. Uploaded logos are public brand images; do not upload private
-            documents.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("invoiceBrandingCard.pngOrJpgUpTo")}</p>
           {upload.isPending && (
             <p role="status" className="text-sm">
-              Uploading and saving your logo…
+              {t("invoiceBrandingCard.uploadingAndSavingYourLogo")}
             </p>
           )}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="invoice-logo">Or use a hosted logo URL</Label>
+          <Label htmlFor="invoice-logo">{t("invoiceBrandingCard.orUseAHostedLogo")}</Label>
           <Input
             id="invoice-logo"
             placeholder="https://your-site.com/logo.png"
@@ -190,23 +189,22 @@ export function InvoiceBrandingCard() {
           <img
             key={logoUrl}
             src={logoUrl}
-            alt="Invoice logo preview"
+            alt={t("invoiceBrandingCard.invoiceLogoPreview")}
             className="max-h-20 max-w-48 rounded border object-contain p-1"
             onError={(event) => {
               event.currentTarget.style.display = "none";
             }}
           />
         )}
-        <p className="text-xs text-muted-foreground">
-          Use a public PNG or JPG hosted on your own secure website. Existing documents keep their
-          original snapshot.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("invoiceBrandingCard.useAPublicPngOr")}</p>
         <Button
           onClick={() => save.mutate()}
           disabled={save.isPending || upload.isPending || settings.isLoading || settings.isError}
         >
           <Save className="size-4" />
-          {save.isPending ? "Saving…" : "Save invoice branding"}
+          {save.isPending
+            ? t("invoiceBrandingCard.saving")
+            : t("invoiceBrandingCard.saveInvoiceBranding")}
         </Button>
       </CardContent>
     </Card>

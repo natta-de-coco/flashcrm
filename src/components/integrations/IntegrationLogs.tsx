@@ -4,6 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getIntegrationLogs } from "@/lib/connections.functions";
 import { useQuery } from "@tanstack/react-query";
 import { ScrollText } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 const ACTION_LABEL: Record<string, string> = {
   "connection.authorize_started": "Authorization started",
@@ -45,6 +47,7 @@ function reasonOf(details: unknown): string | null {
 
 /** Everything that happened across integrations — newest first. */
 export function IntegrationLogs() {
+  const { t } = useI18n();
   const logs = useQuery({
     queryKey: ["integration-logs"],
     queryFn: () => getIntegrationLogs(),
@@ -55,22 +58,22 @@ export function IntegrationLogs() {
     <section id="logs" className="grid gap-3">
       <div className="flex items-center gap-2">
         <ScrollText className="size-4 text-primary" />
-        <h2 className="text-lg font-semibold">Integration logs</h2>
+        <h2 className="text-lg font-semibold">{t("integrationLogs.integrationLogs")}</h2>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Connection activity</CardTitle>
+            <CardTitle className="text-sm">{t("integrationLogs.connectionActivity")}</CardTitle>
             <CardDescription className="text-xs">
-              Who connected, scanned or disconnected what — kept for compliance.
+              {t("integrationLogs.whoConnectedScannedOrDisconnected")}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2">
             {logs.isLoading && <Skeleton className="h-24 w-full" />}
             {!logs.isLoading && (logs.data?.audit.length ?? 0) === 0 && (
               <p className="text-sm text-muted-foreground">
-                No integration activity yet. Connect a platform above and it shows up here.
+                {t("integrationLogs.noIntegrationActivityYetConnect")}
               </p>
             )}
             {logs.data?.audit.map((row) => (
@@ -86,10 +89,12 @@ export function IntegrationLogs() {
                         : "font-medium"
                     }
                   >
-                    {ACTION_LABEL[row.action] ?? row.action}
+                    {hasMessage(`integrationLogs.action.${row.action}`)
+                      ? t(`integrationLogs.action.${row.action}` as MessageKey)
+                      : (ACTION_LABEL[row.action] ?? row.action)}
                   </p>
                   <p className="truncate text-muted-foreground">
-                    {row.actor_label ?? "System"}
+                    {row.actor_label ?? t("integrationLogs.system")}
                     {row.entity_id ? ` · ${row.entity_id}` : ""}
                   </p>
                   {reasonOf(row.details) && (
@@ -106,15 +111,17 @@ export function IntegrationLogs() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Incoming webhooks</CardTitle>
+            <CardTitle className="text-sm">{t("integrationLogs.incomingWebhooks")}</CardTitle>
             <CardDescription className="text-xs">
-              WhatsApp, plugin and platform callbacks with delivery status.
+              {t("integrationLogs.whatsappPluginAndPlatformCallbacks")}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-2">
             {logs.isLoading && <Skeleton className="h-24 w-full" />}
             {!logs.isLoading && (logs.data?.webhooks.length ?? 0) === 0 && (
-              <p className="text-sm text-muted-foreground">No webhook traffic recorded yet.</p>
+              <p className="text-sm text-muted-foreground">
+                {t("integrationLogs.noWebhookTrafficRecordedYet")}
+              </p>
             )}
             {logs.data?.webhooks.map((row) => (
               <div

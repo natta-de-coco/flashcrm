@@ -23,6 +23,7 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 import { formatMomentUnambiguous } from "@/lib/locale";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/companies/errors")({
   head: () => ({
@@ -53,6 +54,7 @@ const WINDOWS = [1, 7, 30] as const;
  * feed would blur the only distinction that decides what to do next.
  */
 function ErrorsPage() {
+  const { t, tr } = useI18n();
   const { isSuperAdmin } = useAuth();
   const qc = useQueryClient();
   const [days, setDays] = useState<number>(7);
@@ -79,17 +81,18 @@ function ErrorsPage() {
   const markResolved = useMutation({
     mutationFn: (v: { id: string; resolved: boolean }) => resolve({ data: v }),
     onSuccess: () => {
-      toast.success("Updated");
+      toast.success(t("companiesErrors.updated"));
       void qc.invalidateQueries({ queryKey: ["manager-integration-errors"] });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update"),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : t("companiesErrors.couldNotUpdate")),
   });
 
   if (!isSuperAdmin) {
     return (
       <main className="grid flex-1 place-items-center p-6">
         <p className="text-sm text-muted-foreground">
-          This area is only available to the Flas platform manager.
+          {t("companiesErrors.thisAreaIsOnlyAvailable")}
         </p>
       </main>
     );
@@ -103,15 +106,14 @@ function ErrorsPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Button asChild variant="ghost" size="sm" className="-ml-2 mb-1 h-7 gap-1 text-xs">
+          <Button asChild variant="ghost" size="sm" className="-ms-2 mb-1 h-7 gap-1 text-xs">
             <Link to="/companies">
-              <ArrowLeft className="size-3.5" /> Companies
+              <ArrowLeft className="size-3.5" /> {t("companiesErrors.companies")}
             </Link>
           </Button>
-          <h1 className="text-xl font-bold tracking-tight">Errors &amp; issues</h1>
+          <h1 className="text-xl font-bold tracking-tight">{t("companiesErrors.errorsIssues")}</h1>
           <p className="text-sm text-muted-foreground">
-            Everything customers hit — app crashes and failed requests on the left, provider
-            failures on the right. Refreshes every minute.
+            {t("companiesErrors.everythingCustomersHitAppCrashes")}
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -142,31 +144,34 @@ function ErrorsPage() {
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
         <Stat
           icon={Bug}
-          label="App error groups"
+          label={t("companiesErrors.appErrorGroups")}
           value={groups.length}
           tone={worst > 0 ? "bad" : groups.length > 0 ? "warn" : "ok"}
-          hint={worst > 0 ? `${worst} critical` : "distinct problems"}
+          hint={
+            worst > 0
+              ? t("companiesErrors.critical", { worst: worst })
+              : t("companiesErrors.distinctProblems")
+          }
         />
         <Stat
           icon={Users}
-          label="People affected"
+          label={t("companiesErrors.peopleAffected")}
           value={groups.reduce((n, g) => n + g.affectedUsers, 0)}
           tone={groups.length > 0 ? "warn" : "ok"}
-          hint="across all groups"
+          hint={t("companiesErrors.acrossAllGroups")}
         />
         <Stat
           icon={Plug}
-          label="Open provider errors"
+          label={t("companiesErrors.openProviderErrors")}
           value={provider.length}
           tone={provider.length > 0 ? "warn" : "ok"}
-          hint="unresolved"
+          hint={t("companiesErrors.unresolved")}
         />
       </div>
 
       {app.data?.truncated && (
         <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
-          More than {app.data.scanned} events in this window — the list below groups the most recent
-          ones only. Narrow the range for an accurate picture.
+          {tr("companiesErrors.moreThanEventsInThis", { scanned: app.data.scanned })}
         </p>
       )}
 
@@ -175,25 +180,30 @@ function ErrorsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Bug className="size-4" /> App errors
-              <Badge variant="secondary">{groups.length}</Badge>
+              <Bug className="size-4" />{" "}
+              {tr("companiesErrors.appErrors", {
+                badge: <Badge variant="secondary">{groups.length}</Badge>,
+              })}
             </CardTitle>
             <CardDescription>
-              Browser crashes, failed server calls and blank screens, grouped and ordered by how
-              many people hit them — not by raw count, so one user in a render loop cannot outrank a
-              problem twenty customers share.
+              {t("companiesErrors.browserCrashesFailedServerCalls")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {app.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+            {app.isLoading && (
+              <p className="text-sm text-muted-foreground">{t("companiesErrors.loading")}</p>
+            )}
             {app.error && (
               <p className="text-sm text-destructive">
-                {app.error instanceof Error ? app.error.message : "Could not load errors"}
+                {app.error instanceof Error
+                  ? app.error.message
+                  : t("companiesErrors.couldNotLoadErrors")}
               </p>
             )}
             {!app.isLoading && groups.length === 0 && (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="size-4 text-brand" /> No app errors in this window.
+                <CheckCircle2 className="size-4 text-brand" />{" "}
+                {t("companiesErrors.noAppErrorsInThis")}
               </p>
             )}
 
@@ -204,7 +214,7 @@ function ErrorsPage() {
                 <div key={id} className="rounded-lg border p-3">
                   <button
                     type="button"
-                    className="flex w-full items-start justify-between gap-3 text-left"
+                    className="flex w-full items-start justify-between gap-3 text-start"
                     onClick={() => setOpen(expanded ? null : id)}
                     aria-expanded={expanded}
                   >
@@ -217,15 +227,23 @@ function ErrorsPage() {
                           {g.kind}
                         </Badge>
                         <span className="text-xs text-muted-foreground">
-                          {g.affectedUsers} affected · {g.count}×
+                          {tr("companiesErrors.affected", {
+                            affectedUsers: g.affectedUsers,
+                            count: g.count,
+                          })}
                         </span>
                       </span>
                       <span className="mt-1.5 block break-words text-sm font-medium">
                         {g.message.slice(0, 180)}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {g.companies.length > 0 ? g.companies.join(", ") : "no workspace"} · last{" "}
-                        {formatMomentUnambiguous(g.lastSeen)}
+                        {tr("companiesErrors.last", {
+                          value:
+                            g.companies.length > 0
+                              ? g.companies.join(", ")
+                              : t("companiesErrors.noWorkspace"),
+                          formatMomentUnambiguous: formatMomentUnambiguous(g.lastSeen),
+                        })}
                       </span>
                     </span>
                     <ChevronDown
@@ -236,12 +254,23 @@ function ErrorsPage() {
 
                   {expanded && (
                     <div className="mt-3 space-y-2 border-t pt-3 text-xs">
-                      <Field label="Routes" value={g.routes.join(", ") || "—"} />
-                      <Field label="Releases" value={g.releases.join(", ") || "—"} />
-                      <Field label="First seen" value={formatMomentUnambiguous(g.firstSeen)} />
+                      <Field
+                        label={t("companiesErrors.routes")}
+                        value={g.routes.join(", ") || "—"}
+                      />
+                      <Field
+                        label={t("companiesErrors.releases")}
+                        value={g.releases.join(", ") || "—"}
+                      />
+                      <Field
+                        label={t("companiesErrors.firstSeen")}
+                        value={formatMomentUnambiguous(g.firstSeen)}
+                      />
                       {g.sampleStack && (
                         <div>
-                          <p className="mb-1 font-medium text-muted-foreground">Stack</p>
+                          <p className="mb-1 font-medium text-muted-foreground">
+                            {t("companiesErrors.stack")}
+                          </p>
                           <pre className="max-h-56 overflow-auto rounded-md bg-muted p-2 text-[11px] leading-relaxed">
                             {g.sampleStack}
                           </pre>
@@ -259,19 +288,21 @@ function ErrorsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Plug className="size-4" /> Provider &amp; integration errors
-              <Badge variant="secondary">{provider.length}</Badge>
+              <Plug className="size-4" />{" "}
+              {tr("companiesErrors.providerIntegrationErrors", {
+                badge: <Badge variant="secondary">{provider.length}</Badge>,
+              })}
             </CardTitle>
-            <CardDescription>
-              Meta, Google, TikTok and WhatsApp failures. Each already carries a likely cause and a
-              recommended fix, so most can be answered without opening a log.
-            </CardDescription>
+            <CardDescription>{t("companiesErrors.metaGoogleTiktokAndWhatsapp")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {integration.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+            {integration.isLoading && (
+              <p className="text-sm text-muted-foreground">{t("companiesErrors.loading")}</p>
+            )}
             {!integration.isLoading && provider.length === 0 && (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CheckCircle2 className="size-4 text-brand" /> No open provider errors.
+                <CheckCircle2 className="size-4 text-brand" />{" "}
+                {t("companiesErrors.noOpenProviderErrors")}
               </p>
             )}
 
@@ -282,7 +313,7 @@ function ErrorsPage() {
                 <div key={e.id} className="rounded-lg border p-3">
                   <button
                     type="button"
-                    className="flex w-full items-start justify-between gap-3 text-left"
+                    className="flex w-full items-start justify-between gap-3 text-start"
                     onClick={() => setOpen(expanded ? null : id)}
                     aria-expanded={expanded}
                   >
@@ -296,7 +327,7 @@ function ErrorsPage() {
                         </Badge>
                         {e.retryable && (
                           <Badge variant="secondary" className="text-[10px]">
-                            retryable
+                            {t("companiesErrors.retryable")}
                           </Badge>
                         )}
                         <span className="text-xs text-muted-foreground">{e.occurrence_count}×</span>
@@ -305,7 +336,10 @@ function ErrorsPage() {
                         {e.friendly_title}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground">
-                        {e.company} · last {formatMomentUnambiguous(e.last_seen)}
+                        {tr("companiesErrors.last2", {
+                          company: e.company,
+                          formatMomentUnambiguous: formatMomentUnambiguous(e.last_seen),
+                        })}
                       </span>
                     </span>
                     <ChevronDown
@@ -316,13 +350,18 @@ function ErrorsPage() {
 
                   {expanded && (
                     <div className="mt-3 space-y-2 border-t pt-3 text-xs">
-                      <Field label="What happened" value={e.friendly_message} />
-                      {e.likely_cause && <Field label="Likely cause" value={e.likely_cause} />}
+                      <Field label={t("companiesErrors.whatHappened")} value={e.friendly_message} />
+                      {e.likely_cause && (
+                        <Field label={t("companiesErrors.likelyCause")} value={e.likely_cause} />
+                      )}
                       {e.recommended_fix && (
-                        <Field label="Recommended fix" value={e.recommended_fix} />
+                        <Field
+                          label={t("companiesErrors.recommendedFix")}
+                          value={e.recommended_fix}
+                        />
                       )}
                       <Field
-                        label="Provider"
+                        label={t("companiesErrors.provider")}
                         value={[
                           e.operation,
                           e.http_status ? `HTTP ${e.http_status}` : null,
@@ -332,7 +371,7 @@ function ErrorsPage() {
                           .join(" · ")}
                       />
                       {e.provider_message && (
-                        <Field label="Raw message" value={e.provider_message} />
+                        <Field label={t("companiesErrors.rawMessage")} value={e.provider_message} />
                       )}
                       <Button
                         size="sm"
@@ -341,7 +380,9 @@ function ErrorsPage() {
                         disabled={markResolved.isPending}
                         onClick={() => markResolved.mutate({ id: e.id, resolved: !e.resolved_at })}
                       >
-                        {e.resolved_at ? "Reopen" : "Mark resolved"}
+                        {e.resolved_at
+                          ? t("companiesErrors.reopen")
+                          : t("companiesErrors.markResolved")}
                       </Button>
                     </div>
                   )}
