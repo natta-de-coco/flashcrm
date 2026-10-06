@@ -1,0 +1,170 @@
+// Which language the interface is shown in, for this person.
+//
+// The workspace's own language (Settings → Region) decides AI replies and how
+// numbers and dates read. This is separate and personal: one teammate can work
+// in Arabic while another works in English in the same company.
+//
+// The choice lives in a cookie rather than localStorage so the server can read
+// it and render the right language and direction on the first paint -- no
+// flash of English, and no hydration mismatch, for an Arabic reader.
+import { en, MESSAGES, type MessageKey } from "./messages";
+
+export type { MessageKey } from "./messages";
+
+export type UiLanguage = {
+  code: string;
+  /** In its own script, so a reader who cannot read English can still find it. */
+  native: string;
+  rtl: boolean;
+};
+
+/**
+ * Only languages with a full translation are offered (define.ts makes a
+ * missing string a compile error). Listing languages that would show English
+ * would promise something the product does not do.
+ *
+ * Arabic for the Gulf; Malay for Malaysia, Singapore and Brunei; Filipino for
+ * the Philippines; Swahili for Kenya, Tanzania, Uganda and Rwanda.
+ */
+export const UI_LANGUAGES: readonly UiLanguage[] = [
+  { code: "en", native: "English", rtl: false },
+  { code: "ar", native: "العربية", rtl: true },
+  { code: "ms", native: "Bahasa Melayu", rtl: false },
+  { code: "fil", native: "Filipino", rtl: false },
+  { code: "sw", native: "Kiswahili", rtl: false },
+];
+
+export const DEFAULT_UI_LANGUAGE = "en";
+export const LANGUAGE_COOKIE = "flas_lang";
+
+export function isSupportedUiLanguage(code: string | null | undefined): code is string {
+  return UI_LANGUAGES.some((l) => l.code === code);
+}
+
+/** Anything unknown, missing or tampered with is English. */
+export function normalizeUiLanguage(code: string | null | undefined): string {
+  const lower = (code ?? "").trim().toLowerCase();
+  return isSupportedUiLanguage(lower) ? lower : DEFAULT_UI_LANGUAGE;
+}
+
+export function isRtlUiLanguage(code: string | null | undefined): boolean {
+  return UI_LANGUAGES.find((l) => l.code === code)?.rtl === true;
+}
+
+export function directionOf(code: string | null | undefined): "rtl" | "ltr" {
+  return isRtlUiLanguage(code) ? "rtl" : "ltr";
+}
+
+/**
+ * The text for a key in a language, with {name} placeholders filled. Falls back
+ * to English for a key not yet translated, so an unfinished translation shows
+ * English rather than "nav.inbox.label".
+ */
+/** What a {placeholder} may be filled with. null and undefined print as nothing. */
+export type MessageValues = Record<string, string | number | null | undefined>;
+
+export function translate(language: string, key: MessageKey, values?: MessageValues): string {
+  const template = MESSAGES[language]?.[key] ?? en[key] ?? key;
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) =>
+    // An absent value prints nothing, not the word "undefined".
+    name in values ? String(values[name] ?? "") : match,
+  );
+}
+
+/** Reads the language cookie out of a Cookie header or document.cookie. */
+export function languageFromCookieHeader(header: string | null | undefined): string {
+  for (const part of (header ?? "").split(";")) {
+    const [name, ...rest] = part.trim().split("=");
+    if (name !== LANGUAGE_COOKIE) continue;
+    try {
+      return normalizeUiLanguage(decodeURIComponent(rest.join("=")));
+    } catch {
+      // A malformed escape ("%", "%ZZ") is an unusable preference, not an
+      // error. This runs in the browser on every navigation, and throwing
+      // here left the person on the error screen until the cookie was cleared.
+      return DEFAULT_UI_LANGUAGE;
+    }
+  }
+  return DEFAULT_UI_LANGUAGE;
+}
+
+/**
+ * The Set-Cookie value for a choice. A year, the whole site, and Lax: it is a
+ * display preference, not a credential, so it does not need to be HttpOnly --
+ * the page itself writes it when the person picks a language.
+ */
+export function languageCookie(code: string): string {
+  return `${LANGUAGE_COOKIE}=${encodeURIComponent(normalizeUiLanguage(code))}; Path=/; Max-Age=31536000; SameSite=Lax`;
+}
+
+/** True when the key exists, so a computed key can never print as raw text. */
+export function hasMessage(key: string): key is MessageKey {
+  return Object.prototype.hasOwnProperty.call(en, key);
+}
+
+/** "/companies/errors" → "nav.companies.errors.label". */
+export function navMessageKey(to: string, part: "label" | "desc"): string {
+  return `nav.${to.replace(/^\//, "").replace(/\//g, ".")}.${part}`;
+}
+
+/**
+ * Set beside the language cookie when the language was the company's default
+ * rather than this person's pick. The language cookie has to be written either
+ * way, because the server renders from it; this is what tells the two apart.
+ */
+export const INHERITED_LANGUAGE_COOKIE = "flas_lang_auto";
+
+/** Writes the mark for an inherited language, or removes it for a personal choice. */
+export function inheritedLanguageCookie(inherited: boolean): string {
+  return inherited
+    ? `${INHERITED_LANGUAGE_COOKIE}=1; Path=/; Max-Age=31536000; SameSite=Lax`
+    : `${INHERITED_LANGUAGE_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+const hasCookie = (header: string | null | undefined, name: string) =>
+  (header ?? "").split(";").some((part) => part.trim().startsWith(`${name}=`));
+
+/** True once the person picked this browser's language themselves. */
+export function hasChosenLanguage(header: string | null | undefined): boolean {
+  return hasCookie(header, LANGUAGE_COOKIE) && !hasCookie(header, INHERITED_LANGUAGE_COOKIE);
+}
+
+/**
+ * The company's language becomes a teammate's interface language only until
+ * that teammate chooses one: an admin who sets Arabic for the company gives the
+ * whole team Arabic by default, and anyone can still switch back.
+ *
+ * Returns the language to apply as an inherited default, or null to leave
+ * things as they are. A teammate who is only inheriting keeps following the
+ * company -- including back to English when the company moves to a language
+ * the interface does not have. `undefined` means the workspace has not loaded
+ * yet, which is not a reason to change anything.
+ */
+export function workspaceDefaultLanguage(
+  cookieHeader: string | null | undefined,
+  workspaceLocale: string | null | undefined,
+  current: string,
+): string | null {
+  if (workspaceLocale === undefined) return null;
+  if (hasChosenLanguage(cookieHeader)) return null;
+  const target = isSupportedUiLanguage(workspaceLocale) ? workspaceLocale : DEFAULT_UI_LANGUAGE;
+  return target === current ? null : target;
+}
+
+/**
+ * The pages whose own text is still English only: the legal texts, which must
+ * read exactly as a lawyer approved them, and the blog, whose articles are
+ * written in English. Laid out right-to-left in Arabic their sentences would
+ * run backwards, so their content declares itself English and left-to-right
+ * while the translated frame around it follows the reader's language.
+ *
+ * Every other page is translated. A new page is translated by default: it is
+ * listed here only if its text is deliberately kept in English.
+ */
+export const ENGLISH_ONLY_PATHS: readonly string[] = ["/terms", "/privacy", "/blog"];
+
+export function isTranslatedPath(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  return !ENGLISH_ONLY_PATHS.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}

@@ -4,6 +4,8 @@ import { test } from "node:test";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 
+import { i18nModules } from "./support/i18n-double.mjs";
+
 // Execute the actual screen's event handlers with hook/network boundaries
 // replaced. No provider credentials or browser session are used by this test.
 const source = readFileSync(
@@ -129,6 +131,8 @@ function harness({
       },
     },
     "@tanstack/react-start": { useServerFn: (fn) => fn },
+    // The screen is read in English, from the real message files.
+    ...i18nModules,
     "@/hooks/useAuth": { useAuth: () => auth },
     "@/lib/connections-catalog": { CONNECTORS: catalog },
     "@/lib/credential-handoff": credentialHandoff,

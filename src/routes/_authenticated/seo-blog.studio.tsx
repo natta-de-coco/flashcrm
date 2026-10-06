@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/seo-blog/studio")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -78,6 +79,7 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 function SeoStudioPage() {
+  const { t, tr } = useI18n();
   const { article } = Route.useSearch();
   const { user } = useAuth();
   const { tenant } = useTenant();
@@ -198,7 +200,7 @@ function SeoStudioPage() {
           featured: next.length === 0,
         });
       } catch {
-        toast.error(`${file.name} could not be read`);
+        toast.error(t("seoBlogStudio.couldNotBeRead", { name: file.name }));
       }
     }
     setImages(next);
@@ -214,9 +216,9 @@ function SeoStudioPage() {
       }),
     onSuccess: (v) => {
       setVision(v);
-      toast.success("Vision context extracted");
+      toast.success(t("seoBlogStudio.visionContextExtracted"));
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Analysis failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t("seoBlogStudio.analysisFailed")),
   });
 
   const draftMutation = useMutation({
@@ -239,7 +241,7 @@ function SeoStudioPage() {
     onSuccess: (r) => {
       if ("posts" in r) {
         setMicroPosts(r.posts);
-        toast.success("Micro-posts generated");
+        toast.success(t("seoBlogStudio.microPostsGenerated"));
         return;
       }
       setTitle(r.draft.title);
@@ -250,18 +252,18 @@ function SeoStudioPage() {
       setContentHtml(r.draft.contentHtml);
       setSecondary(r.draft.secondaryKeywords);
       setFaq(r.draft.faq);
-      toast.success("SEO draft generated — review it before publishing");
+      toast.success(t("seoBlogStudio.seoDraftGeneratedReviewIt"));
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Drafting failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t("seoBlogStudio.draftingFailed")),
   });
 
   const humanizeMutation = useMutation({
     mutationFn: () => humanize({ data: { contentHtml, tone } }),
     onSuccess: (r) => {
       setContentHtml(r.contentHtml);
-      toast.success("Rewritten in a human tone");
+      toast.success(t("seoBlogStudio.rewrittenInAHumanTone"));
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Rewrite failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t("seoBlogStudio.rewriteFailed")),
   });
 
   const saveMutation = useMutation({
@@ -293,9 +295,9 @@ function SeoStudioPage() {
     onSuccess: (id) => {
       setArticleId(id);
       qc.invalidateQueries({ queryKey: ["seo_articles"] });
-      toast.success("Article saved");
+      toast.success(t("seoBlogStudio.articleSaved"));
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Save failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t("seoBlogStudio.saveFailed")),
   });
 
   const publishMutation = useMutation({
@@ -313,12 +315,12 @@ function SeoStudioPage() {
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["seo_articles"] });
-      toast.success("Published to WordPress", {
+      toast.success(t("seoBlogStudio.publishedToWordpress"), {
         description: r.url || undefined,
         action: r.url ? { label: "Open", onClick: () => window.open(r.url, "_blank") } : undefined,
       });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Publish failed"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : t("seoBlogStudio.publishFailed")),
   });
 
   function insertTag(open: string, close: string) {
@@ -341,14 +343,16 @@ function SeoStudioPage() {
             to="/seo-blog"
             className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
           >
-            <ArrowLeft className="size-3.5" /> SEO Studio
+            <ArrowLeft className="size-3.5" /> {t("seoBlogStudio.seoStudio")}
           </Link>
-          <h1 className="text-lg font-bold">{articleId ? "Edit article" : "New article"}</h1>
+          <h1 className="text-lg font-bold">
+            {articleId ? t("seoBlogStudio.editArticle") : t("seoBlogStudio.newArticle")}
+          </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={pubSite} onValueChange={setPubSite}>
             <SelectTrigger className="h-8 w-44 text-xs">
-              <SelectValue placeholder="WordPress site" />
+              <SelectValue placeholder={t("seoBlogStudio.wordpressSite")} />
             </SelectTrigger>
             <SelectContent>
               {(sites.data ?? []).map((s) => (
@@ -363,10 +367,10 @@ function SeoStudioPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="draft">Save as draft</SelectItem>
-              <SelectItem value="pending">Pending review</SelectItem>
-              <SelectItem value="publish">Publish now</SelectItem>
-              <SelectItem value="future">Schedule</SelectItem>
+              <SelectItem value="draft">{t("seoBlogStudio.saveAsDraft")}</SelectItem>
+              <SelectItem value="pending">{t("seoBlogStudio.pendingReview")}</SelectItem>
+              <SelectItem value="publish">{t("seoBlogStudio.publishNow")}</SelectItem>
+              <SelectItem value="future">{t("seoBlogStudio.schedule")}</SelectItem>
             </SelectContent>
           </Select>
           <Button
@@ -375,21 +379,23 @@ function SeoStudioPage() {
             disabled={saveMutation.isPending || !title}
             onClick={() => saveMutation.mutate()}
           >
-            {saveMutation.isPending ? "Saving…" : "Save"}
+            {saveMutation.isPending ? t("seoBlogStudio.saving") : t("seoBlogStudio.save")}
           </Button>
           <Button
             size="sm"
             disabled={!pubSite || !contentHtml || publishMutation.isPending}
             title={
               !pubSite
-                ? "Choose a WordPress site first"
+                ? t("seoBlogStudio.chooseAWordpressSiteFirst")
                 : !contentHtml
-                  ? "Write or generate the article first"
+                  ? t("seoBlogStudio.writeOrGenerateTheArticle")
                   : undefined
             }
             onClick={() => publishMutation.mutate()}
           >
-            {publishMutation.isPending ? "Publishing…" : "Sync & publish"}
+            {publishMutation.isPending
+              ? t("seoBlogStudio.publishing")
+              : t("seoBlogStudio.syncPublish")}
           </Button>
         </div>
       </div>
@@ -401,10 +407,12 @@ function SeoStudioPage() {
       {sites.isSuccess && (sites.data ?? []).length === 0 && (
         <div className="grid gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
           <p>
-            <span className="font-semibold">Connect a WordPress site to publish.</span> Articles
-            from this studio are published to your WordPress website. You can write, generate and
-            save drafts now; <span className="font-medium">Sync &amp; publish</span> turns on once a
-            site is connected below.
+            {tr("seoBlogStudio.articlesFromThisStudioAre", {
+              span: (
+                <span className="font-semibold">{t("seoBlogStudio.connectAWordpressSiteTo")}</span>
+              ),
+              span2: <span className="font-medium">{t("seoBlogStudio.syncPublish")}</span>,
+            })}
           </p>
           <WordPressSitesCard />
         </div>
@@ -415,7 +423,7 @@ function SeoStudioPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Image & vision intake</CardTitle>
+              <CardTitle className="text-base">{t("seoBlogStudio.imageVisionIntake")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <label
@@ -427,7 +435,7 @@ function SeoStudioPage() {
                 }}
               >
                 <ImagePlus className="size-6" />
-                Drop PNG/JPG/WebP or click to browse (max 4)
+                {t("seoBlogStudio.dropPngJpgWebpOr")}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
@@ -442,21 +450,21 @@ function SeoStudioPage() {
                   <div className="relative">
                     <img
                       src={img.dataUrl}
-                      alt={img.alt || "uploaded"}
+                      alt={img.alt || t("seoBlogStudio.uploaded")}
                       className="h-24 w-full rounded object-cover"
                     />
                     <button
                       type="button"
-                      className="absolute right-1 top-1 rounded-full bg-background/80 p-1"
+                      className="absolute end-1 top-1 rounded-full bg-background/80 p-1"
                       onClick={() => setImages(images.filter((i) => i.id !== img.id))}
-                      aria-label="Remove image"
+                      aria-label={t("seoBlogStudio.removeImage")}
                     >
                       <Trash2 className="size-3.5" />
                     </button>
                   </div>
                   <Input
                     className="h-7 text-xs"
-                    placeholder="Alt text (SEO)"
+                    placeholder={t("seoBlogStudio.altTextSeo")}
                     value={img.alt}
                     onChange={(e) =>
                       setImages(
@@ -472,7 +480,9 @@ function SeoStudioPage() {
                     }
                   >
                     <Star className="size-3" />{" "}
-                    {img.featured ? "Featured image" : "Set as featured"}
+                    {img.featured
+                      ? t("seoBlogStudio.featuredImage")
+                      : t("seoBlogStudio.setAsFeatured")}
                   </button>
                 </div>
               ))}
@@ -488,7 +498,7 @@ function SeoStudioPage() {
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Analyze vision context
+                {t("seoBlogStudio.analyzeVisionContext")}
               </Button>
             </CardContent>
           </Card>
@@ -496,7 +506,7 @@ function SeoStudioPage() {
           {vision && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Vision extraction</CardTitle>
+                <CardTitle className="text-base">{t("seoBlogStudio.visionExtraction")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-xs">
                 <p className="text-muted-foreground">{vision.summary}</p>
@@ -547,47 +557,55 @@ function SeoStudioPage() {
           <Card>
             <CardContent className="grid gap-2 pt-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="grid gap-1">
-                <Label className="text-xs">Primary keyword</Label>
+                <Label className="text-xs">{t("seoBlogStudio.primaryKeyword")}</Label>
                 <Input
                   className="h-8 text-xs"
-                  placeholder="whatsapp crm for agencies"
+                  placeholder={t("seoBlogStudio.whatsappCrmForAgencies")}
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                 />
               </div>
               <div className="grid gap-1">
-                <Label className="text-xs">Industry / niche</Label>
+                <Label className="text-xs">{t("seoBlogStudio.industryNiche")}</Label>
                 <Input
                   className="h-8 text-xs"
-                  placeholder="SaaS, real estate…"
+                  placeholder={t("seoBlogStudio.saasRealEstate")}
                   value={industry}
                   onChange={(e) => setIndustry(e.target.value)}
                 />
               </div>
               <div className="grid gap-1">
-                <Label className="text-xs">Search intent</Label>
+                <Label className="text-xs">{t("seoBlogStudio.searchIntent")}</Label>
                 <Select value={intent} onValueChange={setIntent}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="informational">Informational</SelectItem>
-                    <SelectItem value="commercial">Commercial</SelectItem>
-                    <SelectItem value="transactional">Transactional</SelectItem>
+                    <SelectItem value="informational">
+                      {t("seoBlogStudio.informational")}
+                    </SelectItem>
+                    <SelectItem value="commercial">{t("seoBlogStudio.commercial")}</SelectItem>
+                    <SelectItem value="transactional">
+                      {t("seoBlogStudio.transactional")}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid gap-1">
-                <Label className="text-xs">Tone of voice</Label>
+                <Label className="text-xs">{t("seoBlogStudio.toneOfVoice")}</Label>
                 <Select value={tone} onValueChange={setTone}>
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="human expert">Human expert</SelectItem>
-                    <SelectItem value="direct response">Direct response</SelectItem>
-                    <SelectItem value="storytelling">Storytelling</SelectItem>
-                    <SelectItem value="friendly guide">Friendly guide</SelectItem>
+                    <SelectItem value="human expert">{t("seoBlogStudio.humanExpert")}</SelectItem>
+                    <SelectItem value="direct response">
+                      {t("seoBlogStudio.directResponse")}
+                    </SelectItem>
+                    <SelectItem value="storytelling">{t("seoBlogStudio.storytelling")}</SelectItem>
+                    <SelectItem value="friendly guide">
+                      {t("seoBlogStudio.friendlyGuide")}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -598,14 +616,14 @@ function SeoStudioPage() {
                     className={`rounded-md px-3 py-1 ${mode === "article" ? "bg-brand text-brand-foreground" : ""}`}
                     onClick={() => setMode("article")}
                   >
-                    Long-form article
+                    {t("seoBlogStudio.longFormArticle")}
                   </button>
                   <button
                     type="button"
                     className={`rounded-md px-3 py-1 ${mode === "micro" ? "bg-brand text-brand-foreground" : ""}`}
                     onClick={() => setMode("micro")}
                   >
-                    Micro-posts
+                    {t("seoBlogStudio.microPosts")}
                   </button>
                 </div>
                 <Button
@@ -618,7 +636,9 @@ function SeoStudioPage() {
                   ) : (
                     <Wand2 className="size-4" />
                   )}
-                  {mode === "article" ? "Generate full SEO draft" : "Generate micro-posts"}
+                  {mode === "article"
+                    ? t("seoBlogStudio.generateFullSeoDraft")
+                    : t("seoBlogStudio.generateMicroPosts")}
                 </Button>
               </div>
             </CardContent>
@@ -638,10 +658,10 @@ function SeoStudioPage() {
                         void navigator.clipboard.writeText(
                           `${p.text}\n\n${p.hashtags.map((h) => `#${h}`).join(" ")}`,
                         );
-                        toast.success("Copied");
+                        toast.success(t("seoBlogStudio.copied"));
                       }}
                     >
-                      Copy
+                      {t("seoBlogStudio.copy")}
                     </Button>
                   </CardHeader>
                   <CardContent>
@@ -659,7 +679,7 @@ function SeoStudioPage() {
             <Card>
               <CardContent className="space-y-3 pt-4">
                 <Input
-                  placeholder="Article title (H1)"
+                  placeholder={t("seoBlogStudio.articleTitleH1")}
                   className="text-lg font-bold"
                   value={title}
                   onChange={(e) => {
@@ -696,14 +716,14 @@ function SeoStudioPage() {
                     className={`rounded px-2 py-1 ${tab === "write" ? "bg-secondary font-semibold" : ""}`}
                     onClick={() => setTab("write")}
                   >
-                    Write
+                    {t("seoBlogStudio.write")}
                   </button>
                   <button
                     type="button"
                     className={`rounded px-2 py-1 ${tab === "preview" ? "bg-secondary font-semibold" : ""}`}
                     onClick={() => setTab("preview")}
                   >
-                    Preview
+                    {t("seoBlogStudio.preview")}
                   </button>
                 </div>
 
@@ -711,7 +731,7 @@ function SeoStudioPage() {
                   <Textarea
                     ref={editorRef}
                     className="min-h-96 font-mono text-xs"
-                    placeholder="Generate a draft or write HTML here…"
+                    placeholder={t("seoBlogStudio.generateADraftOrWrite")}
                     value={contentHtml}
                     onChange={(e) => setContentHtml(e.target.value)}
                   />
@@ -728,19 +748,22 @@ function SeoStudioPage() {
                 )}
 
                 <div className="grid gap-2 rounded-lg border p-3">
-                  <p className="text-xs font-semibold">SEO metadata</p>
+                  <p className="text-xs font-semibold">{t("seoBlogStudio.seoMetadata")}</p>
                   <div className="grid gap-1">
                     <Label className="flex justify-between text-xs">
-                      Meta title
-                      <span
-                        className={
-                          metaTitle.length >= 50 && metaTitle.length <= 60
-                            ? "text-brand"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {metaTitle.length}/60
-                      </span>
+                      {tr("seoBlogStudio.metaTitle", {
+                        span: (
+                          <span
+                            className={
+                              metaTitle.length >= 50 && metaTitle.length <= 60
+                                ? "text-brand"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {metaTitle.length}/60
+                          </span>
+                        ),
+                      })}
                     </Label>
                     <Input
                       className="h-8 text-xs"
@@ -750,16 +773,19 @@ function SeoStudioPage() {
                   </div>
                   <div className="grid gap-1">
                     <Label className="flex justify-between text-xs">
-                      Meta description
-                      <span
-                        className={
-                          metaDesc.length >= 140 && metaDesc.length <= 155
-                            ? "text-brand"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {metaDesc.length}/155
-                      </span>
+                      {tr("seoBlogStudio.metaDescription", {
+                        span: (
+                          <span
+                            className={
+                              metaDesc.length >= 140 && metaDesc.length <= 155
+                                ? "text-brand"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {metaDesc.length}/155
+                          </span>
+                        ),
+                      })}
                     </Label>
                     <Textarea
                       className="min-h-16 text-xs"
@@ -768,7 +794,7 @@ function SeoStudioPage() {
                     />
                   </div>
                   <div className="grid gap-1">
-                    <Label className="text-xs">URL slug</Label>
+                    <Label className="text-xs">{t("seoBlogStudio.urlSlug")}</Label>
                     <Input
                       className="h-8 text-xs"
                       value={slug}
@@ -779,18 +805,22 @@ function SeoStudioPage() {
                     />
                   </div>
                   <div className="rounded-lg bg-secondary/60 p-3 text-xs">
-                    <p className="text-[11px] text-muted-foreground">Google preview</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t("seoBlogStudio.googlePreview")}
+                    </p>
                     <p className="truncate text-sm text-brand">
-                      {metaTitle || title || "Your meta title"}
+                      {metaTitle || title || t("seoBlogStudio.yourMetaTitle")}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                      example.com/{slug || "your-slug"}
+                      {`example.com/${slug || "your-slug"}`}
                     </p>
-                    <p className="line-clamp-2">{metaDesc || "Your meta description…"}</p>
+                    <p className="line-clamp-2">
+                      {metaDesc || t("seoBlogStudio.yourMetaDescription")}
+                    </p>
                   </div>
                   <details className="text-xs">
                     <summary className="cursor-pointer font-semibold">
-                      JSON-LD structured data
+                      {t("seoBlogStudio.jsonLdStructuredData")}
                     </summary>
                     <pre className="mt-2 max-h-48 overflow-auto rounded bg-secondary/60 p-2 text-[10px]">
                       {JSON.stringify(jsonLd, null, 2)}
@@ -806,7 +836,7 @@ function SeoStudioPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">SEO score</CardTitle>
+              <CardTitle className="text-base">{t("seoBlogStudio.seoScore")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center gap-4">
@@ -840,9 +870,9 @@ function SeoStudioPage() {
                   </text>
                 </svg>
                 <div className="text-xs text-muted-foreground">
-                  <p>{audit.wordCount} words</p>
-                  <p>Grade {audit.grade} readability</p>
-                  <p>{audit.density}% keyword density</p>
+                  <p>{tr("seoBlogStudio.words", { wordCount: audit.wordCount })}</p>
+                  <p>{tr("seoBlogStudio.gradeReadability", { grade: audit.grade })}</p>
+                  <p>{tr("seoBlogStudio.keywordDensity", { density: audit.density })}</p>
                 </div>
               </div>
 
@@ -864,7 +894,9 @@ function SeoStudioPage() {
 
               {secondary.length > 0 && (
                 <div>
-                  <p className="mb-1 text-xs font-semibold">Secondary keywords</p>
+                  <p className="mb-1 text-xs font-semibold">
+                    {t("seoBlogStudio.secondaryKeywords")}
+                  </p>
                   <div className="flex flex-wrap gap-1">
                     {secondary.map((k) => {
                       const used = audit.usedSecondary.includes(k);
@@ -894,7 +926,7 @@ function SeoStudioPage() {
                 ) : (
                   <Wand2 className="size-4" />
                 )}
-                Human-tone rewrite
+                {t("seoBlogStudio.humanToneRewrite")}
               </Button>
             </CardContent>
           </Card>
@@ -902,7 +934,7 @@ function SeoStudioPage() {
           {faq.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">FAQ (schema-ready)</CardTitle>
+                <CardTitle className="text-base">{t("seoBlogStudio.faqSchemaReady")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-xs">
                 {faq.map((f, i) => (

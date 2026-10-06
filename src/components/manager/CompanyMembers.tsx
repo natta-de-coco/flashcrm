@@ -7,6 +7,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { Loader2, ShieldOff, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * Per-user access control inside one company, for the platform manager.
@@ -19,6 +20,7 @@ import { toast } from "sonner";
  * refuses it, so the button is hidden rather than offered and then rejected.
  */
 export function CompanyMembers({ orgId }: { orgId: string }) {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const load = useServerFn(listCompanyMembers);
   const setSuspended = useServerFn(setUserSuspended);
@@ -34,19 +36,22 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
     mutationFn: (v: { userId: string; suspended: boolean; reason?: string }) =>
       setSuspended({ data: v }),
     onSuccess: (_r, v) => {
-      toast.success(v.suspended ? "User suspended" : "User restored");
+      toast.success(
+        v.suspended ? t("companyMembers.userSuspended") : t("companyMembers.userRestored"),
+      );
       setReasonFor(null);
       setReason("");
       void qc.invalidateQueries({ queryKey: ["manager-members", orgId] });
       void qc.invalidateQueries({ queryKey: ["manager-subscriptions"] });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Could not update the user"),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : t("companyMembers.couldNotUpdateTheUser")),
   });
 
   if (members.isLoading) {
     return (
       <p className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" /> Loading team…
+        <Loader2 className="size-3.5 animate-spin" /> {t("companyMembers.loadingTeam")}
       </p>
     );
   }
@@ -54,14 +59,20 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
   if (members.error) {
     return (
       <p className="py-3 text-xs text-destructive">
-        {members.error instanceof Error ? members.error.message : "Could not load the team"}
+        {members.error instanceof Error
+          ? members.error.message
+          : t("companyMembers.couldNotLoadTheTeam")}
       </p>
     );
   }
 
   const rows = members.data ?? [];
   if (rows.length === 0) {
-    return <p className="py-3 text-xs text-muted-foreground">No users in this workspace yet.</p>;
+    return (
+      <p className="py-3 text-xs text-muted-foreground">
+        {t("companyMembers.noUsersInThisWorkspace")}
+      </p>
+    );
   }
 
   return (
@@ -76,8 +87,8 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
                 <p className="truncate text-sm font-medium">
                   {m.full_name || m.email}
                   {m.suspended && (
-                    <Badge variant="destructive" className="ml-2 align-middle text-[10px]">
-                      suspended
+                    <Badge variant="destructive" className="ms-2 align-middle text-[10px]">
+                      {t("companyMembers.suspended")}
                     </Badge>
                   )}
                 </p>
@@ -89,7 +100,7 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
 
               {locked ? (
                 <Badge variant="outline" className="text-[10px]">
-                  platform admin
+                  {t("companyMembers.platformAdmin")}
                 </Badge>
               ) : m.suspended ? (
                 <Button
@@ -99,7 +110,7 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
                   disabled={toggle.isPending}
                   onClick={() => toggle.mutate({ userId: m.id, suspended: false })}
                 >
-                  <ShieldCheck className="size-3" /> Restore
+                  <ShieldCheck className="size-3" /> {t("companyMembers.restore")}
                 </Button>
               ) : (
                 <Button
@@ -111,7 +122,7 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
                     setReason("");
                   }}
                 >
-                  <ShieldOff className="size-3" /> Suspend
+                  <ShieldOff className="size-3" /> {t("companyMembers.suspend")}
                 </Button>
               )}
             </div>
@@ -122,8 +133,8 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
                   autoFocus
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
-                  placeholder="Reason (shown to other managers)"
-                  aria-label={`Reason for suspending ${m.email}`}
+                  placeholder={t("companyMembers.reasonShownToOtherManagers")}
+                  aria-label={t("companyMembers.reasonForSuspending", { email: m.email })}
                   className="h-8 flex-1 text-xs"
                 />
                 <Button
@@ -139,7 +150,7 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
                     })
                   }
                 >
-                  Confirm suspend
+                  {t("companyMembers.confirmSuspend")}
                 </Button>
                 <Button
                   size="sm"
@@ -147,7 +158,7 @@ export function CompanyMembers({ orgId }: { orgId: string }) {
                   className="h-8 text-xs"
                   onClick={() => setReasonFor(null)}
                 >
-                  Cancel
+                  {t("companyMembers.cancel")}
                 </Button>
               </div>
             )}

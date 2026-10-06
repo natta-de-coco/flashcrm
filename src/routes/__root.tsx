@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -18,23 +19,26 @@ import {
   reloadForStaleChunk,
 } from "../lib/stale-chunk";
 import { AuthProvider } from "@/hooks/useAuth";
+import { I18nProvider, useI18n } from "@/hooks/useI18n";
+import { PageLanguage } from "@/components/PageLanguage";
+import { directionOf, isRtlUiLanguage } from "@/lib/i18n";
+import { readUiLanguage } from "@/lib/i18n/read-language";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
+  const { t } = useI18n();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
-        </p>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">{t("root.pageNotFound")}</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{t("root.thePageYouReLooking")}</p>
         <div className="mt-6">
           <Link
             to="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Go home
+            {t("root.goHome")}
           </Link>
         </div>
       </div>
@@ -45,6 +49,7 @@ function NotFoundComponent() {
 // TanStack Router types a route error as `unknown` since 1.170.41: anything can
 // be thrown, not only an Error. Normalize it before passing it to error helpers.
 function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
+  const { t } = useI18n();
   const reportedError = error instanceof Error ? error : new Error(String(error));
   console.error(reportedError);
   const router = useRouter();
@@ -62,11 +67,9 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This page didn't load
+          {t("root.thisPageDidnTLoad")}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">{t("root.somethingWentWrongOnOur")}</p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
@@ -80,13 +83,13 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Try again
+            {t("root.tryAgain")}
           </button>
           <a
             href="/"
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
-            Go home
+            {t("root.goHome")}
           </a>
         </div>
       </div>
@@ -95,6 +98,9 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  // The interface language, from its cookie: on the server for the first
+  // paint, in the browser on every navigation and after a switch.
+  beforeLoad: () => ({ uiLanguage: readUiLanguage() }),
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -121,7 +127,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&family=Onest:wght@400;500;600;700&display=swap",
+        // Noto Sans Arabic is split by character range, so an English page
+        // downloads none of it.
+        href: "https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&family=Onest:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap",
       },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
     ],
@@ -133,8 +141,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  const { uiLanguage } = Route.useRouteContext();
   return (
-    <html lang="en">
+    <html lang={uiLanguage} dir={directionOf(uiLanguage)}>
       <head>
         <HeadContent />
       </head>
@@ -147,7 +156,15 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
+  const { queryClient, uiLanguage } = Route.useRouteContext();
+  // App pages mark their own language inside the shell, so the translated
+  // sidebar keeps the reader's direction; public pages are marked here.
+  const { pathname, inApp } = useRouterState({
+    select: (s) => ({
+      pathname: s.location.pathname,
+      inApp: s.matches.some((m) => m.routeId === "/_authenticated"),
+    }),
+  });
 
   // Frontend crashes, failed server actions and blank screens are captured with
   // route + session context so support can trace any incident.
@@ -158,11 +175,20 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-        <Toaster position="top-right" richColors />
-      </AuthProvider>
+      <I18nProvider language={uiLanguage}>
+        <AuthProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          {inApp ? (
+            <Outlet />
+          ) : (
+            <PageLanguage pathname={pathname}>
+              <Outlet />
+            </PageLanguage>
+          )}
+          {/* Toasts sit on the reading-end side: top-left in Arabic. */}
+          <Toaster position={isRtlUiLanguage(uiLanguage) ? "top-left" : "top-right"} richColors />
+        </AuthProvider>
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

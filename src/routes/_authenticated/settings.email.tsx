@@ -19,6 +19,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * Company admin: pick your outbound-email provider and paste an API key.
@@ -54,6 +55,7 @@ type Config = {
 };
 
 function EmailSettingsPage() {
+  const { t, tr } = useI18n();
   const load = useServerFn(getTenantSmtpConfig);
   const save = useServerFn(saveTenantSmtpConfig);
   const setKey = useServerFn(setTenantSmtpApiKey);
@@ -88,11 +90,11 @@ function EmailSettingsPage() {
   if (loadError) {
     return (
       <main className="grid gap-3 p-6">
-        <p className="text-sm font-medium">Email settings could not be loaded.</p>
+        <p className="text-sm font-medium">{t("settingsEmail.emailSettingsCouldNotBe")}</p>
         <p className="text-sm text-muted-foreground">{loadError}</p>
         <div>
           <Button size="sm" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
-            Try again
+            {t("settingsEmail.tryAgain")}
           </Button>
         </div>
       </main>
@@ -100,7 +102,11 @@ function EmailSettingsPage() {
   }
 
   if (!config) {
-    return <main className="p-6 text-sm text-muted-foreground">Loading email settings…</main>;
+    return (
+      <main className="p-6 text-sm text-muted-foreground">
+        {t("settingsEmail.loadingEmailSettings")}
+      </main>
+    );
   }
 
   async function onSave() {
@@ -117,9 +123,9 @@ function EmailSettingsPage() {
           domain: config!.domain,
         },
       });
-      toast.success("Settings saved. Rotate your API key if the provider changed.");
+      toast.success(t("settingsEmail.settingsSavedRotateYourApi"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(e instanceof Error ? e.message : t("settingsEmail.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -127,16 +133,16 @@ function EmailSettingsPage() {
 
   async function onSetKey() {
     if (!apiKey.trim()) {
-      toast.error("Paste your provider API key first.");
+      toast.error(t("settingsEmail.pasteYourProviderApiKey"));
       return;
     }
     setBusy(true);
     try {
       await setKey({ data: { apiKey: apiKey.trim() } });
       setApiKey("");
-      toast.success("API key stored and encrypted. Send a test to verify it.");
+      toast.success(t("settingsEmail.apiKeyStoredAndEncrypted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not store key");
+      toast.error(e instanceof Error ? e.message : t("settingsEmail.couldNotStoreKey"));
     } finally {
       setBusy(false);
     }
@@ -144,7 +150,7 @@ function EmailSettingsPage() {
 
   async function onTest() {
     if (!testTo.trim()) {
-      toast.error("Enter an email address to send the test to.");
+      toast.error(t("settingsEmail.enterAnEmailAddressTo"));
       return;
     }
     setBusy(true);
@@ -153,10 +159,11 @@ function EmailSettingsPage() {
         ok: boolean;
         error?: string;
       };
-      if (res.ok) toast.success(`Test email sent via ${config!.provider}.`);
-      else toast.error(res.error ?? "Test failed");
+      if (res.ok)
+        toast.success(t("settingsEmail.testEmailSentVia", { provider: config!.provider }));
+      else toast.error(res.error ?? t("settingsEmail.testFailed"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Test failed");
+      toast.error(e instanceof Error ? e.message : t("settingsEmail.testFailed"));
     } finally {
       setBusy(false);
     }
@@ -169,27 +176,29 @@ function EmailSettingsPage() {
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <div>
-        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">Email delivery</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+          {t("settingsEmail.emailDelivery")}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pick a provider for your company's outbound email — verification codes, password resets,
-          invoice notifications, invite messages, etc. Raw SMTP is not supported (serverless
-          platforms block outbound TCP on ports 465/587). Any HTTP-based transactional provider
-          works.
+          {t("settingsEmail.pickAProviderForYour")}
         </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Provider</CardTitle>
+          <CardTitle>{t("settingsEmail.provider")}</CardTitle>
           <CardDescription>
-            Free / cheap picks: <strong>Resend</strong> (3k emails/mo free),{" "}
-            <strong>Postmark</strong> (100/mo free), <strong>Mailgun</strong>. Choose{" "}
-            <em>Platform</em> to keep using the built-in mailer.
+            {tr("settingsEmail.freeCheapPicks3kEmails", {
+              strong: <strong>Resend</strong>,
+              strong2: <strong>Postmark</strong>,
+              strong3: <strong>Mailgun</strong>,
+              em: <em>{t("settingsEmail.platform")}</em>,
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Provider</Label>
+            <Label>{t("settingsEmail.provider")}</Label>
             <Select
               value={config.provider}
               onValueChange={(v) => setConfig({ ...config, provider: v })}
@@ -198,19 +207,25 @@ function EmailSettingsPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="platform">Platform default (no API key needed)</SelectItem>
-                <SelectItem value="resend">Resend (recommended — simplest)</SelectItem>
+                <SelectItem value="platform">
+                  {t("settingsEmail.platformDefaultNoApiKey")}
+                </SelectItem>
+                <SelectItem value="resend">
+                  {t("settingsEmail.resendRecommendedSimplest")}
+                </SelectItem>
                 <SelectItem value="postmark">Postmark</SelectItem>
                 <SelectItem value="mailgun">Mailgun</SelectItem>
                 <SelectItem value="sendgrid">SendGrid</SelectItem>
                 <SelectItem value="ses">AWS SES (HTTPS)</SelectItem>
-                <SelectItem value="smtp_relay">SMTP relay (HTTPS gateway)</SelectItem>
+                <SelectItem value="smtp_relay">
+                  {t("settingsEmail.smtpRelayHttpsGateway")}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label>From email</Label>
+              <Label>{t("settingsEmail.fromEmail")}</Label>
               <Input
                 type="email"
                 value={config.from_email ?? ""}
@@ -219,15 +234,15 @@ function EmailSettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>From name</Label>
+              <Label>{t("settingsEmail.fromName")}</Label>
               <Input
                 value={config.from_name ?? ""}
                 onChange={(e) => setConfig({ ...config, from_name: e.target.value })}
-                placeholder="Acme Trading"
+                placeholder={t("settingsEmail.acmeTrading")}
               />
             </div>
             <div className="space-y-2">
-              <Label>Reply-to (optional)</Label>
+              <Label>{t("settingsEmail.replyToOptional")}</Label>
               <Input
                 type="email"
                 value={config.reply_to ?? ""}
@@ -237,7 +252,7 @@ function EmailSettingsPage() {
             </div>
             {needsDomain && (
               <div className="space-y-2">
-                <Label>Sending domain (Mailgun)</Label>
+                <Label>{t("settingsEmail.sendingDomainMailgun")}</Label>
                 <Input
                   value={config.domain ?? ""}
                   onChange={(e) => setConfig({ ...config, domain: e.target.value })}
@@ -247,7 +262,7 @@ function EmailSettingsPage() {
             )}
             {needsRegion && (
               <div className="space-y-2">
-                <Label>Region</Label>
+                <Label>{t("settingsEmail.region")}</Label>
                 <Select
                   value={config.region ?? "us"}
                   onValueChange={(v) => setConfig({ ...config, region: v })}
@@ -265,7 +280,7 @@ function EmailSettingsPage() {
           </div>
           <div className="flex gap-2">
             <Button onClick={onSave} disabled={busy}>
-              Save settings
+              {t("settingsEmail.saveSettings")}
             </Button>
           </div>
         </CardContent>
@@ -274,24 +289,22 @@ function EmailSettingsPage() {
       {needsKey && (
         <Card>
           <CardHeader>
-            <CardTitle>API key</CardTitle>
-            <CardDescription>
-              Encrypted at rest with pgcrypto. Never displayed back — paste again to rotate.
-            </CardDescription>
+            <CardTitle>{t("settingsEmail.apiKey")}</CardTitle>
+            <CardDescription>{t("settingsEmail.encryptedAtRestWithPgcrypto")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Provider API key</Label>
+              <Label>{t("settingsEmail.providerApiKey")}</Label>
               <Input
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your API key"
+                placeholder={t("settingsEmail.pasteYourApiKey")}
                 autoComplete="new-password"
               />
             </div>
             <Button onClick={onSetKey} disabled={busy || !apiKey}>
-              Save API key
+              {t("settingsEmail.saveApiKey")}
             </Button>
           </CardContent>
         </Card>
@@ -299,15 +312,12 @@ function EmailSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Send test email</CardTitle>
-          <CardDescription>
-            Verifies the provider + key + from-address by sending a test. Result logged to your
-            email delivery log.
-          </CardDescription>
+          <CardTitle>{t("settingsEmail.sendTestEmail")}</CardTitle>
+          <CardDescription>{t("settingsEmail.verifiesTheProviderKeyFrom")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Send test to</Label>
+            <Label>{t("settingsEmail.sendTestTo")}</Label>
             <Input
               type="email"
               value={testTo}
@@ -316,14 +326,18 @@ function EmailSettingsPage() {
             />
           </div>
           <Button onClick={onTest} disabled={busy}>
-            Send test
+            {t("settingsEmail.sendTest")}
           </Button>
           {config.last_test_at && (
             <p
               className={`text-xs ${config.last_test_ok ? "text-emerald-600" : "text-destructive"}`}
             >
-              Last test {new Date(config.last_test_at).toLocaleString()}:{" "}
-              {config.last_test_ok ? "OK" : (config.last_test_error ?? "Failed")}
+              {tr("settingsEmail.lastTest", {
+                toLocaleString: new Date(config.last_test_at).toLocaleString(),
+                value: config.last_test_ok
+                  ? "OK"
+                  : (config.last_test_error ?? t("settingsEmail.failed")),
+              })}
             </p>
           )}
         </CardContent>

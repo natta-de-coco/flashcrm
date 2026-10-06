@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Download, ShieldAlert } from "lucide-react";
@@ -27,6 +29,7 @@ const EXPORT_TABLES = [
 
 export function DataPrivacyCard() {
   const { user } = useAuth();
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const [reason, setReason] = useState("");
 
@@ -90,10 +93,13 @@ export function DataPrivacyCard() {
     onSuccess: (truncatedTables) => {
       if (truncatedTables.length > 0) {
         toast.warning(
-          `Export downloaded, but ${truncatedTables.join(", ")} hit the ${MAX_PAGES * PAGE_SIZE}-row safety limit and may be incomplete. Contact support for a full export.`,
+          t("settings.data.exportTruncated", {
+            tables: truncatedTables.join(", "),
+            limit: MAX_PAGES * PAGE_SIZE,
+          }),
         );
       } else {
-        toast.success("Export downloaded");
+        toast.success(t("settings.data.exported"));
       }
     },
     onError: (e: Error) => toast.error(e.message),
@@ -114,7 +120,7 @@ export function DataPrivacyCard() {
     },
     onSuccess: () => {
       setReason("");
-      toast.success("Deletion request submitted — we'll process it within 30 days.");
+      toast.success(t("settings.data.requested"));
       void qc.invalidateQueries({ queryKey: ["deletion-requests"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -123,17 +129,20 @@ export function DataPrivacyCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Data &amp; privacy</CardTitle>
+        <CardTitle className="text-base">{t("settings.data.title")}</CardTitle>
         <CardDescription>
-          Export everything in this workspace, or ask us to delete it. See our{" "}
-          <Link to="/privacy" className="underline">
-            privacy policy
-          </Link>{" "}
-          and{" "}
-          <Link to="/terms" className="underline">
-            terms
-          </Link>
-          .
+          {tr("settings.data.desc", {
+            privacy: (
+              <Link to="/privacy" className="underline">
+                {t("settings.data.privacyLink")}
+              </Link>
+            ),
+            terms: (
+              <Link to="/terms" className="underline">
+                {t("settings.data.termsLink")}
+              </Link>
+            ),
+          })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -145,25 +154,23 @@ export function DataPrivacyCard() {
             className="gap-1.5"
           >
             <Download className="size-4" />
-            {exportAll.isPending ? "Preparing export…" : "Download my data (JSON)"}
+            {exportAll.isPending ? t("settings.data.preparing") : t("settings.data.download")}
           </Button>
-          <span className="text-xs text-muted-foreground">
-            Contacts, leads, chats, campaigns, catalog, invoices and content.
-          </span>
+          <span className="text-xs text-muted-foreground">{t("settings.data.includes")}</span>
         </div>
 
         <div className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
           <p className="flex items-center gap-2 text-sm font-semibold text-destructive">
-            <ShieldAlert className="size-4" /> Delete data
+            <ShieldAlert className="size-4" /> {t("settings.data.delete")}
           </p>
           <Label htmlFor="deletion-reason" className="text-xs text-muted-foreground">
-            Reason (optional)
+            {t("settings.data.reason")}
           </Label>
           <Textarea
             id="deletion-reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Tell us why you're leaving so we can improve."
+            placeholder={t("settings.data.reasonPlaceholder")}
             rows={2}
           />
           <div className="flex flex-wrap gap-2">
@@ -172,31 +179,25 @@ export function DataPrivacyCard() {
               size="sm"
               disabled={requestDeletion.isPending}
               onClick={() => {
-                if (window.confirm("Request deletion of your personal account and its data?"))
+                if (window.confirm(t("settings.data.confirmAccount")))
                   requestDeletion.mutate("account");
               }}
             >
-              Delete my account
+              {t("settings.data.deleteAccount")}
             </Button>
             <Button
               variant="destructive"
               size="sm"
               disabled={requestDeletion.isPending}
               onClick={() => {
-                if (
-                  window.confirm(
-                    "Request deletion of the entire workspace, including all contacts, chats and campaigns? This cannot be undone once processed.",
-                  )
-                )
+                if (window.confirm(t("settings.data.confirmWorkspace")))
                   requestDeletion.mutate("workspace");
               }}
             >
-              Delete workspace
+              {t("settings.data.deleteWorkspace")}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Requests are logged and processed within 30 days. Export your data first.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("settings.data.processed")}</p>
         </div>
 
         {(requests.data ?? []).length > 0 && (
@@ -206,10 +207,19 @@ export function DataPrivacyCard() {
                 key={r.id}
                 className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
               >
-                <span className="capitalize">
-                  {r.scope} deletion · {formatDayUnambiguous(r.created_at)}
+                <span>
+                  {t(
+                    r.scope === "workspace"
+                      ? "settings.data.requestWorkspace"
+                      : "settings.data.requestAccount",
+                    { date: formatDayUnambiguous(r.created_at) },
+                  )}
                 </span>
-                <span className="capitalize text-muted-foreground">{r.status}</span>
+                <span className="text-muted-foreground">
+                  {hasMessage(`settings.data.status.${r.status}`)
+                    ? t(`settings.data.status.${r.status}` as MessageKey)
+                    : r.status}
+                </span>
               </div>
             ))}
           </div>

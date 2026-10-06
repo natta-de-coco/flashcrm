@@ -285,7 +285,12 @@ describe("a thread of only our own messages cannot be answered", () => {
     assert.match(inbox, /disabled=\{submit\.isPending \|\| !activeInbound\}/);
     assert.match(inbox, /disabled=\{draft\.isPending \|\| !activeInbound\}/);
     assert.match(inbox, /disabled=\{archive\.isPending \|\| !activeInbound\}/);
-    assert.match(inbox, /Nothing to reply to/);
+    // Said through a translation key now; the English is still this sentence.
+    assert.match(inbox, /socialInbox\.nothingToReplyToThis/);
+    assert.match(
+      read("src/lib/i18n/screens/social-inbox.ts"),
+      /"socialInbox\.nothingToReplyToThis":\s*"Nothing to reply to/,
+    );
   });
 });
 

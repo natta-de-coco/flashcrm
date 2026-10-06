@@ -10,6 +10,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, ListChecks, MessageCircleQuestion, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 type Question = { id: string; question: string; why: string };
 type Plan = {
@@ -23,6 +25,7 @@ type Plan = {
  * in live traffic and product data before handing back next actions.
  */
 export function FollowUpCard() {
+  const { t, tr } = useI18n();
   const start = useServerFn(startAdvisorFollowUp);
   const complete = useServerFn(completeAdvisorFollowUp);
 
@@ -37,7 +40,7 @@ export function FollowUpCard() {
       setAnswers({});
       setQuestions(res.questions);
       if (res.questions.length === 0) {
-        toast.error("The advisor needs a bit more business data before interviewing you.");
+        toast.error(t("followUpCard.theAdvisorNeedsABit"));
       }
     },
     onError: (e: Error) => toast.error(e.message),
@@ -60,12 +63,9 @@ export function FollowUpCard() {
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
-            <MessageCircleQuestion className="size-4 text-brand" /> Follow-up mode
+            <MessageCircleQuestion className="size-4 text-brand" /> {t("followUpCard.followUpMode")}
           </CardTitle>
-          <CardDescription>
-            Your advisor interviews you first — 3 to 5 questions based on your latest traffic and
-            product data — then returns a prioritised action plan.
-          </CardDescription>
+          <CardDescription>{t("followUpCard.yourAdvisorInterviewsYouFirst")}</CardDescription>
         </div>
         <Button
           size="sm"
@@ -75,10 +75,10 @@ export function FollowUpCard() {
         >
           {questions.length > 0 ? <RotateCcw className="size-4" /> : null}
           {begin.isPending
-            ? "Preparing questions…"
+            ? t("followUpCard.preparingQuestions")
             : questions.length > 0
-              ? "New interview"
-              : "Start follow-up"}
+              ? t("followUpCard.newInterview")
+              : t("followUpCard.startFollowUp")}
         </Button>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
@@ -90,10 +90,7 @@ export function FollowUpCard() {
         ) : null}
 
         {questions.length === 0 && !begin.isPending ? (
-          <p className="text-muted-foreground">
-            Start the follow-up when you want advice tuned to your capacity, margins and priorities
-            rather than the numbers alone.
-          </p>
+          <p className="text-muted-foreground">{t("followUpCard.startTheFollowUpWhen")}</p>
         ) : null}
 
         {questions.map((q, i) => (
@@ -102,12 +99,14 @@ export function FollowUpCard() {
               {i + 1}. {q.question}
             </Label>
             {q.why ? (
-              <p className="text-xs text-muted-foreground">Why it matters: {q.why}</p>
+              <p className="text-xs text-muted-foreground">
+                {tr("followUpCard.whyItMatters", { why: q.why })}
+              </p>
             ) : null}
             <Textarea
               id={q.id}
               rows={2}
-              placeholder="Your answer…"
+              placeholder={t("followUpCard.yourAnswer")}
               value={answers[q.id] ?? ""}
               onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
             />
@@ -121,7 +120,9 @@ export function FollowUpCard() {
             disabled={finish.isPending}
           >
             <ListChecks className="size-4" />
-            {finish.isPending ? "Building your plan…" : "Get my next actions"}
+            {finish.isPending
+              ? t("followUpCard.buildingYourPlan")
+              : t("followUpCard.getMyNextActions")}
           </Button>
         ) : null}
 
@@ -137,7 +138,9 @@ export function FollowUpCard() {
                       variant={a.impact === "high" ? "default" : "outline"}
                       className="text-[10px]"
                     >
-                      {a.impact} impact
+                      {hasMessage(`advisor.impactLevel.${a.impact}`)
+                        ? t(`advisor.impactLevel.${a.impact}` as MessageKey)
+                        : tr("followUpCard.impact", { impact: a.impact })}
                     </Badge>
                     <Badge variant="secondary" className="text-[10px]">
                       {a.when}
@@ -145,7 +148,9 @@ export function FollowUpCard() {
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{a.why}</p>
                   {a.owner ? (
-                    <p className="mt-1 text-xs text-muted-foreground">Owner: {a.owner}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {tr("followUpCard.owner", { owner: a.owner })}
+                    </p>
                   ) : null}
                 </div>
               ))}
@@ -153,9 +158,9 @@ export function FollowUpCard() {
             {plan.watchouts.length > 0 ? (
               <div className="grid gap-1">
                 <p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  <AlertTriangle className="size-3.5" /> Watch out for
+                  <AlertTriangle className="size-3.5" /> {t("followUpCard.watchOutFor")}
                 </p>
-                <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                <ul className="list-disc ps-5 text-xs text-muted-foreground">
                   {plan.watchouts.map((w, i) => (
                     <li key={i}>{w}</li>
                   ))}

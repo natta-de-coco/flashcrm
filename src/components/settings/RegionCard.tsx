@@ -27,8 +27,12 @@ import { useServerFn } from "@tanstack/react-start";
 import { Globe2, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { useTenant } from "@/hooks/useTenant";
 
 export function RegionCard() {
+  const { t, tr } = useI18n();
+  const { refresh } = useTenant();
   const qc = useQueryClient();
   const save = useServerFn(saveWorkspaceRegion);
   const region = useQuery({ queryKey: ["workspace-region"], queryFn: () => getWorkspaceRegion() });
@@ -49,8 +53,14 @@ export function RegionCard() {
   const mutation = useMutation({
     mutationFn: async () => save({ data: { country, currency, locale, timezone } }),
     onSuccess: () => {
-      toast.success("Regional settings saved — amounts, dates and AI replies now follow them.");
+      // It used to promise that AI replies follow the language. They do not:
+      // the chatbot answers in the customer's own language.
+      toast.success(t("regionCard.regionalSettingsSaved"));
       void qc.invalidateQueries({ queryKey: ["workspace-region"] });
+      // The workspace record is loaded once per signed-in user, so the saved
+      // company language would not reach anyone -- this admin included --
+      // until a full reload.
+      void refresh();
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -62,12 +72,9 @@ export function RegionCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Globe2 className="size-4 text-primary" /> Region, currency &amp; language
+          <Globe2 className="size-4 text-primary" /> {t("regionCard.regionCurrencyLanguage")}
         </CardTitle>
-        <CardDescription>
-          Flas adapts to where your business operates: invoices, dates, campaign timing and the
-          marketing rules we enforce all follow this.
-        </CardDescription>
+        <CardDescription>{t("regionCard.flasAdaptsToWhereYour")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {region.isLoading ? (
@@ -76,7 +83,7 @@ export function RegionCard() {
           <>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label>Country</Label>
+                <Label>{t("regionCard.country")}</Label>
                 <Select
                   value={country}
                   onValueChange={(value) => {
@@ -101,7 +108,7 @@ export function RegionCard() {
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label>Currency</Label>
+                <Label>{t("regionCard.currency")}</Label>
                 <Select value={currency} onValueChange={setCurrency}>
                   <SelectTrigger>
                     <SelectValue />
@@ -116,7 +123,7 @@ export function RegionCard() {
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label>Language</Label>
+                <Label>{t("regionCard.companyLanguage")}</Label>
                 <Select value={locale} onValueChange={setLocale}>
                   <SelectTrigger>
                     <SelectValue />
@@ -129,9 +136,12 @@ export function RegionCard() {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t("regionCard.theInterfaceLanguageForTeammates")}
+                </p>
               </div>
               <div className="grid gap-1.5">
-                <Label>Timezone</Label>
+                <Label>{t("regionCard.timezone")}</Label>
                 <Select value={timezone} onValueChange={setTimezone}>
                   <SelectTrigger>
                     <SelectValue />
@@ -150,11 +160,13 @@ export function RegionCard() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Preview: {formatMoney(1999.5, preview)} ·{" "}
-              {new Intl.DateTimeFormat(`${locale}-${country}`, {
-                dateStyle: "long",
-                timeZone: timezone,
-              }).format(new Date())}
+              {tr("regionCard.preview", {
+                formatMoney: formatMoney(1999.5, preview),
+                format: new Intl.DateTimeFormat(`${locale}-${country}`, {
+                  dateStyle: "long",
+                  timeZone: timezone,
+                }).format(new Date()),
+              })}
             </p>
 
             <div className="rounded-lg border bg-muted/40 p-3">
@@ -173,7 +185,7 @@ export function RegionCard() {
               disabled={mutation.isPending}
               onClick={() => mutation.mutate()}
             >
-              {mutation.isPending ? "Saving…" : "Save regional settings"}
+              {mutation.isPending ? t("regionCard.saving") : t("regionCard.saveRegionalSettings")}
             </Button>
           </>
         )}

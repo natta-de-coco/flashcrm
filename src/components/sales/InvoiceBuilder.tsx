@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { todayInTimeZone } from "@/lib/locale";
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo } from "react";
+import { useI18n } from "@/hooks/useI18n";
 
 export type BuilderItem = {
   product_id: string | null;
@@ -159,6 +160,7 @@ export function InvoiceBuilder({
   contacts: Contact[];
   products: Product[];
 }) {
+  const i18n = useI18n();
   const totals = useMemo(() => previewTotals(state), [state]);
   const money = (value: number) => `${state.currency} ${value.toFixed(2)}`;
 
@@ -197,30 +199,30 @@ export function InvoiceBuilder({
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Document</CardTitle>
+          <CardTitle className="text-base">{i18n.t("invoiceBuilder.document")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
-            <Label>Type</Label>
+            <Label>{i18n.t("invoiceBuilder.type")}</Label>
             <Select value={state.kind} onValueChange={(v) => patch({ kind: v as "invoice" })}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="quotation">Quotation</SelectItem>
-                <SelectItem value="invoice">Invoice</SelectItem>
+                <SelectItem value="quotation">{i18n.t("invoiceBuilder.quotation")}</SelectItem>
+                <SelectItem value="invoice">{i18n.t("invoiceBuilder.invoice")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Currency</Label>
+            <Label>{i18n.t("invoiceBuilder.currency")}</Label>
             <Input
               value={state.currency}
               onChange={(e) => patch({ currency: e.target.value.toUpperCase().slice(0, 6) })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Issue date</Label>
+            <Label>{i18n.t("invoiceBuilder.issueDate")}</Label>
             <Input
               type="date"
               value={state.issue_date}
@@ -229,7 +231,7 @@ export function InvoiceBuilder({
           </div>
           {state.kind === "invoice" ? (
             <div className="space-y-1.5">
-              <Label>Due date</Label>
+              <Label>{i18n.t("invoiceBuilder.dueDate")}</Label>
               <Input
                 type="date"
                 value={state.due_date}
@@ -238,7 +240,7 @@ export function InvoiceBuilder({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <Label>Valid until</Label>
+              <Label>{i18n.t("invoiceBuilder.validUntil")}</Label>
               <Input
                 type="date"
                 value={state.valid_until}
@@ -247,18 +249,18 @@ export function InvoiceBuilder({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label>Reference</Label>
+            <Label>{i18n.t("invoiceBuilder.reference")}</Label>
             <Input value={state.reference} onChange={(e) => patch({ reference: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>PO number</Label>
+            <Label>{i18n.t("invoiceBuilder.poNumber")}</Label>
             <Input value={state.po_number} onChange={(e) => patch({ po_number: e.target.value })} />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label>Payment terms</Label>
+            <Label>{i18n.t("invoiceBuilder.paymentTerms")}</Label>
             <Input
               value={state.payment_terms}
-              placeholder="50% advance, balance on delivery"
+              placeholder={i18n.t("invoiceBuilder.50AdvanceBalanceOnDelivery")}
               onChange={(e) => patch({ payment_terms: e.target.value })}
             />
           </div>
@@ -267,14 +269,14 @@ export function InvoiceBuilder({
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Customer</CardTitle>
+          <CardTitle className="text-base">{i18n.t("invoiceBuilder.customer")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
-            <Label>Pick from contacts</Label>
+            <Label>{i18n.t("invoiceBuilder.pickFromContacts")}</Label>
             <Select value={state.contact_id ?? ""} onValueChange={pickContact}>
               <SelectTrigger>
-                <SelectValue placeholder="Search your CRM contacts" />
+                <SelectValue placeholder={i18n.t("invoiceBuilder.searchYourCrmContacts")} />
               </SelectTrigger>
               <SelectContent>
                 {contacts.map((contact) => (
@@ -287,21 +289,21 @@ export function InvoiceBuilder({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Name</Label>
+            <Label>{i18n.t("invoiceBuilder.name")}</Label>
             <Input
               value={state.customer.name}
               onChange={(e) => patch({ customer: { ...state.customer, name: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Company</Label>
+            <Label>{i18n.t("invoiceBuilder.company")}</Label>
             <Input
               value={state.customer.company}
               onChange={(e) => patch({ customer: { ...state.customer, company: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>WhatsApp number</Label>
+            <Label>{i18n.t("invoiceBuilder.whatsappNumber")}</Label>
             <Input
               value={state.customer.phone}
               placeholder="+9715XXXXXXX"
@@ -309,21 +311,21 @@ export function InvoiceBuilder({
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Email</Label>
+            <Label>{i18n.t("invoiceBuilder.email")}</Label>
             <Input
               value={state.customer.email}
               onChange={(e) => patch({ customer: { ...state.customer, email: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Address</Label>
+            <Label>{i18n.t("invoiceBuilder.address")}</Label>
             <Input
               value={state.customer.address}
               onChange={(e) => patch({ customer: { ...state.customer, address: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>VAT / TRN</Label>
+            <Label>{i18n.t("invoiceBuilder.vatTrn")}</Label>
             <Input
               value={state.customer.vat_number}
               onChange={(e) =>
@@ -336,13 +338,13 @@ export function InvoiceBuilder({
 
       <Card>
         <CardHeader className="flex-row items-center justify-between pb-3">
-          <CardTitle className="text-base">Items</CardTitle>
+          <CardTitle className="text-base">{i18n.t("invoiceBuilder.items")}</CardTitle>
           <Button
             size="sm"
             variant="outline"
             onClick={() => patch({ items: [...state.items, emptyItem()] })}
           >
-            <Plus className="mr-1 h-4 w-4" /> Add line
+            <Plus className="me-1 h-4 w-4" /> {i18n.t("invoiceBuilder.addLine")}
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -352,13 +354,13 @@ export function InvoiceBuilder({
               <div key={index} className="rounded-lg border p-3">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-1.5 lg:col-span-2">
-                    <Label>From catalog</Label>
+                    <Label>{i18n.t("invoiceBuilder.fromCatalog")}</Label>
                     <Select
                       value={item.product_id ?? ""}
                       onValueChange={(v) => pickProduct(index, v)}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Optional — pick a product" />
+                        <SelectValue placeholder={i18n.t("invoiceBuilder.optionalPickAProduct")} />
                       </SelectTrigger>
                       <SelectContent>
                         {products.map((product) => (
@@ -371,15 +373,15 @@ export function InvoiceBuilder({
                     </Select>
                   </div>
                   <div className="space-y-1.5 lg:col-span-2">
-                    <Label>Description shown on the PDF</Label>
+                    <Label>{i18n.t("invoiceBuilder.descriptionShownOnThePdf")}</Label>
                     <Input
                       value={item.name}
-                      placeholder="Item name"
+                      placeholder={i18n.t("invoiceBuilder.itemName")}
                       onChange={(e) => patchItem(index, { name: e.target.value })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Qty</Label>
+                    <Label>{i18n.t("invoiceBuilder.qty")}</Label>
                     <Input
                       type="number"
                       min={0}
@@ -388,7 +390,7 @@ export function InvoiceBuilder({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Unit price</Label>
+                    <Label>{i18n.t("invoiceBuilder.unitPrice")}</Label>
                     <Input
                       type="number"
                       min={0}
@@ -398,7 +400,7 @@ export function InvoiceBuilder({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Discount</Label>
+                    <Label>{i18n.t("invoiceBuilder.discount")}</Label>
                     <div className="flex gap-2">
                       <Input
                         type="number"
@@ -417,13 +419,13 @@ export function InvoiceBuilder({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="percent">%</SelectItem>
-                          <SelectItem value="fixed">Amt</SelectItem>
+                          <SelectItem value="fixed">{i18n.t("invoiceBuilder.amt")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Tax %</Label>
+                    <Label>{i18n.t("invoiceBuilder.tax")}</Label>
                     <Input
                       type="number"
                       min={0}
@@ -435,8 +437,15 @@ export function InvoiceBuilder({
                 </div>
                 <div className="mt-3 flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">
-                    Net {money(t.net)} · Tax {money(t.tax)} ·{" "}
-                    <span className="font-semibold text-foreground">Line {money(t.total)}</span>
+                    {i18n.tr("invoiceBuilder.netTax", {
+                      money: money(t.net),
+                      money2: money(t.tax),
+                      span: (
+                        <span className="font-semibold text-foreground">
+                          {i18n.tr("invoiceBuilder.line", { money: money(t.total) })}
+                        </span>
+                      ),
+                    })}
                   </span>
                   {state.items.length > 1 ? (
                     <Button
@@ -456,12 +465,12 @@ export function InvoiceBuilder({
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Totals & notes</CardTitle>
+          <CardTitle className="text-base">{i18n.t("invoiceBuilder.totalsNotes")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-2">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Invoice discount</Label>
+              <Label>{i18n.t("invoiceBuilder.invoiceDiscount")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -470,7 +479,7 @@ export function InvoiceBuilder({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Shipping</Label>
+              <Label>{i18n.t("invoiceBuilder.shipping")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -479,7 +488,7 @@ export function InvoiceBuilder({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Other charges</Label>
+              <Label>{i18n.t("invoiceBuilder.otherCharges")}</Label>
               <Input
                 type="number"
                 min={0}
@@ -488,7 +497,7 @@ export function InvoiceBuilder({
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Rounding / adjustment</Label>
+              <Label>{i18n.t("invoiceBuilder.roundingAdjustment")}</Label>
               <Input
                 type="number"
                 value={state.adjustment}
@@ -496,7 +505,7 @@ export function InvoiceBuilder({
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Notes to customer</Label>
+              <Label>{i18n.t("invoiceBuilder.notesToCustomer")}</Label>
               <Textarea
                 rows={2}
                 value={state.notes}
@@ -504,7 +513,7 @@ export function InvoiceBuilder({
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Terms & conditions</Label>
+              <Label>{i18n.t("invoiceBuilder.termsConditions")}</Label>
               <Textarea
                 rows={3}
                 value={state.terms}
@@ -514,24 +523,23 @@ export function InvoiceBuilder({
           </div>
           <div className="rounded-lg bg-muted/50 p-4 text-sm">
             <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Subtotal</span>
+              <span className="text-muted-foreground">{i18n.t("invoiceBuilder.subtotal")}</span>
               <span>{money(totals.subtotal)}</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Discounts</span>
+              <span className="text-muted-foreground">{i18n.t("invoiceBuilder.discounts")}</span>
               <span>-{money(totals.discountTotal)}</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-muted-foreground">Tax</span>
+              <span className="text-muted-foreground">{i18n.t("invoiceBuilder.tax2")}</span>
               <span>{money(totals.taxTotal)}</span>
             </div>
             <div className="mt-2 flex justify-between border-t pt-2 text-base font-bold">
-              <span>Grand total</span>
+              <span>{i18n.t("invoiceBuilder.grandTotal")}</span>
               <span>{money(totals.grand)}</span>
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
-              Final figures are recalculated on the server when you save, so the PDF always matches
-              your records.
+              {i18n.t("invoiceBuilder.finalFiguresAreRecalculatedOn")}
             </p>
           </div>
         </CardContent>

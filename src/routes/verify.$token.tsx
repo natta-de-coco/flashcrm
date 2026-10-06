@@ -5,6 +5,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { verifyDocument } from "@/lib/public-billing.functions";
 import { createFileRoute } from "@tanstack/react-router";
 import { ShieldCheck, ShieldX } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
+import type { MessageKey } from "@/lib/i18n";
+
+/** One line in the reader's language, for the states the route shows without the page. */
+function Notice({ message }: { message: MessageKey }) {
+  const { t } = useI18n();
+  return <p className="text-sm text-muted-foreground">{t(message)}</p>;
+}
 
 export const Route = createFileRoute("/verify/$token")({
   loader: ({ params }) => verifyDocument({ data: { token: params.token } }),
@@ -28,12 +36,12 @@ export const Route = createFileRoute("/verify/$token")({
   }),
   errorComponent: () => (
     <Wrapper>
-      <p className="text-sm text-muted-foreground">Verification is temporarily unavailable.</p>
+      <Notice message="verifyToken.temporarilyUnavailable" />
     </Wrapper>
   ),
   notFoundComponent: () => (
     <Wrapper>
-      <p className="text-sm text-muted-foreground">No document matches this code.</p>
+      <Notice message="verifyToken.noDocumentMatches" />
     </Wrapper>
   ),
   component: VerifyPage,
@@ -44,6 +52,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 }
 
 function VerifyPage() {
+  const { t, tr } = useI18n();
   const doc = Route.useLoaderData();
 
   if (!doc) {
@@ -52,12 +61,9 @@ function VerifyPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
-              <ShieldX className="h-5 w-5" /> Not verified
+              <ShieldX className="h-5 w-5" /> {t("verifyToken.notVerified")}
             </CardTitle>
-            <CardDescription>
-              This code does not match any document issued through Flas. Treat the document as
-              unverified and contact the sender.
-            </CardDescription>
+            <CardDescription>{t("verifyToken.thisCodeDoesNotMatch")}</CardDescription>
           </CardHeader>
         </Card>
       </Wrapper>
@@ -69,34 +75,38 @@ function VerifyPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-emerald-600">
-            <ShieldCheck className="h-5 w-5" /> Genuine document
+            <ShieldCheck className="h-5 w-5" /> {t("verifyToken.genuineDocument")}
           </CardTitle>
           <CardDescription>
-            Issued through Flas by {doc.issuer ?? "the seller"} and unchanged since it was
-            finalised.
+            {tr("verifyToken.issuedThroughFlasByAnd", {
+              value: doc.issuer ?? t("verifyToken.theSeller"),
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <Row label="Type" value={doc.kind.replace("_", " ")} />
-          <Row label="Number" value={doc.doc_number} />
-          <Row label="Verification ID" value={doc.verification_id ?? "—"} />
-          <Row label="Issued" value={doc.issue_date} />
-          <Row label="Amount" value={`${doc.currency} ${doc.grand_total.toFixed(2)}`} />
+          <Row label={t("verifyToken.type")} value={doc.kind.replace("_", " ")} />
+          <Row label={t("verifyToken.number")} value={doc.doc_number} />
+          <Row label={t("verifyToken.verificationId")} value={doc.verification_id ?? "—"} />
+          <Row label={t("verifyToken.issued")} value={doc.issue_date} />
           <Row
-            label="Balance"
+            label={t("verifyToken.amount")}
+            value={`${doc.currency} ${doc.grand_total.toFixed(2)}`}
+          />
+          <Row
+            label={t("verifyToken.balance")}
             value={
               doc.balance <= 0 ? "Settled in full" : `${doc.currency} ${doc.balance.toFixed(2)} due`
             }
           />
           <div className="flex items-center justify-between pt-2">
-            <span className="text-muted-foreground">Status</span>
+            <span className="text-muted-foreground">{t("verifyToken.status")}</span>
             <Badge variant="secondary" className="capitalize">
               {doc.status.replace("_", " ")}
             </Badge>
           </div>
           {doc.pdf_hash ? (
             <p className="break-all pt-3 text-xs text-muted-foreground">
-              PDF fingerprint: {doc.pdf_hash}
+              {tr("verifyToken.pdfFingerprint", { pdfhash: doc.pdf_hash })}
             </p>
           ) : null}
         </CardContent>
@@ -109,7 +119,7 @@ function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4">
       <span className="text-muted-foreground">{label}</span>
-      <span className="text-right font-medium capitalize">{value}</span>
+      <span className="text-end font-medium capitalize">{value}</span>
     </div>
   );
 }
