@@ -3,9 +3,14 @@
 // it. Regional messaging rules are surfaced so a company in the EU, US, India
 // or the Gulf is guided by the rules that actually apply to it.
 
+import { COUNTRY_RECORDS, SHARED_CALLING_CODE_OWNER, type ComplianceRegion } from "./countries";
+
+export type { ComplianceRegion } from "./countries";
+
 export type CurrencyOption = { code: string; label: string; symbol: string };
 
-export const CURRENCIES: CurrencyOption[] = [
+/** Currencies with a preferred label and symbol; the rest are derived below. */
+const NAMED_CURRENCIES: CurrencyOption[] = [
   { code: "USD", label: "US Dollar", symbol: "$" },
   { code: "EUR", label: "Euro", symbol: "€" },
   { code: "GBP", label: "British Pound", symbol: "£" },
@@ -35,6 +40,46 @@ export const CURRENCIES: CurrencyOption[] = [
   { code: "CNY", label: "Chinese Yuan", symbol: "¥" },
 ];
 
+/**
+ * A currency's English name and narrow symbol from the platform's own data, so
+ * the list can follow the country table without a hand-kept copy that drifts.
+ */
+function deriveCurrency(code: string): CurrencyOption {
+  let label = code;
+  let symbol = code;
+  try {
+    label = new Intl.DisplayNames(["en"], { type: "currency" }).of(code) ?? code;
+  } catch {
+    // An engine without DisplayNames still gets a usable option.
+  }
+  try {
+    const part = new Intl.NumberFormat("en", {
+      style: "currency",
+      currency: code,
+      currencyDisplay: "narrowSymbol",
+    })
+      .formatToParts(0)
+      .find((p) => p.type === "currency");
+    if (part?.value) symbol = part.value;
+  } catch {
+    // Keep the code as the symbol.
+  }
+  return { code, label, symbol };
+}
+
+/**
+ * Every currency a country in COUNTRIES uses, plus the named ones above. Kept
+ * in step with the country table: choosing a country must never select a
+ * currency the Currency picker -- and the server's validation -- does not know.
+ */
+export const CURRENCIES: CurrencyOption[] = (() => {
+  const known = new Map(NAMED_CURRENCIES.map((c) => [c.code, c]));
+  for (const country of COUNTRY_RECORDS) {
+    if (!known.has(country.currency)) known.set(country.currency, deriveCurrency(country.currency));
+  }
+  return [...known.values()];
+})();
+
 export type LanguageOption = { code: string; label: string; native: string; rtl?: boolean };
 
 export const LANGUAGES: LanguageOption[] = [
@@ -61,67 +106,20 @@ export type CountryOption = {
   name: string;
   currency: string;
   timezone: string;
+  /** International calling code, without the plus: "971". */
+  callingCode: string;
   region: ComplianceRegion;
 };
 
-export type ComplianceRegion = "eu" | "uk" | "us" | "canada" | "gcc" | "india" | "apac" | "global";
-
-export const COUNTRIES: CountryOption[] = [
-  {
-    code: "AE",
-    name: "United Arab Emirates",
-    currency: "AED",
-    timezone: "Asia/Dubai",
-    region: "gcc",
-  },
-  { code: "SA", name: "Saudi Arabia", currency: "SAR", timezone: "Asia/Riyadh", region: "gcc" },
-  { code: "QA", name: "Qatar", currency: "QAR", timezone: "Asia/Qatar", region: "gcc" },
-  { code: "KW", name: "Kuwait", currency: "KWD", timezone: "Asia/Kuwait", region: "gcc" },
-  { code: "OM", name: "Oman", currency: "OMR", timezone: "Asia/Muscat", region: "gcc" },
-  { code: "BH", name: "Bahrain", currency: "BHD", timezone: "Asia/Bahrain", region: "gcc" },
-  { code: "GB", name: "United Kingdom", currency: "GBP", timezone: "Europe/London", region: "uk" },
-  { code: "IE", name: "Ireland", currency: "EUR", timezone: "Europe/Dublin", region: "eu" },
-  { code: "DE", name: "Germany", currency: "EUR", timezone: "Europe/Berlin", region: "eu" },
-  { code: "FR", name: "France", currency: "EUR", timezone: "Europe/Paris", region: "eu" },
-  { code: "ES", name: "Spain", currency: "EUR", timezone: "Europe/Madrid", region: "eu" },
-  { code: "IT", name: "Italy", currency: "EUR", timezone: "Europe/Rome", region: "eu" },
-  { code: "NL", name: "Netherlands", currency: "EUR", timezone: "Europe/Amsterdam", region: "eu" },
-  {
-    code: "US",
-    name: "United States",
-    currency: "USD",
-    timezone: "America/New_York",
-    region: "us",
-  },
-  { code: "CA", name: "Canada", currency: "CAD", timezone: "America/Toronto", region: "canada" },
-  {
-    code: "MX",
-    name: "Mexico",
-    currency: "MXN",
-    timezone: "America/Mexico_City",
-    region: "global",
-  },
-  { code: "BR", name: "Brazil", currency: "BRL", timezone: "America/Sao_Paulo", region: "global" },
-  { code: "IN", name: "India", currency: "INR", timezone: "Asia/Kolkata", region: "india" },
-  { code: "PK", name: "Pakistan", currency: "PKR", timezone: "Asia/Karachi", region: "apac" },
-  { code: "BD", name: "Bangladesh", currency: "BDT", timezone: "Asia/Dhaka", region: "apac" },
-  { code: "SG", name: "Singapore", currency: "SGD", timezone: "Asia/Singapore", region: "apac" },
-  { code: "MY", name: "Malaysia", currency: "MYR", timezone: "Asia/Kuala_Lumpur", region: "apac" },
-  { code: "ID", name: "Indonesia", currency: "IDR", timezone: "Asia/Jakarta", region: "apac" },
-  { code: "PH", name: "Philippines", currency: "PHP", timezone: "Asia/Manila", region: "apac" },
-  { code: "AU", name: "Australia", currency: "AUD", timezone: "Australia/Sydney", region: "apac" },
-  { code: "TR", name: "Türkiye", currency: "TRY", timezone: "Europe/Istanbul", region: "global" },
-  { code: "EG", name: "Egypt", currency: "EGP", timezone: "Africa/Cairo", region: "global" },
-  { code: "NG", name: "Nigeria", currency: "NGN", timezone: "Africa/Lagos", region: "global" },
-  { code: "KE", name: "Kenya", currency: "KES", timezone: "Africa/Nairobi", region: "global" },
-  {
-    code: "ZA",
-    name: "South Africa",
-    currency: "ZAR",
-    timezone: "Africa/Johannesburg",
-    region: "global",
-  },
-];
+/**
+ * Every country a company can operate from, sorted by English name. Built from
+ * src/lib/countries.ts, which holds one row per country; the original 30 keep
+ * exactly the currency, timezone and region they had, so no saved workspace
+ * changes meaning.
+ */
+export const COUNTRIES: CountryOption[] = [...COUNTRY_RECORDS].sort((a, b) =>
+  a.name.localeCompare(b.name, "en"),
+);
 
 export type ComplianceProfile = {
   region: ComplianceRegion;
@@ -256,42 +254,17 @@ export function countryOption(code: string | null | undefined): CountryOption | 
   return COUNTRIES.find((c) => c.code === (code ?? "").toUpperCase());
 }
 
-/** E.164 calling code -> country. Longest-prefix-first so e.g. +1 (US/CA)
- *  doesn't swallow a country that happens to share a leading digit. */
-const CALLING_CODES_RAW: [string, string][] = [
-  ["971", "AE"],
-  ["966", "SA"],
-  ["974", "QA"],
-  ["965", "KW"],
-  ["968", "OM"],
-  ["973", "BH"],
-  ["880", "BD"],
-  ["234", "NG"],
-  ["254", "KE"],
-  ["44", "GB"],
-  ["353", "IE"],
-  ["49", "DE"],
-  ["33", "FR"],
-  ["34", "ES"],
-  ["39", "IT"],
-  ["31", "NL"],
-  ["52", "MX"],
-  ["55", "BR"],
-  ["91", "IN"],
-  ["92", "PK"],
-  ["65", "SG"],
-  ["60", "MY"],
-  ["62", "ID"],
-  ["63", "PH"],
-  ["61", "AU"],
-  ["90", "TR"],
-  ["20", "EG"],
-  ["27", "ZA"],
-  ["1", "US"], // shared by US/Canada — bucketed as US, the more common CRM base
-];
-const CALLING_CODES: [string, string][] = [...CALLING_CODES_RAW].sort(
-  (a, b) => b[0].length - a[0].length,
-);
+/**
+ * E.164 calling code -> country, longest prefix first so +1 (US/Canada) or +7
+ * (Russia/Kazakhstan) does not swallow a code that only shares its first digit.
+ * A code several countries share goes to the owner named in countries.ts.
+ */
+const CALLING_CODES: [string, string][] = COUNTRY_RECORDS.filter((c) => {
+  const owner = SHARED_CALLING_CODE_OWNER[c.callingCode];
+  return !owner || owner === c.code;
+})
+  .map((c): [string, string] => [c.callingCode, c.code])
+  .sort((a, b) => b[0].length - a[0].length);
 
 /** Best-effort country from a phone number's calling code. No new tracking
  *  needed — contacts don't have a city/country field today, so this is the
@@ -496,4 +469,70 @@ export function languageName(code: string | null | undefined): string {
 
 export function isRtl(code: string | null | undefined): boolean {
   return LANGUAGES.find((l) => l.code === code)?.rtl === true;
+}
+
+/**
+ * A country's name in the reader's language: "United Arab Emirates" in
+ * English, "الإمارات العربية المتحدة" in Arabic. Comes from the platform's own
+ * data, so all ~190 names are translated without a hand-kept list. Falls back
+ * to the English name in countries.ts when the engine has no DisplayNames.
+ */
+export function countryName(code: string | null | undefined, language = "en"): string {
+  const upper = (code ?? "").toUpperCase();
+  const english = countryOption(upper)?.name ?? upper;
+  if (!upper || language === "en") return english;
+  try {
+    const name = new Intl.DisplayNames([language], { type: "region" }).of(upper);
+    return name && name !== upper ? name : english;
+  } catch {
+    return english;
+  }
+}
+
+/**
+ * A currency's name in the interface language: "UAE Dirham" in English,
+ * "درهم إماراتي" in Arabic. From the platform's own data, like countryName, so
+ * every currency in the picker is named without a hand-kept list. Falls back
+ * to the English label when the engine has no name for it.
+ */
+export function currencyName(code: string | null | undefined, language = "en"): string {
+  const upper = (code ?? "").toUpperCase();
+  const english = CURRENCIES.find((c) => c.code === upper)?.label ?? upper;
+  if (!upper || language === "en") return english;
+  try {
+    const name = new Intl.DisplayNames([language], { type: "currency" }).of(upper);
+    return name && name !== upper ? name : english;
+  } catch {
+    return english;
+  }
+}
+
+/** True when the zone is a real IANA zone this engine can format in. */
+export function isValidTimeZone(zone: string | null | undefined): boolean {
+  if (!zone) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every timezone a workspace can choose. Offering only each country's main
+ * zone left a US company in Los Angeles, or an Australian one in Perth, unable
+ * to pick its own clock.
+ */
+export function allTimeZones(): string[] {
+  const zones = new Set<string>(["UTC"]);
+  try {
+    const supported = (
+      Intl as unknown as { supportedValuesOf?: (key: string) => string[] }
+    ).supportedValuesOf?.("timeZone");
+    for (const zone of supported ?? []) zones.add(zone);
+  } catch {
+    // Older engines: the country defaults below are still offered.
+  }
+  for (const country of COUNTRIES) zones.add(country.timezone);
+  return [...zones].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
 }
