@@ -114,10 +114,17 @@ export function createDb() {
         // A table can declare the unique key the real schema has, because code
         // that relies on a unique violation (23505) to stay correct under
         // concurrency has to be tested against one.
-        const unique = state.uniques[this.table];
+        const uniques = state.uniques[this.table] ?? [];
         const incoming = Array.isArray(this.payload) ? this.payload : [this.payload];
-        if (unique) {
-          const clash = incoming.find((p) => table.some((r) => unique.every((k) => r[k] === p[k])));
+        if (uniques.length > 0) {
+          // As in Postgres, a key with a NULL in it never collides.
+          const clash = incoming.find((p) =>
+            uniques.some(
+              (unique) =>
+                unique.every((k) => p[k] != null) &&
+                table.some((r) => unique.every((k) => r[k] === p[k])),
+            ),
+          );
           if (clash) {
             return Promise.resolve({
               data: null,
@@ -189,9 +196,16 @@ export function createDb() {
     fail(key, error) {
       state.faults[key] = error;
     },
-    /** Declares a table's unique key, so a second identical insert fails as 23505. */
+    /**
+     * Declares a unique key on a table, so a second identical insert fails as
+     * 23505. A table can have several (a primary key and a unique index).
+     */
     unique(table, columns) {
-      state.uniques[table] = columns;
+      (state.uniques[table] ??= []).push(columns);
+    },
+    /** Lifts a fault set with fail(): the database has recovered. */
+    recover(key) {
+      delete state.faults[key];
     },
   };
 }

@@ -786,6 +786,18 @@ export async function ingestInboundMessage(args: IngestArgs) {
   return result(reply, replyMessageId);
 }
 
+/** Said when a message could not be saved. Nothing was sent, so trying again is safe. */
+export const OUTBOUND_NOT_SAVED_TEXT =
+  "Could not save this message in the CRM, so it was not sent. Try again.";
+
+/** The row a caller asked to save is already there: the same send, arriving again. */
+export class OutboundAlreadySaved extends Error {
+  constructor(readonly messageId: string) {
+    super("This message was already saved.");
+    this.name = "OutboundAlreadySaved";
+  }
+}
+
 /** Returns the id of the inserted message row, so callers can later attach a
  *  wa_message_id by primary key instead of matching on message body text
  *  (matching by text let two concurrent identical canned replies tag the
@@ -803,12 +815,18 @@ export async function storeOutbound(
    * customer had received it.
    */
   status: WaMessageStatus = "sent",
+  /**
+   * The row's id, when the sender named this message. A second save under the
+   * same id is the same send arriving again, and throws OutboundAlreadySaved.
+   */
+  id?: string | null,
   // Never null: a failed insert throws, so a caller always has a row to
   // complete after the provider answers.
 ): Promise<string> {
   const { data, error } = await supabaseAdmin
     .from("messages")
     .insert({
+      ...(id ? { id } : {}),
       conversation_id: conversationId,
       direction: "outbound",
       sender,
@@ -820,9 +838,8 @@ export async function storeOutbound(
     })
     .select("id")
     .single();
-  if (error || !data?.id) {
-    throw new Error("Could not save this message in the CRM. It was not marked as sent.");
-  }
+  if (error?.code === "23505" && id) throw new OutboundAlreadySaved(id);
+  if (error || !data?.id) throw new Error(OUTBOUND_NOT_SAVED_TEXT);
   await supabaseAdmin
     .from("conversations")
     .update({

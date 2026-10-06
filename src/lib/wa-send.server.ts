@@ -4,9 +4,9 @@
 // be skipped by a caller:
 //   1. the conversation is read inside the sender's own workspace
 //   2. the safety gate decides, and says why not
-//   3. the same click is recognised and sent once
-//   4. the message is saved BEFORE the provider is called
-//   5. the provider's answer is recorded as what it is: accepted, refused, or
+//   3. the message is saved BEFORE the provider is called, under an id the
+//      same click always maps to -- so a repeat cannot be saved, and stops
+//   4. the provider's answer is recorded as what it is: accepted, refused, or
 //      not known
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { logAudit } from "@/lib/audit.server";
@@ -19,6 +19,8 @@ import {
   deliverWhatsAppTemplate,
   deliverWhatsAppText,
   findOrCreateWhatsAppConversation,
+  OUTBOUND_NOT_SAVED_TEXT,
+  OutboundAlreadySaved,
   resolveSendingNumber,
   storeOutbound,
   type WaCredentials,
@@ -35,7 +37,10 @@ export type SendState =
   | "unconfirmed"
   /** The safety gate stopped it. Nothing was saved or sent. */
   | "blocked"
-  /** The same click arrived twice; this copy did nothing. */
+  /**
+   * This message is already saved, by an earlier copy of the same request.
+   * This copy sent nothing; `messageId` is the message.
+   */
   | "duplicate";
 
 export type SendResult = {
@@ -71,37 +76,86 @@ const base = (gate: SendCheck | null): Omit<SendResult, "ok" | "state"> => ({
   rendered: null,
 });
 
-const SEND_CLAIM = "outbound:send";
-
 /**
- * True the first time a workspace sends `clientRef`, false for a repeat.
+ * The row id of a message the sender named with a reference.
  *
- * A double click, a second Enter, or a request the browser retried all carry
- * the same reference. Disabling the button stops none of those reliably; the
- * unique key in the database does, because only one insert can win.
+ * A double click, a second Enter and a request repeated after a lost response
+ * all carry the same reference, so they all ask to save the same row -- and a
+ * primary key admits one. The message is its own claim. There is no second
+ * record that could exist without the message (a send claimed and never
+ * saved), be missing while the message goes out (a guard that was down), or
+ * expire before a retry arrives.
+ *
+ * Derived here from the workspace and the conversation as well as the
+ * reference, so a reference cannot name, or collide with, a row anywhere else.
  */
-async function claimSendOnce(tenantId: string, clientRef?: string | null): Promise<boolean> {
-  if (!clientRef) return true;
-  const { error } = await supabaseAdmin
-    .from("webhook_dedup")
-    .insert({ event_source: SEND_CLAIM, event_id: `${tenantId}:${clientRef}` });
-  if (!error) return true;
-  if (error.code === "23505") return false;
-  // Not being able to record the claim must not stop a person replying to a
-  // customer. The send goes ahead; only the duplicate guard is lost.
-  console.error("[whatsapp] could not record send for deduplication", error.code ?? "");
-  return true;
+async function messageIdFor(
+  tenantId: string,
+  conversationId: string,
+  clientRef?: string | null,
+): Promise<string | null> {
+  if (!clientRef) return null;
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`flas:outbound:${tenantId}:${conversationId}:${clientRef}`),
+  );
+  const bytes = new Uint8Array(digest).slice(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x80; // version 8: an application-defined UUID
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80; // RFC 9562 variant
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20),
+  ].join("-");
 }
 
-/** Undoes claimSendOnce when nothing was saved, so the same click can be tried again. */
-async function releaseSend(tenantId: string, clientRef?: string | null): Promise<void> {
-  if (!clientRef) return;
-  const { error } = await supabaseAdmin
-    .from("webhook_dedup")
-    .delete()
-    .eq("event_source", SEND_CLAIM)
-    .eq("event_id", `${tenantId}:${clientRef}`);
-  if (error) console.error("[whatsapp] could not release send claim", error.code ?? "");
+/**
+ * The saved message a reference already names in this conversation, if any.
+ * Throws when that cannot be read: not knowing whether a send is a repeat is a
+ * reason to stop, never a reason to send.
+ */
+async function savedCopy(
+  tenantId: string,
+  conversationId: string,
+  messageId: string,
+): Promise<{ id: string; waId: string | null } | null> {
+  const { data, error } = await supabaseAdmin
+    .from("messages")
+    .select("id, wa_message_id")
+    .eq("id", messageId)
+    .eq("tenant_id", tenantId)
+    .eq("conversation_id", conversationId)
+    .maybeSingle();
+  if (error) throw new Error(OUTBOUND_NOT_SAVED_TEXT);
+  return data ? { id: data.id, waId: data.wa_message_id ?? null } : null;
+}
+
+const duplicateOf = (
+  copy: { id: string; waId: string | null },
+  gate: SendCheck | null,
+): SendResult => ({
+  ...base(gate),
+  ok: true,
+  state: "duplicate",
+  messageId: copy.id,
+  waId: copy.waId,
+});
+
+/**
+ * Answers a repeat before anything else is decided. A message that is already
+ * saved stays sent whatever the gate would say now, and is not judged twice.
+ */
+async function repeatOf(
+  tenantId: string,
+  conversationId: string,
+  clientRef?: string | null,
+): Promise<SendResult | null> {
+  const id = await messageIdFor(tenantId, conversationId, clientRef);
+  const copy = id ? await savedCopy(tenantId, conversationId, id) : null;
+  return copy ? duplicateOf(copy, null) : null;
 }
 
 async function blocked(
@@ -142,15 +196,10 @@ async function sendThroughWhatsApp(args: {
   const { tenantId, userId, conversationId, gate, clientRef } = args;
   const result = base(gate);
 
-  if (!(await claimSendOnce(tenantId, clientRef))) {
-    return { ...result, ok: true, state: "duplicate" };
-  }
-
   // Credentials are read again here rather than carried out of the gate, so a
   // secret only ever exists in the function that uses it.
   const sender = await resolveSendingNumber(tenantId, gate.waNumberId);
   if (!sender.ok || !gate.recipient) {
-    await releaseSend(tenantId, clientRef);
     const message = sender.ok ? "This contact has no phone number." : sender.message;
     return {
       ...result,
@@ -164,6 +213,12 @@ async function sendThroughWhatsApp(args: {
   // Write before calling Meta. A provider success followed by a failed
   // database insert is worse than a visible failed message: the business has
   // sent something it can no longer audit in FLAS.
+  //
+  // The save is also the duplicate guard. Two copies of one click ask for the
+  // same row and only one insert can win; the other finds the message already
+  // there and never reaches the provider. If the save fails for any other
+  // reason, nothing was saved and nothing is sent: the error says so, and the
+  // same reference can be tried again.
   let messageId: string;
   try {
     messageId = await storeOutbound(
@@ -174,11 +229,13 @@ async function sendThroughWhatsApp(args: {
       userId,
       null,
       "sending",
+      await messageIdFor(tenantId, conversationId, clientRef),
     );
   } catch (error) {
-    // Nothing was saved and nothing was sent: the same click may try again.
-    await releaseSend(tenantId, clientRef);
-    throw error;
+    if (!(error instanceof OutboundAlreadySaved)) throw error;
+    const copy = await savedCopy(tenantId, conversationId, error.messageId);
+    if (!copy) throw new Error(OUTBOUND_NOT_SAVED_TEXT);
+    return duplicateOf(copy, gate);
   }
 
   const outcome = await args.deliver(gate.recipient.replace(/^\+/, ""), sender.creds, messageId);
@@ -237,6 +294,9 @@ export async function sendConversationMessage(args: {
     .maybeSingle();
   if (!conversation) throw new Error("Conversation not found");
 
+  const repeat = await repeatOf(tenantId, conversation.id, clientRef);
+  if (repeat) return repeat;
+
   const gate = await checkSendPermission({
     tenantId,
     conversationId: conversation.id,
@@ -262,15 +322,24 @@ export async function sendConversationMessage(args: {
       gate,
       deliver: (to, creds, ref) => deliverWhatsAppText(to, args.body, creds, ref),
     });
-  } else if (!(await claimSendOnce(tenantId, clientRef))) {
-    result = { ...base(gate), ok: true, state: "duplicate" };
   } else {
     try {
-      const messageId = await storeOutbound(tenantId, conversation.id, args.body, "agent", userId);
+      const messageId = await storeOutbound(
+        tenantId,
+        conversation.id,
+        args.body,
+        "agent",
+        userId,
+        null,
+        "sent",
+        await messageIdFor(tenantId, conversation.id, clientRef),
+      );
       result = { ...base(gate), ok: true, state: "stored", messageId };
     } catch (error) {
-      await releaseSend(tenantId, clientRef);
-      throw error;
+      if (!(error instanceof OutboundAlreadySaved)) throw error;
+      const copy = await savedCopy(tenantId, conversation.id, error.messageId);
+      if (!copy) throw new Error(OUTBOUND_NOT_SAVED_TEXT);
+      result = duplicateOf(copy, gate);
     }
   }
 
@@ -324,6 +393,8 @@ export async function sendTemplate(args: {
       .maybeSingle();
     if (!conv) throw new Error("Conversation not found");
     if (conv.channel !== "whatsapp") throw new Error("Choose a WhatsApp conversation");
+    const repeat = await repeatOf(tenantId, conv.id, clientRef);
+    if (repeat) return { ...repeat, rendered };
     bindNumber = !conv.wa_number_id;
     gate = await checkSendPermission({ tenantId, conversationId, isTemplate: true });
   } else {

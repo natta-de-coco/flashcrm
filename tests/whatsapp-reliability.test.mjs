@@ -28,6 +28,16 @@ import {
 const db = createDb();
 globalThis.waSuite = { db: db.client, audits: [] };
 
+/** The keys the real schema enforces, and that the code under test relies on. */
+function declareKeys() {
+  db.unique("webhook_dedup", ["event_source", "event_id"]);
+  db.unique("messages", ["id"]);
+}
+const STATEMENT_TIMEOUT = {
+  code: "57014",
+  message: "canceling statement due to statement timeout",
+};
+
 const A = "tenant-a";
 const B = "tenant-b";
 const REF_1 = "11111111-1111-4111-8111-111111111111";
@@ -132,7 +142,7 @@ beforeEach(() => {
     tenant_bot_settings: [],
   };
   db.reset(rows);
-  db.unique("webhook_dedup", ["event_source", "event_id"]);
+  declareKeys();
   globalThis.waSuite.audits = [];
   installProvider();
 });
@@ -336,7 +346,7 @@ describe("one workspace cannot reach into another", () => {
     rows.conversations[0].wa_number_id = null;
     rows.wa_numbers = rows.wa_numbers.filter((n) => n.tenant_id !== A);
     db.reset(rows);
-    db.unique("webhook_dedup", ["event_source", "event_id"]);
+    declareKeys();
     const result = await send();
     assert.deepEqual(
       result.blocks.map((b) => b.code),
@@ -364,6 +374,78 @@ describe("the same click is sent once", () => {
       results.every((r) => r.ok),
       "the duplicate is not reported as a failure",
     );
+    // Both answers name the one message that exists.
+    assert.deepEqual(
+      results.map((r) => r.messageId),
+      [outbound()[0].id, outbound()[0].id],
+    );
+  });
+
+  it("saves the message under an id made on the server, not the one the browser sent", async () => {
+    const result = await send({ clientRef: REF_1 });
+    assert.notEqual(result.messageId, REF_1);
+    assert.match(
+      result.messageId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-8[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    // The reference Meta echoes back in receipts is that same id.
+    assert.equal(provider.calls[0].body.biz_opaque_callback_data, result.messageId);
+  });
+
+  it("does not need any other table to stop a duplicate", async () => {
+    // The guard used to be a row in webhook_dedup, and a failure to write it
+    // let both copies through. The message row is the guard now.
+    db.fail("webhook_dedup:insert", { code: "42501", message: "permission denied" });
+    db.fail("webhook_dedup:delete", { code: "42501", message: "permission denied" });
+    const results = await Promise.all([send({ clientRef: REF_1 }), send({ clientRef: REF_1 })]);
+    assert.equal(provider.calls.length, 1);
+    assert.equal(outbound().length, 1);
+    assert.deepEqual(results.map((r) => r.state).sort(), ["accepted", "duplicate"]);
+    assert.equal(rows.webhook_dedup.length, 0, "a send leaves nothing there to expire");
+  });
+
+  it("answers a repeat with the saved message, whatever the gate would say by then", async () => {
+    const first = await send({ clientRef: REF_1 });
+    // The 24-hour window closes before the repeat arrives.
+    rows.messages.find((m) => m.id === "in-a").created_at = secondsAgo(25 * 3600);
+    const audits = globalThis.waSuite.audits.length;
+    const again = await send({ clientRef: REF_1 });
+    assert.equal(again.state, "duplicate");
+    assert.equal(again.messageId, first.messageId);
+    assert.equal(provider.calls.length, 1);
+    assert.equal(
+      globalThis.waSuite.audits.length,
+      audits,
+      "a repeat is not audited as a second send or a block",
+    );
+  });
+
+  it("keeps a website-chat reply to one message too", async () => {
+    const web = () =>
+      sendConversationMessage({
+        tenantId: A,
+        userId: "user-a",
+        conversationId: "web-a",
+        body: "On our way",
+        clientRef: REF_1,
+      });
+    const results = await Promise.all([web(), web()]);
+    assert.deepEqual(results.map((r) => r.state).sort(), ["duplicate", "stored"]);
+    assert.equal(outbound().length, 1);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("treats the same reference in another conversation as another message", async () => {
+    const whatsapp = await send({ clientRef: REF_1 });
+    const web = await sendConversationMessage({
+      tenantId: A,
+      userId: "user-a",
+      conversationId: "web-a",
+      body: "Your order is ready",
+      clientRef: REF_1,
+    });
+    assert.equal(web.state, "stored");
+    assert.notEqual(web.messageId, whatsapp.messageId);
   });
 
   it("still sends two different messages", async () => {
@@ -426,12 +508,10 @@ describe("a send that got no answer is not called failed, and is not sent again"
 
   it("matches the later receipt to the message by FLAS's own reference", async () => {
     provider.fail = new Error("timeout");
-    await send();
+    await send({ clientRef: REF_1 });
     const row = outbound()[0];
-    // The send carried the row id as its reference (asserted above). Real ids
-    // are uuids; the database double numbers its rows, so give this one a uuid.
+    assert.equal(row.status, "unconfirmed");
     assert.equal(provider.calls[0].body.biz_opaque_callback_data, row.id);
-    row.id = "44444444-4444-4444-8444-444444444444";
     await processWaPayload(
       statusPayload("pn-a", {
         id: "wamid.LATE",
@@ -444,20 +524,48 @@ describe("a send that got no answer is not called failed, and is not sent again"
   });
 });
 
-describe("a message that could not be saved is not sent", () => {
-  it("never calls the provider when the CRM cannot store the message", async () => {
-    db.fail("messages:insert", "connection reset");
-    await assert.rejects(send({ clientRef: REF_1 }), /Could not save this message/);
-    assert.equal(provider.calls.length, 0);
-  });
+describe("a send stops when the database cannot vouch for it", () => {
+  it("sends nothing while the message cannot be saved, then sends once when storage recovers", async () => {
+    db.fail("messages:insert", STATEMENT_TIMEOUT);
+    await assert.rejects(send({ clientRef: REF_1 }), /so it was not sent\. Try again\./);
+    await assert.rejects(send({ clientRef: REF_1 }), /so it was not sent/);
+    assert.equal(provider.calls.length, 0, "the provider was never called");
+    assert.equal(outbound().length, 0, "no message was saved");
 
-  it("lets the same click try again afterwards", async () => {
-    db.fail("messages:insert", "connection reset");
-    await assert.rejects(send({ clientRef: REF_1 }));
-    delete db.state.faults["messages:insert"];
+    db.recover("messages:insert");
     const retry = await send({ clientRef: REF_1 });
     assert.equal(retry.state, "accepted");
+    assert.equal((await send({ clientRef: REF_1 })).state, "duplicate");
+    assert.equal(provider.calls.length, 1, "sent exactly once");
+    assert.equal(outbound().length, 1);
+  });
+
+  it("sends nothing when it cannot tell whether this is a repeat", async () => {
+    await send({ clientRef: REF_1 });
+    // Messages cannot be read: the first copy may be there or not. Guessing
+    // "not" is how a customer gets the same message twice.
+    db.fail("messages:read", STATEMENT_TIMEOUT);
+    await assert.rejects(send({ clientRef: REF_1 }), /so it was not sent/);
+    await assert.rejects(send({ clientRef: REF_2 }), /so it was not sent/);
+    assert.equal(provider.calls.length, 1, "no second copy, and no unverified new send");
+
+    db.recover("messages:read");
+    assert.equal((await send({ clientRef: REF_1 })).state, "duplicate");
     assert.equal(provider.calls.length, 1);
+  });
+
+  it("says a safe, retryable thing, and nothing from the database", async () => {
+    db.fail("messages:insert", {
+      code: "XX000",
+      message: "FATAL: password authentication failed for user postgres",
+    });
+    await assert.rejects(send({ clientRef: REF_1 }), (error) => {
+      assert.equal(
+        error.message,
+        "Could not save this message in the CRM, so it was not sent. Try again.",
+      );
+      return true;
+    });
   });
 
   it("does not report an error for a message the provider already accepted", async () => {
@@ -625,7 +733,7 @@ describe("a template", () => {
     // It used to leave an audit line and no message anywhere.
     rows.conversations = rows.conversations.filter((c) => c.id !== "conv-a");
     db.reset(rows);
-    db.unique("webhook_dedup", ["event_source", "event_id"]);
+    declareKeys();
     db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
     const result = await template({ conversationId: null, phone: "971501234567" });
     assert.equal(result.state, "accepted");
@@ -788,6 +896,154 @@ describe("delivery receipts", () => {
     const row = sentRow();
     await processWaPayload(statusPayload("pn-unknown", { id: "wamid.OUT-A", status: "read" }));
     assert.equal(row.status, "sent");
+  });
+
+  const failureAlerts = () =>
+    rows.system_alerts.filter((a) => a.title === "WhatsApp message delivery failed");
+
+  it("announce a failure once, however many times it is delivered", async () => {
+    sentRow();
+    const failed = statusPayload("pn-a", {
+      id: "wamid.OUT-A",
+      status: "failed",
+      errors: [{ code: 131026 }],
+    });
+    await processWaPayload(failed);
+    await processWaPayload(failed);
+    assert.equal(failureAlerts().length, 1);
+  });
+
+  it("announce a failure once for a message FLAS holds no row for", async () => {
+    const failed = statusPayload("pn-a", { id: "wamid.ELSEWHERE", status: "failed" });
+    await processWaPayload(failed);
+    await processWaPayload(failed);
+    assert.equal(failureAlerts().length, 1);
+  });
+});
+
+describe("a receipt the database refused is not lost", () => {
+  const REF_ROW = "55555555-5555-4555-8555-555555555555";
+  const outboundRow = (extra = {}) => {
+    const row = {
+      id: "out-r",
+      tenant_id: A,
+      conversation_id: "conv-a",
+      direction: "outbound",
+      sender: "agent",
+      body: "Hello",
+      status: "sent",
+      wa_message_id: "wamid.OUT-R",
+      ...extra,
+    };
+    rows.messages.push(row);
+    return row;
+  };
+  const refused = /Could not record a WhatsApp delivery receipt/;
+
+  it("is applied by the identical webhook once the write works (matched by Meta's id)", async () => {
+    const row = outboundRow();
+    const receipt = statusPayload("pn-a", { id: "wamid.OUT-R", status: "delivered" });
+
+    db.fail("messages:update", STATEMENT_TIMEOUT);
+    await assert.rejects(processWaPayload(receipt), refused);
+    assert.equal(row.status, "sent", "nothing was written");
+    // It used to be marked as seen before it was saved, so this retry was
+    // thrown away as a repeat and the message stayed "sent" for good.
+    await assert.rejects(processWaPayload(receipt), refused);
+
+    db.recover("messages:update");
+    assert.equal(await processWaPayload(receipt), 1, "applied, not discarded");
+    assert.equal(row.status, "delivered");
+    assert.equal(await processWaPayload(receipt), 0, "and applied exactly once");
+    assert.equal(row.status, "delivered");
+    assert.equal(provider.calls.length, 0, "none of this sent the customer anything");
+  });
+
+  it("is applied by the identical webhook once the write works (matched by FLAS's reference)", async () => {
+    // A send that timed out: no provider id, and still waiting for an answer.
+    const row = outboundRow({ id: REF_ROW, status: "unconfirmed", wa_message_id: null });
+    const receipt = statusPayload("pn-a", {
+      id: "wamid.LATE",
+      status: "read",
+      biz_opaque_callback_data: REF_ROW,
+    });
+
+    db.fail("messages:update", STATEMENT_TIMEOUT);
+    await assert.rejects(processWaPayload(receipt), refused);
+    assert.equal(row.status, "unconfirmed");
+    assert.equal(row.wa_message_id, null);
+
+    db.recover("messages:update");
+    assert.equal(await processWaPayload(receipt), 1);
+    assert.equal(row.status, "read");
+    assert.equal(row.wa_message_id, "wamid.LATE");
+    assert.equal(await processWaPayload(receipt), 0, "exactly once");
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("is retried when the message could not even be looked up", async () => {
+    const row = outboundRow();
+    const receipt = statusPayload("pn-a", { id: "wamid.OUT-R", status: "delivered" });
+    db.fail("messages:read", STATEMENT_TIMEOUT);
+    await assert.rejects(processWaPayload(receipt), refused);
+    db.recover("messages:read");
+    await processWaPayload(receipt);
+    assert.equal(row.status, "delivered");
+  });
+
+  it("does not depend on the dedupe table", async () => {
+    const row = outboundRow();
+    db.fail("webhook_dedup:insert", { code: "42501", message: "permission denied" });
+    db.fail("webhook_dedup:delete", { code: "42501", message: "permission denied" });
+    const receipt = statusPayload("pn-a", { id: "wamid.OUT-R", status: "delivered" });
+    assert.equal(await processWaPayload(receipt), 1);
+    assert.equal(await processWaPayload(receipt), 0);
+    assert.equal(row.status, "delivered");
+    assert.equal(rows.webhook_dedup.length, 0, "a saved receipt leaves no claim behind");
+  });
+
+  it("tells a late receipt from a refused one: late is a quiet no-op", async () => {
+    const row = outboundRow({ status: "read" });
+    const late = statusPayload("pn-a", { id: "wamid.OUT-R", status: "delivered" });
+    assert.equal(await processWaPayload(late), 0);
+    assert.equal(row.status, "read");
+    // The same for a receipt naming, by reference, a message already settled.
+    const settled = outboundRow({ id: REF_ROW, status: "failed", wa_message_id: null });
+    const afterwards = statusPayload("pn-a", {
+      id: "wamid.AFTER",
+      status: "failed",
+      biz_opaque_callback_data: REF_ROW,
+    });
+    assert.equal(await processWaPayload(afterwards), 0);
+    assert.equal(settled.status, "failed");
+    assert.equal(
+      rows.system_alerts.filter((a) => a.title === "WhatsApp message delivery failed").length,
+      0,
+      "a failure already on the message is not announced again",
+    );
+  });
+
+  it("still saves a customer's message from the same delivery, and the retry repeats nothing", async () => {
+    const row = outboundRow();
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    const delivery = statusPayload("pn-a", { id: "wamid.OUT-R", status: "delivered" });
+    const value = delivery.entry[0].changes[0].value;
+    value.contacts = [{ profile: { name: "Sara" } }];
+    value.messages = [
+      { id: "wamid.IN-SAME", from: "971501234567", type: "text", text: { body: "Thanks" } },
+    ];
+    const stored = () => rows.messages.filter((m) => m.wa_message_id === "wamid.IN-SAME").length;
+
+    db.fail("messages:update", STATEMENT_TIMEOUT);
+    await assert.rejects(processWaPayload(delivery), refused);
+    assert.equal(stored(), 1, "the customer's message was not held up by the receipt");
+    assert.equal(row.status, "sent");
+
+    db.recover("messages:update");
+    await processWaPayload(delivery);
+    assert.equal(row.status, "delivered");
+    assert.equal(stored(), 1, "and it is not stored a second time");
+    assert.equal(provider.calls.length, 0);
   });
 });
 
