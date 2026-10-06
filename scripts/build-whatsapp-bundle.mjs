@@ -40,6 +40,7 @@ await build({
       `export { processWaPayload } from './src/lib/monitoring.server';`,
       `export { checkSendPermission } from './src/lib/safety.server';`,
       `export { generateBotReply } from './src/lib/wa.server';`,
+      `export * from './src/lib/billing-whatsapp.server';`,
       `export * from './src/lib/send-reference';`,
     ].join("\n"),
     resolveDir: process.cwd(),
@@ -51,4 +52,29 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
   plugins: [boundaries],
+});
+
+// Where a customer's link may point. On its own, with only the database
+// stubbed: the rule reads configuration, and nothing else here needs OAuth.
+await build({
+  entryPoints: ["src/lib/customer-link.server.ts"],
+  outfile: "node_modules/.cache/flas-customer-link.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [
+    {
+      name: "no-database",
+      setup(b) {
+        b.onResolve({ filter: /client\.server$/ }, () => ({ path: "db", namespace: "none" }));
+        b.onLoad({ filter: /.*/, namespace: "none" }, () => ({
+          contents:
+            "export const supabaseAdmin = new Proxy({}, { get() { throw new Error('the database was touched by a pure rule'); } });",
+          loader: "js",
+        }));
+      },
+    },
+  ],
 });

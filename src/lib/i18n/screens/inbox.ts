@@ -142,6 +142,8 @@ export default screen({
       "WhatsApp did not accept this message. Ask a company admin to check the connection.",
     "inbox.sendFailure.unconfirmed":
       "WhatsApp did not confirm whether this message was sent. Do not send it again yet: check with the customer, or wait for the delivery receipt.",
+    "inbox.block.no_document_template":
+      "This customer has not messaged in the last 24 hours, and this workspace has no approved WhatsApp template for this document yet. Download the PDF and send it yourself, or ask a company admin to add an approved utility template named invoice_notification (invoices) or payment_receipt (paid receipts).",
   },
   ar: {
     "inbox.messageBlockedBySafetyRules": "حُظرت الرسالة وفق قواعد الأمان",
@@ -274,6 +276,8 @@ export default screen({
     "inbox.sendFailure.unknown": "لم يقبل واتساب هذه الرسالة. اطلب من مسؤول الشركة فحص الاتصال.",
     "inbox.sendFailure.unconfirmed":
       "لم يؤكد واتساب ما إذا أُرسلت هذه الرسالة. لا ترسلها مجددًا الآن: تحقق مع العميل، أو انتظر إشعار التسليم.",
+    "inbox.block.no_document_template":
+      "لم يراسل هذا العميل خلال آخر 24 ساعة، ولا يوجد في مساحة العمل هذه قالب واتساب معتمد لهذا المستند بعد. نزّل ملف PDF وأرسله بنفسك، أو اطلب من مسؤول الشركة إضافة قالب خدمي معتمد باسم invoice_notification (للفواتير) أو payment_receipt (لإيصالات الدفع).",
   },
   ms: {
     "inbox.messageBlockedBySafetyRules": "Mesej disekat oleh peraturan keselamatan",
@@ -413,6 +417,8 @@ export default screen({
       "WhatsApp tidak menerima mesej ini. Minta pentadbir syarikat menyemak sambungan.",
     "inbox.sendFailure.unconfirmed":
       "WhatsApp tidak mengesahkan sama ada mesej ini dihantar. Jangan hantar lagi buat masa ini: semak dengan pelanggan, atau tunggu resit penghantaran.",
+    "inbox.block.no_document_template":
+      "Pelanggan ini tidak menghantar mesej dalam 24 jam yang lalu, dan ruang kerja ini belum mempunyai templat WhatsApp yang diluluskan untuk dokumen ini. Muat turun PDF dan hantar sendiri, atau minta pentadbir syarikat menambah templat utiliti yang diluluskan bernama invoice_notification (invois) atau payment_receipt (resit bayaran).",
   },
   fil: {
     "inbox.messageBlockedBySafetyRules": "Na-block ang mensahe ng mga panuntunan sa kaligtasan",
@@ -555,6 +561,8 @@ export default screen({
       "Hindi tinanggap ng WhatsApp ang mensaheng ito. Hilingin sa company admin na tingnan ang koneksyon.",
     "inbox.sendFailure.unconfirmed":
       "Hindi kinumpirma ng WhatsApp kung naipadala ang mensaheng ito. Huwag muna itong ipadala muli: tanungin ang customer, o hintayin ang delivery receipt.",
+    "inbox.block.no_document_template":
+      "Hindi nag-message ang customer na ito sa nakalipas na 24 oras, at wala pang aprubadong WhatsApp template ang workspace na ito para sa dokumentong ito. I-download ang PDF at ikaw ang magpadala, o hilingin sa admin ng kumpanya na magdagdag ng aprubadong utility template na may pangalang invoice_notification (mga invoice) o payment_receipt (mga resibo ng bayad).",
   },
   sw: {
     "inbox.messageBlockedBySafetyRules": "Ujumbe umezuiwa na kanuni za usalama",
@@ -695,5 +703,7 @@ export default screen({
       "WhatsApp haikukubali ujumbe huu. Mwombe msimamizi wa kampuni akague muunganisho.",
     "inbox.sendFailure.unconfirmed":
       "WhatsApp haikuthibitisha kama ujumbe huu ulitumwa. Usiutume tena bado: wasiliana na mteja, au subiri risiti ya uwasilishaji.",
+    "inbox.block.no_document_template":
+      "Mteja huyu hajatuma ujumbe ndani ya saa 24 zilizopita, na eneo hili la kazi bado halina kiolezo cha WhatsApp kilichoidhinishwa kwa hati hii. Pakua PDF uitume mwenyewe, au mwombe msimamizi wa kampuni aongeze kiolezo cha huduma kilichoidhinishwa chenye jina invoice_notification (ankara) au payment_receipt (risiti za malipo).",
   },
 });

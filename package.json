@@ -35,7 +35,7 @@
     "test:campaign-audience": "node --test tests/campaign-audience.test.mjs",
     "test:invoices": "node scripts/build-invoice-bundle.mjs && node --test tests/invoices.test.mjs",
     "test:i18n": "node scripts/build-i18n-bundle.mjs && node --test tests/i18n.test.mjs",
-    "test:whatsapp": "node scripts/build-whatsapp-bundle.mjs && node --test tests/whatsapp-reliability.test.mjs tests/whatsapp-composer.test.mjs"
+    "test:whatsapp": "node scripts/build-whatsapp-bundle.mjs && node --test tests/whatsapp-reliability.test.mjs tests/whatsapp-composer.test.mjs tests/whatsapp-documents.test.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"

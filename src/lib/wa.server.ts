@@ -288,29 +288,6 @@ export function deliverWhatsAppTemplate(
   );
 }
 
-/**
- * For callers that only need "it was accepted, or it threw" -- an invoice
- * link, the assistant's own tools. Anything shown in a conversation uses the
- * deliver* functions, which keep refused and unconfirmed apart.
- */
-export async function sendWhatsAppText(to: string, body: string, creds: WaCredentials) {
-  const outcome = await deliverWhatsAppText(to, body, creds);
-  if (outcome.state === "accepted") return outcome.waMessageId;
-  throw new Error(outcome.message);
-}
-
-export async function sendWhatsAppTemplate(
-  to: string,
-  name: string,
-  language: string,
-  variables: string[] = [],
-  creds: WaCredentials,
-) {
-  const outcome = await deliverWhatsAppTemplate(to, name, language, variables, creds);
-  if (outcome.state === "accepted") return outcome.waMessageId;
-  throw new Error(outcome.message);
-}
-
 type HistoryRow = { sender: string; body: string; created_at?: string | null };
 
 export async function generateBotReply(

@@ -63,6 +63,10 @@ export default screen({
     "sales.status.overdue": "overdue",
     "sales.status.accepted": "accepted",
     "sales.status.cancelled": "cancelled",
+    "sales.notSentOnWhatsapp": "Not sent on WhatsApp",
+    "sales.notSentOnWhatsappReason": "Not sent on WhatsApp: {reason}",
+    "sales.paidCopyNotSentReason": "The paid copy was not sent on WhatsApp: {reason}",
+    "sales.downloadPdfToSendYourself": "Download the PDF to send it yourself",
   },
   ar: {
     "sales.documentFinalisedAndNumbered": "اعتُمد المستند ورُقّم.",
@@ -123,6 +127,10 @@ export default screen({
     "sales.status.overdue": "متأخرة",
     "sales.status.accepted": "مقبولة",
     "sales.status.cancelled": "ملغاة",
+    "sales.notSentOnWhatsapp": "لم يُرسل عبر واتساب",
+    "sales.notSentOnWhatsappReason": "لم يُرسل عبر واتساب: {reason}",
+    "sales.paidCopyNotSentReason": "لم تُرسل نسخة الدفع عبر واتساب: {reason}",
+    "sales.downloadPdfToSendYourself": "نزّل ملف PDF لإرساله بنفسك",
   },
   ms: {
     "sales.documentFinalisedAndNumbered": "Dokumen dimuktamadkan dan dinomborkan.",
@@ -185,6 +193,10 @@ export default screen({
     "sales.status.overdue": "tertunggak",
     "sales.status.accepted": "diterima",
     "sales.status.cancelled": "dibatalkan",
+    "sales.notSentOnWhatsapp": "Tidak dihantar melalui WhatsApp",
+    "sales.notSentOnWhatsappReason": "Tidak dihantar melalui WhatsApp: {reason}",
+    "sales.paidCopyNotSentReason": "Salinan berbayar tidak dihantar melalui WhatsApp: {reason}",
+    "sales.downloadPdfToSendYourself": "Muat turun PDF untuk menghantarnya sendiri",
   },
   fil: {
     "sales.documentFinalisedAndNumbered": "Na-finalize at nabigyan ng numero ang dokumento.",
@@ -247,6 +259,10 @@ export default screen({
     "sales.status.overdue": "lampas na sa takda",
     "sales.status.accepted": "tinanggap",
     "sales.status.cancelled": "kinansela",
+    "sales.notSentOnWhatsapp": "Hindi naipadala sa WhatsApp",
+    "sales.notSentOnWhatsappReason": "Hindi naipadala sa WhatsApp: {reason}",
+    "sales.paidCopyNotSentReason": "Hindi naipadala sa WhatsApp ang kopyang bayad na: {reason}",
+    "sales.downloadPdfToSendYourself": "I-download ang PDF para ikaw ang magpadala",
   },
   sw: {
     "sales.documentFinalisedAndNumbered": "Hati imekamilishwa na kupewa namba.",
@@ -308,5 +324,9 @@ export default screen({
     "sales.status.overdue": "imechelewa",
     "sales.status.accepted": "imekubaliwa",
     "sales.status.cancelled": "imeghairiwa",
+    "sales.notSentOnWhatsapp": "Haikutumwa kwenye WhatsApp",
+    "sales.notSentOnWhatsappReason": "Haikutumwa kwenye WhatsApp: {reason}",
+    "sales.paidCopyNotSentReason": "Nakala ya malipo haikutumwa kwenye WhatsApp: {reason}",
+    "sales.downloadPdfToSendYourself": "Pakua PDF ili uitume mwenyewe",
   },
 });
