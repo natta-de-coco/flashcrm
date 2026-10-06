@@ -40,6 +40,7 @@ await build({
       `export { processWaPayload } from './src/lib/monitoring.server';`,
       `export { checkSendPermission } from './src/lib/safety.server';`,
       `export { generateBotReply } from './src/lib/wa.server';`,
+      `export * from './src/lib/send-reference';`,
     ].join("\n"),
     resolveDir: process.cwd(),
   },

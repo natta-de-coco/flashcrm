@@ -73,9 +73,9 @@ export default screen({
     "inbox.replyToConversation": "Reply to conversation",
     "inbox.writeAReply": "Write a reply…",
     "inbox.useAnApprovedTemplateTo":
-      "Use an approved template to re-open this WhatsApp conversation…",
+      "Free-text replies are closed. Send an approved template, or wait for the customer to write…",
     "inbox.thisCustomerHasNotMessaged":
-      "This customer has not messaged in the past 24 hours. WhatsApp requires an approved template before you can send a normal reply.",
+      "This customer has not messaged in the past 24 hours. You can send an approved template now. Normal replies become available again when the customer sends a new message.",
     "inbox.suggestReply": "Suggest reply",
     "inbox.send": "Send",
     "inbox.sending": "Sending…",
@@ -107,13 +107,13 @@ export default screen({
     "inbox.block.no_consent":
       "No recorded opt-in consent for this contact — WhatsApp requires consent before template or marketing messages.",
     "inbox.block.window_closed":
-      "The 24-hour WhatsApp reply window has closed — send an approved template to re-open the conversation.",
+      "The 24-hour WhatsApp reply window has closed. An approved template can still be sent; free-text replies become available after the customer sends a new message.",
     "inbox.block.routed_to_other_number":
       "Routing rules assign this lead to a different WhatsApp number — reply from that line.",
     "inbox.block.recipient_invalid":
       "This contact's number is not a complete international number. Save it in international form, for example +971 50 123 4567.",
     "inbox.sendFailure.window_closed":
-      "The 24-hour WhatsApp reply window has closed. Send an approved template to re-open this chat.",
+      "The 24-hour WhatsApp reply window has closed. An approved template can still be sent; free-text replies become available after the customer sends a new message.",
     "inbox.sendFailure.credentials":
       "The connected WhatsApp account needs to be reconnected by a company admin.",
     "inbox.sendFailure.permission":
@@ -210,9 +210,10 @@ export default screen({
     "inbox.translate": "ترجمة",
     "inbox.replyToConversation": "الرد على المحادثة",
     "inbox.writeAReply": "اكتب ردًا…",
-    "inbox.useAnApprovedTemplateTo": "استخدم قالبًا معتمدًا لإعادة فتح محادثة واتساب هذه…",
+    "inbox.useAnApprovedTemplateTo":
+      "الردود الحرة مغلقة. أرسل قالبًا معتمدًا أو انتظر حتى يكتب العميل…",
     "inbox.thisCustomerHasNotMessaged":
-      "لم يراسلك هذا العميل خلال آخر 24 ساعة. يشترط واتساب قالبًا معتمدًا قبل أن تتمكن من إرسال رد عادي.",
+      "لم يراسل هذا العميل خلال آخر 24 ساعة. يمكنك إرسال قالب معتمد الآن. تصبح الردود العادية متاحة من جديد عندما يرسل العميل رسالة جديدة.",
     "inbox.suggestReply": "اقتراح رد",
     "inbox.send": "إرسال",
     "inbox.sending": "جارٍ الإرسال…",
@@ -241,13 +242,13 @@ export default screen({
     "inbox.block.no_consent":
       "لا توجد موافقة مسجَّلة لهذه الجهة — واتساب يشترط الموافقة قبل رسائل القوالب أو التسويق.",
     "inbox.block.window_closed":
-      "أُغلقت نافذة الرد على واتساب (24 ساعة) — أرسل قالبًا معتمدًا لإعادة فتح المحادثة.",
+      "انتهت مهلة الرد على واتساب (24 ساعة). ما زال بالإمكان إرسال قالب معتمد، وتصبح الردود الحرة متاحة بعد أن يرسل العميل رسالة جديدة.",
     "inbox.block.routed_to_other_number":
       "قواعد التوجيه تسند هذا العميل المحتمل إلى رقم واتساب آخر — ردّ من ذلك الخط.",
     "inbox.block.recipient_invalid":
       "رقم هذه الجهة ليس رقمًا دوليًا كاملًا. احفظه بالصيغة الدولية، مثل ‎+971 50 123 4567.",
     "inbox.sendFailure.window_closed":
-      "أُغلقت نافذة الرد على واتساب (24 ساعة). أرسل قالبًا معتمدًا لإعادة فتح هذه المحادثة.",
+      "انتهت مهلة الرد على واتساب (24 ساعة). ما زال بالإمكان إرسال قالب معتمد، وتصبح الردود الحرة متاحة بعد أن يرسل العميل رسالة جديدة.",
     "inbox.sendFailure.credentials": "حساب واتساب المرتبط يحتاج أن يعيد مسؤول الشركة ربطه.",
     "inbox.sendFailure.permission":
       "حساب واتساب المرتبط تنقصه صلاحية تحتاجها هذه الرسالة. يجب أن يعيد مسؤول الشركة ربطه ويوافق على كل الصلاحيات.",
@@ -344,9 +345,9 @@ export default screen({
     "inbox.replyToConversation": "Balas perbualan",
     "inbox.writeAReply": "Tulis balasan…",
     "inbox.useAnApprovedTemplateTo":
-      "Gunakan templat yang diluluskan untuk membuka semula perbualan WhatsApp ini…",
+      "Balasan teks bebas ditutup. Hantar templat yang diluluskan, atau tunggu pelanggan menulis…",
     "inbox.thisCustomerHasNotMessaged":
-      "Pelanggan ini tidak menghantar mesej dalam 24 jam yang lalu. WhatsApp memerlukan templat yang diluluskan sebelum anda boleh menghantar balasan biasa.",
+      "Pelanggan ini tidak menghantar mesej dalam tempoh 24 jam yang lalu. Anda boleh menghantar templat yang diluluskan sekarang. Balasan biasa tersedia semula apabila pelanggan menghantar mesej baharu.",
     "inbox.suggestReply": "Cadangkan balasan",
     "inbox.send": "Hantar",
     "inbox.sending": "Menghantar…",
@@ -377,13 +378,13 @@ export default screen({
     "inbox.block.no_consent":
       "Tiada persetujuan yang direkodkan untuk kenalan ini — WhatsApp memerlukan persetujuan sebelum mesej templat atau pemasaran.",
     "inbox.block.window_closed":
-      "Tetingkap balasan WhatsApp 24 jam telah ditutup — hantar templat yang diluluskan untuk membuka semula perbualan.",
+      "Tempoh balasan WhatsApp 24 jam telah tamat. Templat yang diluluskan masih boleh dihantar; balasan teks bebas tersedia selepas pelanggan menghantar mesej baharu.",
     "inbox.block.routed_to_other_number":
       "Peraturan penghalaan menugaskan prospek ini kepada nombor WhatsApp lain — balas dari talian itu.",
     "inbox.block.recipient_invalid":
       "Nombor kenalan ini bukan nombor antarabangsa yang lengkap. Simpan dalam bentuk antarabangsa, contohnya +971 50 123 4567.",
     "inbox.sendFailure.window_closed":
-      "Tetingkap balasan WhatsApp 24 jam telah ditutup. Hantar templat yang diluluskan untuk membuka semula sembang ini.",
+      "Tempoh balasan WhatsApp 24 jam telah tamat. Templat yang diluluskan masih boleh dihantar; balasan teks bebas tersedia selepas pelanggan menghantar mesej baharu.",
     "inbox.sendFailure.credentials":
       "Akaun WhatsApp yang disambungkan perlu disambung semula oleh pentadbir syarikat.",
     "inbox.sendFailure.permission":
@@ -485,9 +486,9 @@ export default screen({
     "inbox.replyToConversation": "Sumagot sa usapan",
     "inbox.writeAReply": "Sumulat ng sagot…",
     "inbox.useAnApprovedTemplateTo":
-      "Gumamit ng aprubadong template para muling buksan ang usapang ito sa WhatsApp…",
+      "Sarado ang mga free-text na sagot. Magpadala ng aprubadong template, o hintaying sumulat ang customer…",
     "inbox.thisCustomerHasNotMessaged":
-      "Hindi nagmensahe ang customer na ito sa nakaraang 24 oras. Kailangan ng WhatsApp ang aprubadong template bago ka makapagpadala ng karaniwang sagot.",
+      "Hindi nag-message ang customer na ito sa nakalipas na 24 oras. Maaari kang magpadala ng aprubadong template ngayon. Magagamit muli ang mga karaniwang sagot kapag nagpadala ang customer ng bagong mensahe.",
     "inbox.suggestReply": "Magmungkahi ng sagot",
     "inbox.send": "Ipadala",
     "inbox.sending": "Ipinapadala…",
@@ -519,13 +520,13 @@ export default screen({
     "inbox.block.no_consent":
       "Walang naitalang pahintulot para sa contact na ito — kailangan ng WhatsApp ng pahintulot bago ang template o marketing na mensahe.",
     "inbox.block.window_closed":
-      "Sarado na ang 24-oras na reply window ng WhatsApp — magpadala ng aprubadong template para muling buksan ang usapan.",
+      "Sarado na ang 24-oras na window ng pagsagot sa WhatsApp. Maaari pa ring magpadala ng aprubadong template; magagamit ang mga free-text na sagot kapag nagpadala ang customer ng bagong mensahe.",
     "inbox.block.routed_to_other_number":
       "Itinatalaga ng mga panuntunan sa routing ang lead na ito sa ibang WhatsApp number — sumagot mula sa linyang iyon.",
     "inbox.block.recipient_invalid":
       "Hindi kumpletong international na numero ang numero ng contact na ito. I-save ito sa international na anyo, halimbawa +971 50 123 4567.",
     "inbox.sendFailure.window_closed":
-      "Sarado na ang 24-oras na reply window ng WhatsApp. Magpadala ng aprubadong template para muling buksan ang chat na ito.",
+      "Sarado na ang 24-oras na window ng pagsagot sa WhatsApp. Maaari pa ring magpadala ng aprubadong template; magagamit ang mga free-text na sagot kapag nagpadala ang customer ng bagong mensahe.",
     "inbox.sendFailure.credentials":
       "Kailangang ikonekta muli ng company admin ang nakakonektang WhatsApp account.",
     "inbox.sendFailure.permission":
@@ -625,9 +626,9 @@ export default screen({
     "inbox.replyToConversation": "Jibu mazungumzo",
     "inbox.writeAReply": "Andika jibu…",
     "inbox.useAnApprovedTemplateTo":
-      "Tumia kiolezo kilichoidhinishwa kufungua tena mazungumzo haya ya WhatsApp…",
+      "Majibu ya maandishi huru yamefungwa. Tuma kiolezo kilichoidhinishwa, au subiri mteja aandike…",
     "inbox.thisCustomerHasNotMessaged":
-      "Mteja huyu hajatuma ujumbe katika saa 24 zilizopita. WhatsApp inahitaji kiolezo kilichoidhinishwa kabla ya kutuma jibu la kawaida.",
+      "Mteja huyu hajatuma ujumbe ndani ya saa 24 zilizopita. Unaweza kutuma kiolezo kilichoidhinishwa sasa. Majibu ya kawaida yatapatikana tena mteja atakapotuma ujumbe mpya.",
     "inbox.suggestReply": "Pendekeza jibu",
     "inbox.send": "Tuma",
     "inbox.sending": "Inatuma…",
@@ -659,13 +660,13 @@ export default screen({
     "inbox.block.no_consent":
       "Hakuna idhini iliyorekodiwa kwa anwani hii — WhatsApp inahitaji idhini kabla ya ujumbe wa kiolezo au wa masoko.",
     "inbox.block.window_closed":
-      "Dirisha la saa 24 la kujibu la WhatsApp limefungwa — tuma kiolezo kilichoidhinishwa ili kufungua tena mazungumzo.",
+      "Muda wa saa 24 wa kujibu kwenye WhatsApp umeisha. Kiolezo kilichoidhinishwa bado kinaweza kutumwa; majibu ya maandishi huru yatapatikana baada ya mteja kutuma ujumbe mpya.",
     "inbox.block.routed_to_other_number":
       "Kanuni za uelekezaji zinamkabidhi mteja huyu mtarajiwa kwa namba nyingine ya WhatsApp — jibu kutoka laini hiyo.",
     "inbox.block.recipient_invalid":
       "Namba ya anwani hii si namba kamili ya kimataifa. Ihifadhi kwa mfumo wa kimataifa, kwa mfano +971 50 123 4567.",
     "inbox.sendFailure.window_closed":
-      "Dirisha la saa 24 la kujibu la WhatsApp limefungwa. Tuma kiolezo kilichoidhinishwa ili kufungua tena gumzo hili.",
+      "Muda wa saa 24 wa kujibu kwenye WhatsApp umeisha. Kiolezo kilichoidhinishwa bado kinaweza kutumwa; majibu ya maandishi huru yatapatikana baada ya mteja kutuma ujumbe mpya.",
     "inbox.sendFailure.credentials":
       "Akaunti ya WhatsApp iliyounganishwa inahitaji kuunganishwa upya na msimamizi wa kampuni.",
     "inbox.sendFailure.permission":

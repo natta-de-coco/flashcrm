@@ -9,7 +9,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
-import { WA_FAILURE_TEXT, WA_UNCONFIRMED_TEXT } from "../node_modules/.cache/flas-whatsapp.mjs";
+import {
+  referenceFor,
+  WA_FAILURE_TEXT,
+  WA_UNCONFIRMED_TEXT,
+} from "../node_modules/.cache/flas-whatsapp.mjs";
 
 describe("what the composer says is what the server decided", () => {
   const read = (path) =>
@@ -55,11 +59,86 @@ describe("what the composer says is what the server decided", () => {
     );
   });
 
-  it("sends one reference per message, so a second Enter is the same message", () => {
-    assert.match(inbox, /sendRef\.current \?\?= crypto\.randomUUID\(\);/);
-    assert.match(inbox, /clientRef: sendRef\.current/);
+  it("keeps one reference for the same text until the server answers for it", () => {
+    let made = 0;
+    const next = () => `ref-${++made}`;
+    const first = referenceFor(null, "conv-1\nHello", next);
+    // The request failed with no answer; the same text is tried again.
+    assert.equal(referenceFor(first, "conv-1\nHello", next), first);
+    // Different text, or another conversation, is a different message.
+    assert.equal(referenceFor(first, "conv-1\nHello!", next).ref, "ref-2");
+    assert.equal(referenceFor(first, "conv-2\nHello", next).ref, "ref-3");
+    // Once answered the composer drops it, and the same words are a new message.
+    assert.equal(referenceFor(null, "conv-1\nHello", next).ref, "ref-4");
+  });
+
+  it("drops the reference only on an answer, never on an error", () => {
+    assert.match(
+      inbox,
+      /sendRef\.current = referenceFor\(sendRef\.current, `\$\{activeId\}\\n\$\{body\}`/,
+    );
+    assert.match(inbox, /clientRef: sendRef\.current\.ref/);
+    assert.match(inbox, /templateRef\.current = referenceFor\(/);
+    assert.match(inbox, /clientRef: templateRef\.current\.ref/);
+    // The reference used to be dropped whatever happened, so a retry after a
+    // lost response was a new message and the customer got two.
+    assert.ok(!inbox.includes("onSettled"), "the reference is dropped on every outcome again");
+    assert.equal(inbox.split("sendRef.current = null;").length - 1, 1);
+    assert.equal(inbox.split("templateRef.current = null;").length - 1, 1);
+    const afterAnswer = inbox.slice(inbox.indexOf('// No answer is not a "no".'));
+    const errorHandler = afterAnswer.slice(0, afterAnswer.indexOf("});"));
+    assert.match(errorHandler, /onError: \(e: Error\) => toast\.error\(e\.message\),/);
+    assert.ok(!errorHandler.includes("sendRef.current"), "the error handler drops the reference");
     assert.match(inbox, /if \(!sendMutation\.isPending && sendBlocks\.length === 0\) \{/);
-    assert.match(inbox, /templateRef\.current \?\?= crypto\.randomUUID\(\);/);
+  });
+
+  it("clears the box for a message the server says is already saved", () => {
+    // A "duplicate" answer left the text in the box, where the next click sent
+    // it again under a new reference.
+    assert.ok(!inbox.includes('res.state !== "duplicate"'));
+    const reply = inbox.slice(
+      inbox.indexOf("const sendMutation = useMutation({"),
+      inbox.indexOf("const suggestMutation = useMutation({"),
+    );
+    assert.ok(reply.indexOf('if (res.state === "blocked")') < reply.indexOf('setDraft("");'));
+    assert.match(reply, /void qc\.invalidateQueries\(\{ queryKey: \["messages", activeId\] \}\);/);
+  });
+
+  it("looks again when a sending message goes stale, without waiting for other activity", () => {
+    const label = inbox.slice(inbox.indexOf("function DeliveryState("));
+    assert.match(
+      label,
+      /window\.setTimeout\(\(\) => lookAgain\(Date\.now\(\)\), remaining \+ 250\)/,
+    );
+    assert.match(label, /return \(\) => window\.clearTimeout\(timer\);/);
+    assert.match(label, /\}, \[status, createdAt\]\);/);
+  });
+
+  it("does not say a template re-opens the reply window", () => {
+    // Meta: a template may be sent outside the window, but only a new message
+    // from the customer opens free-text replies again.
+    const english = messages.slice(0, messages.indexOf("\n  ar: {"));
+    assert.ok(english.length > 0 && english.length < messages.length);
+    for (const key of [
+      "inbox.useAnApprovedTemplateTo",
+      "inbox.thisCustomerHasNotMessaged",
+      "inbox.block.window_closed",
+      "inbox.sendFailure.window_closed",
+    ]) {
+      assert.ok(english.includes(`"${key}"`), key);
+    }
+    assert.doesNotMatch(english, /re-?open (this|the) (chat|conversation|WhatsApp)/i);
+    assert.doesNotMatch(
+      english,
+      /requires an approved template before you can send a normal reply/,
+    );
+    assert.match(WA_FAILURE_TEXT.window_closed, /after the customer sends a new message/);
+    // The gate and the provider's refusal are described with one sentence.
+    assert.match(
+      read("src/lib/safety.server.ts"),
+      /block\("window_closed", WA_FAILURE_TEXT\.window_closed\);/,
+    );
+    assert.ok(english.includes(JSON.stringify(WA_FAILURE_TEXT.window_closed)));
   });
 
   it("puts a suggested reply in the box for a person to read, and never sends it", () => {

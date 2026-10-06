@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { requestedConversationId } from "@/lib/inbox-link";
+import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
@@ -120,8 +121,8 @@ function InboxPage() {
   const loadSendContext = useServerFn(getSendContext);
   // One reference per message being sent. A second Enter or a double click
   // repeats it, and the server sends that message once.
-  const sendRef = useRef<string | null>(null);
-  const templateRef = useRef<string | null>(null);
+  const sendRef = useRef<SendReference | null>(null);
+  const templateRef = useRef<SendReference | null>(null);
   const suggest = useServerFn(draftBotReply);
   const sendTemplate = useServerFn(sendTemplateMessage);
   const auditEvent = useServerFn(recordAuditEvent);
@@ -369,37 +370,41 @@ function InboxPage() {
 
   const sendMutation = useMutation({
     mutationFn: async (body: string) => {
-      sendRef.current ??= crypto.randomUUID();
-      return send({ data: { conversationId: activeId!, body, clientRef: sendRef.current } });
-    },
-    // Whatever the answer, the next message is a new one.
-    onSettled: () => {
-      sendRef.current = null;
+      sendRef.current = referenceFor(sendRef.current, `${activeId}\n${body}`, () =>
+        crypto.randomUUID(),
+      );
+      return send({ data: { conversationId: activeId!, body, clientRef: sendRef.current.ref } });
     },
     onSuccess: (res) => {
+      // The server has answered for this message, so the next one is new.
+      sendRef.current = null;
       void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
       if (res.state === "blocked") {
         toast.error(i18n.t("inbox.messageBlockedBySafetyRules"), {
           description: describeBlocks(res.blocks),
         });
         return;
       }
-      // The same click arriving twice: the first copy is the message.
-      if (res.state !== "duplicate") {
-        setDraft("");
-        if (res.state === "unconfirmed") {
-          toast.warning(describeFailure("unconfirmed", res.deliveryError));
-        } else if (res.state === "rejected") {
-          toast.warning(
-            i18n.t("inbox.savedButNotDelivered", {
-              deliveryError: describeFailure(res.failureReason, res.deliveryError),
-            }),
-          );
-        }
+      // "duplicate" is this very message, already saved by an earlier copy of
+      // the request whose answer never arrived. It is in the thread, so the
+      // box is cleared like any sent message -- leaving the text there would
+      // invite sending it a second time.
+      setDraft("");
+      if (res.state === "unconfirmed") {
+        toast.warning(describeFailure("unconfirmed", res.deliveryError));
+      } else if (res.state === "rejected") {
+        toast.warning(
+          i18n.t("inbox.savedButNotDelivered", {
+            deliveryError: describeFailure(res.failureReason, res.deliveryError),
+          }),
+        );
       }
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
+    // No answer is not a "no". The reference is kept, so trying the same text
+    // again asks the server about the same message: if the first copy did get
+    // through, the server says so instead of sending another.
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -470,47 +475,49 @@ function InboxPage() {
 
   const templateMutation = useMutation({
     mutationFn: async () => {
-      templateRef.current ??= crypto.randomUUID();
+      templateRef.current = referenceFor(
+        templateRef.current,
+        `${activeId}\n${templateId}\n${JSON.stringify(templateVariables)}`,
+        () => crypto.randomUUID(),
+      );
       return sendTemplate({
         data: {
           templateId,
           conversationId: activeId!,
           variables: templateVariables,
-          clientRef: templateRef.current,
+          clientRef: templateRef.current.ref,
         },
       });
     },
-    onSettled: () => {
-      templateRef.current = null;
-    },
     onSuccess: (res) => {
+      templateRef.current = null;
       void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
       if (res.state === "blocked") {
         toast.error(i18n.t("inbox.templateBlockedBySafetyRules"), {
           description: describeBlocks(res.blocks),
         });
         return;
       }
-      if (res.state !== "duplicate") {
-        setTemplateId("");
-        setTemplateVariables([]);
-        // Accepted by WhatsApp is not delivered: the thread shows the receipt
-        // when it arrives. A refusal or a missing answer is said as such.
-        if (res.state === "accepted") {
-          toast.success(i18n.t("inbox.templateAcceptedByWhatsappDelivery"));
-        } else if (res.state === "unconfirmed") {
-          toast.warning(describeFailure("unconfirmed", res.deliveryError));
-        } else {
-          toast.error(
-            i18n.t("inbox.savedButNotDelivered", {
-              deliveryError: describeFailure(res.failureReason, res.deliveryError),
-            }),
-          );
-        }
+      // As with a reply: a duplicate is this template, already in the thread.
+      setTemplateId("");
+      setTemplateVariables([]);
+      // Accepted by WhatsApp is not delivered: the thread shows the receipt
+      // when it arrives. A refusal or a missing answer is said as such.
+      if (res.state === "accepted") {
+        toast.success(i18n.t("inbox.templateAcceptedByWhatsappDelivery"));
+      } else if (res.state === "unconfirmed") {
+        toast.warning(describeFailure("unconfirmed", res.deliveryError));
+      } else if (res.state === "rejected") {
+        toast.error(
+          i18n.t("inbox.savedButNotDelivered", {
+            deliveryError: describeFailure(res.failureReason, res.deliveryError),
+          }),
+        );
       }
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
+    // Kept for the retry, as for a reply.
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -1288,6 +1295,18 @@ function DeliveryState({
   createdAt?: string | null;
 }) {
   const i18n = useI18n();
+  // Look again at the moment a "sending" message goes stale. The label was
+  // only worked out when something else changed, so a message whose answer was
+  // never recorded could go on saying "Sending" for as long as the thread
+  // stayed quiet.
+  const [, lookAgain] = useState(0);
+  useEffect(() => {
+    if (status !== "sending" || !createdAt) return;
+    const remaining = new Date(createdAt).getTime() + SENDING_GOES_STALE_MS - Date.now();
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(() => lookAgain(Date.now()), remaining + 250);
+    return () => window.clearTimeout(timer);
+  }, [status, createdAt]);
   const stale =
     status === "sending" &&
     !!createdAt &&

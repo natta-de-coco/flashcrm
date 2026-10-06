@@ -150,8 +150,10 @@ export function failureReasonForCode(code: number | null | undefined): WaFailure
  * falls back to this, so a reason added here is never shown as a raw code.
  */
 export const WA_FAILURE_TEXT: Record<WaFailureReason, string> = {
+  // A template may be sent outside the window, but sending one does not
+  // re-open it: only a new message from the customer does.
   window_closed:
-    "The 24-hour WhatsApp reply window has closed. Send an approved template to re-open this chat.",
+    "The 24-hour WhatsApp reply window has closed. An approved template can still be sent; free-text replies become available after the customer sends a new message.",
   credentials: "The connected WhatsApp account needs to be reconnected by a company admin.",
   permission:
     "The connected WhatsApp account is missing a permission this message needs. A company admin must reconnect it and approve every permission.",

@@ -7,7 +7,7 @@
 // treated as not existing -- never read, never sent from.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { countryOption } from "@/lib/locale";
-import { resolveRecipientNumber } from "@/lib/wa-delivery";
+import { resolveRecipientNumber, WA_FAILURE_TEXT } from "@/lib/wa-delivery";
 import { resolveSendingNumber, type SendingNumber } from "@/lib/wa.server";
 
 /** Why a send is not allowed, as a code the interface can translate. */
@@ -167,8 +167,7 @@ export async function checkSendPermission(args: {
   // the send agree on it and the sender can be shown the international form.
   let recipient: string | null = null;
   if (overWhatsApp) {
-    const callingCode =
-      (countryOption(org?.country) as { callingCode?: string } | undefined)?.callingCode ?? null;
+    const callingCode = countryOption(org?.country)?.callingCode ?? null;
     const resolved = resolveRecipientNumber(args.recipientPhone ?? contact?.phone, callingCode);
     if (resolved.ok) recipient = resolved.international;
     else if (contact || args.recipientPhone) block("recipient_invalid", resolved.reason);
@@ -193,10 +192,9 @@ export async function checkSendPermission(args: {
         .gte("created_at", since)
         .limit(1);
       if (!lastInbound || lastInbound.length === 0) {
-        block(
-          "window_closed",
-          "The 24-hour WhatsApp reply window has closed — send an approved template to re-open the conversation.",
-        );
+        // The same sentence the provider's own refusal is given, so the gate
+        // and Meta are never described two different ways.
+        block("window_closed", WA_FAILURE_TEXT.window_closed);
       }
     }
 
