@@ -11,8 +11,18 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { logAudit } from "@/lib/audit.server";
 import { resolveContactByPhone } from "@/lib/contact-resolve.server";
-import { checkSendPermission, type SendBlock, type SendCheck } from "@/lib/safety.server";
-import type { WaFailureReason, WaSendOutcome } from "@/lib/wa-delivery";
+import {
+  checkSendPermission,
+  SEND_NOT_CHECKED_TEXT,
+  type SendBlock,
+  type SendCheck,
+} from "@/lib/safety.server";
+import {
+  WA_FAILURE_TEXT,
+  WA_UNCONFIRMED_TEXT,
+  type WaFailureReason,
+  type WaSendOutcome,
+} from "@/lib/wa-delivery";
 import { renderTemplateBody } from "@/lib/wa-template-parameters";
 import {
   completeOutboundDelivery,
@@ -38,8 +48,10 @@ export type SendState =
   /** The safety gate stopped it. Nothing was saved or sent. */
   | "blocked"
   /**
-   * This message is already saved, by an earlier copy of the same request.
-   * This copy sent nothing; `messageId` is the message.
+   * This message is already saved, by an earlier copy of the same request,
+   * and this copy sent nothing. With `ok`, WhatsApp accepted that earlier
+   * copy; without it, the earlier copy is still being sent and its own answer
+   * will say how it went.
    */
   | "duplicate";
 
@@ -60,6 +72,11 @@ export type SendResult = {
   recipient: string | null;
   /** A template's text as the customer sees it. */
   rendered: string | null;
+  /**
+   * This request found its message already saved and sent nothing. `state`
+   * is then what happened to that saved message, not to this request.
+   */
+  repeated: boolean;
 };
 
 const base = (gate: SendCheck | null): Omit<SendResult, "ok" | "state"> => ({
@@ -74,6 +91,7 @@ const base = (gate: SendCheck | null): Omit<SendResult, "ok" | "state"> => ({
     : null,
   recipient: gate?.recipient ?? null,
   rendered: null,
+  repeated: false,
 });
 
 /**
@@ -121,28 +139,79 @@ async function savedCopy(
   tenantId: string,
   conversationId: string,
   messageId: string,
-): Promise<{ id: string; waId: string | null } | null> {
+): Promise<SavedCopy | null> {
   const { data, error } = await supabaseAdmin
     .from("messages")
-    .select("id, wa_message_id")
+    .select("id, wa_message_id, status, created_at")
     .eq("id", messageId)
     .eq("tenant_id", tenantId)
     .eq("conversation_id", conversationId)
     .maybeSingle();
   if (error) throw new Error(OUTBOUND_NOT_SAVED_TEXT);
-  return data ? { id: data.id, waId: data.wa_message_id ?? null } : null;
+  return data
+    ? {
+        id: data.id,
+        waId: data.wa_message_id ?? null,
+        status: data.status,
+        createdAt: data.created_at,
+      }
+    : null;
 }
 
-const duplicateOf = (
-  copy: { id: string; waId: string | null },
-  gate: SendCheck | null,
-): SendResult => ({
-  ...base(gate),
-  ok: true,
-  state: "duplicate",
-  messageId: copy.id,
-  waId: copy.waId,
-});
+type SavedCopy = { id: string; waId: string | null; status: string; createdAt: string };
+
+/** A send is settled within seconds; one still "sending" after this never had its answer recorded. */
+const SENDING_GOES_STALE_MS = 2 * 60 * 1000;
+
+/**
+ * What a repeat is told: what happened to the message that is already saved.
+ *
+ * "It is already saved" is not "it was sent". The first copy may have been
+ * refused, or never answered -- and a repeat that said "fine" for those
+ * cleared the composer without a word, and let an invoice be marked sent that
+ * WhatsApp had turned down.
+ */
+function duplicateOf(copy: SavedCopy, gate: SendCheck | null): SendResult {
+  const shared = { ...base(gate), repeated: true, messageId: copy.id, waId: copy.waId };
+  if (["sent", "delivered", "read"].includes(copy.status)) {
+    return { ...shared, ok: true, state: "duplicate" };
+  }
+  if (copy.status === "failed") {
+    // Why it was refused was told to the first copy; here it is only known that it was.
+    return {
+      ...shared,
+      ok: false,
+      state: "rejected",
+      failureReason: "unknown",
+      deliveryError: WA_FAILURE_TEXT.unknown,
+    };
+  }
+  const age = Date.now() - new Date(copy.createdAt).getTime();
+  if (copy.status === "sending" && !(age > SENDING_GOES_STALE_MS)) {
+    // The first copy is still on its way to WhatsApp, and will answer for itself.
+    return { ...shared, ok: false, state: "duplicate" };
+  }
+  return {
+    ...shared,
+    ok: false,
+    state: "unconfirmed",
+    failureReason: "unconfirmed",
+    deliveryError: WA_UNCONFIRMED_TEXT,
+  };
+}
+
+/** The contact's WhatsApp conversation in this workspace, if they have one. */
+async function whatsappConversationOf(tenantId: string, contactId: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("conversations")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("contact_id", contactId)
+    .eq("channel", "whatsapp")
+    .maybeSingle();
+  if (error) throw new Error(SEND_NOT_CHECKED_TEXT);
+  return data?.id ?? null;
+}
 
 /**
  * Answers a repeat before anything else is decided. A message that is already
@@ -343,7 +412,7 @@ export async function sendConversationMessage(args: {
     }
   }
 
-  if (result.state !== "duplicate" && result.state !== "blocked") {
+  if (!result.repeated && result.state !== "blocked") {
     await logAudit({
       action: "message.send",
       actorId: userId,
@@ -383,7 +452,29 @@ export async function sendTemplate(args: {
 
   let conversationId = args.conversationId ?? null;
   let bindNumber = false;
-  let gate: SendCheck;
+  let gate: SendCheck | null = null;
+  if (!conversationId) {
+    if (!args.phone) throw new Error("No WhatsApp number available for this recipient");
+    // Through the shared resolver, so a contact saved as "+971 50 123 4567"
+    // is found when the number is typed as "971501234567". An unknown number
+    // has no recorded consent, and the gate refuses it.
+    const resolved = await resolveContactByPhone(tenantId, args.phone);
+    // A customer who already has a WhatsApp conversation is answered in it,
+    // from the line it is bound to. Sending "to the number" used to pick the
+    // workspace's default line and then file the message in that conversation
+    // -- a customer who talks to one line got a message from another.
+    const existing = resolved ? await whatsappConversationOf(tenantId, resolved.contactId) : null;
+    if (existing) {
+      conversationId = existing;
+    } else {
+      gate = await checkSendPermission({
+        tenantId,
+        contactId: resolved?.contactId ?? null,
+        recipientPhone: args.phone,
+        isTemplate: true,
+      });
+    }
+  }
   if (conversationId) {
     const { data: conv } = await supabaseAdmin
       .from("conversations")
@@ -397,19 +488,8 @@ export async function sendTemplate(args: {
     if (repeat) return { ...repeat, rendered };
     bindNumber = !conv.wa_number_id;
     gate = await checkSendPermission({ tenantId, conversationId, isTemplate: true });
-  } else {
-    if (!args.phone) throw new Error("No WhatsApp number available for this recipient");
-    // Through the shared resolver, so a contact saved as "+971 50 123 4567"
-    // is found when the number is typed as "971501234567". An unknown number
-    // has no recorded consent, and the gate refuses it.
-    const resolved = await resolveContactByPhone(tenantId, args.phone);
-    gate = await checkSendPermission({
-      tenantId,
-      contactId: resolved?.contactId ?? null,
-      recipientPhone: args.phone,
-      isTemplate: true,
-    });
   }
+  if (!gate) throw new Error("Conversation not found");
 
   const auditTarget = {
     actorId: userId,
@@ -443,7 +523,7 @@ export async function sendTemplate(args: {
       deliverWhatsAppTemplate(to, template.name, template.language, args.variables, creds, ref),
   });
 
-  if (result.state !== "duplicate" && result.state !== "blocked") {
+  if (!result.repeated && result.state !== "blocked") {
     await logAudit({
       action: "message.template_send",
       actorId: userId,

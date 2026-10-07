@@ -78,8 +78,8 @@ let rows;
 beforeEach(() => {
   rows = {
     organizations: [
-      { id: A, suspended: false, subscription_status: "active", country: null },
-      { id: B, suspended: false, subscription_status: "active", country: null },
+      { id: A, suspended: false, subscription_status: "active", country: "AE" },
+      { id: B, suspended: false, subscription_status: "active", country: "GB" },
     ],
     wa_numbers: [
       {
@@ -234,13 +234,34 @@ describe("the number a message is addressed to", () => {
       "00971501234567",
       "971501234567",
       "+971-50-123-4567",
+      "050 123 4567",
     ]) {
-      assert.deepEqual(resolveRecipientNumber(written, null), {
+      assert.deepEqual(resolveRecipientNumber(written, "971"), {
         ok: true,
         digits: "971501234567",
         international: "+971501234567",
       });
     }
+    // A number that says its own country needs no help from the workspace's.
+    assert.equal(resolveRecipientNumber("+44 7700 900123", "971").international, "+447700900123");
+    assert.equal(resolveRecipientNumber("+971 50 123 4567", null).international, "+971501234567");
+  });
+
+  it("does not guess the country of a number that does not say it", () => {
+    // Ten digits, no plus, no leading zero. In a US workspace this is a local
+    // number written short; it was being sent to +41 55 552 671 in Switzerland.
+    const local = resolveRecipientNumber("415 555 2671", "1");
+    assert.equal(local.ok, false);
+    assert.match(local.reason, /without a country code/);
+    // The same shape, and a different truth: a Singapore number without its
+    // plus. Prefixing the workspace's code would message a stranger in the US.
+    assert.equal(resolveRecipientNumber("65 6123 4567", "1").ok, false);
+    // A UAE mobile without its zero is not Belize (+501).
+    assert.equal(resolveRecipientNumber("50 123 4567", "971").ok, false);
+    // And with no workspace country at all, only a number that says its own.
+    assert.equal(resolveRecipientNumber("971501234567", null).ok, false);
+    // It is accepted when it already begins with the workspace's own code.
+    assert.equal(resolveRecipientNumber("1 415 555 2671", "1").international, "+14155552671");
   });
 
   it("completes a national number with the workspace's country, and only then", () => {
@@ -370,10 +391,7 @@ describe("the same click is sent once", () => {
     assert.equal(provider.calls.length, 1, "the provider was called once");
     assert.equal(outbound().length, 1, "one message row");
     assert.deepEqual(results.map((r) => r.state).sort(), ["accepted", "duplicate"]);
-    assert.ok(
-      results.every((r) => r.ok),
-      "the duplicate is not reported as a failure",
-    );
+    assert.deepEqual(results.map((r) => r.repeated).sort(), [false, true]);
     // Both answers name the one message that exists.
     assert.deepEqual(
       results.map((r) => r.messageId),
@@ -494,9 +512,70 @@ describe("a send that got no answer is not called failed, and is not sent again"
     await send({ clientRef: REF_1 });
     provider.fail = null;
     const again = await send({ clientRef: REF_1 });
-    assert.equal(again.state, "duplicate");
+    // The repeat is told what happened to the saved message: still not known.
+    assert.equal(again.repeated, true);
+    assert.equal(again.state, "unconfirmed");
+    assert.equal(again.ok, false);
+    assert.equal(again.failureReason, "unconfirmed");
     assert.equal(provider.calls.length, 1);
     assert.equal(outbound().length, 1);
+  });
+
+  it("tells a repeat that the message was refused, when it was", async () => {
+    // The first answer was lost on its way to the browser, so the same send
+    // arrives again. "Already saved" used to be answered as "fine".
+    provider.next.push(refused(131026));
+    const first = await send({ clientRef: REF_1 });
+    assert.equal(first.state, "rejected");
+    const again = await send({ clientRef: REF_1 });
+    assert.equal(again.repeated, true);
+    assert.equal(again.state, "rejected");
+    assert.equal(again.ok, false);
+    assert.equal(again.messageId, first.messageId);
+    assert.ok(again.deliveryError);
+    assert.equal(provider.calls.length, 1, "and it is not sent again");
+  });
+
+  it("does not audit a copy that lost the race as a second send", async () => {
+    provider.next.push(refused(131026));
+    await send({ clientRef: REF_1 });
+    const sends = () =>
+      globalThis.waSuite.audits.filter((entry) => entry.action === "message.send").length;
+    assert.equal(sends(), 1);
+    // As in a real race: this copy's first look finds no row yet, it is
+    // allowed by the gate, and it meets the saved message at the insert.
+    let looks = 0;
+    db.fail("messages:read", () => (++looks === 1 ? { empty: true } : null));
+    const again = await send({ clientRef: REF_1 });
+    assert.deepEqual([again.repeated, again.state], [true, "rejected"]);
+    assert.equal(sends(), 1, "one message, one audit line");
+    assert.equal(provider.calls.length, 1);
+    assert.equal(outbound().length, 1);
+  });
+
+  it("tells a repeat that the message went, when it did", async () => {
+    const first = await send({ clientRef: REF_1 });
+    const again = await send({ clientRef: REF_1 });
+    assert.deepEqual([again.repeated, again.state, again.ok], [true, "duplicate", true]);
+    assert.equal(again.messageId, first.messageId);
+    // Later receipts do not change that.
+    outbound()[0].status = "read";
+    assert.equal((await send({ clientRef: REF_1 })).ok, true);
+  });
+
+  it("does not call a message sent while its first copy is still on its way", async () => {
+    const first = await send({ clientRef: REF_1 });
+    // As the second copy of a double request finds it: saved, not yet answered.
+    outbound()[0].status = "sending";
+    outbound()[0].created_at = secondsAgo(5);
+    const during = await send({ clientRef: REF_1 });
+    assert.deepEqual([during.repeated, during.state, during.ok], [true, "duplicate", false]);
+    // And one whose answer was never recorded is not "on its way" for ever.
+    outbound()[0].created_at = secondsAgo(600);
+    const later = await send({ clientRef: REF_1 });
+    assert.deepEqual([later.state, later.ok], ["unconfirmed", false]);
+    assert.equal(later.messageId, first.messageId);
+    assert.equal(provider.calls.length, 1);
   });
 
   it("treats an unreadable gateway answer the same way", async () => {
@@ -579,6 +658,44 @@ describe("a send stops when the database cannot vouch for it", () => {
   });
 });
 
+describe("the gate does not decide on what it could not read", () => {
+  for (const [what, table] of [
+    ["whether the workspace is suspended", "organizations"],
+    ["which line the customer is routed to", "leads"],
+    ["the customer's consent and number", "contacts"],
+  ]) {
+    it(`sends nothing when it cannot read ${what}`, async () => {
+      db.fail(`${table}:read`, STATEMENT_TIMEOUT);
+      await assert.rejects(
+        send({ clientRef: REF_1 }),
+        /Could not check whether this message may be sent/,
+      );
+      assert.equal(provider.calls.length, 0);
+      assert.equal(outbound().length, 0);
+      // And the same send goes through once it can be checked.
+      db.recover(`${table}:read`);
+      assert.equal((await send({ clientRef: REF_1 })).state, "accepted");
+      assert.equal(provider.calls.length, 1);
+    });
+  }
+
+  it("used to treat an unreadable workspace as one in good standing", async () => {
+    rows.organizations[0].suspended = true;
+    const blockedNow = await send();
+    assert.deepEqual(
+      blockedNow.blocks.map((b) => b.code),
+      ["workspace_suspended"],
+    );
+    db.fail("organizations:read", STATEMENT_TIMEOUT);
+    await assert.rejects(send());
+    assert.equal(
+      provider.calls.length,
+      0,
+      "a suspended workspace sent while its row could not be read",
+    );
+  });
+});
+
 describe("a refusal says why", () => {
   const cases = [
     [131047, "window_closed", /24-hour/],
@@ -637,8 +754,9 @@ describe("the gate explains a block before anything is saved or sent", () => {
     );
   });
 
-  it("refuses a number saved without its country when the workspace has none either", async () => {
-    rows.contacts[0].phone = "050 123 4567";
+  it("refuses a number that does not say its country, before anything is saved", async () => {
+    // No plus, no leading zero, and not this workspace's country code.
+    rows.contacts[0].phone = "50 123 4567";
     const result = await send();
     assert.deepEqual(
       result.blocks.map((b) => b.code),
@@ -646,6 +764,15 @@ describe("the gate explains a block before anything is saved or sent", () => {
     );
     assert.match(result.blockedReasons[0], /without a country code/);
     assert.equal(provider.calls.length, 0);
+    assert.equal(outbound().length, 0);
+  });
+
+  it("completes a number written the local way with the workspace's own country", async () => {
+    rows.contacts[0].phone = "050 123 4567";
+    const result = await send();
+    assert.equal(result.state, "accepted");
+    assert.equal(result.recipient, "+971501234567");
+    assert.equal(provider.calls[0].body.to, "971501234567");
   });
 
   it("blocks a suspended workspace and an inactive subscription", async () => {
@@ -736,7 +863,7 @@ describe("a template", () => {
     declareKeys();
     db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
     const result = await template({ conversationId: null, phone: "971501234567" });
-    assert.equal(result.state, "accepted");
+    assert.equal(result.state, "accepted", JSON.stringify(result.blocks));
     const opened = rows.conversations.find(
       (c) => c.contact_id === "c-a" && c.channel === "whatsapp",
     );
@@ -744,6 +871,124 @@ describe("a template", () => {
     assert.equal(opened.tenant_id, A);
     assert.equal(outbound()[0].conversation_id, opened.id);
     assert.equal(provider.calls[0].body.to, "971501234567");
+  });
+
+  describe("sent to a number rather than a conversation", () => {
+    const secondLine = (extra = {}) => {
+      const line = {
+        id: "num-a2",
+        tenant_id: A,
+        label: "Support line",
+        display_phone: "+971 4 000 0009",
+        phone_number_id: "pn-a2",
+        access_token: "token-a2",
+        active: true,
+        is_default: false,
+        ...extra,
+      };
+      rows.wa_numbers.push(line);
+      return line;
+    };
+    const toNumber = () => template({ conversationId: null, phone: "971501234567" });
+    beforeEach(() => {
+      db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    });
+
+    it("goes in the customer's existing conversation, from the line that conversation uses", async () => {
+      // It used to take the workspace default and file the message under the
+      // other line's conversation.
+      secondLine();
+      rows.conversations[0].wa_number_id = "num-a2";
+      const result = await toNumber();
+      assert.equal(result.state, "accepted");
+      assert.match(provider.calls[0].url, /\/pn-a2\/messages$/);
+      assert.equal(provider.calls[0].init.headers.Authorization, "Bearer token-a2");
+      assert.equal(outbound()[0].conversation_id, "conv-a");
+      assert.equal(
+        rows.conversations.filter((c) => c.contact_id === "c-a" && c.channel === "whatsapp").length,
+        1,
+      );
+    });
+
+    it("follows the routing decision for a customer who has no conversation yet", async () => {
+      // The default was picked first, then refused for not being the routed line.
+      secondLine();
+      rows.conversations = rows.conversations.filter((c) => c.id !== "conv-a");
+      rows.leads.push({
+        id: "lead-1",
+        tenant_id: A,
+        contact_id: "c-a",
+        assigned_wa_number_id: "num-a2",
+        created_at: secondsAgo(86400),
+      });
+      db.reset(rows);
+      declareKeys();
+      db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+      const result = await toNumber();
+      assert.equal(result.state, "accepted");
+      assert.match(provider.calls[0].url, /\/pn-a2\/messages$/);
+      const opened = rows.conversations.find(
+        (c) => c.contact_id === "c-a" && c.channel === "whatsapp",
+      );
+      assert.equal(opened.wa_number_id, "num-a2");
+    });
+
+    it("does not fall back to another line when the routed one is switched off", async () => {
+      secondLine({ active: false });
+      rows.conversations = rows.conversations.filter((c) => c.id !== "conv-a");
+      rows.leads.push({
+        id: "lead-1",
+        tenant_id: A,
+        contact_id: "c-a",
+        assigned_wa_number_id: "num-a2",
+        created_at: secondsAgo(86400),
+      });
+      db.reset(rows);
+      declareKeys();
+      db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+      const result = await toNumber();
+      assert.equal(result.state, "blocked");
+      assert.deepEqual(
+        result.blocks.map((b) => b.code),
+        ["number_disabled"],
+      );
+      assert.equal(provider.calls.length, 0);
+    });
+
+    it("still refuses a reply from a line the customer is not routed to", async () => {
+      secondLine();
+      rows.leads.push({
+        id: "lead-1",
+        tenant_id: A,
+        contact_id: "c-a",
+        assigned_wa_number_id: "num-a2",
+        created_at: secondsAgo(86400),
+      });
+      const result = await send();
+      assert.ok(result.blocks.some((b) => b.code === "routed_to_other_number"));
+      assert.equal(provider.calls.length, 0);
+    });
+
+    it("stops when it cannot read whether the customer has a conversation", async () => {
+      db.fail("conversations:read", STATEMENT_TIMEOUT);
+      await assert.rejects(toNumber(), /so it was not sent/);
+      assert.equal(provider.calls.length, 0);
+      assert.equal(outbound().length, 0);
+    });
+  });
+
+  it("is audited once when a second copy loses the race", async () => {
+    provider.next.push(refused(132001));
+    await template({ clientRef: REF_1 });
+    const sends = () =>
+      globalThis.waSuite.audits.filter((entry) => entry.action === "message.template_send").length;
+    assert.equal(sends(), 1);
+    let looks = 0;
+    db.fail("messages:read", () => (++looks === 1 ? { empty: true } : null));
+    const again = await template({ clientRef: REF_1 });
+    assert.deepEqual([again.repeated, again.state], [true, "rejected"]);
+    assert.equal(sends(), 1);
+    assert.equal(provider.calls.length, 1);
   });
 
   it("cannot use another workspace's template", async () => {
@@ -981,6 +1226,24 @@ describe("a receipt the database refused is not lost", () => {
     assert.equal(provider.calls.length, 0);
   });
 
+  it("does not move a message backwards when the refused receipt is retried late", async () => {
+    // "delivered" is refused by the database. Before anyone retries it, "read"
+    // arrives and is saved. The retry of "delivered" must then change nothing.
+    const row = outboundRow();
+    const delivered = statusPayload("pn-a", { id: "wamid.OUT-R", status: "delivered" });
+    const read = statusPayload("pn-a", { id: "wamid.OUT-R", status: "read" });
+
+    db.fail("messages:update", STATEMENT_TIMEOUT);
+    await assert.rejects(processWaPayload(delivered), refused);
+    db.recover("messages:update");
+
+    assert.equal(await processWaPayload(read), 1);
+    assert.equal(row.status, "read");
+    assert.equal(await processWaPayload(delivered), 0, "the late retry is a no-op, not an error");
+    assert.equal(row.status, "read");
+    assert.equal(provider.calls.length, 0);
+  });
+
   it("is retried when the message could not even be looked up", async () => {
     const row = outboundRow();
     const receipt = statusPayload("pn-a", { id: "wamid.OUT-R", status: "delivered" });
@@ -1112,11 +1375,30 @@ describe("the chatbot's reply on WhatsApp", () => {
 
   it("is marked not delivered, with the real reason, when Meta refuses it", async () => {
     provider.next.push(refused(131047));
-    await assert.rejects(processWaPayload(inboundPayload("pn-a", askForHuman)), /24-hour/);
+    await processWaPayload(inboundPayload("pn-a", askForHuman));
     const [reply, notice] = botRows();
     assert.equal(reply.status, "failed");
     assert.match(notice.body, /Not delivered: The 24-hour WhatsApp reply window has closed/);
     assert.ok(!notice.body.includes("credentials"), "it used to blame credentials for everything");
+    // Said to the team as an alert, since the event itself is not failed.
+    const alert = rows.system_alerts.find(
+      (a) => a.title === "WhatsApp reply could not be delivered",
+    );
+    assert.ok(alert, "nobody is told the reply was refused");
+    assert.equal(alert.severity, "critical");
+  });
+
+  it("does not offer a retry that cannot send the refused reply", async () => {
+    // The event used to be failed, which put Retry on it in Monitoring. The
+    // retry skipped the already-saved message and was then marked processed,
+    // as if the reply had gone.
+    provider.next.push(refused(131047));
+    await assert.doesNotReject(processWaPayload(inboundPayload("pn-a", askForHuman)));
+    assert.equal(provider.calls.length, 1);
+    // Running the same event again sends nothing and adds nothing.
+    await processWaPayload(inboundPayload("pn-a", askForHuman));
+    assert.equal(provider.calls.length, 1);
+    assert.equal(botRows().length, 2, "the reply and its note, once");
   });
 
   it("is unconfirmed after a timeout, and the event is not failed for retry", async () => {

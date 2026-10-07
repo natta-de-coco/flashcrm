@@ -569,9 +569,12 @@ export async function processWaPayload(body: WaWebhookBody) {
               severity: outcome.state === "rejected" ? "critical" : "warning",
               source: "delivery",
             });
-            // A refusal fails the event so it shows in Monitoring. An
-            // unconfirmed send does not: retrying it could deliver twice.
-            if (outcome.state === "rejected") throw new Error(outcome.message);
+            // The event itself is not failed. It used to be, for a refusal,
+            // which put a Retry button on it in Monitoring -- and that retry
+            // could do nothing: the customer's message is already saved, so it
+            // is skipped, and the event was then marked processed as if the
+            // reply had gone. The refusal is on the reply's own row, in the
+            // note under it, and in the alert above.
           }
         }
       }
