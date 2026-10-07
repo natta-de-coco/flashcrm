@@ -21,7 +21,10 @@ const read = (path) =>
     .join("\n");
 
 const TENANT = "tenant-a";
+const OTHER = "tenant-b";
 let adminWrites, sessionWrites, rows;
+/** "table:op" -> error, to make one write fail. */
+let faults = {};
 
 /** Records every write and which client made it. */
 function client(label, writes) {
@@ -59,6 +62,9 @@ function client(label, writes) {
         const match = (rows[table] ?? []).filter((r) => q.filters.every(([c, v]) => r[c] === v));
         if (q.op)
           writes.push({ client: label, table, op: q.op, patch: q.patch, filters: q.filters });
+        const fault = faults[`${table}:${q.op}`];
+        if (fault)
+          return Promise.resolve({ data: null, error: fault, count: null }).then(resolve, reject);
         if (q.op === "update") for (const r of match) Object.assign(r, q.patch);
         if (q.op === "delete") {
           rows[table] = (rows[table] ?? []).filter((r) => !match.includes(r));
@@ -90,6 +96,7 @@ const context = (userId = "admin-1") => ({
 beforeEach(() => {
   adminWrites = [];
   sessionWrites = [];
+  faults = {};
   rows = {
     profiles: [
       { id: "admin-1", tenant_id: TENANT, staff_role: "company_admin" },
@@ -108,6 +115,99 @@ beforeEach(() => {
 });
 
 const profileWrites = (writes) => writes.filter((w) => w.table === "profiles" && w.op === "update");
+
+describe("a role change never reaches into another workspace", () => {
+  // The profile write is limited to the caller's workspace. The legacy role
+  // table has no workspace in it at all -- and was written regardless.
+  beforeEach(() => {
+    rows.profiles.push(
+      { id: "their-staff", tenant_id: OTHER, staff_role: "staff" },
+      { id: "their-admin", tenant_id: OTHER, staff_role: "company_admin" },
+    );
+    rows.user_roles.push({ user_id: "their-admin", role: "admin" });
+  });
+  const legacyWrites = () => adminWrites.filter((w) => w.table === "user_roles");
+  const legacyAdmin = (userId) =>
+    rows.user_roles.some((r) => r.user_id === userId && r.role === "admin");
+
+  it("cannot make someone in another company an admin there", async () => {
+    // The takeover: an ordinary member of company B opens a workspace of their
+    // own, and from it promotes their company-B account.
+    await assert.rejects(
+      setStaffRole({
+        data: { userId: "their-staff", staffRole: "company_admin" },
+        context: context(),
+      }),
+      /not a member of this workspace/,
+    );
+    assert.equal(legacyAdmin("their-staff"), false, "they were given admin in the other company");
+    assert.equal(legacyWrites().length, 0);
+    assert.equal(rows.profiles.find((p) => p.id === "their-staff").staff_role, "staff");
+  });
+
+  it("cannot take admin away from another company's admin", async () => {
+    await assert.rejects(
+      setStaffRole({ data: { userId: "their-admin", staffRole: "staff" }, context: context() }),
+      /not a member of this workspace/,
+    );
+    assert.equal(legacyAdmin("their-admin"), true, "another company's admin lost their role");
+    assert.equal(rows.profiles.find((p) => p.id === "their-admin").staff_role, "company_admin");
+  });
+
+  it("cannot remove another company's admin", async () => {
+    await assert.rejects(
+      removeStaff({ data: { userId: "their-admin" }, context: context() }),
+      /not a member of this workspace/,
+    );
+    assert.equal(legacyAdmin("their-admin"), true);
+    assert.equal(rows.profiles.find((p) => p.id === "their-admin").tenant_id, OTHER);
+    assert.equal(legacyWrites().length, 0);
+  });
+
+  it("does nothing for an id that is nobody", async () => {
+    await assert.rejects(
+      setStaffRole({
+        data: { userId: "no-such-user", staffRole: "company_admin" },
+        context: context(),
+      }),
+      /not a member of this workspace/,
+    );
+    await assert.rejects(removeStaff({ data: { userId: "no-such-user" }, context: context() }));
+    assert.equal(legacyWrites().length, 0);
+  });
+
+  it("still changes and removes its own members, in both role systems", async () => {
+    await setStaffRole({
+      data: { userId: "agent-1", staffRole: "company_admin" },
+      context: context(),
+    });
+    assert.equal(legacyAdmin("agent-1"), true);
+    await setStaffRole({ data: { userId: "agent-1", staffRole: "staff" }, context: context() });
+    assert.equal(legacyAdmin("agent-1"), false);
+    await removeStaff({ data: { userId: "admin-2" }, context: context() });
+    assert.equal(legacyAdmin("admin-2"), false);
+    assert.equal(rows.profiles.find((p) => p.id === "admin-2").tenant_id, null);
+  });
+
+  it("does not report success when the legacy admin record could not be changed", async () => {
+    // A demotion that leaves the admin row behind is the bug this code exists
+    // to prevent; a failed write of it must not pass as done.
+    faults["user_roles:delete"] = { code: "57014", message: "statement timeout" };
+    await assert.rejects(
+      setStaffRole({ data: { userId: "admin-2", staffRole: "staff" }, context: context() }),
+      /older admin record could not be updated/,
+    );
+    await assert.rejects(
+      removeStaff({ data: { userId: "admin-2" }, context: context() }),
+      /older admin record could not be updated|not a member/,
+    );
+    faults["user_roles:upsert"] = { code: "57014", message: "statement timeout" };
+    await assert.rejects(
+      setStaffRole({ data: { userId: "agent-1", staffRole: "company_admin" }, context: context() }),
+      /older admin record could not be updated/,
+    );
+  });
+});
 
 describe("a teammate's role is written by the server, not by the browser session", () => {
   it("changes staff_role through the service role", async () => {
