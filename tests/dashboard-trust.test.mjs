@@ -176,6 +176,42 @@ describe("the AI brief is a snapshot, not a live figure (M7)", () => {
     });
     assert.match(note, /just now/i);
   });
+
+  // Review of PR #37. Pressing Regenerate leaves `cached: false` in the page's
+  // memory for as long as the page stays open, while the cards beside it keep
+  // refetching. "Not served from the cache" was read as "fresh", so a brief
+  // written at 08:14 still said "Written just now" at lunchtime.
+  test("a regenerated brief stops being 'just now' once it has aged", () => {
+    const threeHours = 3 * 60 * 60_000;
+    assert.equal(figures.briefSnapshotKind({ cached: false, ageMs: threeHours }), "diverged");
+    const note = figures.briefSnapshotNote({
+      generatedAtTime: "08:14",
+      cached: false,
+      ageMs: threeHours,
+    });
+    assert.doesNotMatch(note, /just now/i);
+    assert.match(note, /08:14/);
+    assert.match(note, /can differ/i);
+    assert.match(note, /Regenerate/);
+  });
+
+  test("the warning depends on the brief's age, however the server delivered it", () => {
+    const limit = figures.BRIEF_DIVERGENCE_MS;
+    for (const cached of [true, false]) {
+      assert.equal(figures.briefSnapshotKind({ cached, ageMs: limit }), "diverged");
+      assert.equal(figures.briefSnapshotKind({ cached, ageMs: limit * 40 }), "diverged");
+      assert.notEqual(figures.briefSnapshotKind({ cached, ageMs: limit - 1 }), "diverged");
+    }
+    // Inside the window both wordings are true, and say which one this is.
+    assert.equal(figures.briefSnapshotKind({ cached: false, ageMs: limit - 1 }), "fresh");
+    assert.equal(figures.briefSnapshotKind({ cached: true, ageMs: limit - 1 }), "cached");
+  });
+
+  test("a brief whose age cannot be worked out is never called fresh", () => {
+    for (const cached of [true, false]) {
+      assert.equal(figures.briefSnapshotKind({ cached, ageMs: Number.NaN }), "diverged");
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */

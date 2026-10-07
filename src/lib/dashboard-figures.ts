@@ -109,6 +109,12 @@ export function briefSnapshotKind(input: {
   cached: boolean;
   ageMs: number;
 }): "fresh" | "diverged" | "cached" {
-  if (!input.cached) return "fresh";
-  return input.ageMs >= BRIEF_DIVERGENCE_MS ? "diverged" : "cached";
+  // Age decides whether the brief and the cards can have drifted apart, however
+  // the server delivered it. `cached: false` only says it was not read from the
+  // daily cache on that request; after Regenerate it stays false in the page's
+  // memory while the cards keep refetching, so reading it as "fresh" had a
+  // brief written at 08:14 still saying "Written just now" at lunchtime. An age
+  // that cannot be worked out is never called fresh.
+  if (!(input.ageMs < BRIEF_DIVERGENCE_MS)) return "diverged";
+  return input.cached ? "cached" : "fresh";
 }
