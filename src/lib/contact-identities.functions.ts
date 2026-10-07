@@ -84,7 +84,12 @@ export const getContactDetail = createServerFn({ method: "GET" })
     };
   });
 
-/** Free-text notes on a contact, saved from the detail dialog. */
+/**
+ * Free-text notes on a contact, saved from the detail dialog.
+ *
+ * Answers with the note as it was stored (trimmed, or null when cleared), so the
+ * dialog can show what is really saved without waiting for a refetch.
+ */
 export const saveContactNotes = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
@@ -93,12 +98,20 @@ export const saveContactNotes = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     // Blank clears the field rather than storing an empty string, so the
     // "no notes yet" state stays a single condition everywhere that reads it.
-    const { error } = await context.supabase
+    const stored = data.notes.trim() || null;
+    const { data: updated, error } = await context.supabase
       .from("contacts")
-      .update({ notes: data.notes.trim() || null })
-      .eq("id", data.contactId);
+      .update({ notes: stored })
+      .eq("id", data.contactId)
+      .select("id");
     if (error) throw error;
-    return { ok: true };
+    // An update that matches no row is not an error to the database: the contact
+    // was deleted in another tab, or is not in this workspace. Saying "saved"
+    // then would tell the person a note exists that was never written.
+    if (!updated || updated.length === 0) {
+      throw new Error("This contact could not be found, so the note was not saved.");
+    }
+    return { ok: true, notes: stored };
   });
 
 export const addContactIdentity = createServerFn({ method: "POST" })
@@ -152,26 +165,52 @@ export const removeContactIdentity = createServerFn({ method: "POST" })
  * Two writes rather than one because a partial unique index allows only one
  * primary per (contact, kind): the existing primary has to be cleared before
  * the new one is set, or the second write violates it.
+ *
+ * `id` null means "the number on the contact record": the phone or email held
+ * in `contacts` itself has no identity row to flag, and it counts as the
+ * primary exactly when no identity of that kind is (see reachLines()). Choosing
+ * it is therefore the first write alone.
+ *
+ * The identity is checked before anything is cleared. Clearing first and then
+ * finding the number gone (removed in another tab, or never this contact's)
+ * would leave the contact with no primary while telling the person it worked.
  */
 export const setPrimaryIdentity = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
     z
-      .object({ id: z.string().uuid(), contactId: z.string().uuid(), kind: KindSchema })
+      .object({ id: z.string().uuid().nullable(), contactId: z.string().uuid(), kind: KindSchema })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    if (data.id) {
+      const found = await context.supabase
+        .from("contact_identities")
+        .select("id")
+        .eq("id", data.id)
+        .eq("contact_id", data.contactId)
+        .eq("kind", data.kind)
+        .maybeSingle();
+      if (found.error) throw found.error;
+      if (!found.data) {
+        throw new Error(
+          "That number is no longer on this contact. Close this card and open it again.",
+        );
+      }
+    }
     const cleared = await context.supabase
       .from("contact_identities")
       .update({ is_primary: false })
       .eq("contact_id", data.contactId)
       .eq("kind", data.kind);
     if (cleared.error) throw cleared.error;
-    const { error } = await context.supabase
-      .from("contact_identities")
-      .update({ is_primary: true })
-      .eq("id", data.id);
-    if (error) throw error;
+    if (data.id) {
+      const { error } = await context.supabase
+        .from("contact_identities")
+        .update({ is_primary: true })
+        .eq("id", data.id);
+      if (error) throw error;
+    }
     return { ok: true };
   });
 

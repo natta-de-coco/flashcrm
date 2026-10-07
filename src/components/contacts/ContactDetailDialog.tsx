@@ -42,7 +42,15 @@ import {
   saveContactNotes,
   setPrimaryIdentity,
 } from "@/lib/contact-identities.functions";
-import { formatStageMoney, inboxConversationHref, reachLines } from "@/lib/contacts-view";
+import {
+  draftAfterSave,
+  formatStageMoney,
+  hasUnsavedNotes,
+  inboxConversationHref,
+  notesFieldValue,
+  reachLines,
+  type NotesDraft,
+} from "@/lib/contacts-view";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage } from "@/lib/i18n";
 import { openContactWhatsApp } from "@/lib/whatsapp-conversations.functions";
@@ -87,8 +95,11 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
   const [label, setLabel] = useState("");
   const [branchName, setBranchName] = useState("");
   const [branchCity, setBranchCity] = useState("");
-  const [notes, setNotes] = useState("");
-  const [notesTouched, setNotesTouched] = useState(false);
+  // Only what has been typed and not yet saved. What the box shows is worked
+  // out from this and the saved note on every render (notesFieldValue), not
+  // copied in by effects: two effects that each wrote the box left it blank
+  // when a contact that was already loaded was opened again.
+  const [draft, setDraft] = useState<NotesDraft | null>(null);
 
   const detail = useQuery({
     queryKey: ["contact-detail", contactId],
@@ -96,21 +107,22 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     enabled: Boolean(contactId),
   });
 
+  type Detail = NonNullable<typeof detail.data>;
+
   const contact = detail.data?.contact ?? null;
 
-  // Seed the notes box from the record, but never over something half-typed:
-  // the detail query refetches whenever an identity is added, and clobbering an
-  // unsaved note on an unrelated save would be its own bug report.
+  // A fresh contact means nothing typed yet. Safe as an effect now: it only
+  // drops the unsaved typing, and the box never depended on it to show the note.
   useEffect(() => {
-    if (notesTouched) return;
-    setNotes(contact?.notes ?? "");
-  }, [contact?.notes, notesTouched]);
-
-  // A fresh contact means a fresh editing state.
-  useEffect(() => {
-    setNotesTouched(false);
-    setNotes("");
+    setDraft(null);
   }, [contactId]);
+
+  const notes = notesFieldValue(contactId, contact?.notes, draft);
+  const notesTouched = hasUnsavedNotes(contactId, draft);
+  // The box is only offered for editing once the saved note is on screen. After
+  // a failed load it would be empty, looking like "no note yet", and saving
+  // from it would replace a note nobody was shown.
+  const notesAvailable = Boolean(contact);
 
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["contact-detail", contactId] });
@@ -161,7 +173,8 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     onError: fail,
   });
   const primaryMutation = useMutation({
-    mutationFn: (v: { id: string; kind: "phone" | "email" }) =>
+    // id is null for the number on the contact record, which has no identity row.
+    mutationFn: (v: { id: string | null; kind: "phone" | "email" }) =>
       makePrimary({ data: { id: v.id, contactId: contactId!, kind: v.kind } }),
     onSuccess: refresh,
     onError: fail,
@@ -172,11 +185,24 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     onError: fail,
   });
   const notesMutation = useMutation({
-    mutationFn: () => saveNotes({ data: { contactId: contactId!, notes } }),
-    onSuccess: () => {
-      setNotesTouched(false);
+    // What is sent is what the box held when Save was pressed, and the contact
+    // it was typed for. The box stays editable while the request is out, so the
+    // answer is judged against that, not against whatever is in the box by then.
+    mutationFn: (sent: NotesDraft) =>
+      saveNotes({ data: { contactId: sent.contactId, notes: sent.text } }),
+    onSuccess: (result, sent) => {
+      // Show the note as stored right away, rather than the one from before
+      // until a refetch arrives (or for good, if it fails).
+      qc.setQueryData<Detail>(["contact-detail", sent.contactId], (old) =>
+        old && old.contact ? { ...old, contact: { ...old.contact, notes: result.notes } } : old,
+      );
+      // Typing done after Save was pressed was not in the request. Clearing it
+      // as "saved" put the stored note back over it, losing it; it stays as
+      // unsaved typing, with Save offered again.
+      setDraft((current) => draftAfterSave(current, sent));
       toast.success(t("contactCard.notesSaved"));
-      refresh();
+      void qc.invalidateQueries({ queryKey: ["contact-detail", sent.contactId] });
+      void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
     onError: fail,
   });
@@ -298,7 +324,11 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                   <span className="min-w-0 flex-1 truncate">{row.value}</span>
                   {row.label && (
                     <Badge variant="outline" className="shrink-0 text-[10px]">
-                      {row.fromContactRow ? t("contactCard.primaryOnRecord") : row.label}
+                      {row.fromContactRow
+                        ? row.isPrimary
+                          ? t("contactCard.primaryOnRecord")
+                          : t("contactCard.onRecord")
+                        : row.label}
                     </Badge>
                   )}
                   {branchNameFor(row.branchId) && (
@@ -321,7 +351,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                           : t("contactCard.makePrimaryEmail", { value: row.value })
                       }
                       disabled={primaryMutation.isPending}
-                      onClick={() => primaryMutation.mutate({ id: row.id!, kind: row.kind })}
+                      onClick={() => primaryMutation.mutate({ id: row.id, kind: row.kind })}
                     >
                       {t("contactCard.makePrimary")}
                     </Button>
@@ -467,21 +497,26 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
               <Label htmlFor="contact-notes" className="text-sm font-semibold">
                 {t("contactCard.notes")}
               </Label>
+              {!notesAvailable && (
+                <p role="alert" className="text-xs text-destructive">
+                  {t("contactCard.notesNotLoaded")}
+                </p>
+              )}
               <Textarea
                 id="contact-notes"
                 rows={4}
                 placeholder={t("contactCard.notesPlaceholder")}
                 value={notes}
-                onChange={(e) => {
-                  setNotesTouched(true);
-                  setNotes(e.target.value);
-                }}
+                disabled={!notesAvailable}
+                onChange={(e) => setDraft({ contactId: contactId!, text: e.target.value })}
               />
               <Button
                 className="w-fit"
                 size="sm"
-                disabled={!notesTouched || notesMutation.isPending}
-                onClick={() => notesMutation.mutate()}
+                disabled={!notesAvailable || !notesTouched || notesMutation.isPending}
+                onClick={() => {
+                  if (contactId && draft) notesMutation.mutate(draft);
+                }}
               >
                 {t("contactCard.saveNotes")}
               </Button>

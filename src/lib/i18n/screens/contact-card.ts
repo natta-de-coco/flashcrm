@@ -1,5 +1,6 @@
-// One contact, opened: reach lines, conversations, branches, notes.
-// Example placeholders are local to each language's market on purpose.
+// Text for the "contactCard" screen, in every language. Extracted by
+// scripts/i18n-extract.mjs; the Arabic, Malay, Filipino and Swahili are by
+// Claude and want a native speaker's review.
 import { screen } from "../define";
 
 export default screen({
@@ -59,6 +60,9 @@ export default screen({
     "contactCard.status.open": "open",
     "contactCard.status.closed": "closed",
     "contactCard.status.pending": "pending",
+    "contactCard.onRecord": "On the contact record",
+    "contactCard.notesNotLoaded":
+      "The saved note could not be loaded, so it is not shown and cannot be changed here. Close this card and open it again.",
   },
   ar: {
     "contactCard.description":
@@ -114,6 +118,9 @@ export default screen({
     "contactCard.status.open": "مفتوحة",
     "contactCard.status.closed": "مغلقة",
     "contactCard.status.pending": "قيد الانتظار",
+    "contactCard.onRecord": "من سجل جهة الاتصال",
+    "contactCard.notesNotLoaded":
+      "تعذّر تحميل الملاحظة المحفوظة، لذلك لا تظهر ولا يمكن تعديلها هنا. أغلق هذه البطاقة ثم افتحها من جديد.",
   },
   ms: {
     "contactCard.description":
@@ -171,6 +178,9 @@ export default screen({
     "contactCard.status.open": "terbuka",
     "contactCard.status.closed": "ditutup",
     "contactCard.status.pending": "belum selesai",
+    "contactCard.onRecord": "Pada rekod kenalan",
+    "contactCard.notesNotLoaded":
+      "Nota yang disimpan tidak dapat dimuatkan, jadi ia tidak dipaparkan dan tidak boleh diubah di sini. Tutup kad ini dan buka semula.",
   },
   fil: {
     "contactCard.description":
@@ -228,6 +238,9 @@ export default screen({
     "contactCard.status.open": "bukas",
     "contactCard.status.closed": "sarado",
     "contactCard.status.pending": "nakabinbin",
+    "contactCard.onRecord": "Nasa record ng contact",
+    "contactCard.notesNotLoaded":
+      "Hindi ma-load ang naka-save na tala, kaya hindi ito ipinapakita at hindi mababago rito. Isara ang card na ito at buksan ulit.",
   },
   sw: {
     "contactCard.description":
@@ -285,5 +298,8 @@ export default screen({
     "contactCard.status.open": "wazi",
     "contactCard.status.closed": "imefungwa",
     "contactCard.status.pending": "inasubiri",
+    "contactCard.onRecord": "Kwenye rekodi ya anwani",
+    "contactCard.notesNotLoaded":
+      "Maelezo yaliyohifadhiwa hayakuweza kupakiwa, kwa hiyo hayaonyeshwi na hayawezi kubadilishwa hapa. Funga kadi hii kisha uifungue tena.",
   },
 });
