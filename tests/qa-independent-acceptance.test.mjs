@@ -9,7 +9,10 @@ describe("QA Matrix Item 4: Invoice PDF & Arabic Character Support", () => {
       "utf8",
     );
     // Locate the safe() function definition
-    assert.ok(source.includes("replace(/[^\\u0000-\\u00FF]/g"), "safe() strips non-Latin-1 characters");
+    assert.ok(
+      source.includes("replace(/[^\\u0000-\\u00FF]/g"),
+      "safe() strips non-Latin-1 characters",
+    );
 
     // Simulate the regex used in invoice-pdf.server.ts
     const sanitize = (text) =>
@@ -25,9 +28,21 @@ describe("QA Matrix Item 4: Invoice PDF & Arabic Character Support", () => {
     const arabicDescription = "كاميرات مراقبة وحلول أمنية";
 
     // Expected under current implementation: all Arabic glyphs are stripped away, leaving only whitespace
-    assert.equal(sanitize(arabicCompanyName).trim(), "", "Arabic company name stripped to whitespace");
-    assert.equal(sanitize(arabicCustomer).trim(), "", "Arabic customer name stripped to whitespace");
-    assert.equal(sanitize(arabicDescription).trim(), "", "Arabic product description stripped to whitespace");
+    assert.equal(
+      sanitize(arabicCompanyName).trim(),
+      "",
+      "Arabic company name stripped to whitespace",
+    );
+    assert.equal(
+      sanitize(arabicCustomer).trim(),
+      "",
+      "Arabic customer name stripped to whitespace",
+    );
+    assert.equal(
+      sanitize(arabicDescription).trim(),
+      "",
+      "Arabic product description stripped to whitespace",
+    );
   });
 
   it("proves StandardFonts does not include Unicode / Arabic font support", () => {
@@ -38,7 +53,11 @@ describe("QA Matrix Item 4: Invoice PDF & Arabic Character Support", () => {
     assert.ok(source.includes("StandardFonts.Helvetica"));
     assert.ok(source.includes("StandardFonts.HelveticaBold"));
     // StandardFonts only support WinAnsi / Latin-1 encoding, confirming lack of Arabic font embedding
-    assert.equal(source.includes("fontkit"), false, "fontkit is not imported for custom unicode TTF/OTF fonts");
+    assert.equal(
+      source.includes("fontkit"),
+      false,
+      "fontkit is not imported for custom unicode TTF/OTF fonts",
+    );
   });
 });
 
@@ -53,7 +72,9 @@ describe("QA Matrix Item 5: Invoicing Blocker Localization", () => {
       "finaliseBlocker contains hardcoded English customer blocker",
     );
     assert.ok(
-      source.includes('return "Add at least one line with a description and a quantity above zero.";'),
+      source.includes(
+        'return "Add at least one line with a description and a quantity above zero.";',
+      ),
       "finaliseBlocker contains hardcoded English items blocker",
     );
     assert.ok(

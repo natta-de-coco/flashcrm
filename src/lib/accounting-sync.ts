@@ -59,13 +59,17 @@ export type AccountingSyncOptions = AccountingExportOptions;
  * and escapes standard XML reserved entities.
  */
 export function escapeXml(unsafe: unknown): string {
-  return String(unsafe ?? "")
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+  return (
+    String(unsafe ?? "")
+      // These characters must be removed to produce valid XML 1.0.
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;")
+  );
 }
 
 /**
@@ -103,9 +107,13 @@ export function sanitizeCsvCell(val: unknown): string {
  * Replaces tab, newline, and control characters with space to prevent column/row corruption.
  */
 export function escapeIif(val: unknown): string {
-  return String(val ?? "")
-    .replace(/[\x00-\x1F]+/g, " ")
-    .trim();
+  return (
+    String(val ?? "")
+      // IIF is line/tab delimited; embedded controls would corrupt its structure.
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x1F]+/g, " ")
+      .trim()
+  );
 }
 
 /** Formats YYYY-MM-DD into Tally's YYYYMMDD date format. */
@@ -128,9 +136,7 @@ export function generateTallySalesXml(
   const salesLedger = options.salesLedger || "Sales Account";
   const taxLedger = options.taxLedger || (doc.tax_label ? `${doc.tax_label} Output` : "Output VAT");
   const customerName =
-    doc.customer_snapshot?.company ||
-    doc.customer_snapshot?.name ||
-    "Cash Customer";
+    doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Cash Customer";
 
   const isQuotation = doc.kind === "quotation";
   const voucherType = isQuotation ? "Quotation" : "Sales";
@@ -213,12 +219,15 @@ export function generateTallySalesXml(
             }
 
             <!-- Inventory Items -->
-            ${inventoryEntries || `
+            ${
+              inventoryEntries ||
+              `
             <LEDGERENTRIES.LIST>
               <LEDGERNAME>${escapeXml(salesLedger)}</LEDGERNAME>
               <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
               <AMOUNT>-${subtotal}</AMOUNT>
-            </LEDGERENTRIES.LIST>`}
+            </LEDGERENTRIES.LIST>`
+            }
           </VOUCHER>
         </TALLYMESSAGE>
       </REQUESTDATA>
@@ -265,10 +274,7 @@ export function generateQuickBooksCsv(doc: SyncInvoiceDoc, items: SyncInvoiceIte
         "Currency",
       ];
 
-  const customerName =
-    doc.customer_snapshot?.company ||
-    doc.customer_snapshot?.name ||
-    "Customer";
+  const customerName = doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Customer";
 
   const rows: string[] = [headers.join(",")];
 
@@ -384,10 +390,7 @@ export function generateZohoInvoiceCsv(doc: SyncInvoiceDoc, items: SyncInvoiceIt
         "Terms & Conditions",
       ];
 
-  const customerName =
-    doc.customer_snapshot?.company ||
-    doc.customer_snapshot?.name ||
-    "Customer";
+  const customerName = doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Customer";
 
   const rows: string[] = [headers.join(",")];
 
@@ -421,8 +424,7 @@ export function generateZohoInvoiceCsv(doc: SyncInvoiceDoc, items: SyncInvoiceIt
  */
 export function generateZohoInvoiceJson(doc: SyncInvoiceDoc, items: SyncInvoiceItem[]): string {
   const isQuotation = doc.kind === "quotation";
-  const customerName =
-    doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Customer";
+  const customerName = doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Customer";
 
   const payload = isQuotation
     ? {
@@ -474,8 +476,7 @@ export function generateQuickBooksInvoiceJson(
   items: SyncInvoiceItem[],
 ): string {
   const isQuotation = doc.kind === "quotation";
-  const customerName =
-    doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Customer";
+  const customerName = doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Customer";
 
   const payload = {
     DocNumber: doc.doc_number,
@@ -490,9 +491,7 @@ export function generateQuickBooksInvoiceJson(
     CustomerMemo: {
       value:
         doc.notes ||
-        (isQuotation
-          ? "Quotation generated from Flas CRM"
-          : "Invoice generated from Flas CRM"),
+        (isQuotation ? "Quotation generated from Flas CRM" : "Invoice generated from Flas CRM"),
     },
     Line: items.map((i) => ({
       DetailType: "SalesItemLineDetail",

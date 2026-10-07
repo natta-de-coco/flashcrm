@@ -36,13 +36,24 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowRight, Download, FileText, Plus, Receipt, Send, Share2 } from "lucide-react";
-import { useState } from "react";
+
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, type MessageKey } from "@/lib/i18n";
 import { AccountingExportDialog } from "@/components/sales/AccountingExportDialog";
 import { type SyncInvoiceDoc, type SyncInvoiceItem } from "@/lib/accounting-sync";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Download,
+  FileText,
+  Plus,
+  Receipt,
+  Send,
+  Share2,
+} from "lucide-react";
+import { useRef, useState } from "react";
+import { referenceFor, type SendReference } from "@/lib/send-reference";
 
 /**
  * Why a document cannot be finalised yet, or null when it can.
@@ -138,7 +149,7 @@ function downloadBase64(base64: string, filename: string) {
 }
 
 function SalesPage() {
-  const { t, tr } = useI18n();
+  const { t, tr, tx } = useI18n();
   const qc = useQueryClient();
   // Issue dates are the tenant's calendar day. Computing them from UTC dated a
   // quotation raised on the 10th in Dubai as the 9th.
@@ -162,6 +173,12 @@ function SalesPage() {
     doc: SyncInvoiceDoc;
     items: SyncInvoiceItem[];
   } | null>(null);
+  // Why the last WhatsApp send did not go, shown in the dialog with the PDF as
+  // the way to send it by hand.
+  const [sendBlocks, setSendBlocks] = useState<{ code: string; message: string }[]>([]);
+  // One reference per document message, kept until the server answers for it,
+  // so a second click or a retry after a lost answer is the same message.
+  const sendRef = useRef<SendReference | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["sales-workspace"],
@@ -263,7 +280,7 @@ function SalesPage() {
         contact_id: (doc["contact_id"] as string) ?? null,
         template_id:
           (doc["template_id"] as string) ??
-          ((doc["custom_fields"] as Record<string, string>)?.[ "template_id"] as string) ??
+          ((doc["custom_fields"] as Record<string, string>)?.["template_id"] as string) ??
           "modern-emerald",
         customer: {
           name: snapshot["name"] ?? "",
@@ -367,20 +384,46 @@ function SalesPage() {
   });
 
   const send = useMutation({
-    mutationFn: () =>
-      sendWa({
+    mutationFn: () => {
+      sendRef.current = referenceFor(sendRef.current, `${sendFor!.id}\n${sendNote.trim()}`, () =>
+        crypto.randomUUID(),
+      );
+      return sendWa({
         data: {
           id: sendFor!.id,
           origin: origin(),
+          clientRef: sendRef.current.ref,
           ...(sendNote.trim() ? { note: sendNote.trim() } : {}),
         },
-      }),
+      });
+    },
     onSuccess: (result) => {
-      toast.success(t("sales.sentOnWhatsappTo", { phone: result.phone }));
+      // The server has answered for this message; the next one is new.
+      sendRef.current = null;
+      qc.invalidateQueries({ queryKey: ["sales-workspace"] });
+      if (result.state === "blocked") {
+        // Nothing was sent. The dialog stays open with the reason and the PDF.
+        setSendBlocks(result.blocks);
+        return;
+      }
+      if (result.state === "accepted" || result.state === "duplicate") {
+        toast.success(t("sales.sentOnWhatsappTo", { phone: result.phone ?? "" }));
+      } else {
+        // Refused, or never answered: said as such, never as "sent".
+        toast.warning(
+          t("sales.notSentOnWhatsappReason", {
+            reason: tx(
+              `inbox.sendFailure.${result.failureReason ?? "unknown"}`,
+              result.deliveryError ?? "",
+            ),
+          }),
+        );
+      }
       setSendFor(null);
       setSendNote("");
-      qc.invalidateQueries({ queryKey: ["sales-workspace"] });
+      setSendBlocks([]);
     },
+    // Kept for the retry: no answer is not a "no".
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -399,6 +442,14 @@ function SalesPage() {
       toast.success(
         result.receiptSent ? t("sales.paymentRecordedPaidCopySent") : t("sales.paymentRecorded"),
       );
+      if (result.receiptNotSent) {
+        const why = result.receiptNotSent.blocks.length
+          ? result.receiptNotSent.blocks
+              .map((b) => tx(`inbox.block.${b.code}`, b.message))
+              .join(" ")
+          : tx(`inbox.sendFailure.${result.receiptNotSent.reason ?? "unknown"}`, "");
+        toast.warning(t("sales.paidCopyNotSentReason", { reason: why }));
+      }
       setPayFor(null);
       setPayForm({ amount: "", reference: "", method: "bank_transfer" });
       qc.invalidateQueries({ queryKey: ["sales-workspace"] });
@@ -591,7 +642,14 @@ function SalesPage() {
         </div>
       )}
 
-      <Dialog open={!!sendFor} onOpenChange={(open) => !open && setSendFor(null)}>
+      <Dialog
+        open={!!sendFor}
+        onOpenChange={(open) => {
+          if (open) return;
+          setSendFor(null);
+          setSendBlocks([]);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("sales.sendOnWhatsapp")}</DialogTitle>
@@ -606,6 +664,30 @@ function SalesPage() {
               onChange={(e) => setSendNote(e.target.value)}
             />
           </div>
+          {sendBlocks.length > 0 && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+            >
+              <p className="flex items-center gap-1.5 font-semibold text-destructive">
+                <AlertTriangle className="size-4 shrink-0" /> {t("sales.notSentOnWhatsapp")}
+              </p>
+              <ul className="mt-1 space-y-1 text-muted-foreground">
+                {sendBlocks.map((b) => (
+                  <li key={b.code}>{tx(`inbox.block.${b.code}`, b.message)}</li>
+                ))}
+              </ul>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                disabled={download.isPending}
+                onClick={() => sendFor && download.mutate(sendFor.id)}
+              >
+                <Download className="size-4" /> {t("sales.downloadPdfToSendYourself")}
+              </Button>
+            </div>
+          )}
           <Button disabled={send.isPending} onClick={() => send.mutate()}>
             {send.isPending ? t("sales.sending") : t("sales.sendNow")}
           </Button>

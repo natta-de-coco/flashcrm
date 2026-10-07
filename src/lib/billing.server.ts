@@ -464,7 +464,7 @@ function toPdfInput(
     template: (() => {
       const templateKey =
         (doc.template_id as string) ||
-        ((doc.custom_fields as Record<string, string>)?.[ "template_id"] as string);
+        ((doc.custom_fields as Record<string, string>)?.["template_id"] as string);
       const tmpl = template ?? getInvoiceTemplate(templateKey);
       return {
         ...(tmpl?.primary_color ? { primary_color: tmpl.primary_color } : {}),
@@ -486,7 +486,7 @@ export async function renderDocumentPdf(
   const settings = await ensureBillingSettings(supabase, doc.tenant_id);
   const templateKey =
     (doc.template_id as string) ||
-    ((doc.custom_fields as Record<string, string>)?.[ "template_id"] as string);
+    ((doc.custom_fields as Record<string, string>)?.["template_id"] as string);
   const isUuid = (val?: string | null) =>
     Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
 

@@ -88,9 +88,7 @@ export function AccountingExportDialog({
             <Share2 className="size-5 text-brand" />
             {t("sales.accountingExportTitle", { docNumber: doc.doc_number })}
           </DialogTitle>
-          <DialogDescription>
-            {t("sales.accountingExportDesc")}
-          </DialogDescription>
+          <DialogDescription>{t("sales.accountingExportDesc")}</DialogDescription>
         </DialogHeader>
 
         <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -137,8 +135,13 @@ export function AccountingExportDialog({
               <p className="font-semibold text-foreground">{t("sales.howToImportTally")}</p>
               <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground">
                 <li>Download the Tally XML voucher below.</li>
-                <li>In Tally Prime, navigate to <strong>Import Data</strong> &gt; <strong>Vouchers</strong>.</li>
-                <li>Select the downloaded XML file to import instantly with inventory and tax ledgers.</li>
+                <li>
+                  In Tally Prime, navigate to <strong>Import Data</strong> &gt;{" "}
+                  <strong>Vouchers</strong>.
+                </li>
+                <li>
+                  Select the downloaded XML file to import instantly with inventory and tax ledgers.
+                </li>
               </ol>
             </div>
 
@@ -160,7 +163,11 @@ export function AccountingExportDialog({
                 variant="outline"
                 onClick={() => copyToClipboard(tallyXml, "Tally XML")}
               >
-                {copiedTab === "Tally XML" ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copiedTab === "Tally XML" ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
                 {t("sales.copyXml")}
               </Button>
             </div>
@@ -178,8 +185,17 @@ export function AccountingExportDialog({
             <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-1.5">
               <p className="font-semibold text-foreground">{t("sales.howToImportQuickBooks")}</p>
               <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
-                <li><strong>QuickBooks Online:</strong> Click <strong>Gear Icon</strong> &gt; <strong>Import Data</strong> &gt; <strong>{isQuotation ? "Estimates" : "Invoices"}</strong>, and upload the CSV file.</li>
-                <li><strong>QuickBooks Desktop:</strong> Go to <strong>File</strong> &gt; <strong>Utilities</strong> &gt; <strong>Import</strong> &gt; <strong>IIF Files</strong>.</li>
+                <li>
+                  <strong>QuickBooks Online:</strong> Click <strong>Gear Icon</strong> &gt;{" "}
+                  <strong>Import Data</strong> &gt;{" "}
+                  <strong>{isQuotation ? "Estimates" : "Invoices"}</strong>, and upload the CSV
+                  file.
+                </li>
+                <li>
+                  <strong>QuickBooks Desktop:</strong> Go to <strong>File</strong> &gt;{" "}
+                  <strong>Utilities</strong> &gt; <strong>Import</strong> &gt;{" "}
+                  <strong>IIF Files</strong>.
+                </li>
               </ul>
             </div>
 
@@ -214,7 +230,11 @@ export function AccountingExportDialog({
                 variant="ghost"
                 onClick={() => copyToClipboard(qbJson, "QuickBooks JSON")}
               >
-                {copiedTab === "QuickBooks JSON" ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copiedTab === "QuickBooks JSON" ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
                 {t("sales.copyRestJson")}
               </Button>
             </div>
@@ -233,9 +253,18 @@ export function AccountingExportDialog({
               <p className="font-semibold text-foreground">{t("sales.howToImportZoho")}</p>
               <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground">
                 <li>Download the Zoho Books CSV file below.</li>
-                <li>In Zoho Books, open <strong>Sales</strong> &gt; <strong>{isQuotation ? "Estimates" : "Invoices"}</strong>.</li>
-                <li>Click the menu icon (<strong>...</strong>) in the top-right corner and select <strong>Import {isQuotation ? "Estimates" : "Invoices"}</strong>.</li>
-                <li>Upload the file; line items, tax, discounts, and customer details will be pre-matched.</li>
+                <li>
+                  In Zoho Books, open <strong>Sales</strong> &gt;{" "}
+                  <strong>{isQuotation ? "Estimates" : "Invoices"}</strong>.
+                </li>
+                <li>
+                  Click the menu icon (<strong>...</strong>) in the top-right corner and select{" "}
+                  <strong>Import {isQuotation ? "Estimates" : "Invoices"}</strong>.
+                </li>
+                <li>
+                  Upload the file; line items, tax, discounts, and customer details will be
+                  pre-matched.
+                </li>
               </ol>
             </div>
 
@@ -257,7 +286,11 @@ export function AccountingExportDialog({
                 variant="outline"
                 onClick={() => copyToClipboard(zohoJson, "Zoho JSON")}
               >
-                {copiedTab === "Zoho JSON" ? <Check className="size-4" /> : <Copy className="size-4" />}
+                {copiedTab === "Zoho JSON" ? (
+                  <Check className="size-4" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
                 {t("sales.copyRestJson")}
               </Button>
             </div>

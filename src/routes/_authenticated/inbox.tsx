@@ -9,6 +9,7 @@ import { recordAuditEvent } from "@/lib/audit.functions";
 import {
   buildCatalogMessage,
   draftBotReply,
+  getSendContext,
   sendAgentMessage,
   sendTemplateMessage,
   translateMessage,
@@ -17,9 +18,22 @@ import type { Conversation, Message } from "@/lib/crm-types";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { requestedConversationId } from "@/lib/inbox-link";
+import {
+  containsFilterValue,
+  CONVERSATION_PAGE_SIZE,
+  type Cursor,
+  newestFirst,
+  olderThan,
+  oldestFirst,
+  pageOf,
+  serverSearchTerm,
+  shouldClearUnread,
+  THREAD_PAGE_SIZE,
+} from "@/lib/inbox-thread";
+import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
@@ -116,6 +130,11 @@ function InboxPage() {
   const autoTranslateStartedAt = useRef<number | null>(null);
 
   const send = useServerFn(sendAgentMessage);
+  const loadSendContext = useServerFn(getSendContext);
+  // One reference per message being sent. A second Enter or a double click
+  // repeats it, and the server sends that message once.
+  const sendRef = useRef<SendReference | null>(null);
+  const templateRef = useRef<SendReference | null>(null);
   const suggest = useServerFn(draftBotReply);
   const sendTemplate = useServerFn(sendTemplateMessage);
   const auditEvent = useServerFn(recordAuditEvent);
@@ -186,43 +205,105 @@ function InboxPage() {
     },
   });
 
-  const conversations = useQuery({
+  // Newest first, a page at a time, with "load older" for the rest. Only the
+  // most recent 200 used to be reachable at all.
+  const conversations = useInfiniteQuery({
     queryKey: ["conversations", requestedConversation],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    initialPageParam: null as Cursor | null,
+    queryFn: async ({ pageParam }) => {
+      let query = supabase
         .from("conversations")
         .select("*, contacts(id, name, phone, company, stage), wa_numbers(label, display_phone)")
         .order("last_message_at", { ascending: false })
-        .limit(200);
+        .order("id", { ascending: false })
+        .limit(CONVERSATION_PAGE_SIZE + 1);
+      if (pageParam) query = query.or(olderThan("last_message_at", pageParam));
+      const { data, error } = await query;
       if (error) throw error;
-      // A linked thread may be older than the most recent 200 conversations.
+      const page = pageOf(
+        data as unknown as Conversation[],
+        CONVERSATION_PAGE_SIZE,
+        (row) => row.last_message_at,
+      );
+      // A linked thread may be older than the conversations loaded so far.
       // Fetch it through the same RLS-scoped client, never a privileged lookup.
-      if (requestedConversation && !data.some((row) => row.id === requestedConversation)) {
+      if (
+        !pageParam &&
+        requestedConversation &&
+        !page.rows.some((row) => row.id === requestedConversation)
+      ) {
         const linked = await supabase
           .from("conversations")
           .select("*, contacts(id, name, phone, company, stage), wa_numbers(label, display_phone)")
           .eq("id", requestedConversation)
           .maybeSingle();
         if (linked.error) throw linked.error;
-        if (linked.data) data.unshift(linked.data);
+        if (linked.data) page.rows.unshift(linked.data as unknown as Conversation);
       }
+      return page;
+    },
+    getNextPageParam: (last) => last.before,
+  });
+  const loadedConversations = useMemo(
+    () => newestFirst(conversations.data?.pages ?? []),
+    [conversations.data],
+  );
+
+  // The search box filters what is loaded; this finds the rest. Without it a
+  // customer whose last message is older than the loaded pages could not be
+  // found by name or number at all.
+  const searchTerm = serverSearchTerm(search);
+  const foundConversations = useQuery({
+    queryKey: ["conversation-search", searchTerm],
+    enabled: !!searchTerm,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const value = containsFilterValue(searchTerm!);
+      const { data, error } = await supabase
+        .from("conversations")
+        .select(
+          "*, contacts!inner(id, name, phone, company, stage), wa_numbers(label, display_phone)",
+        )
+        .or(`name.ilike.${value},phone.ilike.${value}`, { referencedTable: "contacts" })
+        .order("last_message_at", { ascending: false })
+        .limit(50);
+      if (error) throw error;
       return data as unknown as Conversation[];
     },
   });
 
-  const messages = useQuery({
+  // The newest page first. Reading the whole thread oldest-first ran into the
+  // API's row cap, which cut off the END of a long conversation: its latest
+  // messages, the reply just sent, and the customer's last message that the
+  // 24-hour rule below is worked out from.
+  const messages = useInfiniteQuery({
     queryKey: ["messages", activeId],
     enabled: Boolean(activeId),
-    queryFn: async () => {
-      const { data, error } = await supabase
+    initialPageParam: null as Cursor | null,
+    queryFn: async ({ pageParam }) => {
+      let query = supabase
         .from("messages")
         .select("*")
         .eq("conversation_id", activeId!)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(THREAD_PAGE_SIZE + 1);
+      if (pageParam) query = query.or(olderThan("created_at", pageParam));
+      const { data, error } = await query;
       if (error) throw error;
-      return data as unknown as Message[];
+      return pageOf(data as unknown as Message[], THREAD_PAGE_SIZE, (m) => m.created_at);
     },
+    getNextPageParam: (last) => last.before,
   });
+  const thread = useMemo(() => oldestFirst(messages.data?.pages ?? []), [messages.data]);
+
+  /** Loads the next, older page; a failure is said, not left as a button that did nothing. */
+  const loadOlder = (query: {
+    fetchNextPage: () => Promise<{ isError: boolean; error: Error | null }>;
+  }) =>
+    void query.fetchNextPage().then((result) => {
+      if (result.isError) toast.error(result.error?.message ?? i18n.t("inbox.searchRecentOnly"));
+    });
 
   // Near real-time inbox: realtime stream first, short polling as a fallback
   // whenever the socket is not connected, plus a visible connection indicator.
@@ -263,16 +344,19 @@ function InboxPage() {
     return () => window.clearInterval(timer);
   }, [liveStatus, qc]);
 
+  // Follows the newest message. Loading an earlier page adds messages above
+  // without changing which one is newest, so it does not pull the view down.
+  const newestMessageId = thread.at(-1)?.id ?? null;
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.data?.length, activeId]);
+  }, [newestMessageId, activeId]);
 
   // Opt-in and limited to messages received while this inbox is open. This
   // avoids silently sending a customer's entire past chat to the translation
   // provider when an agent only wants help with new messages.
   useEffect(() => {
-    if (!autoTranslate || !activeId || !messages.data?.length) return;
-    for (const message of messages.data) {
+    if (!autoTranslate || !activeId || !thread.length) return;
+    for (const message of thread) {
       if (
         message.direction !== "inbound" ||
         message.translated_body ||
@@ -292,13 +376,12 @@ function InboxPage() {
           autoTranslatedMessageIds.current.delete(message.id);
         });
     }
-  }, [activeId, autoTranslate, messages.data, qc, translate]);
+  }, [activeId, autoTranslate, thread, qc, translate]);
 
   const list = useMemo(() => {
-    const all = conversations.data ?? [];
-    return all.filter((c) => {
+    const q = search.trim().toLowerCase();
+    const matching = loadedConversations.filter((c) => {
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-      const q = search.trim().toLowerCase();
       const matchesSearch =
         !q ||
         c.contacts?.name?.toLowerCase().includes(q) ||
@@ -306,7 +389,17 @@ function InboxPage() {
         c.last_message_preview?.toLowerCase().includes(q);
       return matchesStatus && Boolean(matchesSearch);
     });
-  }, [conversations.data, statusFilter, search]);
+    // Matches the server found among conversations that are not loaded.
+    const loaded = new Set(loadedConversations.map((c) => c.id));
+    const older = (q ? (foundConversations.data ?? []) : []).filter(
+      (c) => !loaded.has(c.id) && (statusFilter === "all" || c.status === statusFilter),
+    );
+    return older.length === 0
+      ? matching
+      : [...matching, ...older].sort((a, b) =>
+          (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""),
+        );
+  }, [loadedConversations, foundConversations.data, statusFilter, search]);
 
   const active = list.find((c) => c.id === activeId) ?? null;
 
@@ -316,13 +409,25 @@ function InboxPage() {
   // pressing Send, and only then discovering why it could not leave FLAS.
   const whatsappReplyWindowOpen = useMemo(() => {
     if (active?.channel !== "whatsapp" || !messages.isSuccess) return true;
-    const newestInbound = (messages.data ?? [])
+    const newestInbound = thread
       .filter((message) => message.direction === "inbound")
       .map((message) => new Date(message.created_at).getTime())
       .filter(Number.isFinite)
       .reduce((newest, timestamp) => Math.max(newest, timestamp), 0);
     return newestInbound > 0 && newestInbound >= Date.now() - 24 * 60 * 60 * 1000;
-  }, [active?.channel, messages.data, messages.isSuccess]);
+  }, [active?.channel, thread, messages.isSuccess]);
+
+  // Which number a reply would leave from, who it would reach, and anything
+  // that would stop it -- asked of the same gate the send itself uses, so the
+  // composer cannot promise what the server will refuse.
+  const sendContext = useQuery({
+    queryKey: ["send-context", activeId],
+    queryFn: () => loadSendContext({ data: { conversationId: activeId! } }),
+    enabled: !!activeId && active?.channel === "whatsapp",
+    staleTime: 30_000,
+  });
+  // The closed 24-hour window already has its own notice and next step below.
+  const sendBlocks = (sendContext.data?.blocks ?? []).filter((b) => b.code !== "window_closed");
 
   // Tools should stay out of the way while an agent is reading a thread, but
   // a closed WhatsApp window has one clear next step: an approved template.
@@ -339,26 +444,74 @@ function InboxPage() {
     setActiveId(list[0]!.id);
   }, [activeId, list]);
 
+  // The conversation open in a visible tab is being read. Unread used to be
+  // cleared only at the moment a conversation was opened, so a message that
+  // arrived while the agent was reading the thread left it marked unread until
+  // they went away and came back.
+  const activeUnread = active?.unread_count ?? 0;
   useEffect(() => {
-    if (!activeId) return;
-    void supabase.from("conversations").update({ unread_count: 0 }).eq("id", activeId);
-  }, [activeId]);
+    const clear = () => {
+      const visible = document.visibilityState === "visible";
+      if (!shouldClearUnread({ activeId, unreadCount: activeUnread, visible })) return;
+      void supabase
+        .from("conversations")
+        .update({ unread_count: 0 })
+        .eq("id", activeId!)
+        // Only a row that still has a count is written, so clearing never
+        // sets off a round of refreshes on its own.
+        .gt("unread_count", 0)
+        .then(({ error }) => {
+          if (error) console.error("[inbox] could not clear unread", error.message);
+          else void qc.invalidateQueries({ queryKey: ["conversations"] });
+        });
+    };
+    clear();
+    document.addEventListener("visibilitychange", clear);
+    return () => document.removeEventListener("visibilitychange", clear);
+  }, [activeId, activeUnread, qc]);
+
+  const describeBlocks = (blocks: { code: string; message: string }[]) =>
+    blocks.map((b) => i18n.tx(`inbox.block.${b.code}`, b.message)).join(" ");
+  const describeFailure = (reason: string | null, fallback: string | null) =>
+    i18n.tx(`inbox.sendFailure.${reason ?? "unknown"}`, fallback ?? "");
 
   const sendMutation = useMutation({
-    mutationFn: async (body: string) => send({ data: { conversationId: activeId!, body } }),
+    mutationFn: async (body: string) => {
+      sendRef.current = referenceFor(sendRef.current, `${activeId}\n${body}`, () =>
+        crypto.randomUUID(),
+      );
+      return send({ data: { conversationId: activeId!, body, clientRef: sendRef.current.ref } });
+    },
     onSuccess: (res) => {
-      if (res.blockedReasons?.length) {
+      // The server has answered for this message, so the next one is new.
+      sendRef.current = null;
+      void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "blocked") {
         toast.error(i18n.t("inbox.messageBlockedBySafetyRules"), {
-          description: res.blockedReasons.join(" "),
+          description: describeBlocks(res.blocks),
         });
         return;
       }
+      // "duplicate" is this very message, already saved by an earlier copy of
+      // the request whose answer never arrived. It is in the thread, so the
+      // box is cleared like any sent message -- leaving the text there would
+      // invite sending it a second time.
       setDraft("");
-      if (res.deliveryError)
-        toast.warning(i18n.t("inbox.savedButNotDelivered", { deliveryError: res.deliveryError }));
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "unconfirmed") {
+        toast.warning(describeFailure("unconfirmed", res.deliveryError));
+      } else if (res.state === "rejected") {
+        toast.warning(
+          i18n.t("inbox.savedButNotDelivered", {
+            deliveryError: describeFailure(res.failureReason, res.deliveryError),
+          }),
+        );
+      }
     },
+    // No answer is not a "no". The reference is kept, so trying the same text
+    // again asks the server about the same message: if the first copy did get
+    // through, the server says so instead of sending another.
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -428,23 +581,50 @@ function InboxPage() {
   });
 
   const templateMutation = useMutation({
-    mutationFn: async () =>
-      sendTemplate({
-        data: { templateId, conversationId: activeId!, variables: templateVariables },
-      }),
+    mutationFn: async () => {
+      templateRef.current = referenceFor(
+        templateRef.current,
+        `${activeId}\n${templateId}\n${JSON.stringify(templateVariables)}`,
+        () => crypto.randomUUID(),
+      );
+      return sendTemplate({
+        data: {
+          templateId,
+          conversationId: activeId!,
+          variables: templateVariables,
+          clientRef: templateRef.current.ref,
+        },
+      });
+    },
     onSuccess: (res) => {
-      if (res.blockedReasons?.length) {
+      templateRef.current = null;
+      void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "blocked") {
         toast.error(i18n.t("inbox.templateBlockedBySafetyRules"), {
-          description: res.blockedReasons.join(" "),
+          description: describeBlocks(res.blocks),
         });
         return;
       }
+      // As with a reply: a duplicate is this template, already in the thread.
       setTemplateId("");
       setTemplateVariables([]);
-      toast.success(i18n.t("inbox.templateAcceptedByWhatsappDelivery"));
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      // Accepted by WhatsApp is not delivered: the thread shows the receipt
+      // when it arrives. A refusal or a missing answer is said as such.
+      if (res.state === "accepted") {
+        toast.success(i18n.t("inbox.templateAcceptedByWhatsappDelivery"));
+      } else if (res.state === "unconfirmed") {
+        toast.warning(describeFailure("unconfirmed", res.deliveryError));
+      } else if (res.state === "rejected") {
+        toast.error(
+          i18n.t("inbox.savedButNotDelivered", {
+            deliveryError: describeFailure(res.failureReason, res.deliveryError),
+          }),
+        );
+      }
     },
+    // Kept for the retry, as for a reply.
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -492,7 +672,7 @@ function InboxPage() {
   }
 
   function exportConversations() {
-    const rows = (conversations.data ?? []).map((c) => ({
+    const rows = loadedConversations.map((c) => ({
       contact: c.contacts?.name ?? "",
       phone: c.contacts?.phone ?? "",
       company: c.contacts?.company ?? "",
@@ -525,9 +705,35 @@ function InboxPage() {
     toast.success(i18n.t("inbox.conversationsCsvDownloaded"));
   }
 
-  function exportTranscript() {
+  /** Every message of a conversation, for the transcript: not just the pages on screen. */
+  async function wholeThread(conversationId: string): Promise<Message[]> {
+    const size = 500;
+    const all: Message[] = [];
+    for (let from = 0; from < 200 * size; from += size) {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + size - 1);
+      if (error) throw error;
+      all.push(...(data as unknown as Message[]));
+      if (data.length < size) break;
+    }
+    return all;
+  }
+
+  async function exportTranscript() {
     if (!active) return;
-    const rows = (messages.data ?? []).map((m) => ({
+    let everyMessage: Message[];
+    try {
+      everyMessage = await wholeThread(active.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    const rows = everyMessage.map((m) => ({
       time: m.created_at,
       from: m.sender,
       direction: m.direction,
@@ -614,7 +820,7 @@ function InboxPage() {
               variant="ghost"
               size="sm"
               onClick={exportConversations}
-              disabled={(conversations.data ?? []).length === 0}
+              disabled={loadedConversations.length === 0}
               title={i18n.t("inbox.downloadAllConversationsAsCsv")}
             >
               <Download className="size-4" /> CSV
@@ -706,6 +912,25 @@ function InboxPage() {
               </div>
             </button>
           ))}
+          {searchTerm && foundConversations.isError && (
+            <p className="p-4 text-xs text-muted-foreground" role="status">
+              {i18n.t("inbox.searchRecentOnly")}
+            </p>
+          )}
+          {!search.trim() && conversations.hasNextPage && (
+            <div className="p-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={() => loadOlder(conversations)}
+                disabled={conversations.isFetchingNextPage}
+              >
+                {conversations.isFetchingNextPage && <Loader2 className="size-4 animate-spin" />}
+                {i18n.t("inbox.loadOlderConversations")}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -780,8 +1005,8 @@ function InboxPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={exportTranscript}
-                  disabled={(messages.data ?? []).length === 0}
+                  onClick={() => void exportTranscript()}
+                  disabled={thread.length === 0}
                   title={i18n.t("inbox.downloadThisChatAsCsv")}
                 >
                   <Download className="size-4" /> {i18n.t("inbox.transcript")}
@@ -1039,7 +1264,20 @@ function InboxPage() {
             </div>
 
             <div className="chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-              {(messages.data ?? []).map((m) => {
+              {messages.hasNextPage && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadOlder(messages)}
+                    disabled={messages.isFetchingNextPage}
+                  >
+                    {messages.isFetchingNextPage && <Loader2 className="size-4 animate-spin" />}
+                    {i18n.t("inbox.loadEarlierMessages")}
+                  </Button>
+                </div>
+              )}
+              {thread.map((m) => {
                 const showTranslation = expandedTranslations.has(m.id);
                 const hasTranslation = Boolean(m.translated_body);
                 return (
@@ -1106,7 +1344,13 @@ function InboxPage() {
                             minute: "2-digit",
                           })}
                         </span>
-                        {m.direction === "outbound" && <DeliveryState status={m.status} />}
+                        {m.direction === "outbound" && (
+                          <DeliveryState
+                            status={m.status}
+                            createdAt={m.created_at}
+                            failureReason={m.failure_reason}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1116,6 +1360,37 @@ function InboxPage() {
             </div>
 
             <div className="space-y-2 border-t bg-card p-4">
+              {active.channel === "whatsapp" && sendContext.data?.sendingNumber && (
+                <p className="text-xs text-muted-foreground" data-testid="sending-from">
+                  {(() => {
+                    const line = sendContext.data.sendingNumber;
+                    const number = line.displayPhone
+                      ? `${line.label} · ${line.displayPhone}`
+                      : line.label;
+                    return sendContext.data.recipient
+                      ? i18n.tr("inbox.sendingFromTo", {
+                          number: <bdi>{number}</bdi>,
+                          recipient: <bdi dir="ltr">{sendContext.data.recipient}</bdi>,
+                        })
+                      : i18n.tr("inbox.sendingFrom", { number: <bdi>{number}</bdi> });
+                  })()}
+                </p>
+              )}
+              {sendBlocks.length > 0 && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+                >
+                  <p className="flex items-center gap-1.5 font-semibold text-destructive">
+                    <AlertTriangle className="size-4 shrink-0" /> {i18n.t("inbox.cannotSendYet")}
+                  </p>
+                  <ul className="mt-1 space-y-1 text-muted-foreground">
+                    {sendBlocks.map((b) => (
+                      <li key={b.code}>{i18n.tx(`inbox.block.${b.code}`, b.message)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Textarea
                 rows={2}
                 aria-label={i18n.t("inbox.replyToConversation")}
@@ -1129,7 +1404,11 @@ function InboxPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && draft.trim() && whatsappReplyWindowOpen) {
                     e.preventDefault();
-                    sendMutation.mutate(draft.trim());
+                    // A second Enter while the first is still on its way is the
+                    // same message; the server would refuse the copy anyway.
+                    if (!sendMutation.isPending && sendBlocks.length === 0) {
+                      sendMutation.mutate(draft.trim());
+                    }
                   }
                 }}
               />
@@ -1154,7 +1433,12 @@ function InboxPage() {
                 </Button>
                 <Button
                   onClick={() => draft.trim() && sendMutation.mutate(draft.trim())}
-                  disabled={sendMutation.isPending || !draft.trim() || !whatsappReplyWindowOpen}
+                  disabled={
+                    sendMutation.isPending ||
+                    !draft.trim() ||
+                    !whatsappReplyWindowOpen ||
+                    sendBlocks.length > 0
+                  }
                 >
                   <Send className="size-4" />
                   {i18n.t("inbox.send")}
@@ -1168,16 +1452,63 @@ function InboxPage() {
   );
 }
 
+/** A send is settled within seconds; one still "sending" after this never got its answer recorded. */
+const SENDING_GOES_STALE_MS = 2 * 60 * 1000;
+
 /** Shows what Meta has actually reported for an outbound WhatsApp message. */
-function DeliveryState({ status }: { status: string | null | undefined }) {
+function DeliveryState({
+  status,
+  createdAt,
+  failureReason,
+}: {
+  status: string | null | undefined;
+  createdAt?: string | null;
+  /** Why it was not delivered, when that was recorded. */
+  failureReason?: string | null | undefined;
+}) {
   const i18n = useI18n();
+  // Look again at the moment a "sending" message goes stale. The label was
+  // only worked out when something else changed, so a message whose answer was
+  // never recorded could go on saying "Sending" for as long as the thread
+  // stayed quiet.
+  const [, lookAgain] = useState(0);
+  useEffect(() => {
+    if (status !== "sending" || !createdAt) return;
+    const remaining = new Date(createdAt).getTime() + SENDING_GOES_STALE_MS - Date.now();
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(() => lookAgain(Date.now()), remaining + 250);
+    return () => window.clearTimeout(timer);
+  }, [status, createdAt]);
+  const stale =
+    status === "sending" &&
+    !!createdAt &&
+    Date.now() - new Date(createdAt).getTime() > SENDING_GOES_STALE_MS;
+  if (status === "unconfirmed" || stale) {
+    // Neither sent nor failed: WhatsApp never answered. Said plainly, so
+    // nobody resends a message the customer may already have.
+    return (
+      <span
+        className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+        title={i18n.t("inbox.unconfirmedHint")}
+      >
+        <AlertTriangle className="size-3" /> {i18n.t("inbox.status.unconfirmed")}
+      </span>
+    );
+  }
   if (status === "sending") {
     return <span className="text-[10px] text-muted-foreground">{i18n.t("inbox.sending")}</span>;
   }
   if (status === "failed") {
+    // The reason stays with the message. It used to be shown once, in a toast,
+    // to whoever happened to be sending.
+    const why = failureReason ? i18n.tx(`inbox.sendFailure.${failureReason}`, "") : "";
     return (
-      <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
-        <AlertTriangle className="size-3" /> {i18n.t("inbox.notDelivered")}
+      <span
+        className="flex items-center gap-1 text-[10px] font-semibold text-destructive"
+        title={why || undefined}
+      >
+        <AlertTriangle className="size-3 shrink-0" /> {i18n.t("inbox.notDelivered")}
+        {why && <span className="font-normal">· {why}</span>}
       </span>
     );
   }

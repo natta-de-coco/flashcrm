@@ -21,27 +21,31 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     id: "how-to",
     name: "Step-by-Step How-To Guide",
     category: "Tutorial",
-    description: "In-depth procedural guide solving a specific customer problem with actionable steps.",
+    description:
+      "In-depth procedural guide solving a specific customer problem with actionable steps.",
     intent: "informational",
     tone: "human expert",
     suggestedKeywords: ["how to implement", "step by step guide", "best approach for"],
-    suggestedTitle: (kw, ind) => `How to Master ${kw || "Your Operations"}: Step-by-Step Guide for ${ind || "Growing Businesses"}`,
-    suggestedMetaDesc: (kw, ind) => `Learn how to implement ${kw || "best practices"} in your business. Complete step-by-step instructions, proven tactics, and common pitfalls to avoid.`,
+    suggestedTitle: (kw, ind) =>
+      `How to Master ${kw || "Your Operations"}: Step-by-Step Guide for ${ind || "Growing Businesses"}`,
+    suggestedMetaDesc: (kw, ind) =>
+      `Learn how to implement ${kw || "best practices"} in your business. Complete step-by-step instructions, proven tactics, and common pitfalls to avoid.`,
     defaultFaq: [
       {
         q: "How long does this implementation usually take?",
-        a: "Most businesses can complete the initial setup within 2 to 5 business days, with full team adoption taking about two weeks."
+        a: "Most businesses can complete the initial setup within 2 to 5 business days, with full team adoption taking about two weeks.",
       },
       {
         q: "What prerequisites are needed before starting?",
-        a: "You will need access to your administrative console, team contact lists, and clear ownership assigned to a designated project lead."
+        a: "You will need access to your administrative console, team contact lists, and clear ownership assigned to a designated project lead.",
       },
       {
         q: "Can this process be automated?",
-        a: "Yes, routine trigger points and follow-ups can be automated using integrated workflow rules and CRM notifications."
-      }
+        a: "Yes, routine trigger points and follow-ups can be automated using integrated workflow rules and CRM notifications.",
+      },
     ],
-    generateHtml: (kw, ind, comp) => `
+    generateHtml: (kw, ind, comp) =>
+      `
 <p class="lead">Executing ${kw || "key operational workflows"} effectively is one of the highest-leverage investments a ${ind || "modern business"} can make. In this guide, we break down the exact step-by-step process used by top-performing teams to achieve predictable outcomes.</p>
 
 <h2>Why ${kw || "This Process"} Matters Today</h2>
@@ -81,27 +85,31 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     id: "comparison",
     name: "Comparison & Buyer Evaluation (A vs B)",
     category: "Comparison",
-    description: "Side-by-side breakdown helping prospective buyers evaluate competing solutions objectively.",
+    description:
+      "Side-by-side breakdown helping prospective buyers evaluate competing solutions objectively.",
     intent: "commercial",
     tone: "balanced & objective",
     suggestedKeywords: ["vs comparison", "best alternatives", "which is better"],
-    suggestedTitle: (kw, ind) => `${kw || "Solution A vs Solution B"}: Complete Comparison & Verdict (${new Date().getFullYear()})`,
-    suggestedMetaDesc: (kw, ind) => `Comparing top options for ${kw || "business tools"}. In-depth analysis of features, pricing, pros and cons, and our honest recommendation.`,
+    suggestedTitle: (kw, ind) =>
+      `${kw || "Solution A vs Solution B"}: Complete Comparison & Verdict (${new Date().getFullYear()})`,
+    suggestedMetaDesc: (kw, ind) =>
+      `Comparing top options for ${kw || "business tools"}. In-depth analysis of features, pricing, pros and cons, and our honest recommendation.`,
     defaultFaq: [
       {
         q: "Which option is best for small teams?",
-        a: "For small teams prioritizing speed and value, an integrated all-in-one platform provides the fastest ROI without complex setup fees."
+        a: "For small teams prioritizing speed and value, an integrated all-in-one platform provides the fastest ROI without complex setup fees.",
       },
       {
         q: "Can I migrate data between these systems?",
-        a: "Yes, standard contacts, historical interactions, and document records can be imported via CSV or direct API connectors."
+        a: "Yes, standard contacts, historical interactions, and document records can be imported via CSV or direct API connectors.",
       },
       {
         q: "Are there hidden licensing or usage costs?",
-        a: "Be mindful of per-message charges, additional seat tiers, and premium add-ons for essential automation capabilities."
-      }
+        a: "Be mindful of per-message charges, additional seat tiers, and premium add-ons for essential automation capabilities.",
+      },
     ],
-    generateHtml: (kw, ind, comp) => `
+    generateHtml: (kw, ind, comp) =>
+      `
 <p class="lead">Choosing the right platform for ${kw || "your business"} can make or break your team's productivity. In this comprehensive comparison, we examine the strengths, limitations, pricing models, and ideal use cases of the leading choices on the market.</p>
 
 <h2>Executive Summary & Quick Verdict</h2>
@@ -171,23 +179,27 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     id: "buyers-guide",
     name: "Complete Buyer's Guide & Checklist",
     category: "Buying Guide",
-    description: "Decision-making framework outlining must-have features, compliance, and ROI factors.",
+    description:
+      "Decision-making framework outlining must-have features, compliance, and ROI factors.",
     intent: "commercial",
     tone: "human expert",
     suggestedKeywords: ["buyers guide", "what to look for in", "checklist for"],
-    suggestedTitle: (kw, ind) => `The Ultimate Buyer's Guide to ${kw || "Business Software"} for ${ind || "Commercial Enterprises"}`,
-    suggestedMetaDesc: (kw, ind) => `Everything you need to know before investing in ${kw || "a modern business platform"}. Key evaluation criteria, cost considerations, and implementation checklist.`,
+    suggestedTitle: (kw, ind) =>
+      `The Ultimate Buyer's Guide to ${kw || "Business Software"} for ${ind || "Commercial Enterprises"}`,
+    suggestedMetaDesc: (kw, ind) =>
+      `Everything you need to know before investing in ${kw || "a modern business platform"}. Key evaluation criteria, cost considerations, and implementation checklist.`,
     defaultFaq: [
       {
         q: "What budget should we allocate for initial adoption?",
-        a: "Expect standard monthly software costs plus a minimal time investment for team training and initial contact migration."
+        a: "Expect standard monthly software costs plus a minimal time investment for team training and initial contact migration.",
       },
       {
         q: "How do we measure success after 90 days?",
-        a: "Key performance indicators include faster lead response times, higher quotation conversion rates, and reduced customer response delays."
-      }
+        a: "Key performance indicators include faster lead response times, higher quotation conversion rates, and reduced customer response delays.",
+      },
     ],
-    generateHtml: (kw, ind, comp) => `
+    generateHtml: (kw, ind, comp) =>
+      `
 <p class="lead">Investing in ${kw || "business tools"} is a pivotal decision for ${ind || "commercial operations"}. This buyer's guide details the critical capabilities, cost drivers, and evaluation criteria you must verify before committing to a contract.</p>
 
 <h2>Essential Evaluation Criteria</h2>
@@ -214,23 +226,27 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     id: "case-study",
     name: "Customer Case Study & ROI Blueprint",
     category: "Case Study",
-    description: "Proof-driven story showcasing challenge, intervention, metrics, and business outcomes.",
+    description:
+      "Proof-driven story showcasing challenge, intervention, metrics, and business outcomes.",
     intent: "informational",
     tone: "professional & inspiring",
     suggestedKeywords: ["case study", "customer success story", "roi results"],
-    suggestedTitle: (kw, ind) => `Case Study: How a ${ind || "Leading Business"} Scaled Operations with ${kw || "Flas CRM"}`,
-    suggestedMetaDesc: (kw, ind) => `Discover how an active business overcame operational bottlenecks, accelerated customer response times by 75%, and grew revenue.`,
+    suggestedTitle: (kw, ind) =>
+      `Case Study: How a ${ind || "Leading Business"} Scaled Operations with ${kw || "Flas CRM"}`,
+    suggestedMetaDesc: (kw, ind) =>
+      `Discover how an active business overcame operational bottlenecks, accelerated customer response times by 75%, and grew revenue.`,
     defaultFaq: [
       {
         q: "What were the immediate operational improvements?",
-        a: "Within the first week, inquiry response times dropped from over 2 hours to under 3 minutes, dramatically reducing abandoned leads."
+        a: "Within the first week, inquiry response times dropped from over 2 hours to under 3 minutes, dramatically reducing abandoned leads.",
       },
       {
         q: "How quickly was positive ROI achieved?",
-        a: "Full payback was realized within 30 days thanks to faster quotation turnaround and automated payment reminders."
-      }
+        a: "Full payback was realized within 30 days thanks to faster quotation turnaround and automated payment reminders.",
+      },
     ],
-    generateHtml: (kw, ind, comp) => `
+    generateHtml: (kw, ind, comp) =>
+      `
 <p class="lead">When customer inquiries surge, traditional manual tracking inevitably falls behind. Here is how a fast-growing business transformed disorganized chats and delayed invoices into a streamlined, high-converting operation.</p>
 
 <h2>The Challenge: Disconnected Channels & Lost Quotes</h2>
@@ -254,23 +270,27 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     id: "faq-explainer",
     name: "Industry Explainer & Deep-Dive FAQ",
     category: "Explainer",
-    description: "Authoritative, educational deep-dive answering the most frequent and complex industry questions.",
+    description:
+      "Authoritative, educational deep-dive answering the most frequent and complex industry questions.",
     intent: "informational",
     tone: "authoritative & accessible",
     suggestedKeywords: ["explained", "frequently asked questions", "guide to"],
-    suggestedTitle: (kw, ind) => `${kw || "Modern Business Systems"} Explained: Everything You Need to Know`,
-    suggestedMetaDesc: (kw, ind) => `Comprehensive explainer answering top questions about ${kw || "industry technology"}. Key concepts, regulatory requirements, and practical advice.`,
+    suggestedTitle: (kw, ind) =>
+      `${kw || "Modern Business Systems"} Explained: Everything You Need to Know`,
+    suggestedMetaDesc: (kw, ind) =>
+      `Comprehensive explainer answering top questions about ${kw || "industry technology"}. Key concepts, regulatory requirements, and practical advice.`,
     defaultFaq: [
       {
         q: "What makes this approach different from traditional methods?",
-        a: "It combines customer relationship tracking directly with transactional commerce and modern messaging channels in a single view."
+        a: "It combines customer relationship tracking directly with transactional commerce and modern messaging channels in a single view.",
       },
       {
         q: "Is it suitable for businesses in regulated industries?",
-        a: "Yes, complete audit logging, explicit consent tracking, and localized tax invoicing make it suitable for compliance-focused sectors."
-      }
+        a: "Yes, complete audit logging, explicit consent tracking, and localized tax invoicing make it suitable for compliance-focused sectors.",
+      },
     ],
-    generateHtml: (kw, ind, comp) => `
+    generateHtml: (kw, ind, comp) =>
+      `
 <p class="lead">Navigating the nuances of ${kw || "modern customer communication"} can be challenging. In this comprehensive explainer, we break down core concepts, practical requirements, and the most common questions asked by business leaders.</p>
 
 <h2>What is ${kw || "This Technology"} and How Does It Work?</h2>
@@ -291,23 +311,27 @@ export const BLOG_TEMPLATES: BlogTemplate[] = [
     id: "best-practices",
     name: "Top 7 Best Practices & Actionable Listicle",
     category: "Best Practices",
-    description: "High-engagement, skimmable list of proven tactics, benchmarks, and actionable tips.",
+    description:
+      "High-engagement, skimmable list of proven tactics, benchmarks, and actionable tips.",
     intent: "informational",
     tone: "actionable & energetic",
     suggestedKeywords: ["best practices", "top tips for", "how to improve"],
-    suggestedTitle: (kw, ind) => `Top 7 Best Practices for ${kw || "Customer Engagement"} in ${ind || "Modern Business"}`,
-    suggestedMetaDesc: (kw, ind) => `Boost conversion and delight customers with these 7 proven best practices for ${kw || "sales and service operations"}. Read the practical guide.`,
+    suggestedTitle: (kw, ind) =>
+      `Top 7 Best Practices for ${kw || "Customer Engagement"} in ${ind || "Modern Business"}`,
+    suggestedMetaDesc: (kw, ind) =>
+      `Boost conversion and delight customers with these 7 proven best practices for ${kw || "sales and service operations"}. Read the practical guide.`,
     defaultFaq: [
       {
         q: "Which best practice should we implement first?",
-        a: "Start with reducing initial response time on inbound chats — immediate acknowledgment increases conversion by over 300%."
+        a: "Start with reducing initial response time on inbound chats — immediate acknowledgment increases conversion by over 300%.",
       },
       {
         q: "How often should we review team performance?",
-        a: "Conduct weekly audits of open inquiries, quotation follow-ups, and customer feedback to keep standards high."
-      }
+        a: "Conduct weekly audits of open inquiries, quotation follow-ups, and customer feedback to keep standards high.",
+      },
     ],
-    generateHtml: (kw, ind, comp) => `
+    generateHtml: (kw, ind, comp) =>
+      `
 <p class="lead">Whether you are scaling sales or streamlining customer support, small operational improvements deliver outsized returns. Here are seven proven best practices you can apply today to improve efficiency and customer retention.</p>
 
 <h2>1. Respond to High-Intent Inquiries in Under 5 Minutes</h2>

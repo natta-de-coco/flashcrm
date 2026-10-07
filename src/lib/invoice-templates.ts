@@ -25,7 +25,8 @@ export const INVOICE_TEMPLATES: InvoiceTemplateDefinition[] = [
     primary_color: "#0F5132",
     accent_color: "#16A34A",
     secondary_color: "#111827",
-    description: "Crisp contemporary styling with emerald header accents, clean dividers, and balanced spacing.",
+    description:
+      "Crisp contemporary styling with emerald header accents, clean dividers, and balanced spacing.",
     badge: "Default",
     font_family: "Helvetica",
     watermark_default: true,
@@ -37,7 +38,8 @@ export const INVOICE_TEMPLATES: InvoiceTemplateDefinition[] = [
     primary_color: "#1E3A8A",
     accent_color: "#3B82F6",
     secondary_color: "#0F172A",
-    description: "Authoritative deep navy theme with formal borders, structured item tables, and executive totals.",
+    description:
+      "Authoritative deep navy theme with formal borders, structured item tables, and executive totals.",
     badge: "Professional",
     font_family: "Helvetica",
     watermark_default: true,
@@ -49,7 +51,8 @@ export const INVOICE_TEMPLATES: InvoiceTemplateDefinition[] = [
     primary_color: "#334155",
     accent_color: "#64748B",
     secondary_color: "#1E293B",
-    description: "Understated architectural slate palette with high-contrast hierarchy and subtle dividers.",
+    description:
+      "Understated architectural slate palette with high-contrast hierarchy and subtle dividers.",
     badge: "Corporate",
     font_family: "Helvetica",
     watermark_default: true,
@@ -61,7 +64,8 @@ export const INVOICE_TEMPLATES: InvoiceTemplateDefinition[] = [
     primary_color: "#18181B",
     accent_color: "#71717A",
     secondary_color: "#27272A",
-    description: "Monochrome minimalism emphasizing white space, legible line items, and clear figures.",
+    description:
+      "Monochrome minimalism emphasizing white space, legible line items, and clear figures.",
     badge: "Minimalist",
     font_family: "Helvetica",
     watermark_default: false,
@@ -73,7 +77,8 @@ export const INVOICE_TEMPLATES: InvoiceTemplateDefinition[] = [
     primary_color: "#991B1B",
     accent_color: "#EF4444",
     secondary_color: "#450A0A",
-    description: "Energetic crimson accents with prominent callouts for high-visibility trade and commercial billing.",
+    description:
+      "Energetic crimson accents with prominent callouts for high-visibility trade and commercial billing.",
     badge: "Standout",
     font_family: "Helvetica",
     watermark_default: true,

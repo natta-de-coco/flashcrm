@@ -62,11 +62,7 @@ export function InvoiceBrandingCard() {
     enabled: !!tenant?.id,
     queryFn: async () => {
       const [billingRes, bankRes] = await Promise.all([
-        supabase
-          .from("billing_settings")
-          .select("*")
-          .eq("tenant_id", tenant!.id)
-          .maybeSingle(),
+        supabase.from("billing_settings").select("*").eq("tenant_id", tenant!.id).maybeSingle(),
         supabase
           .from("bank_accounts")
           .select("bank_name, account_name, account_number, iban, swift, is_default")
@@ -471,9 +467,7 @@ export function InvoiceBrandingCard() {
                   id="invoice-account_number"
                   value={bank.account_number}
                   maxLength={100}
-                  onChange={(e) =>
-                    setBank((prev) => ({ ...prev, account_number: e.target.value }))
-                  }
+                  onChange={(e) => setBank((prev) => ({ ...prev, account_number: e.target.value }))}
                 />
               </div>
               <div className="space-y-1.5">
@@ -510,7 +504,9 @@ export function InvoiceBrandingCard() {
                   id="invoice-logo-file"
                   type="file"
                   accept="image/png,image/jpeg"
-                  disabled={upload.isPending || save.isPending || settings.isLoading || settings.isError}
+                  disabled={
+                    upload.isPending || save.isPending || settings.isLoading || settings.isError
+                  }
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) upload.mutate(file);

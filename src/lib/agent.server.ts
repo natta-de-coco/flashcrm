@@ -442,9 +442,29 @@ export async function executeStep(
           };
         }
 
-        const { resolveWaCredentials, sendWhatsAppText } = await import("@/lib/wa.server");
-        const creds = await resolveWaCredentials(ctx.tenantId, null);
-        await sendWhatsAppText(contact.phone, String(i["body"]), creds);
+        // Through the same pipeline as a reply typed in the Inbox: the safety
+        // gate (24-hour window, subscription, routing, this workspace's own
+        // number), one saved message in the contact's conversation, and the
+        // provider's real answer. It used to call WhatsApp directly, which
+        // skipped every one of those and left nothing in the thread.
+        const { findOrCreateWhatsAppConversation } = await import("@/lib/wa.server");
+        const { sendConversationMessage } = await import("@/lib/wa-send.server");
+        const conversation = await findOrCreateWhatsAppConversation(ctx.tenantId, id, null);
+        const sent = await sendConversationMessage({
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
+          conversationId: conversation.id,
+          body: String(i["body"]),
+        });
+        if (!sent.ok) {
+          return {
+            ok: false,
+            error:
+              sent.state === "blocked"
+                ? sent.blockedReasons.join(" ")
+                : (sent.deliveryError ?? "WhatsApp did not accept this message."),
+          };
+        }
 
         const { logAudit } = await import("@/lib/audit.server");
         await logAudit({

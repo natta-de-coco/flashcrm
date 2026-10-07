@@ -363,4 +363,3 @@ test("accounting sync cleanly distinguishes quotations/estimates from finalized 
   assert.equal(qbJson.ExpirationDate, "2026-11-05");
   assert.equal(qbJson.DueDate, undefined);
 });
-

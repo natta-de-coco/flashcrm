@@ -1,5 +1,15 @@
 import { WebsiteKnowledgeCard } from "@/components/WebsiteKnowledgeCard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,11 +57,16 @@ const MODELS = [
 ];
 
 function ChatbotPage() {
-  const { t, tr } = useI18n();
+  const { t, tr, language } = useI18n();
   const qc = useQueryClient();
   const { tenant } = useTenant();
+  // Asked before automatic replies are switched on: it is a decision, not a default.
+  const [confirmingOn, setConfirmingOn] = useState(false);
   const [form, setForm] = useState({
-    enabled: true,
+    // Off until a company admin turns it on. This used to start checked, so
+    // saving anything on this page switched automatic replies on.
+    enabled: false,
+    auto_enroll_new_chats: false,
     bot_name: "Assistant",
     greeting: "",
     instructions: "",
@@ -74,11 +89,30 @@ function ChatbotPage() {
     },
   });
 
+  // The opt-in policy arrives with a database change applied separately from
+  // the app. Until it has been, there is no policy to show or to save.
+  const policy = useQuery({
+    queryKey: ["assistant-opt-in-policy"],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { error } = await supabase
+        .from("tenant_bot_settings")
+        .select("auto_enroll_new_chats" as never)
+        .limit(1);
+      return !error;
+    },
+  });
+  const policyAvailable = policy.data === true;
+  const saved = settings.data as
+    { auto_enroll_new_chats?: boolean; automation_changed_at?: string | null } | null | undefined;
+
   useEffect(() => {
     const s = settings.data;
     if (!s) return;
     setForm({
       enabled: s.enabled,
+      auto_enroll_new_chats:
+        (s as { auto_enroll_new_chats?: boolean }).auto_enroll_new_chats ?? false,
       bot_name: s.bot_name,
       greeting: s.greeting,
       instructions: s.instructions,
@@ -101,6 +135,11 @@ function ChatbotPage() {
         {
           tenant_id: tenant.id,
           enabled: form.enabled,
+          // Only meaningful while the assistant is on, and only sent to a
+          // database that has the column.
+          ...((policyAvailable
+            ? { auto_enroll_new_chats: form.enabled && form.auto_enroll_new_chats }
+            : {}) as object),
           bot_name: form.bot_name,
           greeting: form.greeting,
           instructions: form.instructions,
@@ -166,10 +205,58 @@ function ChatbotPage() {
               aria-labelledby="auto-reply-title"
               aria-describedby="auto-reply-desc"
               checked={form.enabled}
-              onCheckedChange={(v) => setForm({ ...form, enabled: v })}
+              onCheckedChange={(v) =>
+                v && !form.enabled ? setConfirmingOn(true) : setForm({ ...form, enabled: v })
+              }
             />
           </CardHeader>
         </Card>
+
+        {policyAvailable && (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle className="text-base" id="auto-enrol-title">
+                  {t("chatbot.answerNewConversations")}
+                </CardTitle>
+                <CardDescription id="auto-enrol-desc">
+                  {t("chatbot.answerNewConversationsHint")}
+                </CardDescription>
+                {saved?.automation_changed_at && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("chatbot.automationLastChanged", {
+                      date: new Date(saved.automation_changed_at).toLocaleString(language),
+                    })}
+                  </p>
+                )}
+              </div>
+              <Switch
+                aria-labelledby="auto-enrol-title"
+                aria-describedby="auto-enrol-desc"
+                checked={form.enabled && form.auto_enroll_new_chats}
+                disabled={!form.enabled}
+                onCheckedChange={(v) => setForm({ ...form, auto_enroll_new_chats: v })}
+              />
+            </CardHeader>
+          </Card>
+        )}
+
+        <AlertDialog open={confirmingOn} onOpenChange={setConfirmingOn}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("chatbot.turnOnAutomaticReplies")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("chatbot.turnOnAutomaticRepliesBody")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("chatbot.notNow")}</AlertDialogCancel>
+              <AlertDialogAction onClick={() => setForm({ ...form, enabled: true })}>
+                {t("chatbot.turnOn")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {isDormant && (
           <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200">

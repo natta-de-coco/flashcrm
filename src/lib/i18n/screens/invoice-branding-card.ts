@@ -105,7 +105,8 @@ export default screen({
     "invoiceBrandingCard.brandingAndVerification": "الهوية والاعتماد",
     "invoiceBrandingCard.signatoryName": "اسم المفوض بالتوقيع",
     "invoiceBrandingCard.signatoryPosition": "المسمى الوظيفي للمفوض",
-    "invoiceBrandingCard.showQrVerification": "طباعة رمز الاستجابة السريعة (QR) للتحقق على الفواتير",
+    "invoiceBrandingCard.showQrVerification":
+      "طباعة رمز الاستجابة السريعة (QR) للتحقق على الفواتير",
     "invoiceBrandingCard.saveInvoicingSetup": "حفظ إعدادات الفواتير",
   },
   ms: {
@@ -264,7 +265,8 @@ export default screen({
     "invoiceBrandingCard.brandingAndVerification": "Chapa na uthibitishaji",
     "invoiceBrandingCard.signatoryName": "Jina la mtia saini aliyeidhinishwa",
     "invoiceBrandingCard.signatoryPosition": "Wadhifa wa mtia saini",
-    "invoiceBrandingCard.showQrVerification": "Chapisha msimbo wa QR wa uthibitishaji kwenye ankara",
+    "invoiceBrandingCard.showQrVerification":
+      "Chapisha msimbo wa QR wa uthibitishaji kwenye ankara",
     "invoiceBrandingCard.saveInvoicingSetup": "Hifadhi usanidi wa ankara",
   },
 });

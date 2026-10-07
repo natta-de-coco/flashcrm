@@ -2,6 +2,14 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { openSecret } from "@/lib/secret-box.server";
+import {
+  readSendResponse,
+  WA_UNCONFIRMED_TEXT,
+  type MessageEvidence,
+  type MessageMedia,
+  type WaMessageStatus,
+  type WaSendOutcome,
+} from "@/lib/wa-delivery";
 
 const GRAPH_VERSION = "v21.0";
 
@@ -12,6 +20,11 @@ export type BotSettings = {
   instructions: string;
   model: string;
   handoff_keywords: string[];
+  /**
+   * The workspace's opt-in: a new conversation starts with the assistant
+   * answering. Absent until the column exists in the database.
+   */
+  auto_enroll_new_chats?: boolean;
 };
 
 /**
@@ -38,14 +51,43 @@ export function botIsConfigured(settings: BotSettings): boolean {
 }
 
 /** Business instructions belong only to the workspace that supplied them. */
-export async function getBotSettings(tenantId: string): Promise<BotSettings | null> {
-  if (!tenantId) return null;
+/**
+ * Whether a brand-new conversation starts with the assistant answering it.
+ *
+ * Only when the workspace has turned the assistant on AND opted in to
+ * answering new conversations. This is said explicitly on every conversation
+ * the code creates, so the answer never depends on a column default.
+ */
+export function newChatAutomation(settings: BotSettings | null): { bot_enabled?: boolean } {
+  // A workspace that has never set the assistant up has opted in to nothing.
+  if (!settings) return { bot_enabled: false };
+  // The opt-in column arrives with a migration applied separately from the
+  // code. Until it exists there is no policy to read, and the database's own
+  // default decides -- exactly as it did before this code was deployed.
+  if (settings.auto_enroll_new_chats === undefined) return {};
+  return { bot_enabled: settings.enabled === true && settings.auto_enroll_new_chats === true };
+}
+
+/**
+ * The workspace's assistant settings, or the fact that they could not be read.
+ * "There are none" and "they could not be read" are different answers, and
+ * only the first may be acted on as a choice.
+ */
+async function readBotSettings(
+  tenantId: string,
+): Promise<{ ok: true; settings: BotSettings | null } | { ok: false }> {
+  if (!tenantId) return { ok: true, settings: null };
   const { data, error } = await supabaseAdmin
     .from("tenant_bot_settings")
     .select("*")
     .eq("tenant_id", tenantId)
     .maybeSingle();
-  return error ? null : (data as BotSettings | null);
+  return error ? { ok: false } : { ok: true, settings: data as BotSettings | null };
+}
+
+export async function getBotSettings(tenantId: string): Promise<BotSettings | null> {
+  const read = await readBotSettings(tenantId);
+  return read.ok ? read.settings : null;
 }
 
 export type WaCredentials = { token: string; phoneNumberId: string };
@@ -75,6 +117,79 @@ export async function resolveWaCredentials(
   if (!token || !data.phone_number_id)
     throw new Error("This WhatsApp number needs to be reconnected.");
   return { token, phoneNumberId: data.phone_number_id };
+}
+
+/** The business number a customer sees a message arrive from. */
+export type SendingNumber = { id: string; label: string; displayPhone: string | null };
+
+export type SendingNumberResult =
+  | { ok: true; number: SendingNumber; creds: WaCredentials }
+  | {
+      ok: false;
+      code: "no_number" | "number_missing" | "number_disabled" | "number_needs_reconnect";
+      message: string;
+    };
+
+/**
+ * Finds the number a message would be sent from, inside one workspace, and
+ * says exactly why when it cannot be used.
+ *
+ * A conversation keeps the number it happened on. If that number is gone or
+ * switched off the send is refused with that reason -- it does not quietly
+ * leave from another line, which would show the customer a sender they have
+ * never spoken to. Only a conversation with no number yet uses the default.
+ */
+export async function resolveSendingNumber(
+  tenantId: string,
+  waNumberId?: string | null,
+): Promise<SendingNumberResult> {
+  const none = {
+    ok: false as const,
+    code: "no_number" as const,
+    message:
+      "No WhatsApp number is connected to this workspace. A company admin can connect one in Integrations.",
+  };
+  if (!tenantId) return none;
+  let query = supabaseAdmin
+    .from("wa_numbers")
+    .select("id, label, display_phone, active, access_token, phone_number_id")
+    .eq("tenant_id", tenantId);
+  query = waNumberId ? query.eq("id", waNumberId) : query.eq("is_default", true).eq("active", true);
+  const { data, error } = await query.maybeSingle();
+  if (error || !data) {
+    if (!waNumberId) return none;
+    return {
+      ok: false,
+      code: "number_missing",
+      message:
+        "The WhatsApp number this conversation belongs to is no longer connected. A company admin must reconnect it in Integrations.",
+    };
+  }
+  if (!data.active) {
+    return {
+      ok: false,
+      code: "number_disabled",
+      message: `The WhatsApp number "${data.label}" is switched off in Integrations.`,
+    };
+  }
+  let token: string | null = null;
+  try {
+    token = await openSecret(data.access_token);
+  } catch {
+    token = null;
+  }
+  if (!token || !data.phone_number_id) {
+    return {
+      ok: false,
+      code: "number_needs_reconnect",
+      message: `The WhatsApp number "${data.label}" has lost its connection to Meta. A company admin must reconnect it.`,
+    };
+  }
+  return {
+    ok: true,
+    number: { id: data.id, label: data.label, displayPhone: data.display_phone ?? null },
+    creds: { token, phoneNumberId: data.phone_number_id },
+  };
 }
 
 /** Finds the connected wa_numbers row matching a webhook's phone_number_id, and which tenant owns it. */
@@ -122,68 +237,91 @@ export async function verifyWaSignature(
   return true;
 }
 
-export async function sendWhatsAppText(to: string, body: string, creds: WaCredentials) {
-  const { token, phoneNumberId } = creds;
+/** How long FLAS waits for Meta before calling the outcome unknown. */
+const SEND_TIMEOUT_MS = 15_000;
 
-  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "text",
-      text: { preview_url: false, body },
-    }),
-  });
-
-  const text = await res.text();
-  if (!res.ok) {
-    console.error(`[whatsapp] send failed [${res.status}]`);
-    throw new Error(describeWhatsAppSendFailure(res.status, text));
-  }
+/**
+ * Asks Meta to send one message and reports what is actually known afterwards.
+ *
+ * It does not throw for a provider or network problem, because "it threw" hid
+ * the one distinction that matters: Meta saying no (the customer got nothing)
+ * versus Meta not answering (the customer may have got it). The second case
+ * must never be retried automatically.
+ *
+ * `messageRef` is FLAS's own id for the message. Meta returns it in every
+ * status webhook for that message (biz_opaque_callback_data), which is how a
+ * message whose send was never confirmed is matched to its receipt later.
+ */
+async function postWhatsAppMessage(
+  payload: Record<string, unknown>,
+  creds: WaCredentials,
+  messageRef?: string | null,
+): Promise<WaSendOutcome> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
   try {
-    const json = JSON.parse(text) as { messages?: Array<{ id?: string }> };
-    return json.messages?.[0]?.id ?? null;
+    const res = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${creds.phoneNumberId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${creds.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          ...payload,
+          ...(messageRef ? { biz_opaque_callback_data: messageRef } : {}),
+        }),
+        signal: controller.signal,
+      },
+    );
+    const outcome = readSendResponse(res.status, await res.text());
+    if (outcome.state === "rejected") {
+      console.error(`[whatsapp] send refused [${res.status}] code ${outcome.providerCode ?? "?"}`);
+    } else if (outcome.state === "unconfirmed") {
+      console.error(`[whatsapp] send unconfirmed [${res.status}]`);
+    }
+    return outcome;
   } catch {
-    return null;
+    // A timeout or a dropped connection: the request may have reached Meta.
+    console.error("[whatsapp] send unconfirmed [no response]");
+    return { state: "unconfirmed", message: WA_UNCONFIRMED_TEXT };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-/**
- * Meta's Graph errors are useful to a developer but confusing to an agent in
- * the middle of a customer conversation. Keep the detailed provider response
- * out of the browser while translating the common, actionable cases.
- */
-function describeWhatsAppSendFailure(status: number, raw: string): string {
-  let code: number | null = null;
-  let detail = "";
-  try {
-    const parsed = JSON.parse(raw) as {
-      error?: { code?: number; error_user_msg?: string; message?: string };
-    };
-    code = typeof parsed.error?.code === "number" ? parsed.error.code : null;
-    detail = parsed.error?.error_user_msg ?? parsed.error?.message ?? "";
-  } catch {
-    // A non-JSON provider response still gets a safe, useful explanation.
-  }
+export function deliverWhatsAppText(
+  to: string,
+  body: string,
+  creds: WaCredentials,
+  messageRef?: string | null,
+): Promise<WaSendOutcome> {
+  return postWhatsAppMessage(
+    { recipient_type: "individual", to, type: "text", text: { preview_url: false, body } },
+    creds,
+    messageRef,
+  );
+}
 
-  if (code === 131047)
-    return "The 24-hour WhatsApp reply window has closed. Send an approved template to re-open this chat.";
-  if (code === 131026)
-    return "WhatsApp could not reach this number. Check that the customer can receive WhatsApp messages.";
-  if (code === 131030)
-    return "This WhatsApp number is not valid. Save it with its full country code, for example +971 50 123 4567.";
-  if (code === 190)
-    return "The connected WhatsApp account needs to be reconnected by a company admin.";
-
-  // Meta can give a customer-safe explanation for a template or policy issue.
-  // Limit it so a verbose upstream error cannot overwhelm the inbox toast.
-  if (detail.trim()) return `WhatsApp did not accept this message: ${detail.trim().slice(0, 240)}`;
-  return `WhatsApp could not deliver the message (${status}). Ask a company admin to check the connection.`;
+/** Sends an approved WhatsApp message template. */
+export function deliverWhatsAppTemplate(
+  to: string,
+  name: string,
+  language: string,
+  variables: string[],
+  creds: WaCredentials,
+  messageRef?: string | null,
+): Promise<WaSendOutcome> {
+  const components = variables.length
+    ? [{ type: "body", parameters: variables.map((text) => ({ type: "text", text })) }]
+    : [];
+  return postWhatsAppMessage(
+    { to, type: "template", template: { name, language: { code: language }, components } },
+    creds,
+    messageRef,
+  );
 }
 
 type HistoryRow = { sender: string; body: string; created_at?: string | null };
@@ -373,6 +511,8 @@ type IngestArgs = {
   text: string;
   waMessageId?: string | null;
   waNumberId?: string | null;
+  /** What kind of attachment the message carried, when it carried one. */
+  media?: MessageMedia | null;
 };
 
 /**
@@ -383,7 +523,7 @@ type IngestArgs = {
  * phone number used to collide into the same contact/conversation/history).
  */
 export async function ingestInboundMessage(args: IngestArgs) {
-  const { tenantId, channel, phone, sessionId, name, text, waMessageId, waNumberId } = args;
+  const { tenantId, channel, phone, sessionId, name, text, waMessageId, waNumberId, media } = args;
   if (!tenantId) throw new Error("ingestInboundMessage: tenantId is required");
 
   // Meta redelivers a webhook it thinks was not received. A WhatsApp message
@@ -403,6 +543,31 @@ export async function ingestInboundMessage(args: IngestArgs) {
   // somebody else's phone number, so their claim may create a contact but may
   // never rewrite one that already exists.
   const verifiedSender = channel !== "web";
+
+  // Read once. It decides whether a new conversation is answered by the
+  // assistant, and later whether this message is.
+  let settingsRead: Awaited<ReturnType<typeof readBotSettings>> | undefined;
+  const botSettings = async () => {
+    // A failed read is not kept: the next question asks again.
+    if (!settingsRead?.ok) settingsRead = await readBotSettings(tenantId);
+    return settingsRead;
+  };
+  // For a conversation about to be created. What is written here is permanent
+  // -- the assistant stays off in a conversation created off -- so a settings
+  // read that failed must not be taken for "this workspace has not opted in".
+  // It is asked once more, and if it still cannot be read the conversation is
+  // not created: the event fails, shows in Monitoring, and retrying it
+  // enrols the conversation correctly.
+  const newChatPolicy = async () => {
+    let read = await botSettings();
+    if (!read.ok) read = await botSettings();
+    if (!read.ok) {
+      throw new Error(
+        "Could not read this workspace's assistant settings, so the conversation was not opened. Retry this event.",
+      );
+    }
+    return newChatAutomation(read.settings);
+  };
   if (waMessageId) {
     const { data: seen } = await supabaseAdmin
       .from("messages")
@@ -500,6 +665,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
           channel: "web",
           web_session_id: sessionId,
           tenant_id: tenantId,
+          ...(await newChatPolicy()),
         })
         .select("id, bot_enabled")
         .single();
@@ -529,6 +695,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
           channel: "whatsapp",
           wa_number_id: waNumberId ?? null,
           tenant_id: tenantId,
+          ...(await newChatPolicy()),
         })
         .select("id, bot_enabled")
         .single();
@@ -552,7 +719,11 @@ export async function ingestInboundMessage(args: IngestArgs) {
   }
 
   // 3. Inbound message
+  // The row is named here, so what else is known about it can be recorded
+  // without reading it back.
+  const inboundId = crypto.randomUUID();
   const { error: insertError } = await supabaseAdmin.from("messages").insert({
+    id: inboundId,
     conversation_id: conversation.id,
     direction: "inbound",
     sender: "contact",
@@ -568,6 +739,13 @@ export async function ingestInboundMessage(args: IngestArgs) {
     // Never answer a message that was not saved.
     throw new Error(`Could not store the inbound message: ${insertError.message}`);
   }
+  // Which door it came in by, and what it carried. A website visitor's message
+  // and a WhatsApp message look the same in a thread; they are not the same
+  // kind of evidence.
+  await recordMessageEvidence(tenantId, inboundId, {
+    origin: channel === "whatsapp" ? "webhook" : "widget",
+    ...(media ? { media } : {}),
+  });
 
   // Atomic increment — a read-then-write here would drop a count under
   // concurrent inbound messages on a busy conversation.
@@ -592,16 +770,30 @@ export async function ingestInboundMessage(args: IngestArgs) {
   // whether it was created just now, because the widget may only fill in
   // details for a contact its own chat created.
   const conv = conversation;
-  const result = (reply: string | null, replyMessageId: string | null) => ({
-    conversationId: conv.id,
-    reply,
-    replyMessageId,
-    contactId,
-    contactCreated,
-  });
+  const result = async (reply: string | null, replyMessageId: string | null) => {
+    if (replyMessageId) {
+      // Written by the assistant, not typed by a person. On the website the
+      // visitor has it the moment this request returns; on WhatsApp the caller
+      // records what Meta says.
+      await recordMessageEvidence(tenantId, replyMessageId, {
+        origin: "assistant",
+        ...(channel === "web" ? { sent_at: new Date().toISOString() } : {}),
+      });
+    }
+    return { conversationId: conv.id, reply, replyMessageId, contactId, contactCreated };
+  };
 
   // 4. Bot reply / handoff
-  const settings = await getBotSettings(tenantId);
+  //
+  // On the website the reply is returned to the visitor in this same request,
+  // so it is sent the moment it is stored. On WhatsApp it still has to be
+  // handed to Meta by the caller: until that answer comes back it is only
+  // "sending", and the caller records what Meta said.
+  const replyStatus: WaMessageStatus = channel === "whatsapp" ? "sending" : "sent";
+  // The message is saved by now. If the settings cannot be read, the
+  // assistant says nothing this time; it does not undo anything.
+  const settingsNow = await botSettings();
+  const settings = settingsNow.ok ? settingsNow.settings : null;
   if (!settings || !settings.enabled || !conv.bot_enabled || !botIsConfigured(settings)) {
     return result(null, null);
   }
@@ -614,7 +806,15 @@ export async function ingestInboundMessage(args: IngestArgs) {
       .eq("tenant_id", tenantId);
     if (error) return result(null, null);
     const handoff = "I’ve passed this to the team. They’ll reply here when they’re available.";
-    const replyMessageId = await storeOutbound(tenantId, conv.id, handoff, "bot");
+    const replyMessageId = await storeOutbound(
+      tenantId,
+      conv.id,
+      handoff,
+      "bot",
+      null,
+      null,
+      replyStatus,
+    );
     return result(handoff, replyMessageId);
   }
 
@@ -635,8 +835,28 @@ export async function ingestInboundMessage(args: IngestArgs) {
   const reply =
     generated?.text ??
     "I’ll leave this with the team so they can help. They’ll reply here when they’re available.";
-  const replyMessageId = await storeOutbound(tenantId, conv.id, reply, "bot");
+  const replyMessageId = await storeOutbound(
+    tenantId,
+    conv.id,
+    reply,
+    "bot",
+    null,
+    null,
+    replyStatus,
+  );
   return result(reply, replyMessageId);
+}
+
+/** Said when a message could not be saved. Nothing was sent, so trying again is safe. */
+export const OUTBOUND_NOT_SAVED_TEXT =
+  "Could not save this message in the CRM, so it was not sent. Try again.";
+
+/** The row a caller asked to save is already there: the same send, arriving again. */
+export class OutboundAlreadySaved extends Error {
+  constructor(readonly messageId: string) {
+    super("This message was already saved.");
+    this.name = "OutboundAlreadySaved";
+  }
 }
 
 /** Returns the id of the inserted message row, so callers can later attach a
@@ -655,13 +875,19 @@ export async function storeOutbound(
    * like any other outbound message, so the conversation showed it as if the
    * customer had received it.
    */
-  status: "sending" | "sent" | "failed" = "sent",
+  status: WaMessageStatus = "sent",
+  /**
+   * The row's id, when the sender named this message. A second save under the
+   * same id is the same send arriving again, and throws OutboundAlreadySaved.
+   */
+  id?: string | null,
   // Never null: a failed insert throws, so a caller always has a row to
   // complete after the provider answers.
 ): Promise<string> {
   const { data, error } = await supabaseAdmin
     .from("messages")
     .insert({
+      ...(id ? { id } : {}),
       conversation_id: conversationId,
       direction: "outbound",
       sender,
@@ -673,9 +899,8 @@ export async function storeOutbound(
     })
     .select("id")
     .single();
-  if (error || !data?.id) {
-    throw new Error("Could not save this message in the CRM. It was not marked as sent.");
-  }
+  if (error?.code === "23505" && id) throw new OutboundAlreadySaved(id);
+  if (error || !data?.id) throw new Error(OUTBOUND_NOT_SAVED_TEXT);
   await supabaseAdmin
     .from("conversations")
     .update({
@@ -686,6 +911,39 @@ export async function storeOutbound(
   return data.id;
 }
 
+/** When the evidence columns were last found missing; they are not tried again for a while. */
+export const evidenceProbe = { unavailableUntil: 0 };
+
+/**
+ * Adds what is known about a message beyond its status: where it came from,
+ * when it was sent, delivered or read, why it was refused, what it carried.
+ *
+ * This is deliberately a second, separate write, and deliberately not fatal.
+ * The status of a message is written first, by its own checked statement, and
+ * a send or a receipt must not fail because a detail about it could not be
+ * kept. The columns also arrive with a migration that is applied separately
+ * from the code: until it is, the database answers "no such column", which is
+ * expected, is remembered, and is not asked again for ten minutes.
+ */
+export async function recordMessageEvidence(
+  tenantId: string,
+  messageId: string,
+  evidence: MessageEvidence,
+): Promise<void> {
+  if (Object.keys(evidence).length === 0 || Date.now() < evidenceProbe.unavailableUntil) return;
+  const { error } = await supabaseAdmin
+    .from("messages")
+    .update(evidence as never)
+    .eq("id", messageId)
+    .eq("tenant_id", tenantId);
+  if (!error) return;
+  if (error.code === "PGRST204" || error.code === "42703") {
+    evidenceProbe.unavailableUntil = Date.now() + 10 * 60 * 1000;
+    return;
+  }
+  console.error("[whatsapp] could not record delivery evidence", error.code ?? "");
+}
+
 /**
  * Marks a message already durably stored in FLAS with the outcome returned by
  * Meta. Senders call this after their provider request finishes, so a message
@@ -694,51 +952,60 @@ export async function storeOutbound(
 export async function completeOutboundDelivery(
   messageId: string,
   waMessageId: string | null,
-  status: "sent" | "failed",
+  status: "sent" | "failed" | "unconfirmed",
+  tenantId?: string | null,
 ) {
-  const { error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("messages")
     .update({ wa_message_id: waMessageId, status })
-    .eq("id", messageId);
+    .eq("id", messageId)
+    // A status webhook can overtake this write. It is only the answer to the
+    // send, so it never replaces a later status the provider already reported.
+    .in("status", ["sending", "unconfirmed"]);
+  if (tenantId) query = query.eq("tenant_id", tenantId);
+  const { error } = await query;
   if (error) {
     throw new Error("Could not update the saved WhatsApp message status in the CRM.");
   }
 }
 
-/** Sends an approved WhatsApp message template. */
-export async function sendWhatsAppTemplate(
-  to: string,
-  name: string,
-  language: string,
-  variables: string[] = [],
-  creds: WaCredentials,
-) {
-  const { token, phoneNumberId } = creds;
-
-  const components = variables.length
-    ? [{ type: "body", parameters: variables.map((text) => ({ type: "text", text })) }]
-    : [];
-
-  const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${phoneNumberId}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      to,
-      type: "template",
-      template: { name, language: { code: language }, components },
-    }),
-  });
-
-  const text = await res.text();
-  if (!res.ok) {
-    console.error(`[whatsapp] template send failed [${res.status}]`);
-    throw new Error(describeWhatsAppSendFailure(res.status, text));
+/**
+ * The one WhatsApp conversation a contact has in a workspace, created when
+ * there is none. Two requests can arrive together; the unique index picks the
+ * thread and the loser reads the winner's row.
+ */
+export async function findOrCreateWhatsAppConversation(
+  tenantId: string,
+  contactId: string,
+  waNumberId: string | null,
+): Promise<{ id: string; wa_number_id: string | null }> {
+  const find = () =>
+    supabaseAdmin
+      .from("conversations")
+      .select("id, wa_number_id")
+      .eq("tenant_id", tenantId)
+      .eq("contact_id", contactId)
+      .eq("channel", "whatsapp")
+      .maybeSingle();
+  const { data: existing } = await find();
+  if (existing) return { id: existing.id, wa_number_id: existing.wa_number_id ?? null };
+  const { data: created, error } = await supabaseAdmin
+    .from("conversations")
+    .insert({
+      tenant_id: tenantId,
+      contact_id: contactId,
+      channel: "whatsapp",
+      wa_number_id: waNumberId,
+      // Opened by a person to send something. The assistant does not take it
+      // over; someone switches it on in the Inbox if they want that.
+      bot_enabled: false,
+    })
+    .select("id, wa_number_id")
+    .single();
+  if (created) return { id: created.id, wa_number_id: created.wa_number_id ?? null };
+  if (error?.code === "23505") {
+    const { data: winner } = await find();
+    if (winner) return { id: winner.id, wa_number_id: winner.wa_number_id ?? null };
   }
-  try {
-    const json = JSON.parse(text) as { messages?: Array<{ id?: string }> };
-    return json.messages?.[0]?.id ?? null;
-  } catch {
-    return null;
-  }
+  throw new Error("Could not open the WhatsApp conversation for this contact.");
 }

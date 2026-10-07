@@ -42,6 +42,15 @@ export default screen({
     "chatbot.humanAgentComplaintRefund": "human, agent, complaint, refund",
     "chatbot.availabilityBasedSchedulingComingSoon": "Availability-based scheduling — coming soon",
     "chatbot.saveChatbot": "Save chatbot",
+    "chatbot.turnOnAutomaticReplies": "Turn on automatic replies?",
+    "chatbot.turnOnAutomaticRepliesBody":
+      "The assistant will reply to customers on its own, using the instructions on this page. A person can take over any conversation at any time, and the assistant stops answering in that conversation when they do. Nothing changes until you save this page.",
+    "chatbot.turnOn": "Turn on",
+    "chatbot.notNow": "Not now",
+    "chatbot.answerNewConversations": "Answer new conversations automatically",
+    "chatbot.answerNewConversationsHint":
+      "On: every new conversation starts with the assistant answering. Off: the assistant answers only in conversations where someone has switched it on in the Inbox.",
+    "chatbot.automationLastChanged": "Automatic replies were last changed on {date}.",
   },
   ar: {
     "chatbot.chatbotSavedButAutoReply":
@@ -79,6 +88,15 @@ export default screen({
     "chatbot.humanAgentComplaintRefund": "موظف، مندوب، شكوى، استرداد",
     "chatbot.availabilityBasedSchedulingComingSoon": "الجدولة حسب أوقات التوفر — قريبًا",
     "chatbot.saveChatbot": "حفظ روبوت المحادثة",
+    "chatbot.turnOnAutomaticReplies": "تشغيل الردود التلقائية؟",
+    "chatbot.turnOnAutomaticRepliesBody":
+      "سيرد المساعد على العملاء من تلقاء نفسه وفق التعليمات في هذه الصفحة. يمكن لأي شخص تولّي أي محادثة في أي وقت، ويتوقف المساعد عن الرد في تلك المحادثة عند ذلك. لا يتغير شيء حتى تحفظ هذه الصفحة.",
+    "chatbot.turnOn": "تشغيل",
+    "chatbot.notNow": "ليس الآن",
+    "chatbot.answerNewConversations": "الرد على المحادثات الجديدة تلقائيًا",
+    "chatbot.answerNewConversationsHint":
+      "عند التشغيل: تبدأ كل محادثة جديدة والمساعد يرد فيها. عند الإيقاف: يرد المساعد فقط في المحادثات التي فعّله فيها أحدهم من صندوق الوارد.",
+    "chatbot.automationLastChanged": "آخر تغيير للردود التلقائية كان في {date}.",
   },
   ms: {
     "chatbot.chatbotSavedButAutoReply":
@@ -119,6 +137,15 @@ export default screen({
     "chatbot.availabilityBasedSchedulingComingSoon":
       "Penjadualan berdasarkan ketersediaan — akan datang",
     "chatbot.saveChatbot": "Simpan chatbot",
+    "chatbot.turnOnAutomaticReplies": "Hidupkan balasan automatik?",
+    "chatbot.turnOnAutomaticRepliesBody":
+      "Pembantu akan membalas pelanggan dengan sendirinya, menggunakan arahan di halaman ini. Seseorang boleh mengambil alih mana-mana perbualan pada bila-bila masa, dan pembantu berhenti membalas dalam perbualan itu apabila mereka berbuat demikian. Tiada apa yang berubah sehingga anda menyimpan halaman ini.",
+    "chatbot.turnOn": "Hidupkan",
+    "chatbot.notNow": "Bukan sekarang",
+    "chatbot.answerNewConversations": "Jawab perbualan baharu secara automatik",
+    "chatbot.answerNewConversationsHint":
+      "Hidup: setiap perbualan baharu bermula dengan pembantu menjawab. Mati: pembantu hanya menjawab dalam perbualan yang seseorang telah menghidupkannya di Peti Masuk.",
+    "chatbot.automationLastChanged": "Balasan automatik terakhir diubah pada {date}.",
   },
   fil: {
     "chatbot.chatbotSavedButAutoReply":
@@ -159,6 +186,15 @@ export default screen({
     "chatbot.availabilityBasedSchedulingComingSoon":
       "Pag-iskedyul batay sa availability — malapit na",
     "chatbot.saveChatbot": "I-save ang chatbot",
+    "chatbot.turnOnAutomaticReplies": "I-on ang mga awtomatikong sagot?",
+    "chatbot.turnOnAutomaticRepliesBody":
+      "Sasagot ang assistant sa mga customer nang mag-isa, gamit ang mga tagubilin sa pahinang ito. Maaaring akuin ng isang tao ang anumang usapan anumang oras, at titigil ang assistant sa pagsagot sa usapang iyon kapag ginawa nila ito. Walang magbabago hanggang i-save mo ang pahinang ito.",
+    "chatbot.turnOn": "I-on",
+    "chatbot.notNow": "Hindi muna",
+    "chatbot.answerNewConversations": "Awtomatikong sagutin ang mga bagong usapan",
+    "chatbot.answerNewConversationsHint":
+      "Naka-on: nagsisimula ang bawat bagong usapan na sumasagot ang assistant. Naka-off: sumasagot lang ang assistant sa mga usapang may nag-on nito sa Inbox.",
+    "chatbot.automationLastChanged": "Huling binago ang mga awtomatikong sagot noong {date}.",
   },
   sw: {
     "chatbot.chatbotSavedButAutoReply":
@@ -200,5 +236,15 @@ export default screen({
     "chatbot.availabilityBasedSchedulingComingSoon":
       "Upangaji kulingana na upatikanaji — inakuja hivi karibuni",
     "chatbot.saveChatbot": "Hifadhi chatbot",
+    "chatbot.turnOnAutomaticReplies": "Washa majibu ya kiotomatiki?",
+    "chatbot.turnOnAutomaticRepliesBody":
+      "Msaidizi atawajibu wateja peke yake, akitumia maagizo yaliyo kwenye ukurasa huu. Mtu anaweza kuchukua mazungumzo yoyote wakati wowote, na msaidizi huacha kujibu katika mazungumzo hayo anapofanya hivyo. Hakuna kinachobadilika hadi uhifadhi ukurasa huu.",
+    "chatbot.turnOn": "Washa",
+    "chatbot.notNow": "Si sasa",
+    "chatbot.answerNewConversations": "Jibu mazungumzo mapya kiotomatiki",
+    "chatbot.answerNewConversationsHint":
+      "Imewashwa: kila mazungumzo mapya huanza msaidizi akijibu. Imezimwa: msaidizi hujibu tu katika mazungumzo ambayo mtu ameiwasha kwenye Kikasha.",
+    "chatbot.automationLastChanged":
+      "Majibu ya kiotomatiki yalibadilishwa mara ya mwisho tarehe {date}.",
   },
 });
