@@ -48,6 +48,9 @@ export default screen({
     "settingsEmail.sendTest": "Send test",
     "settingsEmail.failed": "Failed",
     "settingsEmail.lastTest": "Last test {toLocaleString}: {value}",
+    "settingsEmail.chooseAProvider": "Choose a provider",
+    "settingsEmail.providerDoesNotSend":
+      "{provider} is not supported, so no email from your company is being sent through it. Choose Resend, Postmark, Mailgun or SendGrid above and save. To use the built-in mailer instead, choose Platform default.",
   },
   ar: {
     "settingsEmail.emailSettingsCouldNotBe": "تعذّر تحميل إعدادات البريد الإلكتروني.",
@@ -93,6 +96,9 @@ export default screen({
     "settingsEmail.sendTest": "إرسال اختبار",
     "settingsEmail.failed": "فشل",
     "settingsEmail.lastTest": "آخر اختبار {toLocaleString}: {value}",
+    "settingsEmail.chooseAProvider": "اختر مزوّدًا",
+    "settingsEmail.providerDoesNotSend":
+      "{provider} غير مدعوم، لذا لا يُرسَل عبره أي بريد إلكتروني من شركتك. اختر Resend أو Postmark أو Mailgun أو SendGrid أعلاه ثم احفظ. ولاستخدام مُرسِل البريد المدمج بدلًا من ذلك، اختر «افتراضي المنصة».",
   },
   ms: {
     "settingsEmail.emailSettingsCouldNotBe": "Tetapan e-mel tidak dapat dimuatkan.",
@@ -138,6 +144,9 @@ export default screen({
     "settingsEmail.sendTest": "Hantar ujian",
     "settingsEmail.failed": "Gagal",
     "settingsEmail.lastTest": "Ujian terakhir {toLocaleString}: {value}",
+    "settingsEmail.chooseAProvider": "Pilih pembekal",
+    "settingsEmail.providerDoesNotSend":
+      "{provider} tidak disokong, jadi tiada e-mel daripada syarikat anda dihantar melaluinya. Pilih Resend, Postmark, Mailgun atau SendGrid di atas, kemudian simpan. Untuk menggunakan penghantar e-mel terbina dalam sebaliknya, pilih Lalai platform.",
   },
   fil: {
     "settingsEmail.emailSettingsCouldNotBe": "Hindi ma-load ang mga setting ng email.",
@@ -183,6 +192,9 @@ export default screen({
     "settingsEmail.sendTest": "Ipadala ang test",
     "settingsEmail.failed": "Nabigo",
     "settingsEmail.lastTest": "Huling test {toLocaleString}: {value}",
+    "settingsEmail.chooseAProvider": "Pumili ng provider",
+    "settingsEmail.providerDoesNotSend":
+      "Hindi sinusuportahan ang {provider}, kaya walang email ng kumpanya mo ang naipapadala rito. Pumili ng Resend, Postmark, Mailgun o SendGrid sa itaas, saka i-save. Para gamitin na lang ang built-in na mailer, piliin ang Default ng platform.",
   },
   sw: {
     "settingsEmail.emailSettingsCouldNotBe": "Mipangilio ya barua pepe haikuweza kupakiwa.",
@@ -229,5 +241,8 @@ export default screen({
     "settingsEmail.sendTest": "Tuma jaribio",
     "settingsEmail.failed": "Imeshindwa",
     "settingsEmail.lastTest": "Jaribio la mwisho {toLocaleString}: {value}",
+    "settingsEmail.chooseAProvider": "Chagua mtoa huduma",
+    "settingsEmail.providerDoesNotSend":
+      "{provider} haitumiki, kwa hiyo barua pepe za kampuni yako hazitumwi kupitia huduma hiyo. Chagua Resend, Postmark, Mailgun au SendGrid hapo juu, kisha hifadhi. Ili kutumia mfumo wa barua pepe uliojengewa ndani badala yake, chagua Chaguo-msingi la jukwaa.",
   },
 });

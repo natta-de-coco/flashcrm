@@ -4,6 +4,7 @@
 // server-only code paths (like plugin activation) can send real email too,
 // not just the company-admin "send a test email" flow.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { unsupportedProviderError } from "@/lib/email-providers";
 
 export type EmailMessage = {
   from: string;
@@ -82,10 +83,9 @@ export async function dispatchEmail(
     const txt = await r.text().catch(() => "");
     return { ok: false, error: `SendGrid HTTP ${r.status}: ${txt.slice(0, 200)}` };
   }
-  return {
-    ok: false,
-    error: `Provider ${provider} not implemented — add a dispatcher in email-dispatch.server.ts`,
-  };
+  // Nothing was sent. The words are for the company admin who reads them under
+  // "Last test" and in the delivery log, so no developer notes.
+  return { ok: false, error: unsupportedProviderError(provider) };
 }
 
 /**
