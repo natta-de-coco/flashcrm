@@ -54,13 +54,51 @@ function context(role = "company_admin", tenant = "tenant-a") {
   };
 }
 
-// Service-role double for wa_numbers: filtered reads, counts, updates, and
-// inserts that can fail the way the database does.
-function database(rows = [], { failInsertOnce = null } = {}) {
+const STATEMENT_TIMEOUT = {
+  code: "57014",
+  message: "canceling statement due to statement timeout",
+};
+
+// Service-role double for wa_numbers: filtered reads, counts, updates, inserts
+// and the default-number function, each able to fail the way the database does.
+//
+//  defaultFunction  "missing"   its migration is not applied: PostgREST does
+//                               not know the function (the default here)
+//                   "installed" it switches the default, all or nothing
+//                   "silent"    it answers with no error and no number
+//                   an error    it is installed and the call failed
+//  failUpdate       (patch, filters, rows) => error | null, asked before each
+//                   update is applied
+//  failRead         an error every single-row read returns
+function database(
+  rows = [],
+  { failInsertOnce = null, defaultFunction = "missing", failUpdate = null, failRead = null } = {},
+) {
   const inserted = [];
   const updates = [];
+  const rpcCalls = [];
   let pendingFailure = failInsertOnce;
   globalThis.onboardingDb = {
+    async rpc(name, args) {
+      rpcCalls.push({ name, args });
+      assert.equal(name, "set_default_wa_number");
+      if (defaultFunction === "missing") {
+        return {
+          data: null,
+          error: {
+            code: "PGRST202",
+            message:
+              "Could not find the function public.set_default_wa_number(_number_id, _tenant_id) in the schema cache",
+          },
+        };
+      }
+      if (defaultFunction === "silent") return { data: null, error: null };
+      if (defaultFunction !== "installed") return { data: null, error: defaultFunction };
+      for (const row of rows) {
+        if (row.tenant_id === args._tenant_id) row.is_default = row.id === args._number_id;
+      }
+      return { data: args._number_id, error: null };
+    },
     from(table) {
       assert.equal(table, "wa_numbers");
       const filters = [];
@@ -71,6 +109,10 @@ function database(rows = [], { failInsertOnce = null } = {}) {
         },
         eq(column, value) {
           filters.push([column, value]);
+          return q;
+        },
+        neq(column, value) {
+          filters.push([column, value, "not"]);
           return q;
         },
         insert(row) {
@@ -96,12 +138,21 @@ function database(rows = [], { failInsertOnce = null } = {}) {
           return { data: { id }, error: null };
         },
         then(resolve, reject) {
-          const match = rows.filter((r) => filters.every(([c, v]) => r[c] === v));
+          const refusal = q.patch ? (failUpdate?.(q.patch, filters, rows) ?? null) : null;
+          const match = rows.filter((r) =>
+            filters.every(([c, v, not]) => (r[c] === v) !== Boolean(not)),
+          );
           if (q.patch) {
-            updates.push({ filters: [...filters], patch: q.patch });
+            updates.push({ filters: [...filters], patch: q.patch, refused: Boolean(refusal) });
+            if (refusal) {
+              return Promise.resolve({ data: null, error: refusal }).then(resolve, reject);
+            }
             for (const row of match) Object.assign(row, q.patch);
           }
           if (q.one) {
+            if (failRead) {
+              return Promise.resolve({ data: null, error: failRead }).then(resolve, reject);
+            }
             return Promise.resolve({ data: match[0] ?? null, error: null }).then(resolve, reject);
           }
           return Promise.resolve(
@@ -112,7 +163,7 @@ function database(rows = [], { failInsertOnce = null } = {}) {
       return q;
     },
   };
-  return { inserted, updates, rows };
+  return { inserted, updates, rows, rpcCalls };
 }
 
 describe("adding a WhatsApp number", () => {
@@ -267,6 +318,172 @@ describe("the default WhatsApp number belongs to a workspace, not the database",
       !/is_default:\s*true/.test(settings),
       "a bare update cannot clear the previous default, so it failed the unique index",
     );
+  });
+});
+
+// A workspace's default number is what a send uses when a conversation has no
+// number of its own. The switch was two separate writes -- clear the old one,
+// set the new one -- so a failure between them left the workspace with no
+// default at all, and it stayed that way after the database recovered.
+describe("switching the default number is all or nothing", () => {
+  const conflict = { code: "23505", message: "duplicate key value violates unique constraint" };
+  const twoNumbers = () => [
+    { id: "wa-1", tenant_id: "tenant-a", is_default: true },
+    { id: "wa-2", tenant_id: "tenant-a", is_default: false },
+    { id: "wb-1", tenant_id: "tenant-b", is_default: true },
+  ];
+  const defaultsOf = (rows, tenant = "tenant-a") =>
+    rows.filter((r) => r.tenant_id === tenant && r.is_default).map((r) => r.id);
+  const makeDefault = (id = "wa-2") =>
+    setDefaultWhatsAppNumber({ data: { id }, context: context() });
+  /** Refuses the write that makes `id` the default, and nothing else. */
+  const refuseSetting = (id, error) => (patch, filters) =>
+    patch.is_default === true && filters.some(([c, v, not]) => c === "id" && v === id && !not)
+      ? error
+      : null;
+
+  describe("once the database has the function", () => {
+    it("switches in one database call, for the caller's own workspace", async () => {
+      const { rows, updates, rpcCalls } = database(twoNumbers(), { defaultFunction: "installed" });
+      assert.deepEqual(await makeDefault(), { ok: true });
+      assert.deepEqual(rpcCalls, [
+        { name: "set_default_wa_number", args: { _tenant_id: "tenant-a", _number_id: "wa-2" } },
+      ]);
+      assert.equal(updates.length, 0, "no separate clear and set that could be torn apart");
+      assert.deepEqual(defaultsOf(rows), ["wa-2"]);
+      assert.deepEqual(defaultsOf(rows, "tenant-b"), ["wb-1"]);
+    });
+
+    it("keeps the previous default when the call fails, and does not try it in two steps", async () => {
+      const { rows, updates } = database(twoNumbers(), { defaultFunction: STATEMENT_TIMEOUT });
+      await assert.rejects(makeDefault(), /Could not change the default number/);
+      assert.equal(updates.length, 0, "the function is there and said no: nothing else is tried");
+      assert.deepEqual(defaultsOf(rows), ["wa-1"]);
+    });
+
+    it("says a database update is needed while the old database-wide index refuses it", async () => {
+      const { rows, updates } = database(twoNumbers(), { defaultFunction: conflict });
+      await assert.rejects(makeDefault(), /needs a database update/);
+      assert.equal(updates.length, 0);
+      assert.deepEqual(defaultsOf(rows), ["wa-1"]);
+    });
+
+    it("says the number is not this workspace's when the database finds it gone", async () => {
+      const gone = { code: "P0002", message: "That number is not connected to this workspace." };
+      const { rows, updates } = database(twoNumbers(), { defaultFunction: gone });
+      await assert.rejects(makeDefault(), /not connected to this workspace/);
+      assert.equal(updates.length, 0);
+      assert.deepEqual(defaultsOf(rows), ["wa-1"]);
+    });
+
+    it("is not done until the database names the number that is now the default", async () => {
+      const { rows } = database(twoNumbers(), { defaultFunction: "silent" });
+      await assert.rejects(makeDefault(), /Could not change the default number/);
+      assert.deepEqual(defaultsOf(rows), ["wa-1"]);
+    });
+  });
+
+  describe("until then", () => {
+    it("asks for the function first, then switches in two steps", async () => {
+      for (const code of ["PGRST202", "42883"]) {
+        const missing = { code, message: "function public.set_default_wa_number does not exist" };
+        const { rows, updates, rpcCalls } = database(twoNumbers(), { defaultFunction: missing });
+        assert.deepEqual(await makeDefault(), { ok: true });
+        assert.equal(rpcCalls.length, 1, code);
+        assert.equal(updates.length, 2, "clear, then set");
+        assert.deepEqual(defaultsOf(rows), ["wa-2"]);
+        assert.deepEqual(defaultsOf(rows, "tenant-b"), ["wb-1"]);
+      }
+    });
+
+    it("puts the previous default back when the new one cannot be set", async () => {
+      const { rows, updates } = database(twoNumbers(), {
+        failUpdate: refuseSetting("wa-2", STATEMENT_TIMEOUT),
+      });
+      await assert.rejects(makeDefault(), /Could not set that number as the default/);
+      // The workspace used to be left with no default number here.
+      assert.deepEqual(defaultsOf(rows), ["wa-1"]);
+      assert.deepEqual(defaultsOf(rows, "tenant-b"), ["wb-1"]);
+      // Cleared, refused, put back -- and every one of them inside the workspace.
+      assert.deepEqual(
+        updates.map((u) => [u.patch.is_default, u.refused]),
+        [
+          [false, false],
+          [true, true],
+          [true, false],
+        ],
+      );
+      for (const update of updates) {
+        assert.ok(update.filters.some(([c, v]) => c === "tenant_id" && v === "tenant-a"));
+      }
+      assert.ok(updates[2].filters.some(([c, v]) => c === "id" && v === "wa-1"));
+    });
+
+    it("puts it back, too, when it is the old database-wide index that refuses", async () => {
+      const { rows } = database(twoNumbers(), { failUpdate: refuseSetting("wa-2", conflict) });
+      await assert.rejects(makeDefault(), /needs a database update/);
+      assert.deepEqual(defaultsOf(rows), ["wa-1"]);
+    });
+
+    it("still reports the failure when the previous default cannot be put back either", async () => {
+      const { rows, updates } = database(twoNumbers(), {
+        failUpdate: (patch) => (patch.is_default === true ? STATEMENT_TIMEOUT : null),
+      });
+      await assert.rejects(makeDefault(), /Could not set that number as the default/);
+      assert.equal(updates.filter((u) => u.refused).length, 2, "the set, and the attempt to undo");
+      // Nothing is marked as the default that is not: the list shows the truth.
+      assert.deepEqual(defaultsOf(rows), []);
+    });
+
+    it("changes nothing when the old default cannot be cleared", async () => {
+      const { rows, updates } = database(twoNumbers(), {
+        failUpdate: (patch) => (patch.is_default === false ? STATEMENT_TIMEOUT : null),
+      });
+      await assert.rejects(makeDefault(), /Could not change the default number/);
+      assert.equal(updates.length, 1, "the new default is not set over an old one still in place");
+      assert.deepEqual(defaultsOf(rows), ["wa-1"]);
+    });
+
+    it("does not take the default away from the number that already has it", async () => {
+      // It used to be cleared in order to be set again, and lost when that failed.
+      const { rows, updates } = database(twoNumbers(), {
+        failUpdate: refuseSetting("wa-1", STATEMENT_TIMEOUT),
+      });
+      await assert.rejects(makeDefault("wa-1"), /Could not set that number as the default/);
+      assert.deepEqual(defaultsOf(rows), ["wa-1"]);
+      assert.equal(updates.length, 2, "nothing was cleared, so nothing is put back");
+    });
+
+    it("has nothing to put back for a workspace that had no default", async () => {
+      const { rows, updates } = database(
+        [{ id: "wa-2", tenant_id: "tenant-a", is_default: false }],
+        { failUpdate: refuseSetting("wa-2", STATEMENT_TIMEOUT) },
+      );
+      await assert.rejects(makeDefault(), /Could not set that number as the default/);
+      assert.equal(updates.length, 2, "cleared nothing, was refused, and wrote nothing else");
+      assert.deepEqual(defaultsOf(rows), []);
+    });
+  });
+
+  it("does not call a number someone else's because it could not be read", async () => {
+    const { updates, rpcCalls } = database(twoNumbers(), {
+      defaultFunction: "installed",
+      failRead: STATEMENT_TIMEOUT,
+    });
+    await assert.rejects(makeDefault(), (error) => {
+      assert.match(error.message, /Could not change the default number/);
+      assert.doesNotMatch(error.message, /not connected/);
+      return true;
+    });
+    assert.equal(rpcCalls.length, 0);
+    assert.equal(updates.length, 0);
+  });
+
+  it("never asks the database about another workspace's number", async () => {
+    const { updates, rpcCalls } = database(twoNumbers(), { defaultFunction: "installed" });
+    await assert.rejects(makeDefault("wb-1"), /not connected to this workspace/);
+    assert.equal(rpcCalls.length, 0);
+    assert.equal(updates.length, 0);
   });
 });
 

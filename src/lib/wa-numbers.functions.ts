@@ -111,6 +111,69 @@ export const addWhatsAppNumber = createServerFn({ method: "POST" })
     return { id: row.id };
   });
 
+const DEFAULT_NOT_CHANGED = "Could not change the default number. Try again.";
+const DEFAULT_NOT_SET = "Could not set that number as the default. Try again.";
+const DEFAULT_NEEDS_DATABASE_UPDATE =
+  "The default WhatsApp number setting needs a database update from your Flas administrator before it can be changed.";
+const NOT_THIS_WORKSPACES_NUMBER = "That number is not connected to this workspace.";
+
+type DatabaseError = { code?: string | null };
+
+/** The database does not have the function yet: its migration has not been applied. */
+const functionIsMissing = (error: DatabaseError) =>
+  error.code === "PGRST202" || error.code === "42883";
+
+/**
+ * Switches the default with two writes, for a database that does not have
+ * set_default_wa_number yet.
+ *
+ * Two writes cannot be made all-or-nothing from here, so when the second one
+ * is refused the first is undone: the number that was the default is made the
+ * default again. A workspace used to be left with no default number at all,
+ * and every send that relies on the default stayed broken after the database
+ * had recovered.
+ */
+async function switchDefaultInTwoSteps(
+  supabaseAdmin: (typeof import("@/integrations/supabase/client.server"))["supabaseAdmin"],
+  tenantId: string,
+  numberId: string,
+): Promise<void> {
+  // Every other default of this workspace, never the number itself: one that
+  // is already the default is not cleared in order to be set again.
+  const { data: cleared, error: clearError } = await supabaseAdmin
+    .from("wa_numbers")
+    .update({ is_default: false })
+    .eq("tenant_id", tenantId)
+    .eq("is_default", true)
+    .neq("id", numberId)
+    .select("id");
+  // Nothing was cleared, so the previous default is still in place.
+  if (clearError) throw new Error(DEFAULT_NOT_CHANGED);
+
+  const { error } = await supabaseAdmin
+    .from("wa_numbers")
+    .update({ is_default: true })
+    .eq("id", numberId)
+    .eq("tenant_id", tenantId);
+  if (!error) return;
+
+  const previous = cleared?.[0];
+  if (previous) {
+    const { error: restoreError } = await supabaseAdmin
+      .from("wa_numbers")
+      .update({ is_default: true })
+      .eq("id", previous.id)
+      .eq("tenant_id", tenantId);
+    if (restoreError) {
+      console.error(
+        "[whatsapp] the default number was cleared and could not be restored; this workspace has no default number",
+        restoreError.code ?? "",
+      );
+    }
+  }
+  throw new Error(error.code === "23505" ? DEFAULT_NEEDS_DATABASE_UPDATE : DEFAULT_NOT_SET);
+}
+
 /**
  * Makes one number this workspace's default.
  *
@@ -118,6 +181,12 @@ export const addWhatsAppNumber = createServerFn({ method: "POST" })
  * setting a second one fails until the first is cleared. The browser used to
  * send exactly that bare update, which is why "Make default" reported a raw
  * database error instead of switching.
+ *
+ * Clearing and setting are one database call (set_default_wa_number, from
+ * 20261007120000_set_default_wa_number.sql): both happen or neither does, so
+ * a failure leaves the previous default exactly as it was. Until that
+ * migration has been applied the database answers "no such function", and the
+ * switch is made in two steps that undo themselves on failure.
  */
 export const setDefaultWhatsAppNumber = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -127,32 +196,32 @@ export const setDefaultWhatsAppNumber = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // The number has to be this workspace's own, whatever id the browser sent.
-    const { data: number } = await supabaseAdmin
+    const { data: number, error: numberError } = await supabaseAdmin
       .from("wa_numbers")
       .select("id")
       .eq("id", data.id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
-    if (!number) throw new Error("That number is not connected to this workspace.");
+    // "Could not read it" is not "it is someone else's".
+    if (numberError) throw new Error(DEFAULT_NOT_CHANGED);
+    if (!number) throw new Error(NOT_THIS_WORKSPACES_NUMBER);
 
-    const { error: clearError } = await supabaseAdmin
-      .from("wa_numbers")
-      .update({ is_default: false })
-      .eq("tenant_id", tenantId)
-      .eq("is_default", true);
-    if (clearError) throw new Error("Could not change the default number. Try again.");
-
-    const { error } = await supabaseAdmin
-      .from("wa_numbers")
-      .update({ is_default: true })
-      .eq("id", number.id)
-      .eq("tenant_id", tenantId);
-    if (error) {
-      throw new Error(
-        error.code === "23505"
-          ? "The default WhatsApp number setting needs a database update from your Flas administrator before it can be changed."
-          : "Could not set that number as the default. Try again.",
-      );
+    const switched = await supabaseAdmin.rpc(
+      "set_default_wa_number" as never,
+      { _tenant_id: tenantId, _number_id: number.id } as never,
+    );
+    if (switched.error && functionIsMissing(switched.error)) {
+      await switchDefaultInTwoSteps(supabaseAdmin, tenantId, number.id);
+    } else if (switched.error) {
+      // The function is there and refused: nothing was changed, and nothing
+      // else is tried.
+      const code = (switched.error as DatabaseError).code;
+      if (code === "P0002") throw new Error(NOT_THIS_WORKSPACES_NUMBER);
+      throw new Error(code === "23505" ? DEFAULT_NEEDS_DATABASE_UPDATE : DEFAULT_NOT_CHANGED);
+    } else if ((switched.data as unknown) !== number.id) {
+      // It answers with the number that is now the default. Anything else is
+      // not a switch this can vouch for.
+      throw new Error(DEFAULT_NOT_CHANGED);
     }
 
     const { logAudit } = await import("@/lib/audit.server");
