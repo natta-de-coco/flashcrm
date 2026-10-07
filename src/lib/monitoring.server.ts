@@ -1,8 +1,12 @@
 // Server-only helpers for webhook delivery monitoring, retries and alerts.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
+  evidenceOfReceipt,
+  evidenceOfSend,
   failureReasonForCode,
+  mediaOf,
   providerStatus,
+  receiptTime,
   statusesThatMayBecome,
   WA_FAILURE_TEXT,
 } from "@/lib/wa-delivery";
@@ -19,11 +23,17 @@ export type WaWebhookBody = {
           from?: string;
           type?: string;
           text?: { body?: string };
-          image?: { id?: string; caption?: string; mime_type?: string };
-          audio?: { id?: string; mime_type?: string };
-          video?: { id?: string; caption?: string; mime_type?: string };
-          document?: { id?: string; caption?: string; filename?: string; mime_type?: string };
-          sticker?: { id?: string; mime_type?: string };
+          image?: { id?: string; caption?: string; mime_type?: string; sha256?: string };
+          audio?: { id?: string; mime_type?: string; sha256?: string };
+          video?: { id?: string; caption?: string; mime_type?: string; sha256?: string };
+          document?: {
+            id?: string;
+            caption?: string;
+            filename?: string;
+            mime_type?: string;
+            sha256?: string;
+          };
+          sticker?: { id?: string; mime_type?: string; sha256?: string };
           location?: { latitude?: number; longitude?: number; name?: string; address?: string };
           interactive?: {
             type?: string;
@@ -35,6 +45,8 @@ export type WaWebhookBody = {
         statuses?: Array<{
           id?: string;
           status?: string;
+          /** When it happened, in unix seconds, by Meta's clock. */
+          timestamp?: string;
           /** FLAS's own message id, echoed back because the send carried it. */
           biz_opaque_callback_data?: string;
           errors?: Array<{ code?: number; title?: string; message?: string }>;
@@ -347,7 +359,8 @@ async function applyDeliveryStatus(
   waMessageId: string,
   incoming: "sent" | "delivered" | "read" | "failed",
   messageRef?: string | null,
-): Promise<ReceiptEffect> {
+): Promise<{ effect: ReceiptEffect; messageIds: string[] }> {
+  const none: string[] = [];
   const allowedFrom = statusesThatMayBecome(incoming);
   const { data: matched, error: readError } = await supabaseAdmin
     .from("messages")
@@ -365,9 +378,11 @@ async function applyDeliveryStatus(
       .in("status", allowedFrom)
       .select("id");
     if (error) throw new Error(RECEIPT_NOT_SAVED);
-    return moved && moved.length > 0 ? "applied" : "stale";
+    return moved && moved.length > 0
+      ? { effect: "applied", messageIds: moved.map((m) => m.id) }
+      : { effect: "stale", messageIds: none };
   }
-  if (!messageRef || !UUID.test(messageRef)) return "unmatched";
+  if (!messageRef || !UUID.test(messageRef)) return { effect: "unmatched", messageIds: none };
   const { data: moved, error } = await supabaseAdmin
     .from("messages")
     .update({ status: incoming, wa_message_id: waMessageId })
@@ -378,7 +393,9 @@ async function applyDeliveryStatus(
     .in("status", allowedFrom)
     .select("id");
   if (error) throw new Error(RECEIPT_NOT_SAVED);
-  if (moved && moved.length > 0) return "applied";
+  if (moved && moved.length > 0) {
+    return { effect: "applied", messageIds: moved.map((m) => m.id) };
+  }
   // Nothing moved: either the referenced message is already settled, or the
   // reference names nothing in this workspace.
   const { data: known, error: knownError } = await supabaseAdmin
@@ -388,7 +405,7 @@ async function applyDeliveryStatus(
     .eq("tenant_id", tenantId)
     .limit(1);
   if (knownError) throw new Error(RECEIPT_NOT_SAVED);
-  return known && known.length > 0 ? "stale" : "unmatched";
+  return { effect: known && known.length > 0 ? "stale" : "unmatched", messageIds: none };
 }
 
 /**
@@ -403,6 +420,7 @@ export async function processWaPayload(body: WaWebhookBody) {
     completeOutboundDelivery,
     deliverWhatsAppText,
     ingestInboundMessage,
+    recordMessageEvidence,
     storeOutbound,
     findWaNumberByPhoneId,
     resolveWaCredentials,
@@ -446,13 +464,14 @@ export async function processWaPayload(body: WaWebhookBody) {
         // itself. The first copy moves the message; a repeat finds nothing
         // left to move.
         let effect: ReceiptEffect;
+        let moved: string[];
         try {
-          effect = await applyDeliveryStatus(
+          ({ effect, messageIds: moved } = await applyDeliveryStatus(
             tenantId,
             status.id,
             incoming,
             status.biz_opaque_callback_data,
-          );
+          ));
         } catch (error) {
           // The rest of this delivery is still worth saving. The event is
           // failed at the end, so it shows in Monitoring, and retrying it
@@ -461,7 +480,17 @@ export async function processWaPayload(body: WaWebhookBody) {
           continue;
         }
         if (effect === "stale") continue;
-        if (effect === "applied") handled += 1;
+        if (effect === "applied") {
+          handled += 1;
+          // When it happened and, for a failure, why -- on the message itself,
+          // and only for the receipt that actually moved it.
+          const evidence = evidenceOfReceipt(
+            incoming,
+            receiptTime(status.timestamp),
+            status.errors?.[0]?.code,
+          );
+          for (const id of moved) await recordMessageEvidence(tenantId, id, evidence);
+        }
         // A failure is announced once: by the message's own change of status,
         // or, when FLAS holds no message for it, by this claim on the alert.
         if (
@@ -499,6 +528,7 @@ export async function processWaPayload(body: WaWebhookBody) {
             text,
             waMessageId: message.id,
             waNumberId,
+            media: mediaOf(message),
           });
         } catch (error) {
           // Retrying this event (Monitoring -> Retry) used to skip the message
@@ -544,12 +574,17 @@ export async function processWaPayload(body: WaWebhookBody) {
                   : "unconfirmed",
               tenantId,
             );
+            await recordMessageEvidence(
+              tenantId,
+              replyMessageId,
+              evidenceOfSend(outcome, new Date().toISOString()),
+            );
           }
           if (outcome.state !== "accepted") {
             // The reply's own row now says it did not go (or may not have).
             // The line under it carries the actual reason, where it used to
             // blame credentials whatever had happened.
-            await storeOutbound(
+            const noticeId = await storeOutbound(
               tenantId,
               conversationId,
               outcome.state === "rejected"
@@ -560,6 +595,8 @@ export async function processWaPayload(body: WaWebhookBody) {
               null,
               outcome.state === "rejected" ? "failed" : "unconfirmed",
             );
+            // A note for the team, written by FLAS: never sent to the customer.
+            await recordMessageEvidence(tenantId, noticeId, { origin: "system" });
             await raiseAlert({
               title:
                 outcome.state === "rejected"

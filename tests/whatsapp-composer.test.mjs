@@ -160,6 +160,14 @@ describe("what the composer says is what the server decided", () => {
     }
   });
 
+  it("shows why a message was not delivered, on the message", () => {
+    const label = inbox.slice(inbox.indexOf("function DeliveryState("));
+    assert.match(inbox, /failureReason=\{m\.failure_reason\}/);
+    assert.match(label, /i18n\.tx\(`inbox\.sendFailure\.\$\{failureReason\}`, ""\)/);
+    // Nothing extra is shown for a message recorded before reasons were kept.
+    assert.match(label, /\{why && <span/);
+  });
+
   it("labels a message WhatsApp never confirmed, instead of sent or failed", () => {
     assert.match(inbox, /if \(status === "unconfirmed" \|\| stale\) \{/);
     assert.match(inbox, /i18n\.t\("inbox\.status\.unconfirmed"\)/);
