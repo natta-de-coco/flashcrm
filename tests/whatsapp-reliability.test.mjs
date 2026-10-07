@@ -15,6 +15,8 @@ import {
   describeSendContext,
   failureReasonForCode,
   generateBotReply,
+  ingestInboundMessage,
+  newChatAutomation,
   mayAdvance,
   processWaPayload,
   providerStatus,
@@ -1269,6 +1271,234 @@ describe("when the AI cannot answer", () => {
       assert.equal(botRows().length, 0);
     });
   }
+});
+
+describe("the assistant answers only where the workspace has opted in", () => {
+  const NEW_CUSTOMER = "971559990000";
+  const settings = (extra = {}) => ({
+    tenant_id: A,
+    enabled: true,
+    bot_name: "Flas",
+    greeting: "Hello!",
+    instructions: "We sell CCTV kits in Dubai and install on Saturdays.",
+    model: "default",
+    handoff_keywords: [],
+    auto_enroll_new_chats: false,
+    ...extra,
+  });
+  const firstMessage = (id = "wamid.NEW-1", from = NEW_CUSTOMER) =>
+    processWaPayload(
+      inboundPayload("pn-a", { id, from, type: "text", text: { body: "Do you deliver?" } }),
+    );
+  /** The conversation the first message from a number opened. */
+  const opened = () =>
+    rows.conversations.find((c) => !["conv-a", "conv-b", "web-a"].includes(c.id));
+  const botRows = () => rows.messages.filter((m) => m.sender === "bot");
+
+  beforeEach(() => {
+    process.env.LOVABLE_API_KEY = "test-gateway";
+    ai.respond = () => ({
+      status: 200,
+      body: {
+        choices: [
+          { message: { content: JSON.stringify({ text: "Yes, we do.", handoff: false }) } },
+        ],
+      },
+    });
+  });
+  afterEach(() => {
+    delete process.env.LOVABLE_API_KEY;
+  });
+
+  it("does not answer a new customer of a workspace that never set the assistant up", async () => {
+    await firstMessage();
+    assert.equal(opened().bot_enabled, false);
+    assert.equal(ai.calls.length, 0);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("does not answer a new customer when the assistant is on but new chats were not opted in", async () => {
+    rows.tenant_bot_settings.push(settings());
+    await firstMessage();
+    assert.equal(opened().bot_enabled, false, "the conversation was enrolled without an opt-in");
+    assert.equal(ai.calls.length, 0);
+    assert.equal(provider.calls.length, 0);
+    assert.equal(botRows().length, 0);
+  });
+
+  it("answers a new customer once the workspace has opted in to that", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    await firstMessage();
+    assert.equal(opened().bot_enabled, true);
+    assert.equal(ai.calls.length, 1);
+    assert.equal(provider.calls.length, 1);
+    assert.equal(provider.calls[0].body.text.body, "Yes, we do.");
+  });
+
+  it("does not enrol new chats for an assistant that is switched off, whatever the policy says", async () => {
+    rows.tenant_bot_settings.push(settings({ enabled: false, auto_enroll_new_chats: true }));
+    await firstMessage();
+    assert.equal(opened().bot_enabled, false);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("still answers a conversation a person switched the assistant on for", async () => {
+    // The policy is about NEW conversations. This one was turned on in the Inbox.
+    rows.tenant_bot_settings.push(settings());
+    rows.conversations[0].bot_enabled = true;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await firstMessage("wamid.EXISTING", "971501234567");
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("stays out of a conversation a person took over, even with new chats opted in", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    rows.conversations[0].bot_enabled = false;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await firstMessage("wamid.TAKEN", "971501234567");
+    assert.equal(rows.conversations[0].bot_enabled, false, "the hand-over was undone");
+    assert.equal(ai.calls.length, 0);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("applies the same rule to a new website visitor", async () => {
+    rows.tenant_bot_settings.push(settings());
+    await ingestInboundMessage({ tenantId: A, channel: "web", sessionId: "s-1", text: "Hi" });
+    const first = rows.conversations.find((c) => c.web_session_id === "s-1");
+    assert.equal(first.bot_enabled, false);
+
+    rows.tenant_bot_settings[0].auto_enroll_new_chats = true;
+    const second = await ingestInboundMessage({
+      tenantId: A,
+      channel: "web",
+      sessionId: "s-2",
+      text: "Do you deliver?",
+    });
+    assert.equal(rows.conversations.find((c) => c.web_session_id === "s-2").bot_enabled, true);
+    assert.equal(second.reply, "Yes, we do.");
+  });
+
+  it("does not enrol a conversation a person opened to send something", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    rows.conversations = rows.conversations.filter((c) => c.id !== "conv-a");
+    db.reset(rows);
+    declareKeys();
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await sendTemplate({
+      tenantId: A,
+      userId: "user-a",
+      templateId: "tpl-a",
+      phone: "971501234567",
+      variables: ["Sara"],
+    });
+    const byPerson = rows.conversations.find(
+      (c) => c.contact_id === "c-a" && c.channel === "whatsapp",
+    );
+    assert.equal(byPerson.bot_enabled, false);
+  });
+
+  it("leaves the choice to the database on one that has no opt-in column yet", async () => {
+    // Deployed before the migration: there is no policy to read, so nothing
+    // is said and the column's own default applies, exactly as before.
+    const legacy = settings();
+    delete legacy.auto_enroll_new_chats;
+    rows.tenant_bot_settings.push(legacy);
+    await firstMessage();
+    assert.ok(!("bot_enabled" in opened()), "the code overrode the database default");
+    assert.deepEqual(newChatAutomation(legacy), {});
+  });
+
+  it("says off unless both switches are on", () => {
+    assert.deepEqual(newChatAutomation(null), { bot_enabled: false });
+    assert.deepEqual(newChatAutomation(settings()), { bot_enabled: false });
+    assert.deepEqual(newChatAutomation(settings({ auto_enroll_new_chats: true })), {
+      bot_enabled: true,
+    });
+    assert.deepEqual(newChatAutomation(settings({ enabled: false, auto_enroll_new_chats: true })), {
+      bot_enabled: false,
+    });
+  });
+
+  describe("in the source", () => {
+    const read = (path) =>
+      readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+        .split("\r\n")
+        .join("\n");
+
+    it("every conversation the code creates says whether the assistant answers it", () => {
+      const wa = read("src/lib/wa.server.ts");
+      const inserts = wa
+        .split('.from("conversations")')
+        .slice(1)
+        .map((after) => after.slice(0, 400))
+        .filter((after) => /^\s*\.insert\(\{/.test(after));
+      assert.equal(inserts.length, 3, "a conversation is created somewhere new");
+      for (const insert of inserts) {
+        assert.ok(
+          insert.includes("...newChatAutomation(await botSettings())") ||
+            insert.includes("bot_enabled: false"),
+          "a conversation is created without saying whether the assistant answers it",
+        );
+      }
+      // No other file creates conversations.
+      for (const file of [
+        "src/lib/wa-send.server.ts",
+        "src/lib/crm.functions.ts",
+        "src/lib/monitoring.server.ts",
+      ]) {
+        assert.ok(!/from\("conversations"\)\s*\.insert/.test(read(file)), file);
+      }
+    });
+
+    it("the Chatbot page starts off, asks before turning on, and only saves a policy the database has", () => {
+      const page = read("src/routes/_authenticated/chatbot.tsx");
+      assert.match(page, /enabled: false,\n\s+auto_enroll_new_chats: false,/);
+      assert.ok(
+        !/useState\(\{\s*enabled: true/.test(page),
+        "the form starts with automatic replies on",
+      );
+      assert.match(
+        page,
+        /v && !form\.enabled \? setConfirmingOn\(true\) : setForm\(\{ \.\.\.form, enabled: v \}\)/,
+      );
+      assert.match(
+        page,
+        /<AlertDialogAction onClick=\{\(\) => setForm\(\{ \.\.\.form, enabled: true \}\)\}>/,
+      );
+      assert.match(
+        page,
+        /\? \{ auto_enroll_new_chats: form\.enabled && form\.auto_enroll_new_chats \}/,
+      );
+      assert.match(page, /\{policyAvailable && \(/);
+    });
+
+    it("the migration switches nothing off and hands existing workspaces over once", () => {
+      const sql = read("supabase/migrations/20261006160000_assistant_explicit_opt_in.sql");
+      assert.match(
+        sql,
+        /ALTER TABLE public\.tenant_bot_settings ALTER COLUMN enabled SET DEFAULT false;/,
+      );
+      assert.match(
+        sql,
+        /ALTER TABLE public\.conversations ALTER COLUMN bot_enabled SET DEFAULT false;/,
+      );
+      assert.match(
+        sql,
+        /UPDATE public\.tenant_bot_settings SET auto_enroll_new_chats = true WHERE enabled;/,
+      );
+      // Nothing in it turns a workspace or a conversation off.
+      assert.ok(!/SET\s+enabled\s*=\s*false/i.test(sql));
+      assert.ok(!/UPDATE\s+public\.conversations/i.test(sql));
+      // The hand-over is inside the "column does not exist yet" guard.
+      const guard = sql.slice(sql.indexOf("IF NOT EXISTS ("), sql.indexOf("END IF;"));
+      assert.ok(guard.includes("SET auto_enroll_new_chats = true WHERE enabled"));
+      assert.match(
+        sql,
+        /REVOKE ALL ON FUNCTION public\.note_assistant_automation_change\(\) FROM PUBLIC, anon, authenticated;/,
+      );
+      assert.match(sql, /SET search_path = public, pg_temp/);
+    });
+  });
 });
 
 describe("nothing reaches a customer around the pipeline", () => {
