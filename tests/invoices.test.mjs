@@ -2,7 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PDFDocument } from "pdf-lib";
-import { buildDocumentPdf, decodeInvoiceLogo } from "../node_modules/.cache/flas-invoices.mjs";
+import {
+  buildDocumentPdf,
+  decodeInvoiceLogo,
+  INVOICE_TEMPLATES,
+  getInvoiceTemplate,
+  BLOG_TEMPLATES,
+  getBlogTemplate,
+  generateTallySalesXml,
+  generateQuickBooksCsv,
+  generateQuickBooksIif,
+  generateQuickBooksInvoiceJson,
+  generateZohoInvoiceCsv,
+  generateZohoInvoiceJson,
+} from "../node_modules/.cache/flas-invoices.mjs";
 
 export const invoiceFixture = {
   kind: "invoice",
@@ -102,3 +115,159 @@ test("ordinary invoice fits one A4 page; long descriptions and terms paginate", 
   );
   assert.ok(long.getPageCount() > 3);
 });
+
+test("invoice templates palette provides 5 verified themes with fallback", async () => {
+  assert.equal(INVOICE_TEMPLATES.length, 5);
+  const ids = INVOICE_TEMPLATES.map((t) => t.id);
+  assert.deepEqual(ids, [
+    "modern-emerald",
+    "corporate-navy",
+    "executive-slate",
+    "clean-minimal",
+    "bold-crimson",
+  ]);
+
+  const emerald = getInvoiceTemplate("modern-emerald");
+  assert.equal(emerald.primary_color, "#0F5132");
+  assert.equal(emerald.accent_color, "#16A34A");
+
+  const navy = getInvoiceTemplate("corporate-navy");
+  assert.equal(navy.primary_color, "#1E3A8A");
+  assert.equal(navy.accent_color, "#3B82F6");
+
+  // Fallback to default modern-emerald
+  assert.equal(getInvoiceTemplate(null).id, "modern-emerald");
+  assert.equal(getInvoiceTemplate("non-existent-theme").id, "modern-emerald");
+
+  // PDF generation with corporate-navy styling succeeds
+  const navyPdfBytes = await buildDocumentPdf({
+    ...invoiceFixture,
+    template: {
+      primary_color: navy.primary_color,
+      accent_color: navy.accent_color,
+      watermark_enabled: false,
+    },
+  });
+  const navyDoc = await PDFDocument.load(navyPdfBytes);
+  assert.equal(navyDoc.getPageCount(), 1);
+});
+
+test("blog templates provide 6 structured SEO blueprints", () => {
+  assert.equal(BLOG_TEMPLATES.length, 6);
+  const howTo = getBlogTemplate("how-to");
+  assert.ok(howTo);
+  assert.equal(howTo.intent, "informational");
+  assert.ok(howTo.defaultFaq.length >= 2);
+  assert.ok(howTo.generateHtml("CRM", "Tech", "FLAS").includes("<p"));
+
+  const comparison = getBlogTemplate("comparison");
+  assert.ok(comparison);
+  assert.equal(comparison.intent, "commercial");
+  assert.ok(comparison.defaultFaq.length >= 2);
+});
+
+test("accounting sync exports valid Tally Prime XML Sales Voucher", () => {
+  const syncDoc = {
+    id: "doc-1",
+    doc_number: "INV-2026-00128",
+    issue_date: "2026-10-05",
+    due_date: "2026-11-04",
+    currency: "AED",
+    subtotal: 4000,
+    tax_total: 200,
+    grand_total: 4200,
+    customer_snapshot: {
+      name: "Example Customer",
+      company: "Example Trading LLC",
+      address: "Dubai, UAE",
+      vat_number: "100000000000003",
+    },
+  };
+
+  const syncItems = [
+    {
+      name: "IP surveillance system",
+      quantity: 4,
+      unit_price: 1000,
+      tax_rate: 5,
+      tax_amount: 200,
+      line_total: 4200,
+    },
+  ];
+
+  const xml = generateTallySalesXml(syncDoc, syncItems, {
+    companyName: "FLAS Demo Company LLC",
+    salesLedger: "General Sales",
+    taxLedger: "VAT Output 5%",
+  });
+
+  assert.match(xml, /<ENVELOPE>/);
+  assert.match(xml, /<TALLYREQUEST>Import Data<\/TALLYREQUEST>/);
+  assert.match(xml, /<VOUCHER VCHTYPE="Sales"/);
+  assert.match(xml, /<DATE>20261005<\/DATE>/);
+  assert.match(xml, /<VOUCHERNUMBER>INV-2026-00128<\/VOUCHERNUMBER>/);
+  assert.match(xml, /<PARTYLEDGERNAME>Example Trading LLC<\/PARTYLEDGERNAME>/);
+  assert.match(xml, /<LEDGERNAME>General Sales<\/LEDGERNAME>/);
+  assert.match(xml, /<LEDGERNAME>VAT Output 5%<\/LEDGERNAME>/);
+});
+
+test("accounting sync exports valid QuickBooks and Zoho formats", () => {
+  const syncDoc = {
+    id: "doc-1",
+    doc_number: "INV-2026-00128",
+    issue_date: "2026-10-05",
+    due_date: "2026-11-04",
+    currency: "AED",
+    subtotal: 4000,
+    tax_total: 200,
+    grand_total: 4200,
+    customer_snapshot: {
+      name: "Example Customer",
+      company: "Example Trading LLC",
+      email: "finance@example.com",
+    },
+  };
+
+  const syncItems = [
+    {
+      name: "IP surveillance system",
+      description: "Installation and setup",
+      quantity: 4,
+      unit_price: 1000,
+      tax_rate: 5,
+      tax_amount: 200,
+      line_total: 4200,
+    },
+  ];
+
+  // QuickBooks CSV
+  const qbCsv = generateQuickBooksCsv(syncDoc, syncItems);
+  assert.match(qbCsv, /^\*InvoiceNo,\*Customer,\*InvoiceDate,\*DueDate/);
+  assert.match(qbCsv, /INV-2026-00128/);
+  assert.match(qbCsv, /Example Trading LLC/);
+
+  // QuickBooks IIF
+  const qbIif = generateQuickBooksIif(syncDoc, syncItems);
+  assert.match(qbIif, /!TRNS/);
+  assert.match(qbIif, /!SPL/);
+  assert.match(qbIif, /!ENDTRNS/);
+
+  // QuickBooks JSON
+  const qbJson = JSON.parse(generateQuickBooksInvoiceJson(syncDoc, syncItems));
+  assert.equal(qbJson.DocNumber, "INV-2026-00128");
+  assert.equal(qbJson.CustomerRef.value, "Example Trading LLC");
+  assert.equal(qbJson.Line.length, 1);
+
+  // Zoho Books CSV
+  const zohoCsv = generateZohoInvoiceCsv(syncDoc, syncItems);
+  assert.match(zohoCsv, /^Invoice Number,Customer Name,Invoice Date,/);
+  assert.match(zohoCsv, /INV-2026-00128/);
+  assert.match(zohoCsv, /Example Trading LLC/);
+
+  // Zoho Books JSON
+  const zohoJson = JSON.parse(generateZohoInvoiceJson(syncDoc, syncItems));
+  assert.equal(zohoJson.invoice_number, "INV-2026-00128");
+  assert.equal(zohoJson.customer_name, "Example Trading LLC");
+  assert.equal(zohoJson.line_items.length, 1);
+});
+

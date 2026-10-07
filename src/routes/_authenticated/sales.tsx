@@ -36,11 +36,13 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowRight, Download, FileText, Plus, Receipt, Send } from "lucide-react";
+import { ArrowRight, Download, FileText, Plus, Receipt, Send, Share2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, type MessageKey } from "@/lib/i18n";
+import { AccountingExportDialog } from "@/components/sales/AccountingExportDialog";
+import { type SyncInvoiceDoc, type SyncInvoiceItem } from "@/lib/accounting-sync";
 
 /**
  * Why a document cannot be finalised yet, or null when it can.
@@ -105,6 +107,8 @@ type DocRow = {
   paid_amount: number;
   balance: number;
   customer_snapshot: { name?: string; company?: string } | null;
+  template_id?: string | null;
+  custom_fields?: Record<string, string> | null;
   share_token: string | null;
   last_sent_at: string | null;
 };
@@ -154,6 +158,10 @@ function SalesPage() {
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
   const [sendFor, setSendFor] = useState<DocRow | null>(null);
   const [sendNote, setSendNote] = useState("");
+  const [accountingTarget, setAccountingTarget] = useState<{
+    doc: SyncInvoiceDoc;
+    items: SyncInvoiceItem[];
+  } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["sales-workspace"],
@@ -193,6 +201,57 @@ function SalesPage() {
     setBuilder(next);
   };
 
+  const openAccountingSync = useMutation({
+    mutationFn: (id: string) => loadDocument({ data: { id } }),
+    onSuccess: (bundle) => {
+      const doc = bundle.doc as unknown as Record<string, unknown>;
+      const items = (bundle.items as unknown as Record<string, unknown>[]).map((it) => ({
+        name: (it["name_snapshot"] as string) ?? "Item",
+        description: (it["description_snapshot"] as string) ?? null,
+        sku: (it["sku_snapshot"] as string) ?? null,
+        quantity: Number(it["quantity"] ?? 1),
+        unit: (it["unit"] as string) ?? null,
+        unit_price: Number(it["unit_price"] ?? 0),
+        discount_amount: Number(it["discount_amount"] ?? 0),
+        tax_rate: Number(it["tax_rate"] ?? 0),
+        tax_amount: Number(it["tax_amount"] ?? 0),
+        line_total: Number(it["line_total"] ?? 0),
+      }));
+      const snapshot = (doc["customer_snapshot"] ?? {}) as Record<string, string | undefined>;
+      setAccountingTarget({
+        doc: {
+          id: doc["id"] as string,
+          doc_number: (doc["doc_number"] as string) ?? "INV-DRAFT",
+          kind: (doc["kind"] as string) ?? "invoice",
+          issue_date: (doc["issue_date"] as string) ?? "",
+          due_date: (doc["due_date"] as string) ?? null,
+          currency: (doc["currency"] as string) ?? "AED",
+          tax_label: (doc["tax_label"] as string) ?? "VAT",
+          subtotal: Number(doc["subtotal"] ?? 0),
+          tax_total: Number(doc["tax_total"] ?? 0),
+          grand_total: Number(doc["grand_total"] ?? 0),
+          paid_amount: Number(doc["paid_amount"] ?? 0),
+          balance: Number(doc["balance"] ?? 0),
+          payment_terms: (doc["payment_terms"] as string) ?? null,
+          reference: (doc["reference"] as string) ?? null,
+          po_number: (doc["po_number"] as string) ?? null,
+          notes: (doc["notes"] as string) ?? null,
+          terms: (doc["terms"] as string) ?? null,
+          customer_snapshot: {
+            name: snapshot["name"] ?? null,
+            company: snapshot["company"] ?? null,
+            email: snapshot["email"] ?? null,
+            phone: snapshot["phone"] ?? null,
+            address: snapshot["address"] ?? null,
+            vat_number: snapshot["vat_number"] ?? null,
+          },
+        },
+        items,
+      });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const openExisting = useMutation({
     mutationFn: (id: string) => loadDocument({ data: { id } }),
     onSuccess: (bundle) => {
@@ -202,6 +261,10 @@ function SalesPage() {
         id: doc["id"] as string,
         kind: (doc["kind"] as "invoice") ?? "invoice",
         contact_id: (doc["contact_id"] as string) ?? null,
+        template_id:
+          (doc["template_id"] as string) ??
+          ((doc["custom_fields"] as Record<string, string>)?.[ "template_id"] as string) ??
+          "modern-emerald",
         customer: {
           name: snapshot["name"] ?? "",
           company: snapshot["company"] ?? "",
@@ -244,6 +307,7 @@ function SalesPage() {
     id: state.id,
     kind: state.kind,
     contact_id: state.contact_id,
+    template_id: state.template_id || null,
     customer_snapshot: {
       name: state.customer.name || null,
       company: state.customer.company || null,
@@ -492,6 +556,15 @@ function SalesPage() {
                   <Button size="sm" variant="outline" onClick={() => setSendFor(doc)}>
                     <Send className="me-1 h-4 w-4" /> WhatsApp
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={openAccountingSync.isPending}
+                    onClick={() => openAccountingSync.mutate(doc.id)}
+                    title={t("sales.accountingSyncTitle")}
+                  >
+                    <Share2 className="me-1 h-4 w-4" /> {t("sales.syncAccounting")}
+                  </Button>
                   {doc.kind === "quotation" ? (
                     <Button size="sm" onClick={() => convert.mutate(doc.id)}>
                       <ArrowRight className="me-1 h-4 w-4" /> {t("sales.toInvoice")}
@@ -569,6 +642,14 @@ function SalesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AccountingExportDialog
+        open={!!accountingTarget}
+        onOpenChange={(open) => !open && setAccountingTarget(null)}
+        document={accountingTarget?.doc ?? null}
+        items={accountingTarget?.items ?? []}
+        companyName={tenant?.name}
+      />
     </div>
   );
 }

@@ -16,6 +16,7 @@ import { todayInTimeZone } from "@/lib/locale";
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { INVOICE_TEMPLATES } from "@/lib/invoice-templates";
 
 export type BuilderItem = {
   product_id: string | null;
@@ -34,6 +35,7 @@ export type BuilderState = {
   id: string | null;
   kind: "quotation" | "invoice";
   contact_id: string | null;
+  template_id?: string | null;
   customer: {
     name: string;
     company: string;
@@ -80,6 +82,7 @@ export function emptyDocument(
   timeZone: string | null,
   notes: string = "",
   paymentTerms: string = "",
+  templateId: string = "modern-emerald",
 ): BuilderState {
   // The tenant's calendar day, not the server's.
   const today = todayInTimeZone(timeZone);
@@ -87,6 +90,7 @@ export function emptyDocument(
     id: null,
     kind: "invoice",
     contact_id: null,
+    template_id: templateId,
     customer: { name: "", company: "", email: "", phone: "", address: "", vat_number: "" },
     issue_date: today,
     due_date: "",
@@ -265,6 +269,31 @@ export function InvoiceBuilder({
               placeholder={i18n.t("invoiceBuilder.50AdvanceBalanceOnDelivery")}
               onChange={(e) => patch({ payment_terms: e.target.value })}
             />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>{i18n.t("invoiceBuilder.templateStyle")}</Label>
+            <Select
+              value={state.template_id ?? "modern-emerald"}
+              onValueChange={(v) => patch({ template_id: v })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INVOICE_TEMPLATES.map((tmpl) => (
+                  <SelectItem key={tmpl.id} value={tmpl.id}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block size-3 rounded-full"
+                        style={{ backgroundColor: tmpl.primary_color }}
+                      />
+                      <span>{tmpl.name}</span>
+                      <span className="text-[10px] text-muted-foreground">({tmpl.badge})</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

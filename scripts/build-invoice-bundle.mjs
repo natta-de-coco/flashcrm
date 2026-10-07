@@ -1,7 +1,13 @@
 import { build } from "esbuild";
 await build({
   stdin: {
-    contents: `export * from './src/lib/invoice-pdf.server'; export * from './src/lib/invoice-logo.server';`,
+    contents: `
+      export * from './src/lib/invoice-pdf.server';
+      export * from './src/lib/invoice-logo.server';
+      export * from './src/lib/invoice-templates';
+      export * from './src/lib/blog-templates';
+      export * from './src/lib/accounting-sync';
+    `,
     resolveDir: process.cwd(),
   },
   outfile: "node_modules/.cache/flas-invoices.mjs",

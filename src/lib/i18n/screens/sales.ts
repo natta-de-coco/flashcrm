@@ -63,6 +63,8 @@ export default screen({
     "sales.status.overdue": "overdue",
     "sales.status.accepted": "accepted",
     "sales.status.cancelled": "cancelled",
+    "sales.syncAccounting": "Sync / Export",
+    "sales.accountingSyncTitle": "Export to Zoho, QuickBooks, Tally Prime",
   },
   ar: {
     "sales.documentFinalisedAndNumbered": "اعتُمد المستند ورُقّم.",
@@ -123,6 +125,8 @@ export default screen({
     "sales.status.overdue": "متأخرة",
     "sales.status.accepted": "مقبولة",
     "sales.status.cancelled": "ملغاة",
+    "sales.syncAccounting": "مزامنة وتصدير",
+    "sales.accountingSyncTitle": "تصدير إلى زوهو وكويك بوكس وتالي برايم",
   },
   ms: {
     "sales.documentFinalisedAndNumbered": "Dokumen dimuktamadkan dan dinomborkan.",
@@ -185,6 +189,8 @@ export default screen({
     "sales.status.overdue": "tertunggak",
     "sales.status.accepted": "diterima",
     "sales.status.cancelled": "dibatalkan",
+    "sales.syncAccounting": "Segerak / Eksport",
+    "sales.accountingSyncTitle": "Eksport ke Zoho, QuickBooks, Tally Prime",
   },
   fil: {
     "sales.documentFinalisedAndNumbered": "Na-finalize at nabigyan ng numero ang dokumento.",
@@ -247,6 +253,8 @@ export default screen({
     "sales.status.overdue": "lampas na sa takda",
     "sales.status.accepted": "tinanggap",
     "sales.status.cancelled": "kinansela",
+    "sales.syncAccounting": "I-sync / I-export",
+    "sales.accountingSyncTitle": "I-export sa Zoho, QuickBooks, Tally Prime",
   },
   sw: {
     "sales.documentFinalisedAndNumbered": "Hati imekamilishwa na kupewa namba.",
@@ -308,5 +316,7 @@ export default screen({
     "sales.status.overdue": "imechelewa",
     "sales.status.accepted": "imekubaliwa",
     "sales.status.cancelled": "imeghairiwa",
+    "sales.syncAccounting": "Sawazisha / Hamisha",
+    "sales.accountingSyncTitle": "Hamisha kwa Zoho, QuickBooks, Tally Prime",
   },
 });

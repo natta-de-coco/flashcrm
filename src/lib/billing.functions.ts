@@ -24,6 +24,7 @@ const DocSchema = z.object({
   id: z.string().uuid().nullable().optional(),
   kind: z.enum(["quotation", "invoice", "credit_note", "proforma"]),
   contact_id: z.string().uuid().nullable().optional(),
+  template_id: z.string().trim().max(100).nullable().optional(),
   customer_snapshot: z
     .object({
       name: z.string().trim().max(200).nullable().optional(),
@@ -66,7 +67,7 @@ export const getSalesWorkspace = createServerFn({ method: "GET" })
       supabase
         .from("sales_documents")
         .select(
-          "id, kind, doc_number, status, issue_date, due_date, valid_until, currency, grand_total, paid_amount, balance, customer_snapshot, contact_id, finalized_at, share_token, last_sent_at, quotation_id",
+          "id, kind, doc_number, status, issue_date, due_date, valid_until, currency, grand_total, paid_amount, balance, customer_snapshot, contact_id, finalized_at, share_token, last_sent_at, quotation_id, template_id, custom_fields",
         )
         .order("created_at", { ascending: false })
         .limit(200),

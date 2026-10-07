@@ -24,6 +24,7 @@ import {
   humanizeFn,
   publishArticleFn,
 } from "@/lib/seo.functions";
+import { BLOG_TEMPLATES } from "@/lib/blog-templates";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -122,7 +123,37 @@ function SeoStudioPage() {
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [pubSite, setPubSite] = useState("");
   const [pubStatus, setPubStatus] = useState<"draft" | "pending" | "publish" | "future">("draft");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+
+  function applyTemplate(id: string) {
+    setSelectedTemplateId(id);
+    const tmpl = BLOG_TEMPLATES.find((t) => t.id === id);
+    if (!tmpl) return;
+    setIntent(tmpl.intent);
+    setTone(tmpl.tone);
+    if (tmpl.defaultFaq && tmpl.defaultFaq.length > 0) {
+      setFaq(tmpl.defaultFaq);
+    }
+    const currentKw = keyword || tmpl.suggestedKeywords[0] || "";
+    if (!keyword && tmpl.suggestedKeywords[0]) {
+      setKeyword(tmpl.suggestedKeywords[0]);
+    }
+    if (!title) {
+      const generatedTitle = tmpl.suggestedTitle(currentKw, industry);
+      setTitle(generatedTitle);
+      if (!slugTouched) {
+        setSlug(slugify(generatedTitle));
+      }
+    }
+    if (!metaDesc) {
+      setMetaDesc(tmpl.suggestedMetaDesc(currentKw, industry));
+    }
+    if (!contentHtml || contentHtml.trim().length < 50) {
+      setContentHtml(tmpl.generateHtml(currentKw, industry, tenant?.name ?? ""));
+    }
+    toast.success(t("seoBlogStudio.templateApplied", { name: tmpl.name }));
+  }
 
   // --- data ------------------------------------------------------------------
   const sites = useQuery({
@@ -556,6 +587,27 @@ function SeoStudioPage() {
         <div className="space-y-4">
           <Card>
             <CardContent className="grid gap-2 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-1 sm:col-span-2 lg:col-span-4 pb-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold">{t("seoBlogStudio.blogTemplate")}</Label>
+                  <span className="text-[10px] text-muted-foreground">
+                    {t("seoBlogStudio.quickStartOutlines")}
+                  </span>
+                </div>
+                <Select value={selectedTemplateId} onValueChange={applyTemplate}>
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue placeholder={t("seoBlogStudio.chooseTemplate")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BLOG_TEMPLATES.map((tmpl) => (
+                      <SelectItem key={tmpl.id} value={tmpl.id}>
+                        {tmpl.name} ({tmpl.category})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid gap-1">
                 <Label className="text-xs">{t("seoBlogStudio.primaryKeyword")}</Label>
                 <Input
