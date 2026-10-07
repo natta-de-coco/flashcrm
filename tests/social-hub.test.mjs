@@ -871,6 +871,16 @@ describe("R3: saving an edit keeps the plan the post already had", () => {
     assert.equal(savedPost().status, "scheduled", "and still does not touch the plan");
   });
 
+  it("a request that names neither an account nor a date changes only the caption", async () => {
+    // What a caller that says nothing else sends: nothing it did not say is touched.
+    await updateSocialPost(asUser({ id: SAVED_POST, caption: "Only the words changed" }));
+
+    assert.equal(savedPost().caption, "Only the words changed");
+    assert.equal(savedPost().account_id, IG_ACCOUNT, "the account is kept");
+    assert.equal(savedPost().status, "scheduled", "the plan is kept");
+    assert.equal(savedPost().scheduled_at, plannedIso);
+  });
+
   it("a published post is still refused, and left as it was", async () => {
     startSuite({ social_posts: [plannedRow({ status: "published", scheduled_at: null })] });
     await assert.rejects(
