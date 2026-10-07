@@ -11,10 +11,18 @@
 // MUTATION=subscribed_counts — `subscribed` treated as consent (the old predicate).
 // MUTATION=never_refusal     — every draft accepted, refusals included.
 // Each MUST make this suite fail.
-import { test, describe } from "node:test";
+//
+// The second half covers the review of that fix (PR #33): addresses kept in
+// `contact_identities` were not read, a failed query was read as an empty
+// table, and a campaign could be saved with a recipient count of zero while the
+// audience was still loading. Those run the real server code against a database
+// double that can be made to fail.
+import { test, describe, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { buildSync } from "esbuild";
-import { mkdirSync } from "node:fs";
+import { build, buildSync } from "esbuild";
+import { mkdirSync, readFileSync } from "node:fs";
+import { createDb } from "./support/db-double.mjs";
+import { asPostgrest } from "./support/postgrest-double.mjs";
 
 mkdirSync("node_modules/.cache", { recursive: true });
 for (const [entry, out] of [
@@ -283,5 +291,431 @@ describe("a refusal is not a draft", () => {
       ),
       false,
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The review of PR #33, run through the server code itself            */
+/* ------------------------------------------------------------------ */
+
+// The real modules, with only their outside edges replaced: the model call,
+// the audit log and the server-function wrapper. The wrapper stand-in still
+// runs each function's own input validator, so the schema is tested too.
+await build({
+  stdin: {
+    contents: `export * from './src/lib/campaign-audience.server';
+      export * as serverFns from './src/lib/campaign-audience.functions';`,
+    resolveDir: process.cwd(),
+  },
+  outfile: "node_modules/.cache/flas-campaign-audience-server.mjs",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [
+    {
+      name: "campaign-audience-boundaries",
+      setup(b) {
+        const stubs = {
+          "flash-ai.server": `export const aiOptionsFor = async () => ({});
+            export const getBusinessContext = async () => null;
+            export const callFlashAi = async (...args) => globalThis.campaignAi(...args);`,
+          "auth-middleware": "export const requireSupabaseAuth = {};",
+          "audit.server": "export async function logAudit() {}",
+          "@tanstack/react-start": `export function createServerFn() {
+            let validate = (input) => input;
+            return {
+              middleware() { return this; },
+              inputValidator(fn) { validate = fn; return this; },
+              handler(fn) { return async (call) => fn({ ...call, data: validate(call?.data) }); },
+            };
+          }`,
+        };
+        b.onResolve({ filter: /.*/ }, (args) => {
+          const key = Object.keys(stubs).find(
+            (name) => args.path === name || args.path.endsWith("/" + name),
+          );
+          return key ? { path: key, namespace: "campaign-audience-stub" } : undefined;
+        });
+        b.onLoad({ filter: /.*/, namespace: "campaign-audience-stub" }, (args) => ({
+          contents: stubs[args.path],
+          loader: "js",
+        }));
+      },
+    },
+  ],
+});
+const server = await import("../node_modules/.cache/flas-campaign-audience-server.mjs");
+
+const db = createDb();
+const { client, reads } = asPostgrest(db);
+let modelCalls = 0;
+globalThis.campaignAi = async () => {
+  modelCalls += 1;
+  return "Hi {name}, our spring range is in. Reply STOP to opt out.";
+};
+// The error paths log what went wrong; that is not this suite's output.
+console.error = () => {};
+
+const aContact = (id, extra = {}) => ({
+  id,
+  name: `Contact ${id}`,
+  email: null,
+  phone: null,
+  consent_given: true,
+  ...extra,
+});
+const aLead = (id, extra = {}) => ({
+  id,
+  contact_id: null,
+  name: null,
+  email: `${id}@example.com`,
+  phone: null,
+  consent_given: true,
+  subscribed: true,
+  ...extra,
+});
+const anIdentity = (id, contactId, kind, value, extra = {}) => ({
+  id,
+  contact_id: contactId,
+  kind,
+  value,
+  is_primary: false,
+  ...extra,
+});
+const addresses = (audience) => audience.recipients.map((r) => r.address);
+
+beforeEach(() => {
+  db.reset({ contacts: [], leads: [], contact_identities: [], campaigns: [] });
+  reads.length = 0;
+  modelCalls = 0;
+});
+
+describe("PR #33: an address added on the contact card counts", () => {
+  test("a consented contact whose only email is an identity can be emailed", async () => {
+    // Adding an email on the contact card writes `contact_identities` and
+    // leaves `contacts.email` empty. Read from the old column alone, this
+    // consented person was "unreachable" and the writer had nobody to write to.
+    db.reset({
+      contacts: [aContact("c1")],
+      contact_identities: [anIdentity("i1", "c1", "email", " Aisha@Example.com ")],
+    });
+    const { email, whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email), ["aisha@example.com"]);
+    assert.equal(email.total, 1);
+    assert.equal(email.fromContacts, 1);
+    assert.equal(email.optedInUnreachable, 0);
+    assert.equal(audienceBlockedReason(email), null);
+    // An email address is not a WhatsApp number.
+    assert.equal(whatsapp.total, 0);
+    assert.equal(whatsapp.optedInUnreachable, 1);
+  });
+
+  test("and a WhatsApp number added the same way can be messaged", async () => {
+    db.reset({
+      contacts: [aContact("c1", { email: "aisha@example.com" })],
+      contact_identities: [anIdentity("i1", "c1", "phone", "+971 50 963 0506")],
+    });
+    const { whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(whatsapp), ["971509630506"]);
+    assert.equal(whatsapp.optedInUnreachable, 0);
+  });
+
+  test("the address marked primary is the one used, ahead of the old column", async () => {
+    // "Make primary" changes the identity and leaves the old column as it was.
+    db.reset({
+      contacts: [aContact("c1", { email: "old@example.com" })],
+      contact_identities: [
+        anIdentity("i1", "c1", "email", "spare@example.com"),
+        anIdentity("i2", "c1", "email", "new@example.com", { is_primary: true }),
+      ],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email), ["new@example.com"]);
+  });
+
+  test("a contact with several addresses is still one recipient", async () => {
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com", phone: "+971500000001" })],
+      contact_identities: [
+        anIdentity("i1", "c1", "email", "A@Example.com"), // the backfilled copy of the column
+        anIdentity("i2", "c1", "email", "b@example.com"),
+        anIdentity("i3", "c1", "phone", "+971500000002"),
+        anIdentity("i4", "c1", "phone", "00971500000003"),
+      ],
+    });
+    const { email, whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1);
+    assert.equal(whatsapp.total, 1);
+    assert.equal(email.fromContacts, 1);
+  });
+
+  test("a lead at one of the contact's other addresses is that same person", async () => {
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      contact_identities: [anIdentity("i1", "c1", "email", "b@example.com")],
+      leads: [aLead("l1", { email: "b@example.com" })],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1);
+    assert.equal(email.fromContacts, 1);
+    assert.equal(email.fromLeads, 0);
+  });
+
+  test("a lead linked to the contact is that same person, whatever address it holds", async () => {
+    // The website form made both rows; the contact's email was changed since.
+    db.reset({
+      contacts: [aContact("c1", { email: "new@example.com" })],
+      leads: [aLead("l1", { contact_id: "c1", email: "old@example.com" })],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1);
+    assert.deepEqual(addresses(email), ["new@example.com"]);
+    assert.equal(email.withoutConsent, 0);
+  });
+
+  test("two records of one person share their other addresses too", async () => {
+    // The same number saved twice is one person, and a lead at that person's
+    // second address is not a third.
+    db.reset({
+      contacts: [
+        aContact("c1", { email: "a@example.com" }),
+        aContact("c2", { email: "a@example.com" }),
+      ],
+      contact_identities: [anIdentity("i1", "c2", "email", "b@example.com")],
+      leads: [aLead("l1", { email: "b@example.com" }), aLead("l2", { contact_id: "c2" })],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1);
+  });
+
+  test("someone without a number is one person without a number, not two", async () => {
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      leads: [aLead("l1", { contact_id: "c1", email: "a@example.com" })],
+    });
+    const { whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.equal(whatsapp.total, 0);
+    assert.equal(whatsapp.optedInUnreachable, 1);
+    assert.match(audienceBlockedReason(whatsapp), /^1 person has given consent/);
+  });
+
+  test("a number held only by the linked lead reaches the person, once", async () => {
+    // The lead form took a phone number for a contact that already existed.
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      leads: [aLead("l1", { contact_id: "c1", email: "a@example.com", phone: "+971500000001" })],
+    });
+    const { whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.equal(whatsapp.total, 1);
+    assert.equal(whatsapp.fromLeads, 1);
+    // Reachable after all, so not also reported as unreachable.
+    assert.equal(whatsapp.optedInUnreachable, 0);
+  });
+
+  test("identities never turn a contact without consent into a recipient", async () => {
+    db.reset({
+      contacts: [aContact("c1", { consent_given: false })],
+      contact_identities: [
+        anIdentity("i1", "c1", "phone", "+971500000001"),
+        anIdentity("i2", "c1", "phone", "+971500000002"),
+        anIdentity("i3", "c1", "phone", "+971500000003"),
+        anIdentity("i4", "c1", "email", "a@example.com"),
+      ],
+    });
+    const { email, whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.equal(whatsapp.total, 0);
+    assert.equal(email.total, 0);
+    // Three numbers are one person whose consent is missing, not three.
+    assert.equal(whatsapp.withoutConsent, 1);
+    assert.match(audienceBlockedReason(whatsapp), /1 person is reachable by WhatsApp/);
+  });
+
+  test("an identity is only ever its own contact's address", async () => {
+    db.reset({
+      contacts: [aContact("c1"), aContact("c2", { consent_given: false })],
+      contact_identities: [
+        anIdentity("i1", "c2", "email", "theirs@example.com"),
+        anIdentity("i2", "gone", "email", "nobody@example.com"),
+      ],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 0);
+    assert.equal(email.optedInUnreachable, 1); // c1 consented and has no address
+    assert.equal(email.withoutConsent, 1); // c2 has one and did not consent
+  });
+});
+
+describe("PR #33: the whole workspace is read, or the figure says it is a floor", () => {
+  const manyContacts = (n) =>
+    Array.from({ length: n }, (_, i) =>
+      aContact(`c${String(i).padStart(5, "0")}`, { email: `p${i}@example.com` }),
+    );
+
+  test("more people than one response holds are all counted", async () => {
+    // One request returns at most the project's row cap (1,000 by default),
+    // whatever limit it asks for, so a single read stopped there unannounced.
+    db.reset({ contacts: manyContacts(1500) });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1500);
+    assert.equal(email.truncated, false);
+  });
+
+  test("identities beyond one response are read too", async () => {
+    const filler = Array.from({ length: 1200 }, (_, i) =>
+      anIdentity(`a${String(i).padStart(5, "0")}`, "c-other", "phone", `+9715${1000000 + i}`),
+    );
+    db.reset({
+      contacts: [aContact("c1"), aContact("c-other", { consent_given: false })],
+      contact_identities: [...filler, anIdentity("z-last", "c1", "email", "late@example.com")],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email), ["late@example.com"]);
+  });
+
+  test("past the ceiling the figure is a floor, and is described as one", async () => {
+    db.reset({ contacts: manyContacts(server.AUDIENCE_ROW_LIMIT + 1) });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, server.AUDIENCE_ROW_LIMIT);
+    assert.equal(email.truncated, true);
+    assert.match(describeAudience(email), /^at least /);
+  });
+
+  test("a workspace that fits is not called a floor", async () => {
+    db.reset({ contacts: manyContacts(3), leads: [aLead("l1")] });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 4);
+    assert.equal(email.truncated, false);
+  });
+});
+
+describe("PR #33: a failed read is an error, not an empty audience", () => {
+  const seed = () =>
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      leads: [aLead("l1")],
+      contact_identities: [anIdentity("i1", "c1", "email", "b@example.com")],
+      campaigns: [],
+    });
+  const refused = { message: "permission denied for table" };
+
+  for (const table of ["contacts", "leads", "contact_identities"]) {
+    test(`when ${table} cannot be read, the audience is not reported at all`, async () => {
+      seed();
+      db.fail(`${table}:read`, refused);
+      await assert.rejects(server.gatherCampaignAudiences(client), /permission denied/);
+    });
+
+    test(`and the page's own request fails, so it shows its error (${table})`, async () => {
+      seed();
+      db.fail(`${table}:read`, refused);
+      await assert.rejects(
+        server.serverFns.getCampaignAudience({ context: { supabase: client, userId: "u1" } }),
+        /permission denied/,
+      );
+    });
+  }
+
+  test("the writer is not handed half an audience", async () => {
+    // Contacts unreadable, one consented lead readable: the old code told the
+    // model "1 recipient, 0 from CRM contacts" as if that were the audience.
+    seed();
+    db.fail("contacts:read", refused);
+    await assert.rejects(
+      server.draftCampaignForAudience(
+        client,
+        { goal: "Spring launch", tone: "friendly", channel: "email" },
+        { userId: "u1" },
+      ),
+      /permission denied/,
+    );
+    assert.equal(modelCalls, 0, "no draft may be requested for an audience that was not read");
+  });
+
+  test("once the database answers again, so does the audience", async () => {
+    seed();
+    db.fail("leads:read", refused);
+    await assert.rejects(server.gatherCampaignAudiences(client));
+    db.recover("leads:read");
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 2);
+  });
+});
+
+describe("PR #33: a saved campaign records the audience it really had", () => {
+  const context = { supabase: client, userId: "user-1" };
+  const form = { name: "Spring launch", subject: "New in", body: "Hi {name}" };
+  const seed = () =>
+    db.reset({
+      contacts: [aContact("c1"), aContact("c2", { email: "x@example.com", consent_given: false })],
+      contact_identities: [anIdentity("i1", "c1", "email", "a@example.com")],
+      leads: [aLead("l1"), aLead("l2", { consent_given: false })],
+      campaigns: [],
+    });
+
+  test("the count is read as part of the save, not taken from the page", async () => {
+    // The page used to send `emailAudience?.total ?? 0`: zero while its own
+    // request was still loading, and zero again if that request had failed.
+    seed();
+    const result = await server.serverFns.saveCampaignDraft({ data: form, context });
+    assert.deepEqual(result, { ok: true, recipientsCount: 2 });
+    assert.equal(db.table("campaigns").length, 1);
+    const saved = db.table("campaigns")[0];
+    assert.equal(saved.recipients_count, 2);
+    assert.equal(saved.name, "Spring launch");
+    assert.equal(saved.subject, "New in");
+    assert.equal(saved.body, "Hi {name}");
+    assert.equal(saved.created_by, "user-1");
+  });
+
+  test("it is the email audience that is counted", async () => {
+    db.reset({
+      contacts: [aContact("c1", { phone: "+971500000001" })],
+      leads: [aLead("l1")],
+      campaigns: [],
+    });
+    const result = await server.serverFns.saveCampaignDraft({ data: form, context });
+    assert.equal(result.recipientsCount, 1); // the contact has a number and no email
+  });
+
+  for (const table of ["contacts", "leads", "contact_identities"]) {
+    test(`nothing is saved when ${table} cannot be read`, async () => {
+      seed();
+      db.fail(`${table}:read`, { message: "permission denied for table" });
+      const result = await server.serverFns.saveCampaignDraft({ data: form, context });
+      assert.deepEqual(result, { ok: false, reason: "audience_unavailable" });
+      assert.equal(db.table("campaigns").length, 0, "a campaign with a made-up count");
+    });
+  }
+
+  test("a refused save is an error, not a saved campaign", async () => {
+    seed();
+    db.fail("campaigns:insert", { message: "new row violates row-level security policy" });
+    await assert.rejects(
+      server.serverFns.saveCampaignDraft({ data: form, context }),
+      /row-level security/,
+    );
+    assert.equal(db.table("campaigns").length, 0);
+  });
+
+  test("a campaign with no name is refused before anything is read", async () => {
+    seed();
+    await assert.rejects(
+      server.serverFns.saveCampaignDraft({ data: { ...form, name: "  " }, context }),
+    );
+    assert.equal(reads.length, 0);
+    assert.equal(db.table("campaigns").length, 0);
+  });
+
+  test("the page saves through it and no longer supplies a count of its own", () => {
+    const route = readFileSync("src/routes/_authenticated/marketing.tsx", "utf8")
+      .split("\r\n")
+      .join("\n");
+    assert.match(route, /useServerFn\(saveCampaignDraft\)/);
+    assert.doesNotMatch(route, /recipients_count: emailAudience/);
+    assert.doesNotMatch(route, /\.from\("campaigns"\)\s*\.insert\(/);
+    // "Not saved" has to be said, in the reader's language.
+    assert.match(route, /if \(!res\.ok\) \{\s*toast\.error\(t\("marketing\.campaignNotSaved"\)\)/);
   });
 });

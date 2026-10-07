@@ -28,7 +28,7 @@ export const AUDIENCE_ROW_LIMIT = 2000;
 export async function gatherCampaignAudiences(
   supabase: SupabaseClient,
 ): Promise<Record<CampaignChannel, CampaignAudience>> {
-  const [{ data: contacts }, { data: leads }] = await Promise.all([
+  const [contactsResult, leadsResult] = await Promise.all([
     supabase.from("contacts").select("name, email, phone, consent_given").limit(AUDIENCE_ROW_LIMIT),
     // `subscribed` exists on leads only, and is read as a suppression flag.
     supabase
@@ -36,6 +36,14 @@ export async function gatherCampaignAudiences(
       .select("name, email, phone, consent_given, subscribed")
       .limit(AUDIENCE_ROW_LIMIT),
   ]);
+
+  // A refused or failed read is not an empty table. Treating it as one reported
+  // "no audience" for a workspace that has one, or let the writer draft from
+  // half the data with nothing on screen to say so.
+  if (contactsResult.error) throw new Error(contactsResult.error.message);
+  if (leadsResult.error) throw new Error(leadsResult.error.message);
+  const contacts = contactsResult.data;
+  const leads = leadsResult.data;
 
   const resolve = (channel: CampaignChannel) =>
     resolveCampaignAudience({ contacts, leads, channel, rowLimit: AUDIENCE_ROW_LIMIT });
