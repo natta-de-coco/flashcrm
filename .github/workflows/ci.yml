@@ -71,3 +71,5 @@ jobs:
         run: node supabase/verify/verify-broadcast-recipients.mjs
       - name: Message delivery evidence columns and tenant isolation
         run: node supabase/verify/verify-message-evidence.mjs
+      - name: Assistant opt-in defaults, carry-over and audit trigger
+        run: node supabase/verify/verify-assistant-opt-in.mjs

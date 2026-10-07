@@ -20,6 +20,11 @@ export type BotSettings = {
   instructions: string;
   model: string;
   handoff_keywords: string[];
+  /**
+   * The workspace's opt-in: a new conversation starts with the assistant
+   * answering. Absent until the column exists in the database.
+   */
+  auto_enroll_new_chats?: boolean;
 };
 
 /**
@@ -46,6 +51,23 @@ export function botIsConfigured(settings: BotSettings): boolean {
 }
 
 /** Business instructions belong only to the workspace that supplied them. */
+/**
+ * Whether a brand-new conversation starts with the assistant answering it.
+ *
+ * Only when the workspace has turned the assistant on AND opted in to
+ * answering new conversations. This is said explicitly on every conversation
+ * the code creates, so the answer never depends on a column default.
+ */
+export function newChatAutomation(settings: BotSettings | null): { bot_enabled?: boolean } {
+  // A workspace that has never set the assistant up has opted in to nothing.
+  if (!settings) return { bot_enabled: false };
+  // The opt-in column arrives with a migration applied separately from the
+  // code. Until it exists there is no policy to read, and the database's own
+  // default decides -- exactly as it did before this code was deployed.
+  if (settings.auto_enroll_new_chats === undefined) return {};
+  return { bot_enabled: settings.enabled === true && settings.auto_enroll_new_chats === true };
+}
+
 export async function getBotSettings(tenantId: string): Promise<BotSettings | null> {
   if (!tenantId) return null;
   const { data, error } = await supabaseAdmin
@@ -509,6 +531,12 @@ export async function ingestInboundMessage(args: IngestArgs) {
   // somebody else's phone number, so their claim may create a contact but may
   // never rewrite one that already exists.
   const verifiedSender = channel !== "web";
+
+  // Read once. It decides whether a new conversation is answered by the
+  // assistant, and later whether this message is.
+  let settingsRead: BotSettings | null | undefined;
+  const botSettings = async () =>
+    settingsRead === undefined ? (settingsRead = await getBotSettings(tenantId)) : settingsRead;
   if (waMessageId) {
     const { data: seen } = await supabaseAdmin
       .from("messages")
@@ -606,6 +634,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
           channel: "web",
           web_session_id: sessionId,
           tenant_id: tenantId,
+          ...newChatAutomation(await botSettings()),
         })
         .select("id, bot_enabled")
         .single();
@@ -635,6 +664,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
           channel: "whatsapp",
           wa_number_id: waNumberId ?? null,
           tenant_id: tenantId,
+          ...newChatAutomation(await botSettings()),
         })
         .select("id, bot_enabled")
         .single();
@@ -729,7 +759,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
   // handed to Meta by the caller: until that answer comes back it is only
   // "sending", and the caller records what Meta said.
   const replyStatus: WaMessageStatus = channel === "whatsapp" ? "sending" : "sent";
-  const settings = await getBotSettings(tenantId);
+  const settings = await botSettings();
   if (!settings || !settings.enabled || !conv.bot_enabled || !botIsConfigured(settings)) {
     return result(null, null);
   }
@@ -932,6 +962,9 @@ export async function findOrCreateWhatsAppConversation(
       contact_id: contactId,
       channel: "whatsapp",
       wa_number_id: waNumberId,
+      // Opened by a person to send something. The assistant does not take it
+      // over; someone switches it on in the Inbox if they want that.
+      bot_enabled: false,
     })
     .select("id, wa_number_id")
     .single();
