@@ -500,7 +500,12 @@ export async function renderDocumentPdf(
           .eq("is_default", true)
           .maybeSingle(),
     isUuid(templateKey)
-      ? supabase.from("invoice_templates").select("*").eq("id", templateKey).maybeSingle()
+      ? supabase
+          .from("invoice_templates")
+          .select("*")
+          .eq("id", templateKey)
+          .eq("tenant_id", doc.tenant_id)
+          .maybeSingle()
       : supabase
           .from("invoice_templates")
           .select("*")

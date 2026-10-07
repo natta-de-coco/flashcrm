@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useI18n } from "@/hooks/useI18n";
 import {
   generateQuickBooksCsv,
   generateQuickBooksIif,
@@ -39,6 +40,7 @@ export function AccountingExportDialog({
   items,
   companyName,
 }: AccountingExportDialogProps) {
+  const { t } = useI18n();
   const [salesLedger, setSalesLedger] = useState("Sales Account");
   const [taxLedger, setTaxLedger] = useState("Output VAT");
   const [copiedTab, setCopiedTab] = useState<string | null>(null);
@@ -66,15 +68,17 @@ export function AccountingExportDialog({
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(`Downloaded ${filename}`);
+    toast.success(t("sales.downloadedFile", { filename }));
   };
 
   const copyToClipboard = (text: string, label: string) => {
     void navigator.clipboard.writeText(text);
     setCopiedTab(label);
-    toast.success(`${label} copied to clipboard`);
+    toast.success(t("sales.copiedToClipboard", { label }));
     setTimeout(() => setCopiedTab(null), 2500);
   };
+
+  const isQuotation = doc.kind === "quotation";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -82,17 +86,20 @@ export function AccountingExportDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Share2 className="size-5 text-brand" />
-            Link & Export to Accounting: {doc.doc_number}
+            {t("sales.accountingExportTitle", { docNumber: doc.doc_number })}
           </DialogTitle>
           <DialogDescription>
-            Seamlessly bridge Flas CRM invoices with Tally Prime, QuickBooks, and Zoho Books.
-            Download ready-to-import files or copy API payloads.
+            {t("sales.accountingExportDesc")}
           </DialogDescription>
         </DialogHeader>
 
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {t("sales.offlineExportNotice")}
+        </div>
+
         <div className="grid gap-3 pt-2 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label className="text-xs">Sales Ledger / Account Name</Label>
+            <Label className="text-xs">{t("sales.salesLedger")}</Label>
             <Input
               className="h-8 text-xs"
               value={salesLedger}
@@ -101,7 +108,7 @@ export function AccountingExportDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Tax Ledger Name (VAT / GST)</Label>
+            <Label className="text-xs">{t("sales.taxLedger")}</Label>
             <Input
               className="h-8 text-xs"
               value={taxLedger}
@@ -114,24 +121,24 @@ export function AccountingExportDialog({
         <Tabs defaultValue="tally" className="w-full pt-2">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="tally" className="text-xs">
-              Tally Prime (XML)
+              {t("sales.tallyTab")}
             </TabsTrigger>
             <TabsTrigger value="quickbooks" className="text-xs">
-              QuickBooks (CSV / IIF)
+              {t("sales.quickbooksTab")}
             </TabsTrigger>
             <TabsTrigger value="zoho" className="text-xs">
-              Zoho Books (CSV / JSON)
+              {t("sales.zohoTab")}
             </TabsTrigger>
           </TabsList>
 
           {/* TALLY PRIME */}
           <TabsContent value="tally" className="space-y-3 pt-3">
             <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-1.5">
-              <p className="font-semibold text-foreground">How to import into Tally Prime:</p>
+              <p className="font-semibold text-foreground">{t("sales.howToImportTally")}</p>
               <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground">
                 <li>Download the Tally XML voucher below.</li>
                 <li>In Tally Prime, navigate to <strong>Import Data</strong> &gt; <strong>Vouchers</strong>.</li>
-                <li>Select the downloaded XML file to import the sales invoice instantly with inventory and tax ledgers.</li>
+                <li>Select the downloaded XML file to import instantly with inventory and tax ledgers.</li>
               </ol>
             </div>
 
@@ -146,7 +153,7 @@ export function AccountingExportDialog({
                   )
                 }
               >
-                <Download className="size-4" /> Download Tally XML Voucher
+                <Download className="size-4" /> {t("sales.downloadTallyXml")}
               </Button>
               <Button
                 size="sm"
@@ -154,7 +161,7 @@ export function AccountingExportDialog({
                 onClick={() => copyToClipboard(tallyXml, "Tally XML")}
               >
                 {copiedTab === "Tally XML" ? <Check className="size-4" /> : <Copy className="size-4" />}
-                Copy XML
+                {t("sales.copyXml")}
               </Button>
             </div>
 
@@ -169,9 +176,9 @@ export function AccountingExportDialog({
           {/* QUICKBOOKS */}
           <TabsContent value="quickbooks" className="space-y-3 pt-3">
             <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-1.5">
-              <p className="font-semibold text-foreground">How to import into QuickBooks:</p>
+              <p className="font-semibold text-foreground">{t("sales.howToImportQuickBooks")}</p>
               <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
-                <li><strong>QuickBooks Online:</strong> Click <strong>Gear Icon</strong> &gt; <strong>Import Data</strong> &gt; <strong>Invoices</strong>, and upload the CSV file.</li>
+                <li><strong>QuickBooks Online:</strong> Click <strong>Gear Icon</strong> &gt; <strong>Import Data</strong> &gt; <strong>{isQuotation ? "Estimates" : "Invoices"}</strong>, and upload the CSV file.</li>
                 <li><strong>QuickBooks Desktop:</strong> Go to <strong>File</strong> &gt; <strong>Utilities</strong> &gt; <strong>Import</strong> &gt; <strong>IIF Files</strong>.</li>
               </ul>
             </div>
@@ -187,7 +194,7 @@ export function AccountingExportDialog({
                   )
                 }
               >
-                <FileSpreadsheet className="size-4" /> Download QuickBooks CSV
+                <FileSpreadsheet className="size-4" /> {t("sales.downloadQuickBooksCsv")}
               </Button>
               <Button
                 size="sm"
@@ -200,7 +207,7 @@ export function AccountingExportDialog({
                   )
                 }
               >
-                <FileCode className="size-4" /> Download QuickBooks IIF
+                <FileCode className="size-4" /> {t("sales.downloadQuickBooksIif")}
               </Button>
               <Button
                 size="sm"
@@ -208,7 +215,7 @@ export function AccountingExportDialog({
                 onClick={() => copyToClipboard(qbJson, "QuickBooks JSON")}
               >
                 {copiedTab === "QuickBooks JSON" ? <Check className="size-4" /> : <Copy className="size-4" />}
-                Copy REST API JSON
+                {t("sales.copyRestJson")}
               </Button>
             </div>
 
@@ -223,11 +230,11 @@ export function AccountingExportDialog({
           {/* ZOHO BOOKS */}
           <TabsContent value="zoho" className="space-y-3 pt-3">
             <div className="rounded-lg border bg-muted/40 p-3 text-xs space-y-1.5">
-              <p className="font-semibold text-foreground">How to import into Zoho Books:</p>
+              <p className="font-semibold text-foreground">{t("sales.howToImportZoho")}</p>
               <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground">
                 <li>Download the Zoho Books CSV file below.</li>
-                <li>In Zoho Books, open <strong>Sales</strong> &gt; <strong>Invoices</strong>.</li>
-                <li>Click the menu icon (<strong>...</strong>) in the top-right corner and select <strong>Import Invoices</strong>.</li>
+                <li>In Zoho Books, open <strong>Sales</strong> &gt; <strong>{isQuotation ? "Estimates" : "Invoices"}</strong>.</li>
+                <li>Click the menu icon (<strong>...</strong>) in the top-right corner and select <strong>Import {isQuotation ? "Estimates" : "Invoices"}</strong>.</li>
                 <li>Upload the file; line items, tax, discounts, and customer details will be pre-matched.</li>
               </ol>
             </div>
@@ -243,7 +250,7 @@ export function AccountingExportDialog({
                   )
                 }
               >
-                <Download className="size-4" /> Download Zoho Books CSV
+                <Download className="size-4" /> {t("sales.downloadZohoCsv")}
               </Button>
               <Button
                 size="sm"
@@ -251,7 +258,7 @@ export function AccountingExportDialog({
                 onClick={() => copyToClipboard(zohoJson, "Zoho JSON")}
               >
                 {copiedTab === "Zoho JSON" ? <Check className="size-4" /> : <Copy className="size-4" />}
-                Copy REST API JSON
+                {t("sales.copyRestJson")}
               </Button>
             </div>
 

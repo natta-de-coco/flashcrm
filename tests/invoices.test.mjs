@@ -15,6 +15,9 @@ import {
   generateQuickBooksInvoiceJson,
   generateZohoInvoiceCsv,
   generateZohoInvoiceJson,
+  sanitizeCsvCell,
+  escapeXml,
+  escapeIif,
 } from "../node_modules/.cache/flas-invoices.mjs";
 
 export const invoiceFixture = {
@@ -269,5 +272,95 @@ test("accounting sync exports valid QuickBooks and Zoho formats", () => {
   assert.equal(zohoJson.invoice_number, "INV-2026-00128");
   assert.equal(zohoJson.customer_name, "Example Trading LLC");
   assert.equal(zohoJson.line_items.length, 1);
+});
+
+test("CSV formula injection protection and delimiter sanitization", () => {
+  // Untrusted formula injections are prepended with single quote
+  assert.equal(sanitizeCsvCell("=SUM(A1:B10)"), "'=SUM(A1:B10)");
+  assert.equal(sanitizeCsvCell("@cmd"), "'@cmd");
+  assert.equal(sanitizeCsvCell("+Phone 971"), "'+Phone 971");
+  assert.equal(sanitizeCsvCell("-something"), "'-something");
+  assert.equal(sanitizeCsvCell("\tmalicious"), "'\tmalicious");
+
+  // Legitimate numbers and negative balances are preserved as numbers
+  assert.equal(sanitizeCsvCell(1250.5), "1250.5");
+  assert.equal(sanitizeCsvCell(-50), "-50");
+  assert.equal(sanitizeCsvCell("-50.00"), "-50.00");
+  assert.equal(sanitizeCsvCell("+100"), "+100");
+  assert.equal(sanitizeCsvCell(0), "0");
+
+  // Commas and quotes are properly wrapped
+  assert.equal(sanitizeCsvCell("Acme, Inc."), '"Acme, Inc."');
+  assert.equal(sanitizeCsvCell('Item "Pro"'), '"Item ""Pro"""');
+
+  // XML control characters are stripped
+  const maliciousXml = "Clean\x00Name\x08With\x1FControl & <Chars>";
+  const escapedXml = escapeXml(maliciousXml);
+  assert.equal(escapedXml, "CleanNameWithControl &amp; &lt;Chars&gt;");
+
+  // IIF tabs and newlines are sanitized into spaces
+  const badIif = "Invoice\tItem\r\nMultiLine";
+  assert.equal(escapeIif(badIif), "Invoice Item MultiLine");
+});
+
+test("accounting sync cleanly distinguishes quotations/estimates from finalized sales invoices", () => {
+  const quoteDoc = {
+    id: "quote-1",
+    doc_number: "QT-2026-00042",
+    kind: "quotation",
+    issue_date: "2026-10-06",
+    due_date: "2026-11-05",
+    currency: "AED",
+    subtotal: 5000,
+    tax_total: 250,
+    grand_total: 5250,
+    customer_snapshot: {
+      name: "Ahmed Al Mansoori",
+      company: "Apex Innovations",
+    },
+    notes: "Quotation valid for 30 days",
+  };
+
+  const quoteItems = [
+    {
+      name: "CCTV Setup",
+      description: "Complete 8-camera setup",
+      quantity: 1,
+      unit_price: 5000,
+      line_total: 5000,
+    },
+  ];
+
+  // 1. Tally Prime XML: uses Quotation voucher type and ISINVOICE=No
+  const tallyXml = generateTallySalesXml(quoteDoc, quoteItems);
+  assert.match(tallyXml, /<VOUCHER VCHTYPE="Quotation"/);
+  assert.match(tallyXml, /<VOUCHERTYPENAME>Quotation<\/VOUCHERTYPENAME>/);
+  assert.match(tallyXml, /<ISINVOICE>No<\/ISINVOICE>/);
+
+  // 2. QuickBooks Online CSV: uses *EstimateNo and *EstimateDate headers
+  const qbCsv = generateQuickBooksCsv(quoteDoc, quoteItems);
+  assert.match(qbCsv, /^\*EstimateNo,\*Customer,\*EstimateDate,\*ExpirationDate/);
+  assert.match(qbCsv, /QT-2026-00042/);
+
+  // 3. QuickBooks IIF: uses ESTIMATE transaction type
+  const qbIif = generateQuickBooksIif(quoteDoc, quoteItems);
+  assert.match(qbIif, /TRNS\t\tESTIMATE\t/);
+  assert.match(qbIif, /SPL\t\tESTIMATE\t/);
+
+  // 4. Zoho Books CSV: uses Estimate Number and Estimate Date headers
+  const zohoCsv = generateZohoInvoiceCsv(quoteDoc, quoteItems);
+  assert.match(zohoCsv, /^Estimate Number,Customer Name,Estimate Date,Expiry Date,/);
+  assert.match(zohoCsv, /QT-2026-00042/);
+
+  // 5. Zoho Books JSON: uses estimate_number and expiry_date payload
+  const zohoJson = JSON.parse(generateZohoInvoiceJson(quoteDoc, quoteItems));
+  assert.equal(zohoJson.estimate_number, "QT-2026-00042");
+  assert.equal(zohoJson.expiry_date, "2026-11-05");
+  assert.equal(zohoJson.invoice_number, undefined);
+
+  // 6. QuickBooks JSON: uses ExpirationDate instead of DueDate
+  const qbJson = JSON.parse(generateQuickBooksInvoiceJson(quoteDoc, quoteItems));
+  assert.equal(qbJson.ExpirationDate, "2026-11-05");
+  assert.equal(qbJson.DueDate, undefined);
 });
 
