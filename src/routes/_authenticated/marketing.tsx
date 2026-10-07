@@ -8,7 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { audienceBlockedReason, type CampaignAudience } from "@/lib/campaign-audience";
-import { draftCampaignForAudience, getCampaignAudience } from "@/lib/campaign-audience.functions";
+import {
+  draftCampaignForAudience,
+  getCampaignAudience,
+  saveCampaignDraft,
+} from "@/lib/campaign-audience.functions";
 import { getWhatsAppGrowthSegments } from "@/lib/whatsapp-growth.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -201,7 +205,7 @@ function AudienceNote({
 
 function MarketingPage() {
   const { t, tr } = useI18n();
-  const { isAdmin, user } = useAuth();
+  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
@@ -223,6 +227,7 @@ function MarketingPage() {
   const [aiDraft, setAiDraft] = useState("");
   const draftWithFlashAi = useServerFn(draftCampaignForAudience);
   const loadAudience = useServerFn(getCampaignAudience);
+  const saveCampaign = useServerFn(saveCampaignDraft);
   const loadWhatsAppGrowthSegments = useServerFn(getWhatsAppGrowthSegments);
 
   useEffect(() => setOrigin(window.location.origin), []);
@@ -364,22 +369,26 @@ function MarketingPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // The recipient count is worked out on the server as part of the save. It used
+  // to be `emailAudience?.total ?? 0`, taken from this page's own audience
+  // request: zero while that was still loading and zero again if it had failed,
+  // and the list below showed that zero as the audience "when saved".
   const createCampaign = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("campaigns").insert({
-        name: campaignForm.name,
-        subject: campaignForm.subject,
-        body: campaignForm.body,
-        // Was `leads.filter(l => l.subscribed).length`: `subscribed` defaults to
-        // true, so every captured lead was counted as a recipient whether or not
-        // they had consented, and contacts were never counted at all. This is the
-        // same number the card displays above the form.
-        recipients_count: emailAudience?.total ?? 0,
-        created_by: user?.id ?? null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
+    mutationFn: () =>
+      saveCampaign({
+        data: {
+          name: campaignForm.name,
+          subject: campaignForm.subject,
+          body: campaignForm.body,
+        },
+      }),
+    onSuccess: (res) => {
+      // `ok: false` means the audience could not be read, so nothing was saved.
+      // The form is left as it is for another try.
+      if (!res.ok) {
+        toast.error(t("marketing.campaignNotSaved"));
+        return;
+      }
       setCampaignForm({ name: "", subject: "", body: "" });
       toast.success(t("marketing.campaignSavedAsADraft"));
       void qc.invalidateQueries({ queryKey: ["campaigns"] });

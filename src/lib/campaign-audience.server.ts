@@ -125,6 +125,47 @@ export async function gatherCampaignAudience(
   return (await gatherCampaignAudiences(supabase))[channel];
 }
 
+export type SaveCampaignInput = { name: string; subject: string; body: string };
+
+export type SaveCampaignResult =
+  { ok: true; recipientsCount: number } | { ok: false; reason: "audience_unavailable" };
+
+/**
+ * Saves a campaign as a draft with the audience it has right now.
+ *
+ * The recipient count is read here, as part of the save, and is not taken from
+ * the page. The page used to send whatever its audience request had returned so
+ * far: zero while that request was still loading, and zero again if it had
+ * failed, and the campaign list later showed that zero as the audience "when
+ * saved". If the audience cannot be read, nothing is saved: a campaign with a
+ * made-up count is worse than one the user is asked to save again.
+ *
+ * A refused insert is thrown, as it always was.
+ */
+export async function saveCampaignDraft(
+  supabase: SupabaseClient,
+  input: SaveCampaignInput,
+  actor: { userId?: string | null },
+): Promise<SaveCampaignResult> {
+  let audience: CampaignAudience;
+  try {
+    audience = await gatherCampaignAudience(supabase, "email");
+  } catch (error) {
+    console.error("[campaigns] not saved, the audience could not be read:", error);
+    return { ok: false, reason: "audience_unavailable" };
+  }
+
+  const { error } = await supabase.from("campaigns").insert({
+    name: input.name,
+    subject: input.subject,
+    body: input.body,
+    recipients_count: audience.total,
+    created_by: actor.userId ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return { ok: true, recipientsCount: audience.total };
+}
+
 export type DraftRequest = {
   goal: string;
   audience?: string | null;

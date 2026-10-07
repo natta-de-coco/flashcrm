@@ -156,6 +156,8 @@ export default screen({
     "marketing.starter.3.goal":
       "Thank recent customers and offer a relevant next product, service, or referral reason.",
     "marketing.starter.3.audience": "Opted-in recent customers",
+    "marketing.campaignNotSaved":
+      "The campaign was not saved because we could not check who is in your audience. Please try again.",
   },
   ar: {
     "marketing.checkingWhoHasOptedIn": "جارٍ التحقق ممن وافقوا على الاشتراك…",
@@ -308,6 +310,8 @@ export default screen({
     "marketing.starter.3.goal":
       "اشكر العملاء الجدد واعرض عليهم منتجًا أو خدمة تالية مناسبة أو سببًا للتوصية.",
     "marketing.starter.3.audience": "العملاء الجدد الموافقون",
+    "marketing.campaignNotSaved":
+      "لم تُحفظ الحملة لأننا لم نتمكن من التحقق من الأشخاص في جمهورك. يرجى المحاولة مرة أخرى.",
   },
   ms: {
     "marketing.checkingWhoHasOptedIn": "Menyemak siapa yang telah memberi persetujuan…",
@@ -463,6 +467,8 @@ export default screen({
     "marketing.starter.3.goal":
       "Ucapkan terima kasih kepada pelanggan terkini dan tawarkan produk, perkhidmatan atau sebab rujukan seterusnya yang berkaitan.",
     "marketing.starter.3.audience": "Pelanggan terkini yang bersetuju",
+    "marketing.campaignNotSaved":
+      "Kempen tidak disimpan kerana kami tidak dapat menyemak siapa dalam audiens anda. Sila cuba lagi.",
   },
   fil: {
     "marketing.checkingWhoHasOptedIn": "Tinitingnan kung sino ang pumayag…",
@@ -619,6 +625,8 @@ export default screen({
     "marketing.starter.3.goal":
       "Pasalamatan ang mga kamakailang customer at mag-alok ng angkop na susunod na produkto, serbisyo o dahilan para mag-refer.",
     "marketing.starter.3.audience": "Mga kamakailang customer na pumayag",
+    "marketing.campaignNotSaved":
+      "Hindi na-save ang campaign dahil hindi namin nasuri kung sino ang nasa audience mo. Pakisubukan ulit.",
   },
   sw: {
     "marketing.checkingWhoHasOptedIn": "Inakagua nani amekubali…",
@@ -774,5 +782,7 @@ export default screen({
     "marketing.starter.3.goal":
       "Washukuru wateja wa hivi karibuni na uwape bidhaa, huduma au sababu ya kupendekeza inayofaa.",
     "marketing.starter.3.audience": "Wateja wa hivi karibuni waliokubali",
+    "marketing.campaignNotSaved":
+      "Kampeni haikuhifadhiwa kwa sababu hatukuweza kuangalia ni nani walio kwenye hadhira yako. Tafadhali jaribu tena.",
   },
 });

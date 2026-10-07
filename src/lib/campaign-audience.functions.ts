@@ -10,6 +10,28 @@ export const getCampaignAudience = createServerFn({ method: "GET" })
     return gatherCampaignAudiences(context.supabase);
   });
 
+const SaveCampaignSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  subject: z.string().max(500).default(""),
+  body: z.string().max(100_000).default(""),
+});
+
+/**
+ * Saves a campaign as a draft, recording the audience it really has.
+ *
+ * The recipient count is worked out here from the database, not sent by the
+ * page, so a save made while the page's own audience request is still loading
+ * (or has failed) cannot record a zero. Returns `{ ok: false }` when the
+ * audience could not be read and nothing was saved, so the page can say so.
+ */
+export const saveCampaignDraft = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => SaveCampaignSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { saveCampaignDraft: save } = await import("@/lib/campaign-audience.server");
+    return save(context.supabase, data, { userId: context.userId });
+  });
+
 const DraftSchema = z.object({
   goal: z.string().trim().min(3).max(500),
   audience: z.string().trim().max(300).optional(),
