@@ -540,93 +540,229 @@ export async function getBusinessContext(supabase: RlsClient): Promise<BusinessC
   return data ?? null;
 }
 
+/** Rows read for the breakdowns (sources, tags, stages). They are a sample, and are labelled as one. */
+const SUMMARY_SAMPLE_ROWS = 500;
+
+/** Rows asked for per request when scanning for who opted in; see `scanOptedIn`. */
+const SUMMARY_PAGE_SIZE = 1000;
+
+/**
+ * The most rows of either table read to work out how many different people
+ * opted in. Past it the answer is given as "at least", never as the total.
+ */
+export const CONSENT_SCAN_LIMIT = 20_000;
+
 export type LeadSummary = {
+  /** Every website lead, counted by the database. Not the size of the sample below. */
   totalLeads: number;
+  /** Every contact, counted by the database. */
+  totalContacts: number;
   /**
-   * People who actually opted in, across website leads AND contacts.
+   * Website leads that opted in and have not unsubscribed.
    *
-   * This used to count `consent_given || subscribed` over leads alone. Nothing
-   * in the product ever sets `subscribed` to false and it defaults to true, so
-   * every lead counted as consented -- while a workspace whose only consented
-   * person was a contact was told nobody had opted in, and the campaign writer
-   * refused to write. Both halves of that are wrong in opposite directions.
+   * Consent is `consent_given`, the recorded opt-in. `subscribed` defaults to
+   * true and is only ever cleared by an unsubscribe, so counting it as consent
+   * marked every lead opted in; it is read only as a suppression flag.
    */
-  consentedLeads: number;
-  /** Consented people who are contacts rather than website leads. */
-  consentedContacts: number;
+  optedInLeads: number;
+  /** Contacts that opted in. */
+  optedInContacts: number;
+  /**
+   * Different people who opted in, across leads AND contacts. The website form
+   * writes a lead and a contact with the same consent and links them
+   * (`leads.contact_id`), and adding the two tables counted that one person
+   * twice, so a linked lead and its contact are one person here.
+   */
+  optedInPeople: number;
+  /** True when the scan stopped at `CONSENT_SCAN_LIMIT`: `optedInPeople` is then a floor. */
+  optedInIsFloor: boolean;
+  /** How many leads the three breakdowns below were worked out from (the most recent). */
+  sampledLeads: number;
   bySource: Record<string, number>;
   topTags: string[];
+  /** How many contacts `contactsByStage` was worked out from (the most recent). */
+  sampledContacts: number;
   contactsByStage: Record<string, number>;
 };
 
-export async function gatherLeadSummary(supabase: RlsClient): Promise<LeadSummary> {
-  const { data: leads } = await (
-    supabase.from("leads") as never as {
-      select: (cols: string) => {
-        order: (
-          col: string,
-          opts: { ascending: boolean },
-        ) => {
-          limit: (n: number) => Promise<{
-            data: Array<{
-              source: string;
-              tags: string[] | null;
-              subscribed: boolean;
-              consent_given: boolean;
-            }> | null;
-          }>;
-        };
-      };
-    }
-  )
-    .select("source, tags, subscribed, consent_given")
-    .order("created_at", { ascending: false })
-    .limit(500);
+/** The few query-builder calls the summary makes, on a client that is not typed. */
+type SummaryQuery = {
+  select: (columns: string, options?: { count?: "exact"; head?: boolean }) => SummaryQuery;
+  eq: (column: string, value: unknown) => SummaryQuery;
+  neq: (column: string, value: unknown) => SummaryQuery;
+  order: (column: string, options: { ascending: boolean }) => SummaryQuery;
+  range: (from: number, to: number) => SummaryQuery;
+  limit: (rows: number) => SummaryQuery;
+} & PromiseLike<{
+  data: unknown[] | null;
+  count: number | null;
+  error: { message: string } | null;
+}>;
 
-  const { data: contacts } = await (
-    supabase.from("contacts") as never as {
-      select: (cols: string) => {
-        limit: (n: number) => Promise<{
-          data: Array<{ stage: string; consent_given: boolean | null }> | null;
-        }>;
-      };
-    }
-  )
-    .select("stage, consent_given")
-    .limit(500);
+const summaryTable = (supabase: RlsClient, table: string) =>
+  supabase.from(table) as never as SummaryQuery;
+
+/** What the database says matches. A failed count throws; it is never zero. */
+async function countMatching(query: SummaryQuery, what: string): Promise<number> {
+  const { count, error } = await query;
+  if (error) throw new Error(error.message);
+  if (count == null) throw new Error(`Could not count ${what}.`);
+  return count;
+}
+
+/**
+ * Reads the rows of one filtered table, a page at a time, until it has the
+ * `expected` number the database counted or `limit` rows, whichever is first.
+ * A request returns at most the project's row cap (1,000 by default) whatever
+ * it asks for, and says nothing about rows left behind, so a single read of any
+ * size is not a count.
+ */
+async function scanOptedIn<T>(
+  page: (from: number, to: number) => SummaryQuery,
+  expected: number,
+  limit: number,
+): Promise<{ rows: T[]; complete: boolean }> {
+  const wanted = Math.min(expected, limit);
+  const rows: T[] = [];
+  while (rows.length < wanted) {
+    const from = rows.length;
+    const { data, error } = await page(from, Math.min(from + SUMMARY_PAGE_SIZE, wanted) - 1);
+    if (error) throw new Error(error.message);
+    const got = (data ?? []) as T[];
+    if (got.length === 0) break;
+    rows.push(...got);
+  }
+  return { rows, complete: rows.length >= expected };
+}
+
+/**
+ * What the AI is told about the audience.
+ *
+ * The totals and the opted-in figures are counts of the whole tables. The
+ * breakdowns (sources, tags, stages) come from the most recent rows only and
+ * are labelled as a sample by `leadSummaryFacts`. A failed read throws: it is
+ * not a count of zero, and "nobody has opted in" must never be what an outage
+ * tells the model.
+ */
+export async function gatherLeadSummary(
+  supabase: RlsClient,
+  options: { scanLimit?: number } = {},
+): Promise<LeadSummary> {
+  const scanLimit = options.scanLimit ?? CONSENT_SCAN_LIMIT;
+  const leadsTable = () => summaryTable(supabase, "leads");
+  const contactsTable = () => summaryTable(supabase, "contacts");
+  const countOf = (table: () => SummaryQuery) =>
+    table().select("id", { count: "exact", head: true });
+  // Opted in and not since unsubscribed. Contacts have no such flag.
+  const optedInLeadsOnly = (query: SummaryQuery) =>
+    query.eq("consent_given", true).neq("subscribed", false);
+
+  const [totalLeads, totalContacts, optedInLeads, optedInContacts, leadSample, contactSample] =
+    await Promise.all([
+      countMatching(countOf(leadsTable), "leads"),
+      countMatching(countOf(contactsTable), "contacts"),
+      countMatching(optedInLeadsOnly(countOf(leadsTable)), "opted-in leads"),
+      countMatching(countOf(contactsTable).eq("consent_given", true), "opted-in contacts"),
+      leadsTable()
+        .select("source, tags")
+        .order("created_at", { ascending: false })
+        .limit(SUMMARY_SAMPLE_ROWS),
+      contactsTable()
+        .select("stage")
+        .order("created_at", { ascending: false })
+        .limit(SUMMARY_SAMPLE_ROWS),
+    ]);
+  if (leadSample.error) throw new Error(leadSample.error.message);
+  if (contactSample.error) throw new Error(contactSample.error.message);
+
+  // Different people, not rows: a lead is the same person as the contact it
+  // points at, and two leads at one contact are one person too.
+  const [consentedContacts, consentedLeads] = await Promise.all([
+    scanOptedIn<{ id: string }>(
+      (from, to) =>
+        contactsTable()
+          .select("id")
+          .eq("consent_given", true)
+          .order("id", { ascending: true })
+          .range(from, to),
+      optedInContacts,
+      scanLimit,
+    ),
+    scanOptedIn<{ id: string; contact_id: string | null }>(
+      (from, to) =>
+        optedInLeadsOnly(leadsTable().select("id, contact_id"))
+          .order("id", { ascending: true })
+          .range(from, to),
+      optedInLeads,
+      scanLimit,
+    ),
+  ]);
+  const people = new Set<string>();
+  for (const contact of consentedContacts.rows) people.add(`contact:${contact.id}`);
+  for (const lead of consentedLeads.rows) {
+    people.add(lead.contact_id ? `contact:${lead.contact_id}` : `lead:${lead.id}`);
+  }
+  const optedInIsFloor = !(consentedContacts.complete && consentedLeads.complete);
 
   const bySource: Record<string, number> = {};
   const tagCounts = new Map<string, number>();
-  let consented = 0;
-  for (const lead of leads ?? []) {
+  const leadRows = (leadSample.data ?? []) as Array<{ source: string; tags: string[] | null }>;
+  for (const lead of leadRows) {
     bySource[lead.source] = (bySource[lead.source] ?? 0) + 1;
-    // consent_given is the record of consent. `subscribed` is a suppression
-    // flag that defaults to true and has no writer anywhere in the product, so
-    // counting it as consent marked everyone opted in.
-    if (lead.consent_given === true && lead.subscribed !== false) consented += 1;
     for (const tag of lead.tags ?? []) {
       tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
     }
   }
 
   const contactsByStage: Record<string, number> = {};
-  let consentedContacts = 0;
-  for (const c of contacts ?? []) {
+  const contactRows = (contactSample.data ?? []) as Array<{ stage: string }>;
+  for (const c of contactRows) {
     contactsByStage[c.stage] = (contactsByStage[c.stage] ?? 0) + 1;
-    if (c.consent_given === true) consentedContacts += 1;
   }
 
   return {
-    totalLeads: (leads ?? []).length,
-    consentedLeads: consented + consentedContacts,
-    consentedContacts,
+    totalLeads,
+    totalContacts,
+    optedInLeads,
+    optedInContacts,
+    // Every opted-in contact is a person, so that is a floor even when the scan
+    // was cut short.
+    optedInPeople: optedInIsFloor ? Math.max(people.size, optedInContacts) : people.size,
+    optedInIsFloor,
+    sampledLeads: leadRows.length,
     bySource,
     topTags: [...tagCounts.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([tag]) => tag),
+    sampledContacts: contactRows.length,
     contactsByStage,
   };
+}
+
+/**
+ * The summary as plain-text lines for a model prompt, shared by every feature
+ * that describes the audience so two of them cannot report different figures
+ * for one workspace. Leads and contacts are reported as what they are, each
+ * with its own total and opted-in count (so no line claims more opt-ins than it
+ * has people on it), then the number of different people across both. A
+ * breakdown that covers fewer rows than exist says how many it covers.
+ */
+export function leadSummaryFacts(summary: LeadSummary): string[] {
+  const sample = (sampled: number, total: number, noun: string) =>
+    sampled < total ? ` (from the ${sampled} most recent of ${total} ${noun})` : "";
+  const counts = (record: Record<string, number>) =>
+    Object.entries(record)
+      .map(([key, value]) => `${key}=${value}`)
+      .join(", ") || "none";
+  return [
+    `Website leads: ${summary.totalLeads} in total, ${summary.optedInLeads} opted in`,
+    `Contacts: ${summary.totalContacts} in total, ${summary.optedInContacts} opted in`,
+    `Opted-in people overall: ${summary.optedInIsFloor ? "at least " : ""}${summary.optedInPeople} (a website lead and the contact made from it are one person, counted once)`,
+    `Lead sources${sample(summary.sampledLeads, summary.totalLeads, "leads")}: ${counts(summary.bySource)}`,
+    `Top tags${sample(summary.sampledLeads, summary.totalLeads, "leads")}: ${summary.topTags.join(", ") || "none"}`,
+    `Pipeline stages${sample(summary.sampledContacts, summary.totalContacts, "contacts")}: ${counts(summary.contactsByStage)}`,
+  ];
 }
 
 export type NumberAnalytics = {
