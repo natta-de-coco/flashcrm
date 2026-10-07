@@ -142,8 +142,10 @@ describe("a connection whose Page was never chosen is not a syncable account", (
     // QA saw "Facebook – Never synced" and "Instagram – Never synced" ghost rows
     // whose Sync button did nothing: syncMeta refuses a row with no external_id
     // with "Add the Meta account ID and access token first", which makes no
-    // sense for a connection made by signing in.
-    assert.match(page, /!a\.external_id \? \(/);
+    // sense for a connection made by signing in. Which connections that is
+    // true of is decided in social-account-readiness.ts and tested in
+    // tests/social-hub.test.mjs (R4): a missing id alone is not enough.
+    assert.match(page, /isUnfinishedConnection\(a\) \? \(/);
     assert.match(page, /social\.finishConnecting/);
     assert.match(words, /"social\.finishConnecting": "Finish connecting"/);
     assert.match(page, /to="\/connect"/);

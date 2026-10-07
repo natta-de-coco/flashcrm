@@ -23,6 +23,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { manualSocialFormError } from "@/lib/form-validation";
 import { connector } from "@/lib/connections-catalog";
 import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
+import { isUnfinishedConnection } from "@/lib/social-account-readiness";
+import { draftSaveRequest, type ComposerDraft } from "@/lib/social-drafts";
 import { plannedPostNote, publishReality } from "@/lib/social-publishing";
 import {
   groupPostsByState,
@@ -126,6 +128,8 @@ type Account = {
   platform: PlatformId;
   label: string;
   external_id: string | null;
+  /** "oauth" for a connection made by signing in; "manual" for a pasted one. */
+  connect_method?: string | null;
   active: boolean;
   last_synced_at: string | null;
   stats: Record<string, number> | null;
@@ -622,7 +626,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                   <span className="truncate">{a.label}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {!a.external_id
+                  {isUnfinishedConnection(a)
                     ? i18n.t("social.signInDoneChooseWhich")
                     : `${audienceStat(a.stats, i18n.t) ? `${audienceStat(a.stats, i18n.t)} · ` : ""}${
                         a.last_synced_at
@@ -634,7 +638,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
               <div className="flex shrink-0 items-center gap-1">
                 {/* Analytics and ads connections report rather than sync:
                     Sync pulls posts and comments, which they do not have. */}
-                {!a.external_id ? (
+                {isUnfinishedConnection(a) ? (
                   // The sign-in finished but no Page was chosen, so there is
                   // nothing to sync -- pressing Sync could only ever fail with
                   // "Add the Meta account ID and access token first", which is
@@ -885,13 +889,14 @@ function ComposerTab({
   });
   // One piece of work in the composer: a new caption, or the draft being
   // rewritten. `id` is what tells the two apart on save.
-  const [draft, setDraft] = useState<{
-    id: string | null;
-    caption: string;
-    platform: PlatformId;
-    accountId: string | null;
-    plannedAt: string;
-  }>({ id: null, caption: "", platform: "instagram", accountId: null, plannedAt: "" });
+  const [draft, setDraft] = useState<ComposerDraft<PlatformId>>({
+    id: null,
+    caption: "",
+    platform: "instagram",
+    accountId: null,
+    plannedAt: "",
+    loadedPlannedAt: "",
+  });
 
   // Accounts a post can be written for. The composer's own platform list is
   // what the server accepts (ComposeSchema / SavePostSchema), so an analytics or
@@ -911,6 +916,7 @@ function ComposerTab({
           d.platform) ||
         "instagram",
       plannedAt: toLocalInputValue(editing.scheduled_at),
+      loadedPlannedAt: toLocalInputValue(editing.scheduled_at),
     }));
     // Only the identity of the post being edited should reload the form —
     // re-running on every account refetch would throw away typing in progress.
@@ -922,7 +928,14 @@ function ComposerTab({
   const saved = [...groups.planned, ...groups.drafts];
 
   const resetDraft = () => {
-    setDraft({ id: null, caption: "", platform: draft.platform, accountId: null, plannedAt: "" });
+    setDraft({
+      id: null,
+      caption: "",
+      platform: draft.platform,
+      accountId: null,
+      plannedAt: "",
+      loadedPlannedAt: "",
+    });
     onEdit(null);
   };
 
@@ -938,27 +951,11 @@ function ComposerTab({
 
   const saveMutation = useMutation({
     mutationFn: async (plan: boolean) => {
-      const caption = draft.caption.trim();
-      const scheduledAt =
-        plan && draft.plannedAt ? new Date(draft.plannedAt).toISOString() : undefined;
-      if (draft.id) {
-        return update({
-          data: {
-            id: draft.id,
-            caption,
-            accountId: draft.accountId,
-            scheduledAt: scheduledAt ?? null,
-          },
-        });
-      }
-      return save({
-        data: {
-          caption,
-          platform: draft.platform,
-          ...(draft.accountId ? { accountId: draft.accountId } : {}),
-          ...(scheduledAt ? { scheduledAt } : {}),
-        },
-      });
+      // What is sent is decided in social-drafts.ts, where it is tested.
+      const request = draftSaveRequest(draft, plan);
+      return request.kind === "update"
+        ? update({ data: request.data })
+        : save({ data: request.data });
     },
     onSuccess: (_res, plan) => {
       toast.success(
