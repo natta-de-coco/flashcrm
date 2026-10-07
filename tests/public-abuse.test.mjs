@@ -10,6 +10,7 @@ import { Route as widgetRoute } from "../node_modules/.cache/flas-widget-chat.mj
 import { Route as collectRoute } from "../node_modules/.cache/flas-leads-collect.mjs";
 import { Route as wordpressRoute } from "../node_modules/.cache/flas-webhook-wordpress.mjs";
 import { Route as shopifyRoute } from "../node_modules/.cache/flas-webhook-shopify.mjs";
+import { Route as customRoute } from "../node_modules/.cache/flas-webhook-custom.mjs";
 import { authenticateApiKey } from "../node_modules/.cache/flas-api-keys.mjs";
 import {
   LEADS_PER_MINUTE_PER_SITE,
@@ -91,6 +92,21 @@ const postWebhook = (route, rawBody, headers = {}) =>
       body: rawBody,
     }),
   });
+
+/**
+ * Runs a request whose failure the server logs, keeping what it logged: the
+ * output stays readable, and a test can check that a failure was not silent.
+ */
+async function logged(run) {
+  const realError = console.error;
+  const lines = [];
+  console.error = (...args) => lines.push(args.map(String).join(" "));
+  try {
+    return { response: await run(), lines };
+  } finally {
+    console.error = realError;
+  }
+}
 
 describe("a website visitor may describe themselves, not somebody else", () => {
   const realCustomer = () => ({
@@ -325,6 +341,116 @@ describe("a captured webhook delivery cannot be replayed", () => {
     });
     assert.equal(response.status, 401);
     assert.equal(db.table("webhook_dedup").length, 0);
+  });
+});
+
+describe("a delivery that was not finished can be sent again", () => {
+  // Reported: a delivery was remembered as seen before anything had been done
+  // with it. When the site was then told to slow down, or the lead could not be
+  // saved, the provider's retry was answered "duplicate" and the lead was gone.
+  const body = JSON.stringify({ email: "lead@shop.example", name: "Lead", consent: true });
+  const routes = { wordpress: wordpressRoute, shopify: shopifyRoute, custom: customRoute };
+  const taken = () =>
+    globalThis.publicIntake.audits.filter((a) => a.action === "webhook.platform_lead").length;
+
+  for (const [platform, route] of Object.entries(routes)) {
+    it(`saves the lead when ${platform} retries after a failed save`, async () => {
+      db.fail("leads:upsert", { message: "connection reset" });
+      const { response: failed } = await logged(() => postWebhook(route, body));
+      assert.equal(failed.status, 500);
+      assert.equal(db.table("leads").length, 0);
+      assert.equal(db.table("webhook_dedup").length, 0, "the claim was given back");
+
+      // The database recovers and the provider sends the delivery again.
+      db.recover("leads:upsert");
+      const retry = await postWebhook(route, body);
+      assert.equal(retry.status, 200);
+      assert.deepEqual(await retry.json(), { ok: true });
+      assert.equal(db.table("leads").length, 1);
+
+      // Now that it is done, one more copy is a repeat.
+      const again = await postWebhook(route, body);
+      assert.deepEqual(await again.json(), { ok: true, duplicate: true });
+      assert.equal(taken(), 1);
+    });
+  }
+
+  it("saves the lead when the provider retries after being told to slow down", async () => {
+    for (let i = 0; i < LEADS_PER_MINUTE_PER_SITE; i += 1) {
+      db.table("leads").push({
+        id: `lead-${i}`,
+        tenant_id: "company-1",
+        site_id: "site-1",
+        email: `x${i}@busy.example`,
+        created_at: secondsAgo(10),
+      });
+    }
+    const limited = await postWebhook(wordpressRoute, body);
+    assert.equal(limited.status, 429);
+    assert.match(limited.headers.get("retry-after"), /^\d+$/);
+    assert.equal(db.table("webhook_dedup").length, 0, "the claim was given back");
+
+    // The minute passes and the provider sends the delivery again.
+    for (const row of db.table("leads")) row.created_at = secondsAgo(120);
+    const retry = await postWebhook(wordpressRoute, body);
+    assert.equal(retry.status, 200);
+    assert.deepEqual(await retry.json(), { ok: true });
+    assert.equal(taken(), 1);
+  });
+
+  it("still does the work once when two copies arrive at the same moment", async () => {
+    // What the claim is for, and what giving it back must not undo.
+    const answers = await Promise.all(
+      [postWebhook(wordpressRoute, body), postWebhook(wordpressRoute, body)].map(async (r) =>
+        (await r).json(),
+      ),
+    );
+    assert.equal(answers.filter((a) => a.duplicate === true).length, 1);
+    assert.equal(taken(), 1);
+    assert.equal(db.table("leads").length, 1);
+  });
+
+  it("does not take a delivery in when it cannot be remembered", async () => {
+    // A database error is not "go ahead": without the claim nothing stops the
+    // same delivery being taken in twice, so the sender is asked to try again.
+    db.fail("webhook_dedup:insert", { code: "57014", message: "statement timeout" });
+    const { response, lines } = await logged(() => postWebhook(wordpressRoute, body));
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get("retry-after"), /^\d+$/);
+    assert.equal(db.table("leads").length, 0);
+    assert.equal(taken(), 0);
+    assert.ok(lines.length > 0, "the failure is logged, not silent");
+
+    db.recover("webhook_dedup:insert");
+    const retry = await postWebhook(wordpressRoute, body);
+    assert.deepEqual(await retry.json(), { ok: true });
+    assert.equal(db.table("leads").length, 1);
+  });
+
+  it("says so when a claim cannot be given back", async () => {
+    // The live database may refuse the delete. That must be visible in the
+    // logs, and the answer must still be the failure it was.
+    db.fail("leads:upsert", { message: "connection reset" });
+    db.fail("webhook_dedup:delete", { code: "42501", message: "permission denied" });
+    const { response, lines } = await logged(() => postWebhook(wordpressRoute, body));
+    assert.equal(response.status, 500);
+    assert.ok(
+      lines.some((line) => /could not give back/i.test(line)),
+      `the stuck claim is logged: ${lines.join(" | ")}`,
+    );
+  });
+
+  it("refuses a delivery with no email address as invalid, every time", async () => {
+    // It can never be saved, so it is not a failure to retry and not a repeat:
+    // it used to be answered 500 and then, on the retry, "duplicate".
+    const nameless = JSON.stringify({ name: "No Email", phone: "+971500000001" });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await postWebhook(customRoute, nameless);
+      assert.equal(response.status, 400, `attempt ${attempt + 1}`);
+      assert.match((await response.json()).error, /email address/i);
+    }
+    assert.equal(db.table("webhook_dedup").length, 0, "nothing was claimed");
+    assert.equal(db.table("leads").length, 0);
   });
 });
 

@@ -129,41 +129,68 @@ export function json(body: unknown, status = 200, headers: Record<string, string
 }
 
 /**
- * The checks that come after "is this signature valid?" and before the lead is
- * written. A signature proves a body was produced by someone holding the
- * secret; it does not prove this is the first time that body has arrived, so a
- * captured request could be sent again and again. Each delivery is therefore
- * remembered once, and a site cannot write leads without limit.
+ * Everything that happens to a platform lead once its signature has been
+ * checked and its body parsed, and the answer the sender gets.
+ *
+ * A signature proves a body was produced by someone holding the secret; it
+ * does not prove this is the first time that body has arrived, so a captured
+ * request could be sent again and again. Each delivery is therefore claimed
+ * before it is worked on, and a site cannot write leads without limit.
+ *
+ * The claim used to be kept whatever happened next. When the site was then
+ * told to slow down, or the lead could not be saved, the sender's retry was
+ * answered "duplicate" and the lead was lost. The claim is now given back on
+ * every way out that did not save the lead. This lives in one place, rather
+ * than in each route, so that no route can keep a claim it did not honour.
  */
-export async function acceptPlatformEvent(args: {
+export async function receivePlatformLead(args: {
   site: LeadSite;
   platform: string;
   rawBody: string;
-  request: Request;
-}): Promise<{ ok: true } | { ok: false; response: Response }> {
-  const { webhookEventId, firstTimeSeen, leadIntakeAllowed } =
+  payload: SiteLeadPayload;
+}): Promise<Response> {
+  // A lead with no email address can never be saved. That is neither a failure
+  // worth retrying nor a repeat, so it is refused before anything is claimed.
+  if (!args.payload.email) {
+    return json({ error: "A lead needs an email address" }, 400);
+  }
+
+  const { webhookEventId, claimDelivery, releaseDelivery, leadIntakeAllowed } =
     await import("@/lib/public-limits.server");
-
+  const source = `site:${args.platform}:${args.site.id}`;
   const eventId = webhookEventId(args.rawBody);
-  if (!(await firstTimeSeen(`site:${args.platform}:${args.site.id}`, eventId))) {
+
+  const claim = await claimDelivery(source, eventId);
+  if (claim === "duplicate") {
     // Answer 200 so the provider stops retrying, but do the work only once.
-    return { ok: false, response: json({ ok: true, duplicate: true }) };
+    return json({ ok: true, duplicate: true });
   }
-
-  if (args.site.tenant_id) {
-    const limit = await leadIntakeAllowed({
-      tenantId: args.site.tenant_id,
-      siteId: args.site.id,
+  if (claim === "unavailable") {
+    return json({ error: "Could not record this delivery. Please send it again shortly." }, 503, {
+      "retry-after": "30",
     });
-    if (!limit.ok) {
-      return {
-        ok: false,
-        response: json({ error: limit.error }, 429, {
-          "retry-after": String(limit.retryAfterSeconds),
-        }),
-      };
-    }
   }
 
-  return { ok: true };
+  let saved = false;
+  try {
+    if (args.site.tenant_id) {
+      const limit = await leadIntakeAllowed({
+        tenantId: args.site.tenant_id,
+        siteId: args.site.id,
+      });
+      if (!limit.ok) {
+        return json({ error: limit.error }, 429, {
+          "retry-after": String(limit.retryAfterSeconds),
+        });
+      }
+    }
+    await ingestPlatformLead(args.site, args.platform, args.payload);
+    saved = true;
+    return json({ ok: true });
+  } catch (e) {
+    console.error(`[webhook:${args.platform}]`, e);
+    return json({ error: "Could not process lead" }, 500);
+  } finally {
+    if (!saved) await releaseDelivery(source, eventId);
+  }
 }

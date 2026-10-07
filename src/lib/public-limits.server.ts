@@ -128,18 +128,52 @@ export function webhookEventId(rawBody: string): string {
 }
 
 /**
- * Records a delivery and says whether it is the first time we have seen it.
- * The unique primary key on (event_source, event_id) is what makes this safe
- * when two copies of the same delivery arrive at the same moment.
+ * What happened when a delivery asked to be the one that does the work:
+ * "claimed" (it is, and nobody else will be), "duplicate" (somebody already
+ * is, or already did), or "unavailable" (the database could not say).
  */
-export async function firstTimeSeen(source: string, eventId: string): Promise<boolean> {
+export type DeliveryClaim = "claimed" | "duplicate" | "unavailable";
+
+/**
+ * Claims a delivery. The unique primary key on (event_source, event_id) is
+ * what makes this safe when two copies of the same delivery arrive at the same
+ * moment: only one insert can succeed.
+ *
+ * A claim is a promise to do the work, not a record that it was done. Whoever
+ * holds one must call releaseDelivery if the work does not finish, or the
+ * sender's retry is answered "duplicate" for something that never happened.
+ */
+export async function claimDelivery(source: string, eventId: string): Promise<DeliveryClaim> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { error } = await supabaseAdmin
     .from("webhook_dedup")
     .insert({ event_source: source, event_id: eventId });
-  if (!error) return true;
-  if (error.code === "23505") return false;
-  // Any other failure must not drop a real lead: carry on and accept it.
+  if (!error) return "claimed";
+  if (error.code === "23505") return "duplicate";
+  // Any other failure used to be read as "first time, go ahead". Without the
+  // claim nothing stops the same delivery being taken in twice, so the caller
+  // is told the truth and the sender is asked to send it again.
   console.error("[limits] could not record webhook delivery", source, error.code ?? "");
-  return true;
+  return "unavailable";
+}
+
+/**
+ * Gives a claim back when the work it guarded did not finish, so that the
+ * sender's retry can do that work instead of being told it is a repeat.
+ * Returns false when the claim could not be removed; it is then still held.
+ */
+export async function releaseDelivery(source: string, eventId: string): Promise<boolean> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await supabaseAdmin
+    .from("webhook_dedup")
+    .delete()
+    .eq("event_source", source)
+    .eq("event_id", eventId);
+  if (!error) return true;
+  console.error(
+    "[limits] could not give back a webhook delivery claim: a retry of this delivery will be answered as a repeat",
+    source,
+    error.code ?? "",
+  );
+  return false;
 }
