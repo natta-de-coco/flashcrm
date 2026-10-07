@@ -69,3 +69,5 @@ jobs:
         run: node supabase/verify/verify-sql-security-guards.mjs
       - name: Broadcast evidence and opt-out list permissions
         run: node supabase/verify/verify-broadcast-recipients.mjs
+      - name: Message delivery evidence columns and tenant isolation
+        run: node supabase/verify/verify-message-evidence.mjs

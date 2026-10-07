@@ -5,6 +5,8 @@ import { openSecret } from "@/lib/secret-box.server";
 import {
   readSendResponse,
   WA_UNCONFIRMED_TEXT,
+  type MessageEvidence,
+  type MessageMedia,
   type WaMessageStatus,
   type WaSendOutcome,
 } from "@/lib/wa-delivery";
@@ -498,6 +500,8 @@ type IngestArgs = {
   text: string;
   waMessageId?: string | null;
   waNumberId?: string | null;
+  /** What kind of attachment the message carried, when it carried one. */
+  media?: MessageMedia | null;
 };
 
 /**
@@ -508,7 +512,7 @@ type IngestArgs = {
  * phone number used to collide into the same contact/conversation/history).
  */
 export async function ingestInboundMessage(args: IngestArgs) {
-  const { tenantId, channel, phone, sessionId, name, text, waMessageId, waNumberId } = args;
+  const { tenantId, channel, phone, sessionId, name, text, waMessageId, waNumberId, media } = args;
   if (!tenantId) throw new Error("ingestInboundMessage: tenantId is required");
 
   // Meta redelivers a webhook it thinks was not received. A WhatsApp message
@@ -677,7 +681,11 @@ export async function ingestInboundMessage(args: IngestArgs) {
   }
 
   // 3. Inbound message
+  // The row is named here, so what else is known about it can be recorded
+  // without reading it back.
+  const inboundId = crypto.randomUUID();
   const { error: insertError } = await supabaseAdmin.from("messages").insert({
+    id: inboundId,
     conversation_id: conversation.id,
     direction: "inbound",
     sender: "contact",
@@ -693,6 +701,13 @@ export async function ingestInboundMessage(args: IngestArgs) {
     // Never answer a message that was not saved.
     throw new Error(`Could not store the inbound message: ${insertError.message}`);
   }
+  // Which door it came in by, and what it carried. A website visitor's message
+  // and a WhatsApp message look the same in a thread; they are not the same
+  // kind of evidence.
+  await recordMessageEvidence(tenantId, inboundId, {
+    origin: channel === "whatsapp" ? "webhook" : "widget",
+    ...(media ? { media } : {}),
+  });
 
   // Atomic increment — a read-then-write here would drop a count under
   // concurrent inbound messages on a busy conversation.
@@ -717,13 +732,18 @@ export async function ingestInboundMessage(args: IngestArgs) {
   // whether it was created just now, because the widget may only fill in
   // details for a contact its own chat created.
   const conv = conversation;
-  const result = (reply: string | null, replyMessageId: string | null) => ({
-    conversationId: conv.id,
-    reply,
-    replyMessageId,
-    contactId,
-    contactCreated,
-  });
+  const result = async (reply: string | null, replyMessageId: string | null) => {
+    if (replyMessageId) {
+      // Written by the assistant, not typed by a person. On the website the
+      // visitor has it the moment this request returns; on WhatsApp the caller
+      // records what Meta says.
+      await recordMessageEvidence(tenantId, replyMessageId, {
+        origin: "assistant",
+        ...(channel === "web" ? { sent_at: new Date().toISOString() } : {}),
+      });
+    }
+    return { conversationId: conv.id, reply, replyMessageId, contactId, contactCreated };
+  };
 
   // 4. Bot reply / handoff
   //
@@ -848,6 +868,39 @@ export async function storeOutbound(
     })
     .eq("id", conversationId);
   return data.id;
+}
+
+/** When the evidence columns were last found missing; they are not tried again for a while. */
+export const evidenceProbe = { unavailableUntil: 0 };
+
+/**
+ * Adds what is known about a message beyond its status: where it came from,
+ * when it was sent, delivered or read, why it was refused, what it carried.
+ *
+ * This is deliberately a second, separate write, and deliberately not fatal.
+ * The status of a message is written first, by its own checked statement, and
+ * a send or a receipt must not fail because a detail about it could not be
+ * kept. The columns also arrive with a migration that is applied separately
+ * from the code: until it is, the database answers "no such column", which is
+ * expected, is remembered, and is not asked again for ten minutes.
+ */
+export async function recordMessageEvidence(
+  tenantId: string,
+  messageId: string,
+  evidence: MessageEvidence,
+): Promise<void> {
+  if (Object.keys(evidence).length === 0 || Date.now() < evidenceProbe.unavailableUntil) return;
+  const { error } = await supabaseAdmin
+    .from("messages")
+    .update(evidence as never)
+    .eq("id", messageId)
+    .eq("tenant_id", tenantId);
+  if (!error) return;
+  if (error.code === "PGRST204" || error.code === "42703") {
+    evidenceProbe.unavailableUntil = Date.now() + 10 * 60 * 1000;
+    return;
+  }
+  console.error("[whatsapp] could not record delivery evidence", error.code ?? "");
 }
 
 /**

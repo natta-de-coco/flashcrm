@@ -99,7 +99,10 @@ export function createDb() {
       };
     }
     then(resolve, reject) {
-      const fault = state.faults[`${this.table}:${this.mode}`];
+      // A fault can be a function of the query, to refuse some statements on
+      // a table and not others (one write of several, one column of many).
+      const declared = state.faults[`${this.table}:${this.mode}`];
+      const fault = typeof declared === "function" ? declared(this) : declared;
       if (fault) {
         const error = typeof fault === "string" ? { message: fault } : fault;
         return Promise.resolve({ data: null, error, count: null }).then(resolve, reject);

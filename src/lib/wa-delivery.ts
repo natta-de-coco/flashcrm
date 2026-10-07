@@ -282,3 +282,101 @@ export function resolveRecipientNumber(
   }
   return { ok: true, digits, international: `+${digits}` };
 }
+
+// ── What is kept about a message beyond its status ─────────────────────────
+
+/** Where a message row came from. Matches the check on messages.origin. */
+export const MESSAGE_ORIGINS = [
+  "inbox",
+  "template",
+  "document",
+  "assistant",
+  "webhook",
+  "widget",
+  "import",
+  "system",
+] as const;
+export type MessageOrigin = (typeof MESSAGE_ORIGINS)[number];
+
+/** An attachment's metadata. Never the file, and never a URL to it. */
+export type MessageMedia = {
+  kind: "image" | "video" | "audio" | "document" | "sticker";
+  id?: string;
+  mime_type?: string;
+  filename?: string;
+  sha256?: string;
+};
+
+/** Evidence about a message. Every field is optional, and only ever added to. */
+export type MessageEvidence = {
+  origin?: MessageOrigin;
+  failure_reason?: WaFailureReason | null;
+  failure_code?: number | null;
+  sent_at?: string;
+  delivered_at?: string;
+  read_at?: string;
+  failed_at?: string;
+  media?: MessageMedia;
+};
+
+/** What the provider's answer to a send adds to the record. */
+export function evidenceOfSend(outcome: WaSendOutcome, at: string): MessageEvidence {
+  if (outcome.state === "accepted") return { sent_at: at };
+  if (outcome.state === "rejected") {
+    return { failed_at: at, failure_reason: outcome.reason, failure_code: outcome.providerCode };
+  }
+  // No answer: there is no time it was sent at, and no failure to record.
+  return {};
+}
+
+/** What a delivery receipt adds to the record. */
+export function evidenceOfReceipt(
+  incoming: WaProviderStatus,
+  at: string,
+  errorCode?: number | null,
+): MessageEvidence {
+  if (incoming === "sent") return { sent_at: at };
+  if (incoming === "delivered") return { delivered_at: at };
+  if (incoming === "read") return { read_at: at };
+  return {
+    failed_at: at,
+    failure_reason: failureReasonForCode(errorCode),
+    failure_code: errorCode ?? null,
+  };
+}
+
+/**
+ * The time on a receipt. Meta stamps it in unix seconds; that is what is
+ * recorded, because a receipt can reach us long after the event. A value that
+ * is missing, unreadable or nowhere near now is not put on record as a time:
+ * the moment it arrived is used instead.
+ */
+export function receiptTime(raw: string | number | null | undefined, now = Date.now()): string {
+  const ms = Number(raw) * 1000;
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const believable = raw != null && raw !== "" && Number.isFinite(ms) && Math.abs(ms - now) < week;
+  return new Date(believable ? ms : now).toISOString();
+}
+
+/** The attachment an inbound message carried, as metadata only. */
+export function mediaOf(message: {
+  image?: { id?: string; mime_type?: string; sha256?: string } | undefined;
+  video?: { id?: string; mime_type?: string; sha256?: string } | undefined;
+  audio?: { id?: string; mime_type?: string; sha256?: string } | undefined;
+  document?: { id?: string; mime_type?: string; sha256?: string; filename?: string } | undefined;
+  sticker?: { id?: string; mime_type?: string; sha256?: string } | undefined;
+}): MessageMedia | null {
+  for (const kind of ["image", "video", "audio", "document", "sticker"] as const) {
+    const part = message[kind];
+    if (!part) continue;
+    const filename = kind === "document" ? message.document?.filename : undefined;
+    return {
+      kind,
+      ...(part.id ? { id: part.id } : {}),
+      ...(part.mime_type ? { mime_type: part.mime_type } : {}),
+      ...(filename ? { filename: filename.slice(0, 255) } : {}),
+      ...(part.sha256 ? { sha256: part.sha256 } : {}),
+    };
+  }
+  return null;
+}

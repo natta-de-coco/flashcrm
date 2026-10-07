@@ -39,7 +39,7 @@ await build({
       `export { sendConversationMessage, sendTemplate, describeSendContext } from './src/lib/wa-send.server';`,
       `export { processWaPayload } from './src/lib/monitoring.server';`,
       `export { checkSendPermission } from './src/lib/safety.server';`,
-      `export { generateBotReply } from './src/lib/wa.server';`,
+      `export { generateBotReply, evidenceProbe } from './src/lib/wa.server';`,
       `export * from './src/lib/send-reference';`,
     ].join("\n"),
     resolveDir: process.cwd(),

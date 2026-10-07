@@ -55,4 +55,13 @@ export type Message = {
   detected_language: string | null;
   status: string;
   created_at: string;
+  // Delivery evidence. Absent until the columns exist, and null on any message
+  // recorded before they did.
+  origin?: string | null;
+  failure_reason?: string | null;
+  failure_code?: number | null;
+  sent_at?: string | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
+  failed_at?: string | null;
 };

@@ -1180,7 +1180,11 @@ function InboxPage() {
                           })}
                         </span>
                         {m.direction === "outbound" && (
-                          <DeliveryState status={m.status} createdAt={m.created_at} />
+                          <DeliveryState
+                            status={m.status}
+                            createdAt={m.created_at}
+                            failureReason={m.failure_reason}
+                          />
                         )}
                       </div>
                     </div>
@@ -1290,9 +1294,12 @@ const SENDING_GOES_STALE_MS = 2 * 60 * 1000;
 function DeliveryState({
   status,
   createdAt,
+  failureReason,
 }: {
   status: string | null | undefined;
   createdAt?: string | null;
+  /** Why it was not delivered, when that was recorded. */
+  failureReason?: string | null | undefined;
 }) {
   const i18n = useI18n();
   // Look again at the moment a "sending" message goes stale. The label was
@@ -1327,9 +1334,16 @@ function DeliveryState({
     return <span className="text-[10px] text-muted-foreground">{i18n.t("inbox.sending")}</span>;
   }
   if (status === "failed") {
+    // The reason stays with the message. It used to be shown once, in a toast,
+    // to whoever happened to be sending.
+    const why = failureReason ? i18n.tx(`inbox.sendFailure.${failureReason}`, "") : "";
     return (
-      <span className="flex items-center gap-1 text-[10px] font-semibold text-destructive">
-        <AlertTriangle className="size-3" /> {i18n.t("inbox.notDelivered")}
+      <span
+        className="flex items-center gap-1 text-[10px] font-semibold text-destructive"
+        title={why || undefined}
+      >
+        <AlertTriangle className="size-3 shrink-0" /> {i18n.t("inbox.notDelivered")}
+        {why && <span className="font-normal">· {why}</span>}
       </span>
     );
   }

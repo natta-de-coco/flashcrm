@@ -13,6 +13,11 @@ import { createDb, secondsAgo } from "./support/db-double.mjs";
 
 import {
   describeSendContext,
+  evidenceOfReceipt,
+  evidenceOfSend,
+  evidenceProbe,
+  mediaOf,
+  receiptTime,
   failureReasonForCode,
   generateBotReply,
   mayAdvance,
@@ -143,6 +148,7 @@ beforeEach(() => {
   };
   db.reset(rows);
   declareKeys();
+  evidenceProbe.unavailableUntil = 0;
   globalThis.waSuite.audits = [];
   installProvider();
 });
@@ -1269,6 +1275,221 @@ describe("when the AI cannot answer", () => {
       assert.equal(botRows().length, 0);
     });
   }
+});
+
+describe("what is kept about a message, beyond its status", () => {
+  const EVIDENCE = ["origin", "failure_reason", "failure_code", "sent_at", "failed_at"];
+  /** Refuses any write that touches an evidence column, as a database without them does. */
+  const columnsMissing = (query) =>
+    query.patch && Object.keys(query.patch).some((k) => EVIDENCE.includes(k) || k.endsWith("_at"))
+      ? { code: "PGRST204", message: "Could not find the 'origin' column of 'messages'" }
+      : null;
+  const recent = (iso) => Math.abs(Date.now() - new Date(iso).getTime()) < 60_000;
+
+  it("records where an accepted reply came from and when Meta took it", async () => {
+    await send();
+    const [row] = outbound();
+    assert.equal(row.origin, "inbox");
+    assert.ok(recent(row.sent_at));
+    assert.equal(row.failure_reason, undefined);
+    assert.equal(row.failed_at, undefined);
+  });
+
+  it("keeps why a refused message was refused, on the message", async () => {
+    provider.next.push(refused(131026));
+    await send();
+    const [row] = outbound();
+    assert.equal(row.status, "failed");
+    assert.equal(row.failure_reason, "recipient_unreachable");
+    assert.equal(row.failure_code, 131026);
+    assert.ok(recent(row.failed_at));
+    assert.equal(row.sent_at, undefined, "a refused message was never sent");
+  });
+
+  it("claims no time for a send that got no answer", async () => {
+    provider.fail = new Error("timeout");
+    await send();
+    const [row] = outbound();
+    assert.equal(row.status, "unconfirmed");
+    assert.equal(row.origin, "inbox");
+    assert.equal(row.sent_at, undefined);
+    assert.equal(row.failed_at, undefined);
+  });
+
+  it("marks a template as a template and the assistant's reply as the assistant's", async () => {
+    await sendTemplate({
+      tenantId: A,
+      userId: "user-a",
+      templateId: "tpl-a",
+      conversationId: "conv-a",
+      variables: ["Sara"],
+    });
+    assert.equal(outbound()[0].origin, "template");
+
+    rows.tenant_bot_settings.push({
+      tenant_id: A,
+      enabled: true,
+      bot_name: "Flas",
+      greeting: "Hello!",
+      instructions: "We sell CCTV kits in Dubai and install on Saturdays.",
+      model: "default",
+      handoff_keywords: [],
+    });
+    rows.conversations[0].bot_enabled = true;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await processWaPayload(
+      inboundPayload("pn-a", {
+        id: "wamid.IN-EV",
+        from: "971501234567",
+        type: "text",
+        text: { body: "I want to talk to a human" },
+      }),
+    );
+    const reply = rows.messages.find((m) => m.sender === "bot");
+    assert.equal(reply.origin, "assistant");
+    assert.ok(recent(reply.sent_at));
+  });
+
+  it("records an inbound message as arriving by webhook, with what it carried", async () => {
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await processWaPayload(
+      inboundPayload("pn-a", {
+        id: "wamid.IN-DOC",
+        from: "971501234567",
+        type: "document",
+        document: {
+          id: "media-77",
+          mime_type: "application/pdf",
+          filename: "order.pdf",
+          sha256: "abc123",
+          caption: "My order",
+        },
+      }),
+    );
+    const row = rows.messages.find((m) => m.wa_message_id === "wamid.IN-DOC");
+    assert.equal(row.origin, "webhook");
+    assert.deepEqual(row.media, {
+      kind: "document",
+      id: "media-77",
+      mime_type: "application/pdf",
+      filename: "order.pdf",
+      sha256: "abc123",
+    });
+    // Metadata only: no link to the file is stored.
+    assert.ok(!JSON.stringify(row.media).includes("http"));
+  });
+
+  it("stamps a receipt with Meta's own time, on the message it moved", async () => {
+    await send();
+    const [row] = outbound();
+    const deliveredAt = Math.floor(Date.now() / 1000) - 90;
+    await processWaPayload(
+      statusPayload("pn-a", {
+        id: row.wa_message_id,
+        status: "delivered",
+        timestamp: String(deliveredAt),
+      }),
+    );
+    assert.equal(row.delivered_at, new Date(deliveredAt * 1000).toISOString());
+    await processWaPayload(statusPayload("pn-a", { id: row.wa_message_id, status: "read" }));
+    assert.ok(recent(row.read_at), "no timestamp on the receipt: the time it arrived");
+    // A copy of the first receipt, arriving late, rewrites nothing.
+    await processWaPayload(
+      statusPayload("pn-a", { id: row.wa_message_id, status: "delivered", timestamp: "1" }),
+    );
+    assert.equal(row.delivered_at, new Date(deliveredAt * 1000).toISOString());
+  });
+
+  it("keeps the reason from a failure receipt", async () => {
+    await send();
+    const [row] = outbound();
+    await processWaPayload(
+      statusPayload("pn-a", {
+        id: row.wa_message_id,
+        status: "failed",
+        errors: [{ code: 131047 }],
+      }),
+    );
+    assert.equal(row.status, "failed");
+    assert.equal(row.failure_reason, "window_closed");
+    assert.equal(row.failure_code, 131047);
+    assert.ok(recent(row.failed_at));
+  });
+
+  it("works exactly as before on a database that does not have the columns yet", async () => {
+    db.fail("messages:update", columnsMissing);
+    const result = await send({ clientRef: REF_1 });
+    assert.equal(result.state, "accepted", "the send is not failed by a missing detail");
+    const [row] = outbound();
+    assert.equal(row.status, "sent");
+    assert.equal(row.wa_message_id, result.waId);
+    assert.equal(row.origin, undefined);
+
+    await processWaPayload(statusPayload("pn-a", { id: row.wa_message_id, status: "delivered" }));
+    assert.equal(row.status, "delivered", "receipts still move the status");
+    assert.equal(row.delivered_at, undefined);
+  });
+
+  it("stops asking a database that has said it has no such column", async () => {
+    let attempts = 0;
+    db.fail("messages:update", (query) => {
+      const refusal = columnsMissing(query);
+      if (refusal) attempts += 1;
+      return refusal;
+    });
+    await send();
+    await send();
+    await send();
+    assert.equal(attempts, 1, "asked once, then left alone for a while");
+    assert.equal(outbound().length, 3);
+    assert.ok(outbound().every((m) => m.status === "sent"));
+  });
+
+  it("does not fail a send whose detail could not be kept for another reason", async () => {
+    db.fail("messages:update", (query) =>
+      query.patch?.origin ? { code: "57014", message: "statement timeout" } : null,
+    );
+    const result = await send();
+    assert.equal(result.state, "accepted");
+    assert.equal(outbound()[0].status, "sent");
+  });
+
+  it("reads Meta's receipt time, and distrusts one that cannot be right", () => {
+    const now = Date.UTC(2026, 9, 6, 12, 0, 0);
+    assert.equal(receiptTime("1791288000", now), new Date(1791288000 * 1000).toISOString());
+    for (const bad of [undefined, null, "", "soon", "1", "99999999999999"]) {
+      assert.equal(receiptTime(bad, now), new Date(now).toISOString(), String(bad));
+    }
+  });
+
+  it("says nothing it does not know", () => {
+    const at = "2026-10-06T12:00:00.000Z";
+    assert.deepEqual(evidenceOfSend({ state: "accepted", waMessageId: "w" }, at), { sent_at: at });
+    assert.deepEqual(evidenceOfSend({ state: "unconfirmed", message: "x" }, at), {});
+    assert.deepEqual(evidenceOfReceipt("read", at), { read_at: at });
+    assert.deepEqual(evidenceOfReceipt("failed", at, 190), {
+      failed_at: at,
+      failure_reason: "credentials",
+      failure_code: 190,
+    });
+    assert.equal(mediaOf({ text: { body: "hi" } }), null);
+    assert.deepEqual(mediaOf({ image: { id: "m1", mime_type: "image/jpeg" } }), {
+      kind: "image",
+      id: "m1",
+      mime_type: "image/jpeg",
+    });
+  });
+
+  it("writes evidence only inside the message's own workspace", () => {
+    const source = readFileSync(new URL("../src/lib/wa.server.ts", import.meta.url), "utf8")
+      .split("\r\n")
+      .join("\n");
+    const writer = source.slice(
+      source.indexOf("export async function recordMessageEvidence("),
+      source.indexOf("export async function completeOutboundDelivery("),
+    );
+    assert.match(writer, /\.eq\("id", messageId\)\s*\n\s*\.eq\("tenant_id", tenantId\);/);
+  });
 });
 
 describe("nothing reaches a customer around the pipeline", () => {
