@@ -85,6 +85,7 @@ beforeEach(() => {
   provider = { calls: [] };
   globalThis.fetch = async (url, init) => {
     provider.calls.push({ url: String(url), body: JSON.parse(init.body) });
+    if (provider.fail) throw new Error("socket hang up");
     const body = { messages: [{ id: `wamid.${provider.calls.length}` }] };
     return { ok: true, status: 200, text: async () => JSON.stringify(body) };
   };
@@ -147,6 +148,36 @@ describe("inside the customer's 24-hour window", () => {
     assert.equal(provider.calls.length, 1);
     assert.equal(outbound().length, 1);
     assert.deepEqual(results.map((r) => r.state).sort(), ["accepted", "duplicate"]);
+  });
+
+  it("is not called sent on the strength of a repeat", async () => {
+    // The answer to the first click was lost, so the same send arrives again.
+    provider.fail = true;
+    const first = await sendInvoice({ clientRef: REF });
+    assert.equal(first.state, "unconfirmed");
+    provider.fail = false;
+    const again = await sendInvoice({ clientRef: REF });
+    assert.equal(again.repeated, true);
+    assert.equal(again.state, "unconfirmed", "an unanswered invoice was reported as sent");
+    assert.equal(again.ok, false);
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("is not called sent while the first copy is still on its way", async () => {
+    await sendInvoice({ clientRef: REF });
+    outbound()[0].status = "sending";
+    outbound()[0].created_at = secondsAgo(3);
+    const during = await sendInvoice({ clientRef: REF });
+    assert.equal(during.state, "unconfirmed");
+    assert.equal(during.via, "text");
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("is reported as sent by a repeat only when WhatsApp accepted the first copy", async () => {
+    await sendInvoice({ clientRef: REF });
+    const again = await sendInvoice({ clientRef: REF });
+    assert.deepEqual([again.state, again.ok, again.repeated], ["duplicate", true, true]);
+    assert.equal(provider.calls.length, 1);
   });
 
   it("is stopped by the same things that stop a reply", async () => {

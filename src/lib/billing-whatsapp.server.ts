@@ -15,6 +15,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { resolveContactByPhone } from "@/lib/contact-resolve.server";
 import { checkSendPermission, type SendBlock, type SendCheck } from "@/lib/safety.server";
+import { WA_UNCONFIRMED_TEXT } from "@/lib/wa-delivery";
 import { sendConversationMessage, sendTemplate, type SendResult } from "@/lib/wa-send.server";
 
 /**
@@ -60,6 +61,26 @@ function notSent(blocks: SendBlock[], gate: SendCheck | null = null): DocumentSe
     rendered: null,
     repeated: false,
   };
+}
+
+/**
+ * What a document send reports. A document is "sent" only when WhatsApp
+ * accepted the message. A repeat that finds the first copy still on its way
+ * does not know that yet -- so for a document it is "not confirmed", never
+ * "sent", and the invoice is not marked sent on the strength of it.
+ */
+function documentOutcome(sent: SendResult, via: "text" | "template"): DocumentSendResult {
+  if (sent.state === "blocked") return { ...sent, via: null };
+  if (sent.state === "duplicate" && !sent.ok) {
+    return {
+      ...sent,
+      state: "unconfirmed",
+      failureReason: "unconfirmed",
+      deliveryError: WA_UNCONFIRMED_TEXT,
+      via,
+    };
+  }
+  return { ...sent, via };
 }
 
 /** The numbered placeholders a template body uses, e.g. [1, 2, 3, 4]. */
@@ -166,7 +187,7 @@ export async function sendDocumentOverWhatsApp(args: {
         body: args.text,
         clientRef: clientRef ?? null,
       });
-      return { ...sent, via: sent.state === "blocked" ? null : "text" };
+      return documentOutcome(sent, "text");
     }
   }
 
@@ -191,5 +212,5 @@ export async function sendDocumentOverWhatsApp(args: {
     variables: args.templateVariables,
     clientRef: clientRef ?? null,
   });
-  return { ...sent, via: sent.state === "blocked" ? null : "template" };
+  return documentOutcome(sent, "template");
 }

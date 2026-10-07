@@ -1900,6 +1900,52 @@ describe("the assistant answers only where the workspace has opted in", () => {
     assert.equal(byPerson.bot_enabled, false);
   });
 
+  it("does not take a failed settings read for a workspace that has not opted in", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    // One blip: the first read fails, the second works.
+    let reads = 0;
+    db.fail("tenant_bot_settings:read", () => (++reads === 1 ? STATEMENT_TIMEOUT : null));
+    await firstMessage();
+    assert.equal(
+      opened().bot_enabled,
+      true,
+      "an opted-in workspace's new chat was created with the assistant off",
+    );
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("opens no conversation while the settings cannot be read, and opens it correctly on retry", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    db.fail("tenant_bot_settings:read", STATEMENT_TIMEOUT);
+    await assert.rejects(firstMessage(), /Could not read this workspace's assistant settings/);
+    assert.equal(opened(), undefined, "a conversation was created with a guessed setting");
+    assert.equal(rows.messages.filter((m) => m.wa_message_id === "wamid.NEW-1").length, 0);
+    assert.equal(provider.calls.length, 0);
+
+    db.recover("tenant_bot_settings:read");
+    await firstMessage();
+    assert.equal(opened().bot_enabled, true);
+    assert.equal(rows.messages.filter((m) => m.wa_message_id === "wamid.NEW-1").length, 1);
+    assert.equal(provider.calls.length, 1, "answered once, on the retry");
+  });
+
+  it("keeps the customer's message when the settings cannot be read for an existing conversation", async () => {
+    // Nothing permanent depends on the settings here, so nothing is refused:
+    // the message is saved and the assistant simply does not answer this one.
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    rows.conversations[0].bot_enabled = true;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    db.fail("tenant_bot_settings:read", STATEMENT_TIMEOUT);
+    await firstMessage("wamid.KEPT", "971501234567");
+    assert.equal(rows.messages.filter((m) => m.wa_message_id === "wamid.KEPT").length, 1);
+    assert.equal(
+      rows.conversations[0].bot_enabled,
+      true,
+      "the conversation was switched off by a failed read",
+    );
+    assert.equal(provider.calls.length, 0);
+  });
+
   it("leaves the choice to the database on one that has no opt-in column yet", async () => {
     // Deployed before the migration: there is no policy to read, so nothing
     // is said and the column's own default applies, exactly as before.
@@ -1938,8 +1984,7 @@ describe("the assistant answers only where the workspace has opted in", () => {
       assert.equal(inserts.length, 3, "a conversation is created somewhere new");
       for (const insert of inserts) {
         assert.ok(
-          insert.includes("...newChatAutomation(await botSettings())") ||
-            insert.includes("bot_enabled: false"),
+          insert.includes("...(await newChatPolicy())") || insert.includes("bot_enabled: false"),
           "a conversation is created without saying whether the assistant answers it",
         );
       }

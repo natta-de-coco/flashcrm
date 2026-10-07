@@ -68,14 +68,26 @@ export function newChatAutomation(settings: BotSettings | null): { bot_enabled?:
   return { bot_enabled: settings.enabled === true && settings.auto_enroll_new_chats === true };
 }
 
-export async function getBotSettings(tenantId: string): Promise<BotSettings | null> {
-  if (!tenantId) return null;
+/**
+ * The workspace's assistant settings, or the fact that they could not be read.
+ * "There are none" and "they could not be read" are different answers, and
+ * only the first may be acted on as a choice.
+ */
+async function readBotSettings(
+  tenantId: string,
+): Promise<{ ok: true; settings: BotSettings | null } | { ok: false }> {
+  if (!tenantId) return { ok: true, settings: null };
   const { data, error } = await supabaseAdmin
     .from("tenant_bot_settings")
     .select("*")
     .eq("tenant_id", tenantId)
     .maybeSingle();
-  return error ? null : (data as BotSettings | null);
+  return error ? { ok: false } : { ok: true, settings: data as BotSettings | null };
+}
+
+export async function getBotSettings(tenantId: string): Promise<BotSettings | null> {
+  const read = await readBotSettings(tenantId);
+  return read.ok ? read.settings : null;
 }
 
 export type WaCredentials = { token: string; phoneNumberId: string };
@@ -534,9 +546,28 @@ export async function ingestInboundMessage(args: IngestArgs) {
 
   // Read once. It decides whether a new conversation is answered by the
   // assistant, and later whether this message is.
-  let settingsRead: BotSettings | null | undefined;
-  const botSettings = async () =>
-    settingsRead === undefined ? (settingsRead = await getBotSettings(tenantId)) : settingsRead;
+  let settingsRead: Awaited<ReturnType<typeof readBotSettings>> | undefined;
+  const botSettings = async () => {
+    // A failed read is not kept: the next question asks again.
+    if (!settingsRead?.ok) settingsRead = await readBotSettings(tenantId);
+    return settingsRead;
+  };
+  // For a conversation about to be created. What is written here is permanent
+  // -- the assistant stays off in a conversation created off -- so a settings
+  // read that failed must not be taken for "this workspace has not opted in".
+  // It is asked once more, and if it still cannot be read the conversation is
+  // not created: the event fails, shows in Monitoring, and retrying it
+  // enrols the conversation correctly.
+  const newChatPolicy = async () => {
+    let read = await botSettings();
+    if (!read.ok) read = await botSettings();
+    if (!read.ok) {
+      throw new Error(
+        "Could not read this workspace's assistant settings, so the conversation was not opened. Retry this event.",
+      );
+    }
+    return newChatAutomation(read.settings);
+  };
   if (waMessageId) {
     const { data: seen } = await supabaseAdmin
       .from("messages")
@@ -634,7 +665,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
           channel: "web",
           web_session_id: sessionId,
           tenant_id: tenantId,
-          ...newChatAutomation(await botSettings()),
+          ...(await newChatPolicy()),
         })
         .select("id, bot_enabled")
         .single();
@@ -664,7 +695,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
           channel: "whatsapp",
           wa_number_id: waNumberId ?? null,
           tenant_id: tenantId,
-          ...newChatAutomation(await botSettings()),
+          ...(await newChatPolicy()),
         })
         .select("id, bot_enabled")
         .single();
@@ -759,7 +790,10 @@ export async function ingestInboundMessage(args: IngestArgs) {
   // handed to Meta by the caller: until that answer comes back it is only
   // "sending", and the caller records what Meta said.
   const replyStatus: WaMessageStatus = channel === "whatsapp" ? "sending" : "sent";
-  const settings = await botSettings();
+  // The message is saved by now. If the settings cannot be read, the
+  // assistant says nothing this time; it does not undo anything.
+  const settingsNow = await botSettings();
+  const settings = settingsNow.ok ? settingsNow.settings : null;
   if (!settings || !settings.enabled || !conv.bot_enabled || !botIsConfigured(settings)) {
     return result(null, null);
   }
