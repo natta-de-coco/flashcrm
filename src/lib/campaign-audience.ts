@@ -29,6 +29,13 @@ export type CampaignChannel = "email" | "whatsapp";
  * "the column is null" have to mean the same thing: no suppression, no address.
  */
 export type ConsentRow = {
+  /**
+   * `contacts.id`. What a contact's other addresses and the website leads made
+   * from it point back at, so they can be recognised as one person.
+   */
+  id?: string | null;
+  /** `leads.contact_id`: the contact the website form created from this lead, if any. */
+  contact_id?: string | null;
   email?: string | null;
   phone?: string | null;
   name?: string | null;
@@ -37,6 +44,19 @@ export type ConsentRow = {
   consent_at?: string | null;
   /** `leads` only. `contacts` has no such column, so undefined = not suppressed. */
   subscribed?: boolean | null;
+};
+
+/**
+ * One row of `contact_identities`: an address added to a contact on its card.
+ * Adding one, or making another primary, does not touch `contacts.email` or
+ * `contacts.phone`, so those columns alone are not everything a contact can be
+ * reached at.
+ */
+export type ContactIdentityRow = {
+  contact_id: string;
+  kind: string;
+  value: string;
+  is_primary?: boolean | null;
 };
 
 export type AudienceRecipient = {
@@ -93,52 +113,158 @@ export function channelAddress(row: ConsentRow, channel: CampaignChannel): strin
   return phone.length >= 6 ? phone : null;
 }
 
+/** Which kind of contact identity a channel is delivered to. */
+const IDENTITY_KIND: Record<CampaignChannel, string> = { email: "email", whatsapp: "phone" };
+
+type Member = {
+  origin: "contact" | "lead";
+  name: string | null;
+  optedIn: boolean;
+  /** Every address this record can be reached at on the channel, best first. */
+  addresses: string[];
+  /** Where this record sits in the union-find below. */
+  node: string;
+};
+
 /**
- * Turns raw rows from both tables into the single audience a campaign has.
+ * Turns raw rows from the tables into the single audience a campaign has.
+ *
+ * A *person* is what is counted, not a row. Several rows are one person when
+ * they share an address on the channel, when a lead points at the contact the
+ * website form made from it (`leads.contact_id`), or when they are the same
+ * contact seen through its other addresses (`identities`). Without that, one
+ * person with three numbers was three recipients, and a contact whose only
+ * address was added on the contact card was unreachable.
+ *
+ * Consent is read per record and is never borrowed across them: an address is a
+ * candidate for sending only if the record it belongs to is opted in. A
+ * contact's own addresses (its columns and its identities) all follow the
+ * contact's consent.
  *
  * `rowLimit` is the ceiling the caller queried with: when a table comes back
  * full, the result is flagged `truncated` so the UI can say "at least N"
- * instead of quietly under-reporting the list.
+ * instead of quietly under-reporting the list. `identityRowLimit` is the same
+ * for the identities, which are several per contact.
  */
 export function resolveCampaignAudience(input: {
   contacts?: ConsentRow[] | null;
   leads?: ConsentRow[] | null;
+  identities?: ContactIdentityRow[] | null;
   channel: CampaignChannel;
   rowLimit?: number;
+  identityRowLimit?: number;
 }): CampaignAudience {
-  const { channel, rowLimit } = input;
-  const seen = new Set<string>();
+  const { channel, rowLimit, identityRowLimit } = input;
+  const contacts = input.contacts ?? [];
+  const leads = input.leads ?? [];
+  const identities = input.identities ?? [];
+
+  const identitiesByContact = new Map<string, ContactIdentityRow[]>();
+  for (const identity of identities) {
+    if (identity.kind !== IDENTITY_KIND[channel]) continue;
+    const list = identitiesByContact.get(identity.contact_id) ?? [];
+    list.push(identity);
+    identitiesByContact.set(identity.contact_id, list);
+  }
+
+  const addressOf = (value: string): string | null =>
+    channelAddress(channel === "email" ? { email: value } : { phone: value }, channel);
+
+  const members: Member[] = [];
+  contacts.forEach((row, index) => {
+    const own = identitiesByContact.get(row.id ?? "") ?? [];
+    // The one marked primary is the one the contact card shows first, so it is
+    // the one a message goes to; the old column follows it, then the others.
+    const ordered = [
+      ...own.filter((identity) => identity.is_primary === true).map((i) => i.value),
+      channel === "email" ? (row.email ?? "") : (row.phone ?? ""),
+      ...own.filter((identity) => identity.is_primary !== true).map((i) => i.value),
+    ];
+    members.push({
+      origin: "contact",
+      name: row.name?.trim() || null,
+      optedIn: isOptedIn(row),
+      addresses: [...new Set(ordered.map(addressOf).filter((a): a is string => a !== null))],
+      node: row.id ? `contact:${row.id}` : `contact#${index}`,
+    });
+  });
+  leads.forEach((row, index) => {
+    const address = channelAddress(row, channel);
+    members.push({
+      origin: "lead",
+      name: row.name?.trim() || null,
+      optedIn: isOptedIn(row),
+      addresses: address ? [address] : [],
+      node: `lead#${index}`,
+    });
+  });
+
+  // Union-find: every record starts as itself and is joined to whatever it
+  // shares an address with, and to the contact a lead was made from.
+  const parent = new Map<string, string>();
+  const find = (key: string): string => {
+    let root = key;
+    for (
+      let next = parent.get(root);
+      next !== undefined && next !== root;
+      next = parent.get(root)
+    ) {
+      root = next;
+    }
+    for (let node = key; node !== root;) {
+      const next = parent.get(node) as string;
+      parent.set(node, root);
+      node = next;
+    }
+    return root;
+  };
+  const join = (a: string, b: string) => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent.set(rootB, rootA);
+  };
+  for (const member of members) {
+    for (const address of member.addresses) join(member.node, `address:${address}`);
+  }
+  leads.forEach((row, index) => {
+    if (row.contact_id) join(`lead#${index}`, `contact:${row.contact_id}`);
+  });
+
+  const people = new Map<string, Member[]>();
+  for (const member of members) {
+    const root = find(member.node);
+    const group = people.get(root);
+    if (group) group.push(member);
+    else people.set(root, [member]);
+  }
+
   const recipients: AudienceRecipient[] = [];
-  const unconsented = new Set<string>();
   let fromContacts = 0;
   let fromLeads = 0;
   let optedInUnreachable = 0;
+  let withoutConsent = 0;
 
-  const consider = (rows: ConsentRow[] | null | undefined, origin: "contact" | "lead") => {
-    for (const row of rows ?? []) {
-      const address = channelAddress(row, channel);
-      if (!isOptedIn(row)) {
-        // Tracked so the UI can explain *why* the audience is empty rather than
-        // leaving the user staring at a zero.
-        if (address) unconsented.add(address);
-        continue;
-      }
-      if (!address) {
-        optedInUnreachable += 1;
-        continue;
-      }
-      if (seen.has(address)) continue;
-      seen.add(address);
-      recipients.push({ address, name: row.name?.trim() || null, origin });
-      if (origin === "contact") fromContacts += 1;
+  for (const group of people.values()) {
+    // Contacts come first in `members`, so a person recorded in both tables is
+    // attributed to their contact record when that record can be reached.
+    const sendable = group.find((member) => member.optedIn && member.addresses.length > 0);
+    if (sendable) {
+      recipients.push({
+        address: sendable.addresses[0] as string,
+        name: sendable.name,
+        origin: sendable.origin,
+      });
+      if (sendable.origin === "contact") fromContacts += 1;
       else fromLeads += 1;
+    } else if (group.some((member) => member.optedIn)) {
+      // Consented, but there is nowhere on this channel to send to.
+      optedInUnreachable += 1;
+    } else if (group.some((member) => member.addresses.length > 0)) {
+      // Tracked so the UI can explain *why* the audience is empty rather than
+      // leaving the user staring at a zero.
+      withoutConsent += 1;
     }
-  };
-
-  // Contacts first: a person recorded in both tables (leads.contact_id links
-  // them) is one recipient, attributed to their contact record.
-  consider(input.contacts, "contact");
-  consider(input.leads, "lead");
+  }
 
   return {
     channel,
@@ -147,12 +273,10 @@ export function resolveCampaignAudience(input: {
     fromContacts,
     fromLeads,
     optedInUnreachable,
-    // Someone who consented on one table and not the other is still sendable,
-    // so they must not also be counted as missing consent.
-    withoutConsent: [...unconsented].filter((address) => !seen.has(address)).length,
+    withoutConsent,
     truncated:
-      rowLimit != null &&
-      ((input.contacts?.length ?? 0) >= rowLimit || (input.leads?.length ?? 0) >= rowLimit),
+      (rowLimit != null && (contacts.length >= rowLimit || leads.length >= rowLimit)) ||
+      (identityRowLimit != null && identities.length >= identityRowLimit),
   };
 }
 

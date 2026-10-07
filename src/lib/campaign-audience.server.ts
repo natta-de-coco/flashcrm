@@ -1,6 +1,7 @@
-// Server side of the campaign audience: reads both consent tables through the
-// caller's RLS client, then hands the rows to the pure resolver so the number
-// the user sees and the number the AI writer is told are the same number.
+// Server side of the campaign audience: reads the consent tables (and the
+// addresses kept beside them) through the caller's RLS client, then hands the
+// rows to the pure resolver so the number the user sees and the number the AI
+// writer is told are the same number.
 //
 // Defect H8 (QA, 26 Sep 2026): the writer's audience came from
 // `gatherLeadSummary` in flash-ai.server.ts, which reads `leads` only. A
@@ -13,6 +14,8 @@ import {
   resolveCampaignAudience,
   type CampaignAudience,
   type CampaignChannel,
+  type ConsentRow,
+  type ContactIdentityRow,
 } from "./campaign-audience";
 import { looksLikeRefusal, refusalSummary } from "./campaign-draft";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
@@ -21,32 +24,96 @@ import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server
 export const AUDIENCE_ROW_LIMIT = 2000;
 
 /**
+ * The same ceiling for `contact_identities`, which holds several rows per
+ * contact. Reaching it also sets `truncated`.
+ */
+export const AUDIENCE_IDENTITY_LIMIT = 10_000;
+
+/**
+ * Rows asked for per request. A request returns at most the project's "max
+ * rows" setting (1,000 by default) however large a `.limit()` it asks for, and
+ * says nothing when rows were left behind, so a bigger single read would stop
+ * there without anyone being told.
+ */
+const PAGE_SIZE = 1000;
+
+/**
+ * Reads up to `ceiling` rows of a table, a page at a time, in a stable order.
+ * A failed read throws: it is never an empty table.
+ */
+async function readRows<T>(
+  supabase: SupabaseClient,
+  table: string,
+  columns: string,
+  ceiling: number,
+): Promise<T[]> {
+  const rows: T[] = [];
+  while (rows.length < ceiling) {
+    const from = rows.length;
+    const asked = Math.min(PAGE_SIZE, ceiling - from);
+    const { data, error, count } = await supabase
+      .from(table)
+      .select(columns, { count: "exact" })
+      .order("id", { ascending: true })
+      .range(from, from + asked - 1);
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as unknown as T[];
+    rows.push(...page);
+    // The response, not the request, says how much there is: stop at the
+    // reported total, or at a page that came back short or empty.
+    if (page.length === 0) break;
+    if (count != null ? rows.length >= count : page.length < asked) break;
+  }
+  return rows;
+}
+
+/**
  * Both channels in one round trip: the page shows the email figure next to the
  * campaign form and the WhatsApp figure next to the writer, and re-querying per
  * channel switch would let the two disagree mid-edit.
+ *
+ * Throws when any of the reads fails: a refused or failed read is not an empty
+ * table. Treating it as one reported "no audience" for a workspace that has
+ * one, or let the writer draft from half the data with nothing on screen to
+ * say so.
  */
 export async function gatherCampaignAudiences(
   supabase: SupabaseClient,
 ): Promise<Record<CampaignChannel, CampaignAudience>> {
-  const [contactsResult, leadsResult] = await Promise.all([
-    supabase.from("contacts").select("name, email, phone, consent_given").limit(AUDIENCE_ROW_LIMIT),
+  const [contacts, leads, identities] = await Promise.all([
+    readRows<ConsentRow>(
+      supabase,
+      "contacts",
+      "id, name, email, phone, consent_given",
+      AUDIENCE_ROW_LIMIT,
+    ),
     // `subscribed` exists on leads only, and is read as a suppression flag.
-    supabase
-      .from("leads")
-      .select("name, email, phone, consent_given, subscribed")
-      .limit(AUDIENCE_ROW_LIMIT),
+    // `contact_id` ties a website lead to the contact made from it.
+    readRows<ConsentRow>(
+      supabase,
+      "leads",
+      "id, contact_id, name, email, phone, consent_given, subscribed",
+      AUDIENCE_ROW_LIMIT,
+    ),
+    // An address added on the contact card lives here and is not copied to
+    // `contacts.email` / `contacts.phone`.
+    readRows<ContactIdentityRow>(
+      supabase,
+      "contact_identities",
+      "id, contact_id, kind, value, is_primary",
+      AUDIENCE_IDENTITY_LIMIT,
+    ),
   ]);
 
-  // A refused or failed read is not an empty table. Treating it as one reported
-  // "no audience" for a workspace that has one, or let the writer draft from
-  // half the data with nothing on screen to say so.
-  if (contactsResult.error) throw new Error(contactsResult.error.message);
-  if (leadsResult.error) throw new Error(leadsResult.error.message);
-  const contacts = contactsResult.data;
-  const leads = leadsResult.data;
-
   const resolve = (channel: CampaignChannel) =>
-    resolveCampaignAudience({ contacts, leads, channel, rowLimit: AUDIENCE_ROW_LIMIT });
+    resolveCampaignAudience({
+      contacts,
+      leads,
+      identities,
+      channel,
+      rowLimit: AUDIENCE_ROW_LIMIT,
+      identityRowLimit: AUDIENCE_IDENTITY_LIMIT,
+    });
 
   return { email: resolve("email"), whatsapp: resolve("whatsapp") };
 }
