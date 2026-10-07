@@ -31,7 +31,7 @@
     "test:onboarding": "node scripts/build-onboarding-bundle.mjs && node --test tests/onboarding.test.mjs tests/team-roles.test.mjs",
     "test:bot-context": "node scripts/build-onboarding-bundle.mjs && node --test tests/bot-context.test.mjs tests/ai-audience-consent.test.mjs tests/ai-accounting-and-identity.test.mjs",
     "test:public-intake": "node scripts/build-public-intake-bundle.mjs && node --test tests/public-intake.test.mjs tests/public-abuse.test.mjs",
-    "test:whatsapp-numbers": "node scripts/build-onboarding-bundle.mjs && node --test tests/whatsapp-numbers.test.mjs",
+    "test:whatsapp-numbers": "node scripts/build-onboarding-bundle.mjs && node --test tests/whatsapp-numbers.test.mjs tests/whatsapp-default-number.test.mjs",
     "test:campaign-audience": "node --test tests/campaign-audience.test.mjs",
     "test:invoices": "node scripts/build-invoice-bundle.mjs && node --test tests/invoices.test.mjs",
     "test:i18n": "node scripts/build-i18n-bundle.mjs && node --test tests/i18n.test.mjs",
