@@ -113,17 +113,17 @@ export async function leadIntakeAllowed(args: {
 }
 
 /**
- * The id under which a webhook delivery is remembered. A provider's own id is
- * used when it sends one (Shopify does), because the same event re-signed with
- * a new body should still count as that one event; otherwise the body itself
- * identifies the delivery, which is what makes a captured request unreplayable.
+ * The id under which a webhook delivery is remembered: the hash of the body
+ * the signature was checked against, and nothing else.
+ *
+ * A delivery id sent in a header (X-Shopify-Webhook-Id, X-Flas-Event-Id) used
+ * to be preferred to it. No signature these endpoints verify covers a header,
+ * so that id was whatever the sender chose: a captured request could be sent
+ * again with a new id each time and was taken in each time. Only the body is
+ * proven to come from the holder of the secret, so only the body can say which
+ * delivery this is.
  */
-export function webhookEventId(rawBody: string, request: Request): string {
-  const provided =
-    request.headers.get("x-shopify-webhook-id") ??
-    request.headers.get("x-flas-event-id") ??
-    request.headers.get("x-flash-event-id");
-  if (provided && provided.length >= 8) return provided.slice(0, 200);
+export function webhookEventId(rawBody: string): string {
   return createHash("sha256").update(rawBody, "utf8").digest("hex");
 }
 

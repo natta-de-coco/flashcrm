@@ -144,7 +144,7 @@ export async function acceptPlatformEvent(args: {
   const { webhookEventId, firstTimeSeen, leadIntakeAllowed } =
     await import("@/lib/public-limits.server");
 
-  const eventId = webhookEventId(args.rawBody, args.request);
+  const eventId = webhookEventId(args.rawBody);
   if (!(await firstTimeSeen(`site:${args.platform}:${args.site.id}`, eventId))) {
     // Answer 200 so the provider stops retrying, but do the work only once.
     return { ok: false, response: json({ ok: true, duplicate: true }) };

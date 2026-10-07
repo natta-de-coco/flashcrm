@@ -274,15 +274,41 @@ describe("a captured webhook delivery cannot be replayed", () => {
     assert.equal(db.table("leads").length, 2);
   });
 
-  it("uses Shopify's own delivery id when it sends one", async () => {
+  it("recognises a replay whatever delivery id is sent in its headers", async () => {
+    // The signature covers the body and nothing else, so a header naming the
+    // delivery is only the sender's word. It used to be believed in preference
+    // to the body, and a captured request went through again every time it was
+    // replayed with a new id.
+    const first = await postWebhook(shopifyRoute, body, {
+      "x-shopify-webhook-id": "shopify-delivery-000001",
+    });
+    assert.deepEqual(await first.json(), { ok: true });
+
+    for (const header of ["x-shopify-webhook-id", "x-flas-event-id", "x-flash-event-id"]) {
+      const replay = await postWebhook(shopifyRoute, body, { [header]: `rotated-${header}` });
+      assert.equal(replay.status, 200, header);
+      assert.deepEqual(await replay.json(), { ok: true, duplicate: true }, header);
+    }
+    assert.equal(db.table("webhook_dedup").length, 1);
+    assert.equal(
+      globalThis.publicIntake.audits.filter((a) => a.action === "webhook.platform_lead").length,
+      1,
+      "the lead was taken in once",
+    );
+  });
+
+  it("does not let a delivery id in a header make two different leads count as one", async () => {
+    // The other half of the same rule. What was signed decides what a delivery
+    // is, so a repeated id cannot make a second, different lead disappear.
     const headers = { "x-shopify-webhook-id": "shopify-delivery-123456" };
     await postWebhook(shopifyRoute, body, headers);
-    const resent = await postWebhook(
+    const second = await postWebhook(
       shopifyRoute,
-      JSON.stringify({ email: "lead@shop.example", name: "Lead edited", consent: true }),
+      JSON.stringify({ email: "second@shop.example", name: "Second", consent: true }),
       headers,
     );
-    assert.deepEqual(await resent.json(), { ok: true, duplicate: true });
+    assert.deepEqual(await second.json(), { ok: true });
+    assert.equal(db.table("leads").length, 2);
   });
 
   it("refuses a body whose signature does not match, before remembering it", async () => {
