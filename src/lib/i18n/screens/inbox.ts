@@ -146,6 +146,8 @@ export default screen({
     "inbox.loadOlderConversations": "Load older conversations",
     "inbox.searchRecentOnly":
       "Older conversations could not be searched just now. Showing matches from the ones already loaded.",
+    "inbox.block.no_document_template":
+      "This customer has not messaged in the last 24 hours, and this workspace has no approved WhatsApp template for this document yet. Download the PDF and send it yourself, or ask a company admin to add an approved utility template named invoice_notification (invoices) or payment_receipt (paid receipts).",
   },
   ar: {
     "inbox.messageBlockedBySafetyRules": "حُظرت الرسالة وفق قواعد الأمان",
@@ -282,6 +284,8 @@ export default screen({
     "inbox.loadOlderConversations": "تحميل المحادثات الأقدم",
     "inbox.searchRecentOnly":
       "تعذّر البحث في المحادثات الأقدم الآن. تُعرض النتائج من المحادثات المحمّلة فقط.",
+    "inbox.block.no_document_template":
+      "لم يراسل هذا العميل خلال آخر 24 ساعة، ولا يوجد في مساحة العمل هذه قالب واتساب معتمد لهذا المستند بعد. نزّل ملف PDF وأرسله بنفسك، أو اطلب من مسؤول الشركة إضافة قالب خدمي معتمد باسم invoice_notification (للفواتير) أو payment_receipt (لإيصالات الدفع).",
   },
   ms: {
     "inbox.messageBlockedBySafetyRules": "Mesej disekat oleh peraturan keselamatan",
@@ -425,6 +429,8 @@ export default screen({
     "inbox.loadOlderConversations": "Muatkan perbualan lama",
     "inbox.searchRecentOnly":
       "Perbualan lama tidak dapat dicari buat masa ini. Menunjukkan padanan daripada perbualan yang telah dimuatkan.",
+    "inbox.block.no_document_template":
+      "Pelanggan ini tidak menghantar mesej dalam 24 jam yang lalu, dan ruang kerja ini belum mempunyai templat WhatsApp yang diluluskan untuk dokumen ini. Muat turun PDF dan hantar sendiri, atau minta pentadbir syarikat menambah templat utiliti yang diluluskan bernama invoice_notification (invois) atau payment_receipt (resit bayaran).",
   },
   fil: {
     "inbox.messageBlockedBySafetyRules": "Na-block ang mensahe ng mga panuntunan sa kaligtasan",
@@ -571,6 +577,8 @@ export default screen({
     "inbox.loadOlderConversations": "I-load ang mga mas lumang usapan",
     "inbox.searchRecentOnly":
       "Hindi mahanap sa ngayon ang mga mas lumang usapan. Ipinapakita ang mga tugma mula sa mga na-load na.",
+    "inbox.block.no_document_template":
+      "Hindi nag-message ang customer na ito sa nakalipas na 24 oras, at wala pang aprubadong WhatsApp template ang workspace na ito para sa dokumentong ito. I-download ang PDF at ikaw ang magpadala, o hilingin sa admin ng kumpanya na magdagdag ng aprubadong utility template na may pangalang invoice_notification (mga invoice) o payment_receipt (mga resibo ng bayad).",
   },
   sw: {
     "inbox.messageBlockedBySafetyRules": "Ujumbe umezuiwa na kanuni za usalama",
@@ -715,5 +723,7 @@ export default screen({
     "inbox.loadOlderConversations": "Pakia mazungumzo ya zamani",
     "inbox.searchRecentOnly":
       "Mazungumzo ya zamani hayakuweza kutafutwa kwa sasa. Yanaonyeshwa yanayolingana kutoka kwa yaliyopakiwa tayari.",
+    "inbox.block.no_document_template":
+      "Mteja huyu hajatuma ujumbe ndani ya saa 24 zilizopita, na eneo hili la kazi bado halina kiolezo cha WhatsApp kilichoidhinishwa kwa hati hii. Pakua PDF uitume mwenyewe, au mwombe msimamizi wa kampuni aongeze kiolezo cha huduma kilichoidhinishwa chenye jina invoice_notification (ankara) au payment_receipt (risiti za malipo).",
   },
 });

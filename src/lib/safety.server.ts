@@ -23,7 +23,9 @@ export type SendBlockCode =
   | "no_consent"
   | "window_closed"
   | "routed_to_other_number"
-  | "recipient_invalid";
+  | "recipient_invalid"
+  /** An invoice or receipt outside the 24-hour window, with no approved template for it. */
+  | "no_document_template";
 
 export type SendBlock = { code: SendBlockCode; message: string };
 
