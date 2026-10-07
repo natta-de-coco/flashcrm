@@ -366,5 +366,25 @@ describe("a failed read is not a count of zero", () => {
       assert.match(facts, /## Leads & pipeline\nNot available/);
       assert.doesNotMatch(facts, /opted in/);
     });
+
+    // Each part of the summary fails on its own, with the others working: an
+    // exact count can time out on a big table while a short read does not.
+    const parts = {
+      "the exact count": (query) => (query.counting ? refused : undefined),
+      "the sample the breakdowns come from": (query) =>
+        !query.counting && query.sort?.column === "created_at" ? refused : undefined,
+      "the scan for who opted in": (query) =>
+        !query.counting && query.sort?.column === "id" ? refused : undefined,
+    };
+    for (const [part, fault] of Object.entries(parts)) {
+      it(`${part} failing alone is still no summary (${table})`, async () => {
+        db.reset({
+          leads: [aLead(1, { ...OPTED_IN, contact_id: "c00001" })],
+          contacts: [aContact(1, OPTED_IN)],
+        });
+        db.fail(`${table}:read`, fault);
+        await assert.rejects(gatherLeadSummary(client), /permission denied/);
+      });
+    }
   }
 });
