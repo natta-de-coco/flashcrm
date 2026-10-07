@@ -514,6 +514,29 @@ describe("PR #33: an address added on the contact card counts", () => {
     assert.equal(whatsapp.optedInUnreachable, 0);
   });
 
+  test("consent is not borrowed for an address held by a record that did not give it", async () => {
+    // One person, two records. The contact consented and has no number; the
+    // lead made from it left the box unticked and holds one. Joining them into
+    // one person is for counting; it must not turn the lead's number into one a
+    // message may go to on the strength of the contact's consent.
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      leads: [
+        aLead("l1", {
+          contact_id: "c1",
+          email: "a@example.com",
+          phone: "+971500000001",
+          consent_given: false,
+        }),
+      ],
+    });
+    const { email, whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1);
+    assert.equal(whatsapp.total, 0);
+    assert.equal(whatsapp.optedInUnreachable, 1);
+    assert.equal(whatsapp.withoutConsent, 0, "one person is not also counted as missing consent");
+  });
+
   test("identities never turn a contact without consent into a recipient", async () => {
     db.reset({
       contacts: [aContact("c1", { consent_given: false })],
