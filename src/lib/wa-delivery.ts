@@ -265,8 +265,13 @@ export function resolveRecipientNumber(
   const hadInternationalPrefix = hasPlus || digits.startsWith("00");
   digits = digits.replace(/^00/, "");
 
-  if (!hadInternationalPrefix) {
-    const code = (workspaceCallingCode ?? "").replace(/[^0-9]/g, "");
+  const code = (workspaceCallingCode ?? "").replace(/[^0-9]/g, "");
+
+  if (hadInternationalPrefix) {
+    if (code && digits.startsWith(code + "0")) {
+      digits = code + digits.slice(code.length).replace(/^0+/, "");
+    }
+  } else {
     const noCountry = {
       ok: false as const,
       reason:

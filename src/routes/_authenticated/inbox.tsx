@@ -54,7 +54,7 @@ import {
   ChevronLeft,
   Settings2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-parameters";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
@@ -79,6 +79,42 @@ export const Route = createFileRoute("/_authenticated/inbox")({
   },
   component: InboxPage,
 });
+
+function formatConversationTimestamp(isoStr: string | null | undefined): string {
+  if (!isoStr) return "";
+  const date = new Date(isoStr);
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+  return date.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
+}
+
+function formatDateDivider(dateStr: string): string {
+  const d = new Date(dateStr);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) {
+    return "Today";
+  }
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
 
 function InboxPage() {
   const i18n = useI18n();
@@ -126,8 +162,12 @@ function InboxPage() {
   const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
   const [autoTranslate, setAutoTranslate] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const prevActiveIdRef = useRef<string | null>(null);
   const autoTranslatedMessageIds = useRef(new Set<string>());
   const autoTranslateStartedAt = useRef<number | null>(null);
+  const autoTranslateRetries = useRef<Map<string, number>>(new Map());
 
   const send = useServerFn(sendAgentMessage);
   const loadSendContext = useServerFn(getSendContext);
@@ -300,10 +340,26 @@ function InboxPage() {
   /** Loads the next, older page; a failure is said, not left as a button that did nothing. */
   const loadOlder = (query: {
     fetchNextPage: () => Promise<{ isError: boolean; error: Error | null }>;
-  }) =>
-    void query.fetchNextPage().then((result) => {
+  }) => {
+    if (scrollContainerRef.current) {
+      scrollSnapshotRef.current = {
+        scrollHeight: scrollContainerRef.current.scrollHeight,
+        scrollTop: scrollContainerRef.current.scrollTop,
+      };
+    }
+    return void query.fetchNextPage().then((result) => {
       if (result.isError) toast.error(result.error?.message ?? i18n.t("inbox.searchRecentOnly"));
     });
+  };
+
+  useLayoutEffect(() => {
+    if (scrollSnapshotRef.current && scrollContainerRef.current) {
+      const { scrollHeight, scrollTop } = scrollSnapshotRef.current;
+      const newScrollHeight = scrollContainerRef.current.scrollHeight;
+      scrollContainerRef.current.scrollTop = newScrollHeight - scrollHeight + scrollTop;
+      scrollSnapshotRef.current = null;
+    }
+  }, [thread.length]);
 
   // Near real-time inbox: realtime stream first, short polling as a fallback
   // whenever the socket is not connected, plus a visible connection indicator.
@@ -329,7 +385,7 @@ function InboxPage() {
           setLiveStatus("offline");
         else setLiveStatus("connecting");
       });
-    return () => {
+  return () => {
       void supabase.removeChannel(channel);
     };
   }, [qc]);
@@ -348,7 +404,12 @@ function InboxPage() {
   // without changing which one is newest, so it does not pull the view down.
   const newestMessageId = thread.at(-1)?.id ?? null;
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const el = scrollContainerRef.current;
+    const isNearBottom = el ? el.scrollHeight - el.scrollTop - el.clientHeight < 120 : true;
+    if (isNearBottom || prevActiveIdRef.current !== activeId) {
+      bottomRef.current?.scrollIntoView({ block: "end" });
+    }
+    prevActiveIdRef.current = activeId;
   }, [newestMessageId, activeId]);
 
   // Opt-in and limited to messages received while this inbox is open. This
@@ -365,6 +426,10 @@ function InboxPage() {
       ) {
         continue;
       }
+      const retries = autoTranslateRetries.current.get(message.id) ?? 0;
+      if (retries >= 3) {
+        continue;
+      }
       autoTranslatedMessageIds.current.add(message.id);
       void translate({ data: { messageId: message.id, targetLanguage: "English" } })
         .then(() => {
@@ -372,19 +437,25 @@ function InboxPage() {
           void qc.invalidateQueries({ queryKey: ["messages", activeId] });
         })
         .catch(() => {
-          // Let a transient provider failure retry after the next refresh.
-          autoTranslatedMessageIds.current.delete(message.id);
+          // Let a transient provider failure retry after the next refresh, capped at 3 retries.
+          autoTranslateRetries.current.set(message.id, retries + 1);
+          if (retries + 1 < 3) {
+            autoTranslatedMessageIds.current.delete(message.id);
+          }
         });
     }
   }, [activeId, autoTranslate, thread, qc, translate]);
 
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, "");
     const matching = loadedConversations.filter((c) => {
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+      const phoneDigits = c.contacts?.phone ? c.contacts.phone.replace(/\D/g, "") : "";
       const matchesSearch =
         !q ||
         c.contacts?.name?.toLowerCase().includes(q) ||
+        (qDigits && phoneDigits.includes(qDigits)) ||
         c.contacts?.phone?.includes(q) ||
         c.last_message_preview?.toLowerCase().includes(q);
       return matchesStatus && Boolean(matchesSearch);
@@ -879,10 +950,7 @@ function InboxPage() {
                   {c.contacts?.name ?? i18n.t("inbox.unknown")}
                 </span>
                 <span className="shrink-0 text-[11px] text-muted-foreground">
-                  {new Date(c.last_message_at).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {formatConversationTimestamp(c.last_message_at)}
                 </span>
               </div>
               <span className="truncate text-xs text-muted-foreground">
@@ -1263,7 +1331,10 @@ function InboxPage() {
               )}
             </div>
 
-            <div className="chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+            <div
+              ref={scrollContainerRef}
+              className="chat-canvas-bg bg-chat-canvas min-h-0 flex-1 space-y-3 overflow-y-auto p-5"
+            >
               {messages.hasNextPage && (
                 <div className="flex justify-center">
                   <Button
@@ -1277,82 +1348,104 @@ function InboxPage() {
                   </Button>
                 </div>
               )}
-              {thread.map((m) => {
+              {thread.map((m, idx) => {
+                const showDateDivider =
+                  idx === 0 ||
+                  new Date(m.created_at).toDateString() !==
+                    new Date(thread[idx - 1]!.created_at).toDateString();
                 const showTranslation = expandedTranslations.has(m.id);
                 const hasTranslation = Boolean(m.translated_body);
+                const isSystemAlert = m.body.startsWith("(Not delivered:");
                 return (
-                  <div
-                    key={m.id}
-                    className={cn(
-                      "flex",
-                      m.direction === "outbound" ? "justify-end" : "justify-start",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "group relative max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-panel",
-                        m.direction === "outbound"
-                          ? "bg-bubble-out text-bubble-out-foreground"
-                          : "bg-bubble-in text-bubble-in-foreground",
-                      )}
-                    >
-                      {m.sender === "bot" && (
-                        <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                          <Bot className="size-3" /> {i18n.t("inbox.assistant")}
+                  <div key={m.id} className="space-y-3">
+                    {showDateDivider && (
+                      <div className="my-2 flex justify-center">
+                        <span className="rounded-full bg-muted/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
+                          {formatDateDivider(m.created_at)}
                         </span>
-                      )}
-                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                      {showTranslation && m.translated_body && (
-                        <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
-                          <p className="mb-1 font-semibold opacity-70">
-                            {m.detected_language
-                              ? i18n.t("inbox.translatedFrom", {
-                                  detectedlanguage: m.detected_language,
-                                })
-                              : i18n.t("inbox.translation")}
-                          </p>
-                          <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
-                        </div>
-                      )}
-                      <div className="mt-1 flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedTranslations((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(m.id)) next.delete(m.id);
-                              else {
-                                next.add(m.id);
-                                if (!hasTranslation) translateMutation.mutate(m.id);
-                              }
-                              return next;
-                            })
-                          }
-                          disabled={translateMutation.isPending && !hasTranslation}
-                          className="flex items-center gap-1 text-[10px] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-40"
-                        >
-                          <Languages className="size-3" />
-                          {showTranslation
-                            ? i18n.t("inbox.hide")
-                            : hasTranslation
-                              ? i18n.t("inbox.showTranslation")
-                              : i18n.t("inbox.translate")}
-                        </button>
-                        <span className="text-[10px] opacity-60">
-                          {new Date(m.created_at).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                        {m.direction === "outbound" && (
-                          <DeliveryState
-                            status={m.status}
-                            createdAt={m.created_at}
-                            failureReason={m.failure_reason}
-                          />
-                        )}
                       </div>
-                    </div>
+                    )}
+                    {isSystemAlert ? (
+                      <div className="my-2 flex justify-center">
+                        <div className="flex max-w-[85%] items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-center text-xs text-amber-700 dark:text-amber-300">
+                          <AlertTriangle className="size-3.5 shrink-0" />
+                          <span>{m.body}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={cn(
+                          "flex",
+                          m.direction === "outbound" ? "justify-end" : "justify-start",
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "group relative max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-panel",
+                            m.direction === "outbound"
+                              ? "bg-bubble-out text-bubble-out-foreground"
+                              : "bg-bubble-in text-bubble-in-foreground",
+                          )}
+                        >
+                          {m.sender === "bot" && (
+                            <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                              <Bot className="size-3" /> {i18n.t("inbox.assistant")}
+                            </span>
+                          )}
+                          <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                          {showTranslation && m.translated_body && (
+                            <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
+                              <p className="mb-1 font-semibold opacity-70">
+                                {m.detected_language
+                                  ? i18n.t("inbox.translatedFrom", {
+                                      detectedlanguage: m.detected_language,
+                                    })
+                                  : i18n.t("inbox.translation")}
+                              </p>
+                              <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
+                            </div>
+                          )}
+                          <div className="mt-1 flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedTranslations((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(m.id)) next.delete(m.id);
+                                  else {
+                                    next.add(m.id);
+                                    if (!hasTranslation) translateMutation.mutate(m.id);
+                                  }
+                                  return next;
+                                })
+                              }
+                              disabled={translateMutation.isPending && !hasTranslation}
+                              className="flex items-center gap-1 text-[10px] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-40"
+                            >
+                              <Languages className="size-3" />
+                              {showTranslation
+                                ? i18n.t("inbox.hide")
+                                : hasTranslation
+                                  ? i18n.t("inbox.showTranslation")
+                                  : i18n.t("inbox.translate")}
+                            </button>
+                            <span className="text-[10px] opacity-60">
+                              {new Date(m.created_at).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                            {m.direction === "outbound" && (
+                              <DeliveryState
+                                status={m.status}
+                                createdAt={m.created_at}
+                                failureReason={m.failure_reason}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1402,7 +1495,13 @@ function InboxPage() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && draft.trim() && whatsappReplyWindowOpen) {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing &&
+                    draft.trim() &&
+                    whatsappReplyWindowOpen
+                  ) {
                     e.preventDefault();
                     // A second Enter while the first is still on its way is the
                     // same message; the server would refuse the copy anyway.

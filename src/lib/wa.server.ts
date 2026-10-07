@@ -466,7 +466,8 @@ Relevant website excerpts: ${JSON.stringify(websiteExcerpts)}`;
   }
 
   try {
-    const reply: unknown = JSON.parse(raw);
+    const cleaned = raw.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const reply: unknown = JSON.parse(cleaned);
     if (
       !reply ||
       typeof reply !== "object" ||
