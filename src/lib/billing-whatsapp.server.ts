@@ -58,6 +58,7 @@ function notSent(blocks: SendBlock[], gate: SendCheck | null = null): DocumentSe
       : null,
     recipient: gate?.recipient ?? null,
     rendered: null,
+    repeated: false,
   };
 }
 

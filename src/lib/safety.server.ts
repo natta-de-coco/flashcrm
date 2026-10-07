@@ -10,6 +10,14 @@ import { countryOption } from "@/lib/locale";
 import { resolveRecipientNumber, WA_FAILURE_TEXT } from "@/lib/wa-delivery";
 import { resolveSendingNumber, type SendingNumber } from "@/lib/wa.server";
 
+/**
+ * Said when the gate could not read what it decides on. Not knowing whether a
+ * workspace is suspended, or which line a customer is routed to, is a reason
+ * to stop -- never a reason to send.
+ */
+export const SEND_NOT_CHECKED_TEXT =
+  "Could not check whether this message may be sent, so it was not sent. Try again.";
+
 /** Why a send is not allowed, as a code the interface can translate. */
 export type SendBlockCode =
   | "conversation_not_found"
@@ -102,6 +110,30 @@ export async function checkSendPermission(args: {
     channel = conv.channel;
   }
 
+  // The line routing chose for this customer, if it chose one. Read before
+  // the sending number is picked: a send that names no conversation and no
+  // line follows the routing decision. It used to take the workspace default
+  // first and was then refused for not being the routed line -- with no way
+  // to choose the right one.
+  let routedLine: string | null = null;
+  if (contactId) {
+    // Limited to one row: a contact with two routed leads (one per email they
+    // have used) made maybeSingle() fail. Oldest lead wins, because that is
+    // the routing decision the team has been working to.
+    const { data: lead, error: leadError } = await supabaseAdmin
+      .from("leads")
+      .select("assigned_wa_number_id")
+      .eq("contact_id", contactId)
+      .eq("tenant_id", tenantId)
+      .not("assigned_wa_number_id", "is", null)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (leadError) throw new Error(SEND_NOT_CHECKED_TEXT);
+    routedLine = lead?.assigned_wa_number_id ?? null;
+  }
+  if (!args.conversationId && !waNumberId && routedLine) waNumberId = routedLine;
+
   // Only WhatsApp leaves through a business number. A website chat reply is
   // stored and shown in the widget; it has no number to check.
   const overWhatsApp = args.isTemplate || channel === "whatsapp" || (!channel && !!waNumberId);
@@ -119,11 +151,13 @@ export async function checkSendPermission(args: {
   }
 
   // 2. Workspace subscription state.
-  const { data: org } = await supabaseAdmin
+  const { data: org, error: orgError } = await supabaseAdmin
     .from("organizations")
     .select("suspended, subscription_status, country")
     .eq("id", tenantId)
     .maybeSingle();
+  // An unreadable workspace used to look like one with nothing wrong with it.
+  if (orgError) throw new Error(SEND_NOT_CHECKED_TEXT);
   if (org?.suspended) {
     block(
       "workspace_suspended",
@@ -144,12 +178,13 @@ export async function checkSendPermission(args: {
     phone: string | null;
   } | null = null;
   if (contactId) {
-    const { data } = await supabaseAdmin
+    const { data, error: contactError } = await supabaseAdmin
       .from("contacts")
       .select("id, tenant_id, consent_given, phone")
       .eq("id", contactId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
+    if (contactError) throw new Error(SEND_NOT_CHECKED_TEXT);
     contact = data ?? null;
   }
 
@@ -201,25 +236,7 @@ export async function checkSendPermission(args: {
     }
 
     // 5. Routing: a lead routed to a specific number must be answered from it.
-    //
-    // Limited to one row: a contact with two routed leads (one per email they
-    // have used) made maybeSingle() fail, and the failure was ignored -- so the
-    // rule quietly stopped applying for exactly the busiest customers. Oldest
-    // lead wins, because that is the routing decision the team has been
-    // working to.
-    const { data: lead, error: leadError } = await supabaseAdmin
-      .from("leads")
-      .select("assigned_wa_number_id")
-      .eq("contact_id", contact.id)
-      .eq("tenant_id", tenantId)
-      .not("assigned_wa_number_id", "is", null)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (leadError) {
-      console.error("[safety] could not read lead routing", leadError.message);
-    }
-    if (lead?.assigned_wa_number_id && waNumberId && lead.assigned_wa_number_id !== waNumberId) {
+    if (routedLine && waNumberId && routedLine !== waNumberId) {
       block(
         "routed_to_other_number",
         "Routing rules assign this lead to a different WhatsApp number — reply from that line.",

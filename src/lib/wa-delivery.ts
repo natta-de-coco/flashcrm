@@ -246,6 +246,13 @@ export function readSendResponse(httpStatus: number, rawBody: string): WaSendOut
  * ("050 123 4567") has no country in it; it is completed with the workspace's
  * own calling code, and only when that is unambiguous. Anything else is
  * refused rather than guessed, because a wrong guess messages a stranger.
+ *
+ * A number with no "+" and no leading zero is accepted only when it already
+ * begins with the workspace's country code. Otherwise it may be a local
+ * number written short ("415 555 2671") or a foreign one written without its
+ * plus ("65 6123 4567"): both are ten digits and only one is the person
+ * meant. Numbers FLAS records from WhatsApp itself are stored with their plus,
+ * so this only ever turns away something a person typed or imported.
  */
 export function resolveRecipientNumber(
   raw: string | null | undefined,
@@ -258,17 +265,21 @@ export function resolveRecipientNumber(
   const hadInternationalPrefix = hasPlus || digits.startsWith("00");
   digits = digits.replace(/^00/, "");
 
-  if (!hadInternationalPrefix && digits.startsWith("0")) {
-    // A national trunk prefix: the country is not in the number.
+  if (!hadInternationalPrefix) {
     const code = (workspaceCallingCode ?? "").replace(/[^0-9]/g, "");
-    if (!code) {
-      return {
-        ok: false,
-        reason:
-          "This number is written without a country code. Save it in international form, for example +971 50 123 4567.",
-      };
+    const noCountry = {
+      ok: false as const,
+      reason:
+        "This number is written without a country code. Save it in international form, for example +971 50 123 4567.",
+    };
+    if (digits.startsWith("0")) {
+      // A national trunk prefix: the country is not in the number.
+      if (!code) return noCountry;
+      digits = code + digits.replace(/^0+/, "");
+    } else if (!code || !digits.startsWith(code)) {
+      // Nothing says which country this is in, and it is not this one's.
+      return noCountry;
     }
-    digits = code + digits.replace(/^0+/, "");
   }
 
   // E.164: at most 15 digits, and no real number is shorter than 8 with its

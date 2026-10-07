@@ -103,6 +103,15 @@ export function createDb() {
       // a table and not others (one write of several, one column of many).
       const declared = state.faults[`${this.table}:${this.mode}`];
       const fault = typeof declared === "function" ? declared(this) : declared;
+      if (fault?.empty) {
+        // "Nothing there yet": what a read sees a moment before another
+        // request's row is committed. Lets a race be staged in order.
+        return Promise.resolve({
+          data: this.one ? null : [],
+          error: null,
+          count: this.counting ? 0 : null,
+        }).then(resolve, reject);
+      }
       if (fault) {
         const error = typeof fault === "string" ? { message: fault } : fault;
         return Promise.resolve({ data: null, error, count: null }).then(resolve, reject);
