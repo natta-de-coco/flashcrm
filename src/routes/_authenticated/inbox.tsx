@@ -9,6 +9,7 @@ import { recordAuditEvent } from "@/lib/audit.functions";
 import {
   buildCatalogMessage,
   draftBotReply,
+  getSendContext,
   sendAgentMessage,
   sendTemplateMessage,
   translateMessage,
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { requestedConversationId } from "@/lib/inbox-link";
+import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
@@ -116,6 +118,11 @@ function InboxPage() {
   const autoTranslateStartedAt = useRef<number | null>(null);
 
   const send = useServerFn(sendAgentMessage);
+  const loadSendContext = useServerFn(getSendContext);
+  // One reference per message being sent. A second Enter or a double click
+  // repeats it, and the server sends that message once.
+  const sendRef = useRef<SendReference | null>(null);
+  const templateRef = useRef<SendReference | null>(null);
   const suggest = useServerFn(draftBotReply);
   const sendTemplate = useServerFn(sendTemplateMessage);
   const auditEvent = useServerFn(recordAuditEvent);
@@ -324,6 +331,18 @@ function InboxPage() {
     return newestInbound > 0 && newestInbound >= Date.now() - 24 * 60 * 60 * 1000;
   }, [active?.channel, messages.data, messages.isSuccess]);
 
+  // Which number a reply would leave from, who it would reach, and anything
+  // that would stop it -- asked of the same gate the send itself uses, so the
+  // composer cannot promise what the server will refuse.
+  const sendContext = useQuery({
+    queryKey: ["send-context", activeId],
+    queryFn: () => loadSendContext({ data: { conversationId: activeId! } }),
+    enabled: !!activeId && active?.channel === "whatsapp",
+    staleTime: 30_000,
+  });
+  // The closed 24-hour window already has its own notice and next step below.
+  const sendBlocks = (sendContext.data?.blocks ?? []).filter((b) => b.code !== "window_closed");
+
   // Tools should stay out of the way while an agent is reading a thread, but
   // a closed WhatsApp window has one clear next step: an approved template.
   useEffect(() => {
@@ -344,21 +363,48 @@ function InboxPage() {
     void supabase.from("conversations").update({ unread_count: 0 }).eq("id", activeId);
   }, [activeId]);
 
+  const describeBlocks = (blocks: { code: string; message: string }[]) =>
+    blocks.map((b) => i18n.tx(`inbox.block.${b.code}`, b.message)).join(" ");
+  const describeFailure = (reason: string | null, fallback: string | null) =>
+    i18n.tx(`inbox.sendFailure.${reason ?? "unknown"}`, fallback ?? "");
+
   const sendMutation = useMutation({
-    mutationFn: async (body: string) => send({ data: { conversationId: activeId!, body } }),
+    mutationFn: async (body: string) => {
+      sendRef.current = referenceFor(sendRef.current, `${activeId}\n${body}`, () =>
+        crypto.randomUUID(),
+      );
+      return send({ data: { conversationId: activeId!, body, clientRef: sendRef.current.ref } });
+    },
     onSuccess: (res) => {
-      if (res.blockedReasons?.length) {
+      // The server has answered for this message, so the next one is new.
+      sendRef.current = null;
+      void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "blocked") {
         toast.error(i18n.t("inbox.messageBlockedBySafetyRules"), {
-          description: res.blockedReasons.join(" "),
+          description: describeBlocks(res.blocks),
         });
         return;
       }
+      // "duplicate" is this very message, already saved by an earlier copy of
+      // the request whose answer never arrived. It is in the thread, so the
+      // box is cleared like any sent message -- leaving the text there would
+      // invite sending it a second time.
       setDraft("");
-      if (res.deliveryError)
-        toast.warning(i18n.t("inbox.savedButNotDelivered", { deliveryError: res.deliveryError }));
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "unconfirmed") {
+        toast.warning(describeFailure("unconfirmed", res.deliveryError));
+      } else if (res.state === "rejected") {
+        toast.warning(
+          i18n.t("inbox.savedButNotDelivered", {
+            deliveryError: describeFailure(res.failureReason, res.deliveryError),
+          }),
+        );
+      }
     },
+    // No answer is not a "no". The reference is kept, so trying the same text
+    // again asks the server about the same message: if the first copy did get
+    // through, the server says so instead of sending another.
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -428,23 +474,50 @@ function InboxPage() {
   });
 
   const templateMutation = useMutation({
-    mutationFn: async () =>
-      sendTemplate({
-        data: { templateId, conversationId: activeId!, variables: templateVariables },
-      }),
+    mutationFn: async () => {
+      templateRef.current = referenceFor(
+        templateRef.current,
+        `${activeId}\n${templateId}\n${JSON.stringify(templateVariables)}`,
+        () => crypto.randomUUID(),
+      );
+      return sendTemplate({
+        data: {
+          templateId,
+          conversationId: activeId!,
+          variables: templateVariables,
+          clientRef: templateRef.current.ref,
+        },
+      });
+    },
     onSuccess: (res) => {
-      if (res.blockedReasons?.length) {
+      templateRef.current = null;
+      void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "blocked") {
         toast.error(i18n.t("inbox.templateBlockedBySafetyRules"), {
-          description: res.blockedReasons.join(" "),
+          description: describeBlocks(res.blocks),
         });
         return;
       }
+      // As with a reply: a duplicate is this template, already in the thread.
       setTemplateId("");
       setTemplateVariables([]);
-      toast.success(i18n.t("inbox.templateAcceptedByWhatsappDelivery"));
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      // Accepted by WhatsApp is not delivered: the thread shows the receipt
+      // when it arrives. A refusal or a missing answer is said as such.
+      if (res.state === "accepted") {
+        toast.success(i18n.t("inbox.templateAcceptedByWhatsappDelivery"));
+      } else if (res.state === "unconfirmed") {
+        toast.warning(describeFailure("unconfirmed", res.deliveryError));
+      } else if (res.state === "rejected") {
+        toast.error(
+          i18n.t("inbox.savedButNotDelivered", {
+            deliveryError: describeFailure(res.failureReason, res.deliveryError),
+          }),
+        );
+      }
     },
+    // Kept for the retry, as for a reply.
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -1106,7 +1179,9 @@ function InboxPage() {
                             minute: "2-digit",
                           })}
                         </span>
-                        {m.direction === "outbound" && <DeliveryState status={m.status} />}
+                        {m.direction === "outbound" && (
+                          <DeliveryState status={m.status} createdAt={m.created_at} />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1116,6 +1191,37 @@ function InboxPage() {
             </div>
 
             <div className="space-y-2 border-t bg-card p-4">
+              {active.channel === "whatsapp" && sendContext.data?.sendingNumber && (
+                <p className="text-xs text-muted-foreground" data-testid="sending-from">
+                  {(() => {
+                    const line = sendContext.data.sendingNumber;
+                    const number = line.displayPhone
+                      ? `${line.label} · ${line.displayPhone}`
+                      : line.label;
+                    return sendContext.data.recipient
+                      ? i18n.tr("inbox.sendingFromTo", {
+                          number: <bdi>{number}</bdi>,
+                          recipient: <bdi dir="ltr">{sendContext.data.recipient}</bdi>,
+                        })
+                      : i18n.tr("inbox.sendingFrom", { number: <bdi>{number}</bdi> });
+                  })()}
+                </p>
+              )}
+              {sendBlocks.length > 0 && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+                >
+                  <p className="flex items-center gap-1.5 font-semibold text-destructive">
+                    <AlertTriangle className="size-4 shrink-0" /> {i18n.t("inbox.cannotSendYet")}
+                  </p>
+                  <ul className="mt-1 space-y-1 text-muted-foreground">
+                    {sendBlocks.map((b) => (
+                      <li key={b.code}>{i18n.tx(`inbox.block.${b.code}`, b.message)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Textarea
                 rows={2}
                 aria-label={i18n.t("inbox.replyToConversation")}
@@ -1129,7 +1235,11 @@ function InboxPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey && draft.trim() && whatsappReplyWindowOpen) {
                     e.preventDefault();
-                    sendMutation.mutate(draft.trim());
+                    // A second Enter while the first is still on its way is the
+                    // same message; the server would refuse the copy anyway.
+                    if (!sendMutation.isPending && sendBlocks.length === 0) {
+                      sendMutation.mutate(draft.trim());
+                    }
                   }
                 }}
               />
@@ -1154,7 +1264,12 @@ function InboxPage() {
                 </Button>
                 <Button
                   onClick={() => draft.trim() && sendMutation.mutate(draft.trim())}
-                  disabled={sendMutation.isPending || !draft.trim() || !whatsappReplyWindowOpen}
+                  disabled={
+                    sendMutation.isPending ||
+                    !draft.trim() ||
+                    !whatsappReplyWindowOpen ||
+                    sendBlocks.length > 0
+                  }
                 >
                   <Send className="size-4" />
                   {i18n.t("inbox.send")}
@@ -1168,9 +1283,46 @@ function InboxPage() {
   );
 }
 
+/** A send is settled within seconds; one still "sending" after this never got its answer recorded. */
+const SENDING_GOES_STALE_MS = 2 * 60 * 1000;
+
 /** Shows what Meta has actually reported for an outbound WhatsApp message. */
-function DeliveryState({ status }: { status: string | null | undefined }) {
+function DeliveryState({
+  status,
+  createdAt,
+}: {
+  status: string | null | undefined;
+  createdAt?: string | null;
+}) {
   const i18n = useI18n();
+  // Look again at the moment a "sending" message goes stale. The label was
+  // only worked out when something else changed, so a message whose answer was
+  // never recorded could go on saying "Sending" for as long as the thread
+  // stayed quiet.
+  const [, lookAgain] = useState(0);
+  useEffect(() => {
+    if (status !== "sending" || !createdAt) return;
+    const remaining = new Date(createdAt).getTime() + SENDING_GOES_STALE_MS - Date.now();
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(() => lookAgain(Date.now()), remaining + 250);
+    return () => window.clearTimeout(timer);
+  }, [status, createdAt]);
+  const stale =
+    status === "sending" &&
+    !!createdAt &&
+    Date.now() - new Date(createdAt).getTime() > SENDING_GOES_STALE_MS;
+  if (status === "unconfirmed" || stale) {
+    // Neither sent nor failed: WhatsApp never answered. Said plainly, so
+    // nobody resends a message the customer may already have.
+    return (
+      <span
+        className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+        title={i18n.t("inbox.unconfirmedHint")}
+      >
+        <AlertTriangle className="size-3" /> {i18n.t("inbox.status.unconfirmed")}
+      </span>
+    );
+  }
   if (status === "sending") {
     return <span className="text-[10px] text-muted-foreground">{i18n.t("inbox.sending")}</span>;
   }

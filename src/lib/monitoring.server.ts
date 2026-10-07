@@ -1,5 +1,11 @@
 // Server-only helpers for webhook delivery monitoring, retries and alerts.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  failureReasonForCode,
+  providerStatus,
+  statusesThatMayBecome,
+  WA_FAILURE_TEXT,
+} from "@/lib/wa-delivery";
 
 export type WaWebhookBody = {
   entry?: Array<{
@@ -29,7 +35,9 @@ export type WaWebhookBody = {
         statuses?: Array<{
           id?: string;
           status?: string;
-          errors?: Array<{ title?: string; message?: string }>;
+          /** FLAS's own message id, echoed back because the send carried it. */
+          biz_opaque_callback_data?: string;
+          errors?: Array<{ code?: number; title?: string; message?: string }>;
         }>;
       };
     }>;
@@ -304,6 +312,85 @@ async function releaseWebhookEvent(source: string, eventId: string): Promise<voi
   if (error) console.error("[webhook] could not release event", source, error.code ?? "");
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** What a receipt did to the message it names. */
+type ReceiptEffect =
+  /** The message moved to the reported status. */
+  | "applied"
+  /** The message is already at or past it: a repeat, or a receipt that came late. */
+  | "stale"
+  /** No message of this workspace matches. There is nothing to record. */
+  | "unmatched";
+
+const RECEIPT_NOT_SAVED = "Could not record a WhatsApp delivery receipt in the CRM.";
+
+/**
+ * Records what Meta reports for one outbound message, inside one workspace.
+ *
+ * Receipts arrive late, twice and out of order. The update only matches a row
+ * whose current status is earlier than the incoming one, in a single
+ * statement, so a late "sent" can never overwrite "read" and "failed" can
+ * never overwrite a message already reported delivered -- even when two
+ * receipts are processed at the same moment.
+ *
+ * A message whose send was never confirmed has no provider id to match. Its
+ * receipt still carries the reference FLAS sent with it, so the row is found
+ * by that, inside the same workspace, and given its provider id here.
+ *
+ * A read or write the database refused is thrown, never swallowed: "nothing to
+ * change" and "could not change it" are different answers, and only the first
+ * may be forgotten.
+ */
+async function applyDeliveryStatus(
+  tenantId: string,
+  waMessageId: string,
+  incoming: "sent" | "delivered" | "read" | "failed",
+  messageRef?: string | null,
+): Promise<ReceiptEffect> {
+  const allowedFrom = statusesThatMayBecome(incoming);
+  const { data: matched, error: readError } = await supabaseAdmin
+    .from("messages")
+    .select("id")
+    .eq("wa_message_id", waMessageId)
+    .eq("tenant_id", tenantId)
+    .limit(1);
+  if (readError) throw new Error(RECEIPT_NOT_SAVED);
+  if (matched && matched.length > 0) {
+    const { data: moved, error } = await supabaseAdmin
+      .from("messages")
+      .update({ status: incoming })
+      .eq("wa_message_id", waMessageId)
+      .eq("tenant_id", tenantId)
+      .in("status", allowedFrom)
+      .select("id");
+    if (error) throw new Error(RECEIPT_NOT_SAVED);
+    return moved && moved.length > 0 ? "applied" : "stale";
+  }
+  if (!messageRef || !UUID.test(messageRef)) return "unmatched";
+  const { data: moved, error } = await supabaseAdmin
+    .from("messages")
+    .update({ status: incoming, wa_message_id: waMessageId })
+    .eq("id", messageRef)
+    .eq("tenant_id", tenantId)
+    .eq("direction", "outbound")
+    .is("wa_message_id", null)
+    .in("status", allowedFrom)
+    .select("id");
+  if (error) throw new Error(RECEIPT_NOT_SAVED);
+  if (moved && moved.length > 0) return "applied";
+  // Nothing moved: either the referenced message is already settled, or the
+  // reference names nothing in this workspace.
+  const { data: known, error: knownError } = await supabaseAdmin
+    .from("messages")
+    .select("id")
+    .eq("id", messageRef)
+    .eq("tenant_id", tenantId)
+    .limit(1);
+  if (knownError) throw new Error(RECEIPT_NOT_SAVED);
+  return known && known.length > 0 ? "stale" : "unmatched";
+}
+
 /**
  * Processes a WhatsApp Cloud API webhook payload: stores inbound messages,
  * runs the chatbot, delivers replies and records delivery-status callbacks.
@@ -313,13 +400,16 @@ async function releaseWebhookEvent(source: string, eventId: string): Promise<voi
  */
 export async function processWaPayload(body: WaWebhookBody) {
   const {
+    completeOutboundDelivery,
+    deliverWhatsAppText,
     ingestInboundMessage,
-    sendWhatsAppText,
     storeOutbound,
     findWaNumberByPhoneId,
     resolveWaCredentials,
   } = await import("@/lib/wa.server");
   let handled = 0;
+  /** The first receipt that could not be saved. Thrown once everything else is done. */
+  let receiptError: unknown = null;
 
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
@@ -344,21 +434,45 @@ export async function processWaPayload(body: WaWebhookBody) {
 
       for (const status of value?.statuses ?? []) {
         if (!status.id) continue;
-        if (
-          !(await claimWebhookEventOnce("whatsapp:status", status.id + ":" + (status.status ?? "")))
-        )
+        // Only the four statuses Meta documents are ever written. Anything
+        // else used to be stored verbatim, so an unfamiliar word could become
+        // a message's status.
+        const incoming = providerStatus(status.status);
+        if (!incoming) continue;
+        // Saved first, and never marked as seen beforehand. A receipt used to
+        // be recorded as processed before its status was written, so one
+        // refused write lost it for good: every later copy was discarded as a
+        // repeat. Nothing needs marking -- the guarded update happens once by
+        // itself. The first copy moves the message; a repeat finds nothing
+        // left to move.
+        let effect: ReceiptEffect;
+        try {
+          effect = await applyDeliveryStatus(
+            tenantId,
+            status.id,
+            incoming,
+            status.biz_opaque_callback_data,
+          );
+        } catch (error) {
+          // The rest of this delivery is still worth saving. The event is
+          // failed at the end, so it shows in Monitoring, and retrying it
+          // applies this receipt.
+          receiptError ??= error;
           continue;
-        handled += 1;
-        await supabaseAdmin
-          .from("messages")
-          .update({ status: status.status ?? "unknown" })
-          .eq("wa_message_id", status.id)
-          .eq("tenant_id", tenantId);
-        if (status.status === "failed") {
-          const detail = status.errors?.[0]?.message ?? status.errors?.[0]?.title ?? null;
+        }
+        if (effect === "stale") continue;
+        if (effect === "applied") handled += 1;
+        // A failure is announced once: by the message's own change of status,
+        // or, when FLAS holds no message for it, by this claim on the alert.
+        if (
+          incoming === "failed" &&
+          (effect === "applied" ||
+            (await claimWebhookEventOnce("whatsapp:status", status.id + ":failed")))
+        ) {
+          const reason = failureReasonForCode(status.errors?.[0]?.code);
           await raiseAlert({
             title: "WhatsApp message delivery failed",
-            message: detail,
+            message: WA_FAILURE_TEXT[reason],
             severity: "warning",
             source: "delivery",
           });
@@ -397,51 +511,76 @@ export async function processWaPayload(body: WaWebhookBody) {
         const { conversationId, reply, replyMessageId } = ingested;
 
         if (reply) {
+          // The reply was stored as "sending" before this call. What Meta
+          // answers decides what the thread says: accepted, refused, or not
+          // known. It is never sent twice -- a retry of this event finds the
+          // inbound message already stored and stops before reaching here.
+          let outcome: Awaited<ReturnType<typeof deliverWhatsAppText>>;
           try {
-            const waId = await sendWhatsAppText(
+            outcome = await deliverWhatsAppText(
               from,
               reply,
               await resolveWaCredentials(tenantId, waNumberId),
+              replyMessageId,
             );
-            if (waId && replyMessageId) {
-              await supabaseAdmin
-                .from("messages")
-                .update({ wa_message_id: waId, status: "sent" })
-                .eq("id", replyMessageId);
-            }
-          } catch (sendError) {
-            const detail = sendError instanceof Error ? sendError.message : "Delivery failed";
-            // The bot's reply is written before the send is attempted, so a
-            // refused send used to leave the conversation showing a reply the
-            // customer never received. Mark that row failed, and the notice
-            // beside it, so the thread tells the truth.
-            if (replyMessageId) {
-              await supabaseAdmin
-                .from("messages")
-                .update({ status: "failed" })
-                .eq("id", replyMessageId);
-            }
+          } catch (credentialError) {
+            // No usable number: nothing was handed to Meta.
+            outcome = {
+              state: "rejected",
+              reason: "credentials",
+              message:
+                credentialError instanceof Error ? credentialError.message : "Delivery failed",
+              providerCode: null,
+            };
+          }
+          if (replyMessageId) {
+            await completeOutboundDelivery(
+              replyMessageId,
+              outcome.state === "accepted" ? outcome.waMessageId : null,
+              outcome.state === "accepted"
+                ? "sent"
+                : outcome.state === "rejected"
+                  ? "failed"
+                  : "unconfirmed",
+              tenantId,
+            );
+          }
+          if (outcome.state !== "accepted") {
+            // The reply's own row now says it did not go (or may not have).
+            // The line under it carries the actual reason, where it used to
+            // blame credentials whatever had happened.
             await storeOutbound(
               tenantId,
               conversationId,
-              "(delivery failed — check WhatsApp credentials)",
+              outcome.state === "rejected"
+                ? `(Not delivered: ${outcome.message})`
+                : `(${outcome.message})`,
               "bot",
               null,
               null,
-              "failed",
+              outcome.state === "rejected" ? "failed" : "unconfirmed",
             );
             await raiseAlert({
-              title: "WhatsApp reply could not be delivered",
-              message: detail,
-              severity: "critical",
+              title:
+                outcome.state === "rejected"
+                  ? "WhatsApp reply could not be delivered"
+                  : "WhatsApp did not confirm a reply",
+              message: outcome.message,
+              severity: outcome.state === "rejected" ? "critical" : "warning",
               source: "delivery",
             });
-            throw sendError;
+            // The event itself is not failed. It used to be, for a refusal,
+            // which put a Retry button on it in Monitoring -- and that retry
+            // could do nothing: the customer's message is already saved, so it
+            // is skipped, and the event was then marked processed as if the
+            // reply had gone. The refusal is on the reply's own row, in the
+            // note under it, and in the alert above.
           }
         }
       }
     }
   }
 
+  if (receiptError) throw receiptError;
   return handled;
 }

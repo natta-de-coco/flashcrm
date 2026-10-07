@@ -34,6 +34,15 @@ export function createDb() {
       this.filters.push((r) => r[key] !== value);
       return this;
     }
+    in(key, values) {
+      this.filters.push((r) => values.includes(r[key]));
+      return this;
+    }
+    is(key, value) {
+      // Only IS NULL is used by the code under test.
+      if (value === null) this.filters.push((r) => r[key] == null);
+      return this;
+    }
     gte(key, value) {
       this.filters.push((r) => String(r[key] ?? "") >= value);
       return this;
@@ -71,6 +80,10 @@ export function createDb() {
       this.patch = patch;
       return this;
     }
+    delete() {
+      this.mode = "delete";
+      return this;
+    }
     upsert(payload, { onConflict } = {}) {
       this.mode = "upsert";
       this.payload = payload;
@@ -86,7 +99,19 @@ export function createDb() {
       };
     }
     then(resolve, reject) {
-      const fault = state.faults[`${this.table}:${this.mode}`];
+      // A fault can be a function of the query, to refuse some statements on
+      // a table and not others (one write of several, one column of many).
+      const declared = state.faults[`${this.table}:${this.mode}`];
+      const fault = typeof declared === "function" ? declared(this) : declared;
+      if (fault?.empty) {
+        // "Nothing there yet": what a read sees a moment before another
+        // request's row is committed. Lets a race be staged in order.
+        return Promise.resolve({
+          data: this.one ? null : [],
+          error: null,
+          count: this.counting ? 0 : null,
+        }).then(resolve, reject);
+      }
       if (fault) {
         const error = typeof fault === "string" ? { message: fault } : fault;
         return Promise.resolve({ data: null, error, count: null }).then(resolve, reject);
@@ -94,14 +119,24 @@ export function createDb() {
       const table = (state.rows[this.table] ??= []);
       let found = table.filter((r) => this.filters.every((f) => f(r)));
       if (this.mode === "update") for (const r of found) Object.assign(r, this.patch);
+      if (this.mode === "delete") {
+        for (const r of found) table.splice(table.indexOf(r), 1);
+      }
       if (this.mode === "insert") {
         // A table can declare the unique key the real schema has, because code
         // that relies on a unique violation (23505) to stay correct under
         // concurrency has to be tested against one.
-        const unique = state.uniques[this.table];
+        const uniques = state.uniques[this.table] ?? [];
         const incoming = Array.isArray(this.payload) ? this.payload : [this.payload];
-        if (unique) {
-          const clash = incoming.find((p) => table.some((r) => unique.every((k) => r[k] === p[k])));
+        if (uniques.length > 0) {
+          // As in Postgres, a key with a NULL in it never collides.
+          const clash = incoming.find((p) =>
+            uniques.some(
+              (unique) =>
+                unique.every((k) => p[k] != null) &&
+                table.some((r) => unique.every((k) => r[k] === p[k])),
+            ),
+          );
           if (clash) {
             return Promise.resolve({
               data: null,
@@ -173,9 +208,16 @@ export function createDb() {
     fail(key, error) {
       state.faults[key] = error;
     },
-    /** Declares a table's unique key, so a second identical insert fails as 23505. */
+    /**
+     * Declares a unique key on a table, so a second identical insert fails as
+     * 23505. A table can have several (a primary key and a unique index).
+     */
     unique(table, columns) {
-      state.uniques[table] = columns;
+      (state.uniques[table] ??= []).push(columns);
+    },
+    /** Lifts a fault set with fail(): the database has recovered. */
+    recover(key) {
+      delete state.faults[key];
     },
   };
 }

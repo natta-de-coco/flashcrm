@@ -1,101 +1,61 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { renderTemplateBody } from "@/lib/wa-template-parameters";
 
 const SendSchema = z.object({
   conversationId: z.string().uuid(),
   body: z.string().min(1).max(4000),
+  /**
+   * The browser's own reference for this one message. A double click or a
+   * retried request repeats it, and the server sends the message once.
+   */
+  clientRef: z.string().uuid().optional(),
 });
+
+/** The signed-in person's workspace, or the reason it cannot be read. */
+async function requireTenant(context: {
+  supabase: {
+    rpc: (
+      fn: "current_tenant_id",
+    ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+  };
+}): Promise<string> {
+  const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
+  // A recursion/timeout failure of this lookup used to be reported as
+  // "no workspace", which sent people hunting a problem that was not theirs.
+  if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
+  if (!tenantId) throw new Error("Your workspace is still being set up.");
+  return tenantId as string;
+}
 
 /** Agent reply: stores the message and delivers it over WhatsApp when relevant. */
 export const sendAgentMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => SendSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { completeOutboundDelivery, sendWhatsAppText, storeOutbound, resolveWaCredentials } =
-      await import("@/lib/wa.server");
-
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
-    // A recursion/timeout failure of this lookup used to be reported as
-    // "no workspace", which sent people hunting a problem that was not theirs.
-    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
-    if (!tenantId) throw new Error("Your workspace is still being set up.");
-
-    const { data: conversation, error } = await supabaseAdmin
-      .from("conversations")
-      .select("id, channel, contact_id, wa_number_id")
-      .eq("id", data.conversationId)
-      .eq("tenant_id", tenantId)
-      .single();
-    if (error || !conversation) throw new Error("Conversation not found");
-
-    // Compliance gate: consent, 24h window, routing rules, subscription.
-    const { checkSendPermission } = await import("@/lib/safety.server");
-    const { logAudit } = await import("@/lib/audit.server");
-    const safety = await checkSendPermission({
-      conversationId: conversation.id,
-      isTemplate: false,
+    const tenantId = await requireTenant(context);
+    const { sendConversationMessage } = await import("@/lib/wa-send.server");
+    return sendConversationMessage({
+      tenantId,
+      userId: context.userId,
+      conversationId: data.conversationId,
+      body: data.body,
+      clientRef: data.clientRef ?? null,
     });
-    if (!safety.allowed) {
-      await logAudit({
-        action: "message.blocked",
-        actorId: context.userId,
-        entityType: "conversation",
-        entityId: conversation.id,
-        details: { reasons: safety.reasons },
-      });
-      return { ok: false, deliveryError: null, blockedReasons: safety.reasons };
-    }
+  });
 
-    let waId: string | null = null;
-    let deliveryError: string | null = null;
-
-    if (conversation.channel === "whatsapp") {
-      // Write before calling Meta. A provider success followed by a failed
-      // database insert is worse than a visible failed message: the business
-      // has sent something it can no longer audit in FLAS.
-      const outboundId = await storeOutbound(
-        tenantId as string,
-        conversation.id,
-        data.body,
-        "agent",
-        context.userId,
-        null,
-        "sending",
-      );
-      const { data: contact } = await supabaseAdmin
-        .from("contacts")
-        .select("phone")
-        .eq("id", conversation.contact_id)
-        .eq("tenant_id", tenantId)
-        .single();
-      if (contact?.phone) {
-        try {
-          waId = await sendWhatsAppText(
-            contact.phone,
-            data.body,
-            await resolveWaCredentials(tenantId as string, conversation.wa_number_id),
-          );
-        } catch (sendError) {
-          deliveryError = sendError instanceof Error ? sendError.message : "Delivery failed";
-        }
-      } else {
-        deliveryError = "This contact has no phone number";
-      }
-      await completeOutboundDelivery(outboundId, waId, deliveryError ? "failed" : "sent");
-    } else {
-      await storeOutbound(tenantId as string, conversation.id, data.body, "agent", context.userId);
-    }
-    await logAudit({
-      action: "message.send",
-      actorId: context.userId,
-      entityType: "conversation",
-      entityId: conversation.id,
-      details: { channel: conversation.channel, delivered: !deliveryError },
-    });
-    return { ok: !deliveryError, deliveryError, blockedReasons: [] as string[] };
+/**
+ * What the composer shows before a reply is written: the number it would be
+ * sent from, the customer's number as WhatsApp will dial it, and anything that
+ * would stop the send -- decided by the same gate the send uses.
+ */
+export const getSendContext = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ conversationId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const tenantId = await requireTenant(context);
+    const { describeSendContext } = await import("@/lib/wa-send.server");
+    return describeSendContext(tenantId, data.conversationId);
   });
 
 const BotSchema = z.object({ conversationId: z.string().uuid() });
@@ -187,135 +147,28 @@ const TemplateSchema = z
     conversationId: z.string().uuid().optional(),
     phone: z.string().min(6).max(24).optional(),
     variables: z.array(z.string().max(500)).max(10).default([]),
+    clientRef: z.string().uuid().optional(),
   })
   .refine((value) => Boolean(value.conversationId) !== Boolean(value.phone), {
     message: "Choose a conversation or a phone number, not both.",
   });
 
-/** Sends an approved WhatsApp template to a conversation or a raw phone number. */
+/** Sends an approved WhatsApp template to a conversation or a saved contact's number. */
 export const sendTemplateMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => TemplateSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { sendWhatsAppTemplate, storeOutbound, resolveWaCredentials } =
-      await import("@/lib/wa.server");
-
-    const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
-    // A recursion/timeout failure of this lookup used to be reported as
-    // "no workspace", which sent people hunting a problem that was not theirs.
-    if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
-    if (!tenantId) throw new Error("Your workspace is still being set up.");
-
-    const { data: template, error } = await supabaseAdmin
-      .from("wa_templates")
-      .select("*")
-      .eq("id", data.templateId)
-      .eq("tenant_id", tenantId)
-      .single();
-    if (error || !template) throw new Error("Template not found");
-    if (template.status !== "approved") throw new Error("Only approved templates can be sent");
-    const rendered = renderTemplateBody(template.body, data.variables);
-
-    let phone = data.phone ?? null;
-    const conversationId = data.conversationId ?? null;
-    let waNumberId: string | null = null;
-
-    if (conversationId) {
-      const { data: conv, error: conversationError } = await supabaseAdmin
-        .from("conversations")
-        .select("contact_id, wa_number_id, channel")
-        .eq("id", conversationId)
-        .eq("tenant_id", tenantId)
-        .single();
-      if (conversationError || !conv) throw new Error("Conversation not found");
-      if (conv.channel !== "whatsapp") throw new Error("Choose a WhatsApp conversation");
-      waNumberId = conv.wa_number_id ?? null;
-      const { data: contact, error: contactError } = await supabaseAdmin
-        .from("contacts")
-        .select("phone")
-        .eq("id", conv.contact_id)
-        .eq("tenant_id", tenantId)
-        .single();
-      if (contactError || !contact) throw new Error("Contact not found");
-      phone = contact.phone;
-    }
-    if (!phone) throw new Error("No WhatsApp number available for this recipient");
-
-    // Compliance gate: template sends require recorded opt-in consent, an
-    // active number, the correct routed line and an active subscription.
-    const { checkSendPermission } = await import("@/lib/safety.server");
-    const { logAudit } = await import("@/lib/audit.server");
-    let contactId: string | null = null;
-    if (!conversationId) {
-      // Through the shared resolver, so a contact saved as "+971 50 123 4567"
-      // is found when the number is typed as "971501234567". Comparing the raw
-      // strings made that contact invisible here, and an invisible contact now
-      // means a refused template.
-      const { resolveContactByPhone } = await import("@/lib/contact-resolve.server");
-      const resolved = await resolveContactByPhone(tenantId as string, phone);
-      contactId = resolved?.contactId ?? null;
-    }
-    const safety = await checkSendPermission({
-      conversationId,
-      contactId,
-      waNumberId,
-      isTemplate: true,
+    const tenantId = await requireTenant(context);
+    const { sendTemplate } = await import("@/lib/wa-send.server");
+    return sendTemplate({
+      tenantId,
+      userId: context.userId,
+      templateId: data.templateId,
+      conversationId: data.conversationId ?? null,
+      phone: data.phone ?? null,
+      variables: data.variables,
+      clientRef: data.clientRef ?? null,
     });
-    if (!safety.allowed) {
-      await logAudit({
-        action: "message.blocked",
-        actorId: context.userId,
-        entityType: conversationId ? "conversation" : "phone",
-        entityId: conversationId ?? phone,
-        details: { template: template.name, reasons: safety.reasons },
-      });
-      return { ok: false, waId: null, rendered: null, blockedReasons: safety.reasons };
-    }
-
-    let waId: string | null = null;
-    if (conversationId) {
-      const { completeOutboundDelivery } = await import("@/lib/wa.server");
-      const outboundId = await storeOutbound(
-        tenantId as string,
-        conversationId,
-        rendered,
-        "agent",
-        context.userId,
-        null,
-        "sending",
-      );
-      try {
-        waId = await sendWhatsAppTemplate(
-          phone,
-          template.name,
-          template.language,
-          data.variables,
-          await resolveWaCredentials(tenantId as string, waNumberId),
-        );
-        await completeOutboundDelivery(outboundId, waId, "sent");
-      } catch (error) {
-        await completeOutboundDelivery(outboundId, null, "failed");
-        throw error;
-      }
-    } else {
-      waId = await sendWhatsAppTemplate(
-        phone,
-        template.name,
-        template.language,
-        data.variables,
-        await resolveWaCredentials(tenantId as string, waNumberId),
-      );
-    }
-    await logAudit({
-      action: "message.template_send",
-      actorId: context.userId,
-      entityType: conversationId ? "conversation" : "phone",
-      entityId: conversationId ?? phone,
-      details: { template: template.name, waId },
-    });
-
-    return { ok: true, waId, rendered, blockedReasons: [] as string[] };
   });
 
 const TranslateSchema = z.object({
