@@ -13,8 +13,15 @@ import { createDb, secondsAgo } from "./support/db-double.mjs";
 
 import {
   describeSendContext,
+  evidenceOfReceipt,
+  evidenceOfSend,
+  evidenceProbe,
+  mediaOf,
+  receiptTime,
   failureReasonForCode,
   generateBotReply,
+  ingestInboundMessage,
+  newChatAutomation,
   mayAdvance,
   processWaPayload,
   providerStatus,
@@ -143,6 +150,7 @@ beforeEach(() => {
   };
   db.reset(rows);
   declareKeys();
+  evidenceProbe.unavailableUntil = 0;
   globalThis.waSuite.audits = [];
   installProvider();
 });
@@ -1551,6 +1559,494 @@ describe("when the AI cannot answer", () => {
       assert.equal(botRows().length, 0);
     });
   }
+});
+
+describe("what is kept about a message, beyond its status", () => {
+  const EVIDENCE = ["origin", "failure_reason", "failure_code", "sent_at", "failed_at"];
+  /** Refuses any write that touches an evidence column, as a database without them does. */
+  const columnsMissing = (query) =>
+    query.patch && Object.keys(query.patch).some((k) => EVIDENCE.includes(k) || k.endsWith("_at"))
+      ? { code: "PGRST204", message: "Could not find the 'origin' column of 'messages'" }
+      : null;
+  const recent = (iso) => Math.abs(Date.now() - new Date(iso).getTime()) < 60_000;
+
+  it("records where an accepted reply came from and when Meta took it", async () => {
+    await send();
+    const [row] = outbound();
+    assert.equal(row.origin, "inbox");
+    assert.ok(recent(row.sent_at));
+    assert.equal(row.failure_reason, undefined);
+    assert.equal(row.failed_at, undefined);
+  });
+
+  it("keeps why a refused message was refused, on the message", async () => {
+    provider.next.push(refused(131026));
+    await send();
+    const [row] = outbound();
+    assert.equal(row.status, "failed");
+    assert.equal(row.failure_reason, "recipient_unreachable");
+    assert.equal(row.failure_code, 131026);
+    assert.ok(recent(row.failed_at));
+    assert.equal(row.sent_at, undefined, "a refused message was never sent");
+  });
+
+  it("claims no time for a send that got no answer", async () => {
+    provider.fail = new Error("timeout");
+    await send();
+    const [row] = outbound();
+    assert.equal(row.status, "unconfirmed");
+    assert.equal(row.origin, "inbox");
+    assert.equal(row.sent_at, undefined);
+    assert.equal(row.failed_at, undefined);
+  });
+
+  it("marks a template as a template and the assistant's reply as the assistant's", async () => {
+    await sendTemplate({
+      tenantId: A,
+      userId: "user-a",
+      templateId: "tpl-a",
+      conversationId: "conv-a",
+      variables: ["Sara"],
+    });
+    assert.equal(outbound()[0].origin, "template");
+
+    rows.tenant_bot_settings.push({
+      tenant_id: A,
+      enabled: true,
+      bot_name: "Flas",
+      greeting: "Hello!",
+      instructions: "We sell CCTV kits in Dubai and install on Saturdays.",
+      model: "default",
+      handoff_keywords: [],
+    });
+    rows.conversations[0].bot_enabled = true;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await processWaPayload(
+      inboundPayload("pn-a", {
+        id: "wamid.IN-EV",
+        from: "971501234567",
+        type: "text",
+        text: { body: "I want to talk to a human" },
+      }),
+    );
+    const reply = rows.messages.find((m) => m.sender === "bot");
+    assert.equal(reply.origin, "assistant");
+    assert.ok(recent(reply.sent_at));
+  });
+
+  it("records an inbound message as arriving by webhook, with what it carried", async () => {
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await processWaPayload(
+      inboundPayload("pn-a", {
+        id: "wamid.IN-DOC",
+        from: "971501234567",
+        type: "document",
+        document: {
+          id: "media-77",
+          mime_type: "application/pdf",
+          filename: "order.pdf",
+          sha256: "abc123",
+          caption: "My order",
+        },
+      }),
+    );
+    const row = rows.messages.find((m) => m.wa_message_id === "wamid.IN-DOC");
+    assert.equal(row.origin, "webhook");
+    assert.deepEqual(row.media, {
+      kind: "document",
+      id: "media-77",
+      mime_type: "application/pdf",
+      filename: "order.pdf",
+      sha256: "abc123",
+    });
+    // Metadata only: no link to the file is stored.
+    assert.ok(!JSON.stringify(row.media).includes("http"));
+  });
+
+  it("stamps a receipt with Meta's own time, on the message it moved", async () => {
+    await send();
+    const [row] = outbound();
+    const deliveredAt = Math.floor(Date.now() / 1000) - 90;
+    await processWaPayload(
+      statusPayload("pn-a", {
+        id: row.wa_message_id,
+        status: "delivered",
+        timestamp: String(deliveredAt),
+      }),
+    );
+    assert.equal(row.delivered_at, new Date(deliveredAt * 1000).toISOString());
+    await processWaPayload(statusPayload("pn-a", { id: row.wa_message_id, status: "read" }));
+    assert.ok(recent(row.read_at), "no timestamp on the receipt: the time it arrived");
+    // A copy of the first receipt, arriving late, rewrites nothing.
+    await processWaPayload(
+      statusPayload("pn-a", { id: row.wa_message_id, status: "delivered", timestamp: "1" }),
+    );
+    assert.equal(row.delivered_at, new Date(deliveredAt * 1000).toISOString());
+  });
+
+  it("keeps the reason from a failure receipt", async () => {
+    await send();
+    const [row] = outbound();
+    await processWaPayload(
+      statusPayload("pn-a", {
+        id: row.wa_message_id,
+        status: "failed",
+        errors: [{ code: 131047 }],
+      }),
+    );
+    assert.equal(row.status, "failed");
+    assert.equal(row.failure_reason, "window_closed");
+    assert.equal(row.failure_code, 131047);
+    assert.ok(recent(row.failed_at));
+  });
+
+  it("works exactly as before on a database that does not have the columns yet", async () => {
+    db.fail("messages:update", columnsMissing);
+    const result = await send({ clientRef: REF_1 });
+    assert.equal(result.state, "accepted", "the send is not failed by a missing detail");
+    const [row] = outbound();
+    assert.equal(row.status, "sent");
+    assert.equal(row.wa_message_id, result.waId);
+    assert.equal(row.origin, undefined);
+
+    await processWaPayload(statusPayload("pn-a", { id: row.wa_message_id, status: "delivered" }));
+    assert.equal(row.status, "delivered", "receipts still move the status");
+    assert.equal(row.delivered_at, undefined);
+  });
+
+  it("stops asking a database that has said it has no such column", async () => {
+    let attempts = 0;
+    db.fail("messages:update", (query) => {
+      const refusal = columnsMissing(query);
+      if (refusal) attempts += 1;
+      return refusal;
+    });
+    await send();
+    await send();
+    await send();
+    assert.equal(attempts, 1, "asked once, then left alone for a while");
+    assert.equal(outbound().length, 3);
+    assert.ok(outbound().every((m) => m.status === "sent"));
+  });
+
+  it("does not fail a send whose detail could not be kept for another reason", async () => {
+    db.fail("messages:update", (query) =>
+      query.patch?.origin ? { code: "57014", message: "statement timeout" } : null,
+    );
+    const result = await send();
+    assert.equal(result.state, "accepted");
+    assert.equal(outbound()[0].status, "sent");
+  });
+
+  it("reads Meta's receipt time, and distrusts one that cannot be right", () => {
+    const now = Date.UTC(2026, 9, 6, 12, 0, 0);
+    assert.equal(receiptTime("1791288000", now), new Date(1791288000 * 1000).toISOString());
+    for (const bad of [undefined, null, "", "soon", "1", "99999999999999"]) {
+      assert.equal(receiptTime(bad, now), new Date(now).toISOString(), String(bad));
+    }
+  });
+
+  it("says nothing it does not know", () => {
+    const at = "2026-10-06T12:00:00.000Z";
+    assert.deepEqual(evidenceOfSend({ state: "accepted", waMessageId: "w" }, at), { sent_at: at });
+    assert.deepEqual(evidenceOfSend({ state: "unconfirmed", message: "x" }, at), {});
+    assert.deepEqual(evidenceOfReceipt("read", at), { read_at: at });
+    assert.deepEqual(evidenceOfReceipt("failed", at, 190), {
+      failed_at: at,
+      failure_reason: "credentials",
+      failure_code: 190,
+    });
+    assert.equal(mediaOf({ text: { body: "hi" } }), null);
+    assert.deepEqual(mediaOf({ image: { id: "m1", mime_type: "image/jpeg" } }), {
+      kind: "image",
+      id: "m1",
+      mime_type: "image/jpeg",
+    });
+  });
+
+  it("writes evidence only inside the message's own workspace", () => {
+    const source = readFileSync(new URL("../src/lib/wa.server.ts", import.meta.url), "utf8")
+      .split("\r\n")
+      .join("\n");
+    const writer = source.slice(
+      source.indexOf("export async function recordMessageEvidence("),
+      source.indexOf("export async function completeOutboundDelivery("),
+    );
+    assert.match(writer, /\.eq\("id", messageId\)\s*\n\s*\.eq\("tenant_id", tenantId\);/);
+  });
+});
+
+describe("the assistant answers only where the workspace has opted in", () => {
+  const NEW_CUSTOMER = "971559990000";
+  const settings = (extra = {}) => ({
+    tenant_id: A,
+    enabled: true,
+    bot_name: "Flas",
+    greeting: "Hello!",
+    instructions: "We sell CCTV kits in Dubai and install on Saturdays.",
+    model: "default",
+    handoff_keywords: [],
+    auto_enroll_new_chats: false,
+    ...extra,
+  });
+  const firstMessage = (id = "wamid.NEW-1", from = NEW_CUSTOMER) =>
+    processWaPayload(
+      inboundPayload("pn-a", { id, from, type: "text", text: { body: "Do you deliver?" } }),
+    );
+  /** The conversation the first message from a number opened. */
+  const opened = () =>
+    rows.conversations.find((c) => !["conv-a", "conv-b", "web-a"].includes(c.id));
+  const botRows = () => rows.messages.filter((m) => m.sender === "bot");
+
+  beforeEach(() => {
+    process.env.LOVABLE_API_KEY = "test-gateway";
+    ai.respond = () => ({
+      status: 200,
+      body: {
+        choices: [
+          { message: { content: JSON.stringify({ text: "Yes, we do.", handoff: false }) } },
+        ],
+      },
+    });
+  });
+  afterEach(() => {
+    delete process.env.LOVABLE_API_KEY;
+  });
+
+  it("does not answer a new customer of a workspace that never set the assistant up", async () => {
+    await firstMessage();
+    assert.equal(opened().bot_enabled, false);
+    assert.equal(ai.calls.length, 0);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("does not answer a new customer when the assistant is on but new chats were not opted in", async () => {
+    rows.tenant_bot_settings.push(settings());
+    await firstMessage();
+    assert.equal(opened().bot_enabled, false, "the conversation was enrolled without an opt-in");
+    assert.equal(ai.calls.length, 0);
+    assert.equal(provider.calls.length, 0);
+    assert.equal(botRows().length, 0);
+  });
+
+  it("answers a new customer once the workspace has opted in to that", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    await firstMessage();
+    assert.equal(opened().bot_enabled, true);
+    assert.equal(ai.calls.length, 1);
+    assert.equal(provider.calls.length, 1);
+    assert.equal(provider.calls[0].body.text.body, "Yes, we do.");
+  });
+
+  it("does not enrol new chats for an assistant that is switched off, whatever the policy says", async () => {
+    rows.tenant_bot_settings.push(settings({ enabled: false, auto_enroll_new_chats: true }));
+    await firstMessage();
+    assert.equal(opened().bot_enabled, false);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("still answers a conversation a person switched the assistant on for", async () => {
+    // The policy is about NEW conversations. This one was turned on in the Inbox.
+    rows.tenant_bot_settings.push(settings());
+    rows.conversations[0].bot_enabled = true;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await firstMessage("wamid.EXISTING", "971501234567");
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("stays out of a conversation a person took over, even with new chats opted in", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    rows.conversations[0].bot_enabled = false;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await firstMessage("wamid.TAKEN", "971501234567");
+    assert.equal(rows.conversations[0].bot_enabled, false, "the hand-over was undone");
+    assert.equal(ai.calls.length, 0);
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("applies the same rule to a new website visitor", async () => {
+    rows.tenant_bot_settings.push(settings());
+    await ingestInboundMessage({ tenantId: A, channel: "web", sessionId: "s-1", text: "Hi" });
+    const first = rows.conversations.find((c) => c.web_session_id === "s-1");
+    assert.equal(first.bot_enabled, false);
+
+    rows.tenant_bot_settings[0].auto_enroll_new_chats = true;
+    const second = await ingestInboundMessage({
+      tenantId: A,
+      channel: "web",
+      sessionId: "s-2",
+      text: "Do you deliver?",
+    });
+    assert.equal(rows.conversations.find((c) => c.web_session_id === "s-2").bot_enabled, true);
+    assert.equal(second.reply, "Yes, we do.");
+  });
+
+  it("does not enrol a conversation a person opened to send something", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    rows.conversations = rows.conversations.filter((c) => c.id !== "conv-a");
+    db.reset(rows);
+    declareKeys();
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    await sendTemplate({
+      tenantId: A,
+      userId: "user-a",
+      templateId: "tpl-a",
+      phone: "971501234567",
+      variables: ["Sara"],
+    });
+    const byPerson = rows.conversations.find(
+      (c) => c.contact_id === "c-a" && c.channel === "whatsapp",
+    );
+    assert.equal(byPerson.bot_enabled, false);
+  });
+
+  it("does not take a failed settings read for a workspace that has not opted in", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    // One blip: the first read fails, the second works.
+    let reads = 0;
+    db.fail("tenant_bot_settings:read", () => (++reads === 1 ? STATEMENT_TIMEOUT : null));
+    await firstMessage();
+    assert.equal(
+      opened().bot_enabled,
+      true,
+      "an opted-in workspace's new chat was created with the assistant off",
+    );
+    assert.equal(provider.calls.length, 1);
+  });
+
+  it("opens no conversation while the settings cannot be read, and opens it correctly on retry", async () => {
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    db.fail("tenant_bot_settings:read", STATEMENT_TIMEOUT);
+    await assert.rejects(firstMessage(), /Could not read this workspace's assistant settings/);
+    assert.equal(opened(), undefined, "a conversation was created with a guessed setting");
+    assert.equal(rows.messages.filter((m) => m.wa_message_id === "wamid.NEW-1").length, 0);
+    assert.equal(provider.calls.length, 0);
+
+    db.recover("tenant_bot_settings:read");
+    await firstMessage();
+    assert.equal(opened().bot_enabled, true);
+    assert.equal(rows.messages.filter((m) => m.wa_message_id === "wamid.NEW-1").length, 1);
+    assert.equal(provider.calls.length, 1, "answered once, on the retry");
+  });
+
+  it("keeps the customer's message when the settings cannot be read for an existing conversation", async () => {
+    // Nothing permanent depends on the settings here, so nothing is refused:
+    // the message is saved and the assistant simply does not answer this one.
+    rows.tenant_bot_settings.push(settings({ auto_enroll_new_chats: true }));
+    rows.conversations[0].bot_enabled = true;
+    db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+    db.fail("tenant_bot_settings:read", STATEMENT_TIMEOUT);
+    await firstMessage("wamid.KEPT", "971501234567");
+    assert.equal(rows.messages.filter((m) => m.wa_message_id === "wamid.KEPT").length, 1);
+    assert.equal(
+      rows.conversations[0].bot_enabled,
+      true,
+      "the conversation was switched off by a failed read",
+    );
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("leaves the choice to the database on one that has no opt-in column yet", async () => {
+    // Deployed before the migration: there is no policy to read, so nothing
+    // is said and the column's own default applies, exactly as before.
+    const legacy = settings();
+    delete legacy.auto_enroll_new_chats;
+    rows.tenant_bot_settings.push(legacy);
+    await firstMessage();
+    assert.ok(!("bot_enabled" in opened()), "the code overrode the database default");
+    assert.deepEqual(newChatAutomation(legacy), {});
+  });
+
+  it("says off unless both switches are on", () => {
+    assert.deepEqual(newChatAutomation(null), { bot_enabled: false });
+    assert.deepEqual(newChatAutomation(settings()), { bot_enabled: false });
+    assert.deepEqual(newChatAutomation(settings({ auto_enroll_new_chats: true })), {
+      bot_enabled: true,
+    });
+    assert.deepEqual(newChatAutomation(settings({ enabled: false, auto_enroll_new_chats: true })), {
+      bot_enabled: false,
+    });
+  });
+
+  describe("in the source", () => {
+    const read = (path) =>
+      readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+        .split("\r\n")
+        .join("\n");
+
+    it("every conversation the code creates says whether the assistant answers it", () => {
+      const wa = read("src/lib/wa.server.ts");
+      const inserts = wa
+        .split('.from("conversations")')
+        .slice(1)
+        .map((after) => after.slice(0, 400))
+        .filter((after) => /^\s*\.insert\(\{/.test(after));
+      assert.equal(inserts.length, 3, "a conversation is created somewhere new");
+      for (const insert of inserts) {
+        assert.ok(
+          insert.includes("...(await newChatPolicy())") || insert.includes("bot_enabled: false"),
+          "a conversation is created without saying whether the assistant answers it",
+        );
+      }
+      // No other file creates conversations.
+      for (const file of [
+        "src/lib/wa-send.server.ts",
+        "src/lib/crm.functions.ts",
+        "src/lib/monitoring.server.ts",
+      ]) {
+        assert.ok(!/from\("conversations"\)\s*\.insert/.test(read(file)), file);
+      }
+    });
+
+    it("the Chatbot page starts off, asks before turning on, and only saves a policy the database has", () => {
+      const page = read("src/routes/_authenticated/chatbot.tsx");
+      assert.match(page, /enabled: false,\n\s+auto_enroll_new_chats: false,/);
+      assert.ok(
+        !/useState\(\{\s*enabled: true/.test(page),
+        "the form starts with automatic replies on",
+      );
+      assert.match(
+        page,
+        /v && !form\.enabled \? setConfirmingOn\(true\) : setForm\(\{ \.\.\.form, enabled: v \}\)/,
+      );
+      assert.match(
+        page,
+        /<AlertDialogAction onClick=\{\(\) => setForm\(\{ \.\.\.form, enabled: true \}\)\}>/,
+      );
+      assert.match(
+        page,
+        /\? \{ auto_enroll_new_chats: form\.enabled && form\.auto_enroll_new_chats \}/,
+      );
+      assert.match(page, /\{policyAvailable && \(/);
+    });
+
+    it("the migration switches nothing off and hands existing workspaces over once", () => {
+      const sql = read("supabase/migrations/20261006160000_assistant_explicit_opt_in.sql");
+      assert.match(
+        sql,
+        /ALTER TABLE public\.tenant_bot_settings ALTER COLUMN enabled SET DEFAULT false;/,
+      );
+      assert.match(
+        sql,
+        /ALTER TABLE public\.conversations ALTER COLUMN bot_enabled SET DEFAULT false;/,
+      );
+      assert.match(
+        sql,
+        /UPDATE public\.tenant_bot_settings SET auto_enroll_new_chats = true WHERE enabled;/,
+      );
+      // Nothing in it turns a workspace or a conversation off.
+      assert.ok(!/SET\s+enabled\s*=\s*false/i.test(sql));
+      assert.ok(!/UPDATE\s+public\.conversations/i.test(sql));
+      // The hand-over is inside the "column does not exist yet" guard.
+      const guard = sql.slice(sql.indexOf("IF NOT EXISTS ("), sql.indexOf("END IF;"));
+      assert.ok(guard.includes("SET auto_enroll_new_chats = true WHERE enabled"));
+      assert.match(
+        sql,
+        /REVOKE ALL ON FUNCTION public\.note_assistant_automation_change\(\) FROM PUBLIC, anon, authenticated;/,
+      );
+      assert.match(sql, /SET search_path = public, pg_temp/);
+    });
+  });
 });
 
 describe("nothing reaches a customer around the pipeline", () => {

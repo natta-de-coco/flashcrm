@@ -174,7 +174,8 @@ export const sendDocumentOnWhatsApp = createServerFn({ method: "POST" })
         origin: z.string().url(),
         phone: z.string().trim().min(6).max(30).optional(),
         note: z.string().trim().max(600).optional(),
-        waNumberId: z.string().uuid().nullable().optional(),
+        /** One per send, so a second click or a retried request is the same message. */
+        clientRef: z.string().uuid().optional(),
       })
       .parse(input),
   )
@@ -192,8 +193,15 @@ export const sendDocumentOnWhatsApp = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!doc) throw new Error("Document not found.");
 
+    // The link the customer receives points at this deployment and nowhere
+    // else, whatever origin the request claimed.
+    const { sendDocumentOverWhatsApp } = await import("@/lib/billing-whatsapp.server");
+    const { customerLinkOrigin } = await import("@/lib/customer-link.server");
+    const { getRequest } = await import("@tanstack/react-start/server");
+    const base = customerLinkOrigin(data.origin, getRequest()?.url);
+
     if (!doc.finalized_at) {
-      await finalizeDocument(supabase, context.userId, data.id, data.origin);
+      await finalizeDocument(supabase, context.userId, data.id, base);
       const fresh = await supabase
         .from("sales_documents")
         .select(
@@ -216,7 +224,7 @@ export const sendDocumentOnWhatsApp = createServerFn({ method: "POST" })
     }
     if (!phone) throw new Error("No WhatsApp number for this customer — add a phone number first.");
 
-    const link = `${data.origin.replace(/\/$/, "")}/pay/${doc.share_token}`;
+    const link = `${base}/pay/${doc.share_token}`;
     const label =
       doc.kind === "quotation"
         ? "Quotation"
@@ -228,23 +236,60 @@ export const sendDocumentOnWhatsApp = createServerFn({ method: "POST" })
       (data.note ? `${data.note}\n\n` : "") +
       `${label} ${doc.doc_number}\nAmount: ${amount}\n\nView & download the PDF here:\n${link}`;
 
-    const { sendWhatsAppText, resolveWaCredentials } = await import("@/lib/wa.server");
-    const creds = await resolveWaCredentials(tenantId, data.waNumberId ?? null);
-    await sendWhatsAppText(phone, body, creds);
-
-    await supabase
-      .from("sales_documents")
-      .update({
-        last_sent_at: new Date().toISOString(),
-        status: doc.status === "draft" ? "sent" : doc.status,
-      })
-      .eq("id", data.id);
-    await logActivity(supabase, tenantId, data.id, "sent_whatsapp", context.userId, {
+    // Through the send pipeline: the safety gate, the customer's own
+    // conversation, one saved message, and the provider's real answer. It used
+    // to call WhatsApp directly, which skipped all four.
+    const sent = await sendDocumentOverWhatsApp({
+      tenantId,
+      userId: context.userId,
+      kind: "invoice",
+      // A number typed for this send names the recipient; otherwise it is the
+      // contact the document was made for.
+      contactId: data.phone ? null : doc.contact_id,
       phone,
-      link,
+      text: body,
+      templateVariables: [
+        snapshot.name?.trim() || "Customer",
+        `${label} ${doc.doc_number}`,
+        amount,
+        link,
+      ],
+      clientRef: data.clientRef ?? null,
     });
 
-    return { ok: true, link, phone };
+    // "Sent" is WhatsApp accepting it. A refusal, a block or an unanswered
+    // request leaves the document as it was.
+    const accepted = sent.state === "accepted" || sent.state === "duplicate";
+    if (accepted) {
+      await supabase
+        .from("sales_documents")
+        .update({
+          last_sent_at: new Date().toISOString(),
+          status: doc.status === "draft" ? "sent" : doc.status,
+        })
+        .eq("id", data.id);
+    }
+    if (sent.state !== "blocked" && sent.state !== "duplicate") {
+      await logActivity(
+        supabase,
+        tenantId,
+        data.id,
+        accepted ? "sent_whatsapp" : "whatsapp_not_delivered",
+        context.userId,
+        { phone: sent.recipient ?? phone, link, via: sent.via, outcome: sent.state },
+      );
+    }
+
+    return {
+      ok: accepted,
+      state: sent.state,
+      via: sent.via,
+      link,
+      phone: sent.recipient ?? phone,
+      blocks: sent.blocks,
+      failureReason: sent.failureReason,
+      deliveryError: sent.deliveryError,
+    };
   });
 
 /** Records a payment, recomputes the balance and (when settled) sends the PAID copy. */
@@ -336,9 +381,15 @@ export const recordDocumentPayment = createServerFn({ method: "POST" })
 
     // Fully settled → send the stamped PAID copy straight back to the customer.
     let receiptSent = false;
+    // Why the paid copy did not go, when it did not. The payment is recorded
+    // either way; the person is told, and can send the PDF themselves.
+    let receiptNotSent: {
+      blocks: { code: string; message: string }[];
+      reason: string | null;
+    } | null = null;
     if (state?.status === "paid" && data.notifyCustomer !== false) {
       try {
-        const snapshot = (doc.customer_snapshot ?? {}) as { phone?: string };
+        const snapshot = (doc.customer_snapshot ?? {}) as { phone?: string; name?: string };
         let phone = snapshot.phone ?? null;
         if (!phone && doc.contact_id) {
           const { data: contact } = await supabase
@@ -349,25 +400,43 @@ export const recordDocumentPayment = createServerFn({ method: "POST" })
           phone = contact?.phone ?? null;
         }
         if (phone) {
-          const link = `${data.origin.replace(/\/$/, "")}/pay/${doc.share_token}`;
-          const { sendWhatsAppText, resolveWaCredentials } = await import("@/lib/wa.server");
-          const creds = await resolveWaCredentials(tenantId, null);
-          await sendWhatsAppText(
+          const { sendDocumentOverWhatsApp } = await import("@/lib/billing-whatsapp.server");
+          const { customerLinkOrigin } = await import("@/lib/customer-link.server");
+          const { getRequest } = await import("@tanstack/react-start/server");
+          const link = `${customerLinkOrigin(data.origin, getRequest()?.url)}/pay/${doc.share_token}`;
+          const paid = `${doc.currency} ${Number(doc.grand_total ?? 0).toFixed(2)}`;
+          const sent = await sendDocumentOverWhatsApp({
+            tenantId,
+            userId: context.userId,
+            kind: "receipt",
+            contactId: doc.contact_id,
             phone,
-            `Payment received — thank you!\n\nInvoice ${doc.doc_number} is now marked PAID.\nDownload your paid copy here:\n${link}`,
-            creds,
-          );
-          receiptSent = true;
-          await logActivity(supabase, tenantId, data.documentId, "receipt_sent", context.userId, {
-            phone,
+            text: `Payment received — thank you!\n\nInvoice ${doc.doc_number} is now marked PAID.\nDownload your paid copy here:\n${link}`,
+            templateVariables: [
+              snapshot.name?.trim() || "Customer",
+              `Invoice ${doc.doc_number}`,
+              paid,
+              link,
+            ],
+            // The payment is the thing being confirmed, so its id names the message.
+            clientRef: payment.id,
           });
+          receiptSent = sent.state === "accepted" || sent.state === "duplicate";
+          if (receiptSent) {
+            await logActivity(supabase, tenantId, data.documentId, "receipt_sent", context.userId, {
+              phone: sent.recipient ?? phone,
+              via: sent.via,
+            });
+          } else {
+            receiptNotSent = { blocks: sent.blocks, reason: sent.failureReason };
+          }
         }
       } catch (e) {
         console.error("[billing] paid receipt send failed", e);
       }
     }
 
-    return { ...state, receiptSent };
+    return { ...state, receiptSent, receiptNotSent };
   });
 
 /** Turns an accepted quotation into a draft invoice with the same lines. */

@@ -18,8 +18,10 @@ import {
   type SendCheck,
 } from "@/lib/safety.server";
 import {
+  evidenceOfSend,
   WA_FAILURE_TEXT,
   WA_UNCONFIRMED_TEXT,
+  type MessageOrigin,
   type WaFailureReason,
   type WaSendOutcome,
 } from "@/lib/wa-delivery";
@@ -31,6 +33,7 @@ import {
   findOrCreateWhatsAppConversation,
   OUTBOUND_NOT_SAVED_TEXT,
   OutboundAlreadySaved,
+  recordMessageEvidence,
   resolveSendingNumber,
   storeOutbound,
   type WaCredentials,
@@ -258,6 +261,8 @@ async function sendThroughWhatsApp(args: {
   /** The conversation has no number yet, so it takes the one used here. */
   bindNumber: boolean;
   storedBody: string;
+  /** What kind of send this is, for the record. */
+  origin: MessageOrigin;
   clientRef: string | null;
   gate: SendCheck;
   deliver: (to: string, creds: WaCredentials, messageRef: string) => Promise<WaSendOutcome>;
@@ -320,6 +325,10 @@ async function sendThroughWhatsApp(args: {
     // carries this message's own reference, moves it on.
     console.error("[whatsapp] could not record the provider's answer", error);
   }
+  await recordMessageEvidence(tenantId, messageId, {
+    origin: args.origin,
+    ...evidenceOfSend(outcome, new Date().toISOString()),
+  });
 
   if (args.bindNumber && gate.waNumberId) {
     await supabaseAdmin
@@ -387,6 +396,7 @@ export async function sendConversationMessage(args: {
       conversationId: conversation.id,
       bindNumber: !conversation.wa_number_id,
       storedBody: args.body,
+      origin: "inbox",
       clientRef: clientRef ?? null,
       gate,
       deliver: (to, creds, ref) => deliverWhatsAppText(to, args.body, creds, ref),
@@ -403,6 +413,11 @@ export async function sendConversationMessage(args: {
         "sent",
         await messageIdFor(tenantId, conversation.id, clientRef),
       );
+      // The visitor's widget shows it as soon as it is saved.
+      await recordMessageEvidence(tenantId, messageId, {
+        origin: "inbox",
+        sent_at: new Date().toISOString(),
+      });
       result = { ...base(gate), ok: true, state: "stored", messageId };
     } catch (error) {
       if (!(error instanceof OutboundAlreadySaved)) throw error;
@@ -517,6 +532,7 @@ export async function sendTemplate(args: {
     conversationId,
     bindNumber,
     storedBody: rendered,
+    origin: "template",
     clientRef: clientRef ?? null,
     gate,
     deliver: (to, creds, ref) =>
