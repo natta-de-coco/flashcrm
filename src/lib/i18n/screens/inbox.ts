@@ -142,6 +142,10 @@ export default screen({
       "WhatsApp did not accept this message. Ask a company admin to check the connection.",
     "inbox.sendFailure.unconfirmed":
       "WhatsApp did not confirm whether this message was sent. Do not send it again yet: check with the customer, or wait for the delivery receipt.",
+    "inbox.loadEarlierMessages": "Load earlier messages",
+    "inbox.loadOlderConversations": "Load older conversations",
+    "inbox.searchRecentOnly":
+      "Older conversations could not be searched just now. Showing matches from the ones already loaded.",
   },
   ar: {
     "inbox.messageBlockedBySafetyRules": "حُظرت الرسالة وفق قواعد الأمان",
@@ -274,6 +278,10 @@ export default screen({
     "inbox.sendFailure.unknown": "لم يقبل واتساب هذه الرسالة. اطلب من مسؤول الشركة فحص الاتصال.",
     "inbox.sendFailure.unconfirmed":
       "لم يؤكد واتساب ما إذا أُرسلت هذه الرسالة. لا ترسلها مجددًا الآن: تحقق مع العميل، أو انتظر إشعار التسليم.",
+    "inbox.loadEarlierMessages": "تحميل الرسائل الأقدم",
+    "inbox.loadOlderConversations": "تحميل المحادثات الأقدم",
+    "inbox.searchRecentOnly":
+      "تعذّر البحث في المحادثات الأقدم الآن. تُعرض النتائج من المحادثات المحمّلة فقط.",
   },
   ms: {
     "inbox.messageBlockedBySafetyRules": "Mesej disekat oleh peraturan keselamatan",
@@ -413,6 +421,10 @@ export default screen({
       "WhatsApp tidak menerima mesej ini. Minta pentadbir syarikat menyemak sambungan.",
     "inbox.sendFailure.unconfirmed":
       "WhatsApp tidak mengesahkan sama ada mesej ini dihantar. Jangan hantar lagi buat masa ini: semak dengan pelanggan, atau tunggu resit penghantaran.",
+    "inbox.loadEarlierMessages": "Muatkan mesej terdahulu",
+    "inbox.loadOlderConversations": "Muatkan perbualan lama",
+    "inbox.searchRecentOnly":
+      "Perbualan lama tidak dapat dicari buat masa ini. Menunjukkan padanan daripada perbualan yang telah dimuatkan.",
   },
   fil: {
     "inbox.messageBlockedBySafetyRules": "Na-block ang mensahe ng mga panuntunan sa kaligtasan",
@@ -555,6 +567,10 @@ export default screen({
       "Hindi tinanggap ng WhatsApp ang mensaheng ito. Hilingin sa company admin na tingnan ang koneksyon.",
     "inbox.sendFailure.unconfirmed":
       "Hindi kinumpirma ng WhatsApp kung naipadala ang mensaheng ito. Huwag muna itong ipadala muli: tanungin ang customer, o hintayin ang delivery receipt.",
+    "inbox.loadEarlierMessages": "I-load ang mga naunang mensahe",
+    "inbox.loadOlderConversations": "I-load ang mga mas lumang usapan",
+    "inbox.searchRecentOnly":
+      "Hindi mahanap sa ngayon ang mga mas lumang usapan. Ipinapakita ang mga tugma mula sa mga na-load na.",
   },
   sw: {
     "inbox.messageBlockedBySafetyRules": "Ujumbe umezuiwa na kanuni za usalama",
@@ -695,5 +711,9 @@ export default screen({
       "WhatsApp haikukubali ujumbe huu. Mwombe msimamizi wa kampuni akague muunganisho.",
     "inbox.sendFailure.unconfirmed":
       "WhatsApp haikuthibitisha kama ujumbe huu ulitumwa. Usiutume tena bado: wasiliana na mteja, au subiri risiti ya uwasilishaji.",
+    "inbox.loadEarlierMessages": "Pakia ujumbe wa awali",
+    "inbox.loadOlderConversations": "Pakia mazungumzo ya zamani",
+    "inbox.searchRecentOnly":
+      "Mazungumzo ya zamani hayakuweza kutafutwa kwa sasa. Yanaonyeshwa yanayolingana kutoka kwa yaliyopakiwa tayari.",
   },
 });
