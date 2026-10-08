@@ -18,6 +18,7 @@ import {
   sanitizeCsvCell,
   escapeXml,
   escapeIif,
+  isSafeWordPressUrl,
 } from "../node_modules/.cache/flas-invoices.mjs";
 
 export const invoiceFixture = {
@@ -363,3 +364,34 @@ test("accounting sync cleanly distinguishes quotations/estimates from finalized 
   assert.equal(qbJson.ExpirationDate, "2026-11-05");
   assert.equal(qbJson.DueDate, undefined);
 });
+
+test("WordPress site connection enforces SSRF validation", () => {
+  // Rejects non-http(s)
+  assert.equal(isSafeWordPressUrl("ftp://example.com"), false);
+  assert.equal(isSafeWordPressUrl("file:///etc/passwd"), false);
+  assert.equal(isSafeWordPressUrl("javascript:alert(1)"), false);
+
+  // Rejects loopback & internal
+  assert.equal(isSafeWordPressUrl("http://localhost"), false);
+  assert.equal(isSafeWordPressUrl("http://localhost:8080/wp"), false);
+  assert.equal(isSafeWordPressUrl("http://site.localhost"), false);
+  assert.equal(isSafeWordPressUrl("http://127.0.0.1"), false);
+  assert.equal(isSafeWordPressUrl("http://127.0.0.1:3000"), false);
+  assert.equal(isSafeWordPressUrl("http://[::1]"), false);
+
+  // Rejects cloud metadata
+  assert.equal(isSafeWordPressUrl("http://169.254.169.254"), false);
+  assert.equal(isSafeWordPressUrl("http://169.254.169.254/latest/meta-data"), false);
+  assert.equal(isSafeWordPressUrl("http://metadata.google.internal"), false);
+
+  // Rejects RFC1918 private ranges
+  assert.equal(isSafeWordPressUrl("http://10.0.0.1"), false);
+  assert.equal(isSafeWordPressUrl("http://172.16.0.1"), false);
+  assert.equal(isSafeWordPressUrl("http://192.168.1.1"), false);
+
+  // Allows legitimate public domains
+  assert.equal(isSafeWordPressUrl("https://myblog.example.com"), true);
+  assert.equal(isSafeWordPressUrl("https://wp.mobidigisol.com"), true);
+  assert.equal(isSafeWordPressUrl("http://atozsecurityequipment.com"), true);
+});
+
