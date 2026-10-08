@@ -189,12 +189,6 @@ export function ConnectionOutcome({
         <AlertDescription className="space-y-3">
           <p className="font-medium">{localizedReason}</p>
 
-          {search.connect_detail && search.connect_detail !== search.connect_reason && (
-            <p className="font-mono text-xs opacity-80 break-words rounded bg-muted/40 p-2">
-              {search.connect_detail}
-            </p>
-          )}
-
           <p className="text-xs opacity-80">{i18n.t("connectionOutcome.nothingWasSavedSoThere")}</p>
           <Button size="sm" variant="outline" onClick={onDismiss}>
             {i18n.t("connectionOutcome.dismiss")}

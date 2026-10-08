@@ -1,120 +1,54 @@
-const SECRET_PATTERNS: RegExp[] = [
-  /access_token=[^&\s"']+/gi,
-  /client_secret=[^&\s"']+/gi,
-  /refresh_token=[^&\s"']+/gi,
-  /code_verifier=[^&\s"']+/gi,
-  /\bcode=[^&\s"']{8,}/gi,
-  /\bstate=[^&\s"']{16,}/gi,
-  /(["']?(?:access_token|client_secret|refresh_token|app_secret|api_key|password|code_verifier)["']?\s*[:=]\s*)["']?[A-Za-z0-9._~+/=-]{8,}["']?/gi,
-  /Bearer\s+[A-Za-z0-9._-]{8,}/gi,
-  /\bEAA[A-Za-z0-9]{20,}\b/g,
-];
-
-export function redactSecrets(input: string | null | undefined): string | null {
-  if (!input) return null;
-  let out = String(input);
-  for (const pattern of SECRET_PATTERNS) out = out.replace(pattern, "[redacted]");
-  return out.slice(0, 2000);
-}
-
+// Never retain provider prose: error bodies may echo credentials, URLs or personal data.
+const SAFE_REASONS = new Set([
+  "accessNotConfigured",
+  "SERVICE_DISABLED",
+  "quotaExceeded",
+  "dailyLimitExceeded",
+  "rateLimitExceeded",
+  "insufficientPermissions",
+  "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+  "youtubeSignupRequired",
+  "channelNotFound",
+]);
 export interface ProviderErrorDetails {
   status: number;
-  code: string | number | null;
+  code: number | null;
   reason: string | null;
-  domain: string | null;
-  message: string | null;
 }
-
 export class ProviderPagesError extends Error {
   readonly status: number;
   readonly providerReason: string | null;
-  readonly providerCode: string | number | null;
-  readonly providerDomain: string | null;
-  readonly providerMessage: string | null;
-
+  readonly providerCode: number | null;
   constructor(message: string, details: ProviderErrorDetails) {
     super(message);
     this.name = "ProviderPagesError";
     this.status = details.status;
     this.providerReason = details.reason;
     this.providerCode = details.code;
-    this.providerDomain = details.domain;
-    this.providerMessage = details.message;
   }
 }
-
-interface RawProviderErrorBody {
-  error?:
-    | {
-        code?: number | string;
-        message?: string;
-        status?: string;
-        errors?: Array<{ reason?: string; domain?: string; message?: string }>;
-        details?: Array<{ reason?: string; domain?: string }>;
-        type?: string;
-        error_subcode?: number | string;
-      }
-    | string;
-  message?: string;
-  serviceErrorCode?: number | string;
-}
-
 export function extractProviderError(status: number, body: unknown): ProviderErrorDetails {
-  const details: ProviderErrorDetails = {
-    status,
-    code: null,
-    reason: null,
-    domain: null,
-    message: null,
-  };
-
+  const details: ProviderErrorDetails = { status, code: null, reason: null };
   if (!body || typeof body !== "object") return details;
-  const b = body as RawProviderErrorBody;
-
-  // Google error shape: { error: { code, message, status, errors: [{ reason, domain, message }], details: [{ reason, domain }] } }
-  if (b.error && typeof b.error === "object") {
-    details.code = b.error.code ?? b.error.status ?? null;
-    if (typeof b.error.message === "string") {
-      details.message = redactSecrets(b.error.message)?.slice(0, 300) ?? null;
-    }
-    if (Array.isArray(b.error.errors) && b.error.errors.length > 0) {
-      const first = b.error.errors[0];
-      if (first && typeof first === "object") {
-        details.reason = first.reason ? String(first.reason).slice(0, 100) : null;
-        details.domain = first.domain ? String(first.domain).slice(0, 100) : null;
-        if (!details.message && typeof first.message === "string") {
-          details.message = redactSecrets(first.message)?.slice(0, 300) ?? null;
-        }
+  const error = (body as { error?: unknown }).error;
+  if (!error || typeof error !== "object") return details;
+  const raw = error as Record<string, unknown>;
+  if (typeof raw["code"] === "number" && Number.isSafeInteger(raw["code"]))
+    details.code = raw["code"];
+  // Google may put ErrorInfo after other detail objects. Inspect all bounded entries.
+  const candidates: unknown[] = [raw["status"]];
+  for (const key of ["errors", "details"]) {
+    const entries = raw[key];
+    if (Array.isArray(entries)) {
+      for (const entry of entries.slice(0, 20)) {
+        if (entry && typeof entry === "object") candidates.push(entry.reason);
       }
     }
-    if (!details.reason && Array.isArray(b.error.details) && b.error.details.length > 0) {
-      const firstDetail = b.error.details[0];
-      if (firstDetail && typeof firstDetail === "object" && firstDetail.reason) {
-        details.reason = String(firstDetail.reason).slice(0, 100);
-      }
-    }
-  } else if (typeof b.error === "string") {
-    details.reason = redactSecrets(b.error)?.slice(0, 100) ?? null;
   }
-
-  // LinkedIn shape: { message, status, serviceErrorCode }
-  if (!details.message && typeof b.message === "string") {
-    details.message = redactSecrets(b.message)?.slice(0, 300) ?? null;
-  }
-  if (!details.code && b.serviceErrorCode != null) {
-    details.code = String(b.serviceErrorCode);
-  }
-
-  // Meta shape: { error: { message, type, code, error_subcode } }
-  if (b.error && typeof b.error === "object") {
-    if (!details.code && b.error.code != null) {
-      details.code = String(b.error.code);
-    }
-    if (!details.reason && b.error.type != null) {
-      details.reason = String(b.error.type).slice(0, 100);
-    }
-  }
-
+  details.reason =
+    candidates.find(
+      (value): value is string => typeof value === "string" && SAFE_REASONS.has(value),
+    ) ?? null;
   return details;
 }
 

@@ -250,6 +250,51 @@ describe("complete asset discovery", () => {
 });
 
 describe("YouTube: account discovery and error diagnosis", () => {
+  it("omits bare and encoded secrets and private URLs rather than guessing their format", async () => {
+    const sensitive =
+      "ya29.unlabelled-token private@example.test https://private.test/?code%3Dsecret";
+    const { result } = await withFetch(
+      () =>
+        json(403, {
+          error: {
+            code: sensitive,
+            message: sensitive,
+            errors: [{ reason: sensitive, domain: sensitive }],
+          },
+        }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.doesNotMatch(JSON.stringify(result), /ya29|private@example|private.test|code%3Dsecret/);
+    assert.match(result.diagnostic, /reason=unknown/);
+  });
+
+  it("uses structured Google ErrorInfo even when it is not the first detail", async () => {
+    const { result } = await withFetch(
+      () => json(403, { error: { details: [{ metadata: {} }, { reason: "SERVICE_DISABLED" }] } }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.match(result.reason, /not enabled/);
+    assert.match(result.diagnostic, /SERVICE_DISABLED/);
+  });
+
+  it("keeps the real 429 status in quota diagnostics", async () => {
+    const { result } = await withFetch(
+      () => json(429, { error: { errors: [{ reason: "rateLimitExceeded" }] } }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.match(result.diagnostic, /HTTP 429/);
+    assert.doesNotMatch(result.diagnostic, /HTTP 403/);
+  });
+
+  it("handles a non-JSON refusal without exposing the provider response", async () => {
+    const { result } = await withFetch(
+      () => new Response("<html>private-token</html>", { status: 403 }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.doesNotMatch(JSON.stringify(result), /private-token|html/);
+  });
   it("diagnoses YouTube Data API v3 disabled in Google Cloud Console (accessNotConfigured)", async () => {
     const { result } = await withFetch(
       () =>
@@ -413,6 +458,7 @@ describe("YouTube: account discovery and error diagnosis", () => {
     assert.equal(result.ok, false);
     assert.equal(result.diagnostic.includes("secret_tok_99999"), false);
     assert.equal(result.diagnostic.includes("very_secret"), false);
-    assert.match(result.diagnostic, /\[redacted\]/);
+    assert.match(result.diagnostic, /accessNotConfigured/);
+    assert.ok(!result.diagnostic.includes("Failed request"));
   });
 });

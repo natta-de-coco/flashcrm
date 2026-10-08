@@ -30,7 +30,8 @@ export type TargetList =
 function targetListFailure(platform: string, error: unknown): TargetList {
   const diagnostic = error instanceof Error ? error.message : "The platform did not respond.";
   const providerReason = error instanceof ProviderPagesError ? error.providerReason : null;
-  const providerMessage = error instanceof ProviderPagesError ? error.providerMessage : null;
+  const providerStatus = error instanceof ProviderPagesError ? error.status : null;
+  const safeDiagnostic = `YouTube channel discovery failed (HTTP ${providerStatus ?? "unknown"}; reason=${providerReason ?? "unknown"}).`;
 
   // Google returns 429 when the Business Profile API is enabled but the
   // project still has its default zero quota. Retrying OAuth cannot fix that:
@@ -60,17 +61,14 @@ function targetListFailure(platform: string, error: unknown): TargetList {
     if (
       providerReason === "accessNotConfigured" ||
       providerReason === "SERVICE_DISABLED" ||
-      /accessNotConfigured|SERVICE_DISABLED|has not been used in project/i.test(diagnostic) ||
-      (providerMessage &&
-        /accessNotConfigured|SERVICE_DISABLED|has not been used in project/i.test(providerMessage))
+      /accessNotConfigured|SERVICE_DISABLED|has not been used in project/i.test(diagnostic)
     ) {
       return {
         ok: false,
         targets: [],
         reason:
           "YouTube Data API v3 is not enabled in the Google Cloud project. A FLAS administrator must enable YouTube Data API v3 in Google Cloud Console before connecting.",
-        diagnostic:
-          `YouTube Data API v3 disabled in Google Cloud Console (accessNotConfigured, HTTP 403). ${providerMessage ?? ""}`.trim(),
+        diagnostic: safeDiagnostic,
       };
     }
 
@@ -80,33 +78,29 @@ function targetListFailure(platform: string, error: unknown): TargetList {
       providerReason === "dailyLimitExceeded" ||
       providerReason === "rateLimitExceeded" ||
       /quotaExceeded|dailyLimitExceeded|rateLimitExceeded/i.test(diagnostic) ||
-      /HTTP 429\b/.test(diagnostic) ||
-      (providerMessage && /quotaExceeded|exceeded your quota/i.test(providerMessage))
+      /HTTP 429\b/.test(diagnostic)
     ) {
       return {
         ok: false,
         targets: [],
         reason:
           "YouTube API quota has been exceeded for this project. Please retry later or ask a FLAS administrator to request a quota increase from Google.",
-        diagnostic:
-          `YouTube API quota exceeded (quotaExceeded, HTTP 403). ${providerMessage ?? ""}`.trim(),
+        diagnostic: safeDiagnostic,
       };
     }
 
     // 3. Channel access permissions not granted by user during OAuth consent
     if (
       providerReason === "insufficientPermissions" ||
-      /insufficientPermissions/i.test(diagnostic) ||
-      (providerMessage &&
-        /insufficientPermissions|caller does not have permission/i.test(providerMessage))
+      providerReason === "ACCESS_TOKEN_SCOPE_INSUFFICIENT" ||
+      /insufficientPermissions/i.test(diagnostic)
     ) {
       return {
         ok: false,
         targets: [],
         reason:
           "This Google sign-in did not grant channel access permissions for YouTube. Reconnect and check the YouTube channel permissions on Google's consent screen.",
-        diagnostic:
-          `YouTube permissions missing (insufficientPermissions, HTTP 403). ${providerMessage ?? ""}`.trim(),
+        diagnostic: safeDiagnostic,
       };
     }
 
@@ -114,16 +108,14 @@ function targetListFailure(platform: string, error: unknown): TargetList {
     if (
       providerReason === "youtubeSignupRequired" ||
       providerReason === "channelNotFound" ||
-      /youtubeSignupRequired|channelNotFound/i.test(diagnostic) ||
-      (providerMessage && /youtubeSignupRequired|channelNotFound/i.test(providerMessage))
+      /youtubeSignupRequired|channelNotFound/i.test(diagnostic)
     ) {
       return {
         ok: false,
         targets: [],
         reason:
           "No active YouTube channel was found for this Google account. Open YouTube Studio to create a channel, or reconnect using the Brand Account that owns the channel.",
-        diagnostic:
-          `No YouTube channel attached (youtubeSignupRequired, HTTP 403). ${providerMessage ?? ""}`.trim(),
+        diagnostic: safeDiagnostic,
       };
     }
 
@@ -137,8 +129,7 @@ function targetListFailure(platform: string, error: unknown): TargetList {
         targets: [],
         reason:
           "Google refused access to your YouTube channels (HTTP 403). Verify YouTube Data API v3 is enabled in Google Cloud Console and that the signed-in account owns an active channel.",
-        diagnostic:
-          `Google returned HTTP 403 for YouTube channels. ${providerMessage ?? diagnostic}`.trim(),
+        diagnostic: safeDiagnostic,
       };
     }
   }
