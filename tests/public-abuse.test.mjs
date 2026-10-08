@@ -248,6 +248,44 @@ describe("the widget cannot be used as a free AI endpoint", () => {
   });
 });
 
+describe("the widget does not answer when its limits cannot be checked", () => {
+  // "Could not count" used to mean "let it through": for as long as the
+  // database was struggling, the limits on a free AI endpoint were off.
+  const hammered = () =>
+    db.table("conversations").push({
+      id: "conv-1",
+      tenant_id: "company-1",
+      channel: "web",
+      web_session_id: SESSION,
+      created_at: secondsAgo(120),
+      bot_enabled: true,
+    });
+
+  it("turns a message away when the session cannot be looked up", async () => {
+    db.fail("conversations:read", { message: "statement timeout" });
+    const { response, lines } = await logged(() => chat({ message: "hello" }));
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get("retry-after"), /^\d+$/);
+    assert.equal(db.table("messages").length, 0);
+    assert.ok(lines.length > 0, "the failure is logged, not silent");
+  });
+
+  it("turns a message away when the session's messages cannot be counted", async () => {
+    hammered();
+    db.fail("messages:read", { message: "statement timeout" });
+    const { response } = await logged(() => chat({ message: "hello" }));
+    assert.equal(response.status, 503);
+    assert.equal(db.table("messages").length, 0);
+  });
+
+  it("answers again once the database does", async () => {
+    db.fail("conversations:read", { message: "statement timeout" });
+    assert.equal((await logged(() => chat({ message: "hello" }))).response.status, 503);
+    db.recover("conversations:read");
+    assert.equal((await chat({ message: "hello" })).status, 200);
+  });
+});
+
 describe("public lead collection has a ceiling", () => {
   /** Sends this many submissions, one after another, and expects each to be accepted. */
   const submit = async (count, body = (i) => ({ email: `x${i}@visitor.example` })) => {
@@ -350,6 +388,58 @@ describe("public lead collection has a ceiling", () => {
     assert.ok(lines.length > 0, "the failure is logged, not silent");
 
     db.recover("audit_log:insert");
+    assert.equal((await collect({ email: "buyer@example.com" })).status, 200);
+  });
+});
+
+describe("requests that arrive together cannot all slip under a lead limit", () => {
+  // Reported: every request counted first and wrote later, so requests arriving
+  // together all saw the same count and all went through, however many there
+  // were. Each one now records itself before it counts, and counts itself.
+  const together = (count, send) => Promise.all(Array.from({ length: count }, (_, i) => send(i)));
+
+  it("does not accept more than the limit from a burst of form submissions", async () => {
+    const responses = await together(LEADS_PER_MINUTE_PER_SITE * 2, (i) =>
+      collect({ email: `burst${i}@visitor.example` }),
+    );
+    const accepted = responses.filter((r) => r.status === 200).length;
+    assert.ok(accepted <= LEADS_PER_MINUTE_PER_SITE, `${accepted} were accepted`);
+    assert.equal(db.table("leads").length, accepted);
+    for (const r of responses) assert.ok(r.status === 200 || r.status === 429, String(r.status));
+  });
+
+  it("does not accept more than the limit from a burst of webhook deliveries", async () => {
+    const responses = await together(LEADS_PER_MINUTE_PER_SITE * 2, (i) =>
+      postWebhook(wordpressRoute, JSON.stringify({ email: `burst${i}@shop.example` })),
+    );
+    const accepted = responses.filter((r) => r.status === 200).length;
+    assert.ok(accepted <= LEADS_PER_MINUTE_PER_SITE, `${accepted} were accepted`);
+    assert.equal(db.table("leads").length, accepted);
+    // A delivery that was turned away can be sent again: its claim is not kept.
+    assert.equal(db.table("webhook_dedup").length, accepted);
+  });
+
+  it("still accepts a burst that fits within the limit", async () => {
+    // Counting itself must not make a request refuse what is allowed.
+    const responses = await together(LEADS_PER_MINUTE_PER_SITE, (i) =>
+      collect({ email: `burst${i}@visitor.example` }),
+    );
+    assert.deepEqual(
+      responses.map((r) => r.status),
+      Array(LEADS_PER_MINUTE_PER_SITE).fill(200),
+    );
+  });
+
+  it("does not accept a submission when the limit cannot be counted", async () => {
+    // "Could not count" used to mean "let it through".
+    db.fail("audit_log:read", { message: "statement timeout" });
+    const { response, lines } = await logged(() => collect({ email: "buyer@example.com" }));
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get("retry-after"), /^\d+$/);
+    assert.equal(db.table("leads").length, 0);
+    assert.ok(lines.length > 0, "the failure is logged, not silent");
+
+    db.recover("audit_log:read");
     assert.equal((await collect({ email: "buyer@example.com" })).status, 200);
   });
 });
