@@ -13,6 +13,7 @@ import { Route as shopifyRoute } from "../node_modules/.cache/flas-webhook-shopi
 import { Route as customRoute } from "../node_modules/.cache/flas-webhook-custom.mjs";
 import { authenticateApiKey } from "../node_modules/.cache/flas-api-keys.mjs";
 import {
+  LEADS_PER_HOUR_PER_SITE,
   LEADS_PER_MINUTE_PER_SITE,
   WIDGET_MESSAGES_PER_MINUTE,
   WIDGET_NEW_SESSIONS_PER_5_MIN,
@@ -92,6 +93,19 @@ const postWebhook = (route, rawBody, headers = {}) =>
       body: rawBody,
     }),
   });
+
+/** Time passing: every row the database holds becomes this many seconds older. */
+const timePasses = (seconds) => {
+  for (const rows of Object.values(db.state.rows)) {
+    for (const row of rows) {
+      if (!row.created_at) continue;
+      row.created_at = new Date(Date.parse(row.created_at) - seconds * 1000).toISOString();
+    }
+  }
+};
+
+/** How many rows the database holds, in every table. */
+const totalRows = () => Object.values(db.state.rows).reduce((sum, rows) => sum + rows.length, 0);
 
 /**
  * Runs a request whose failure the server logs, keeping what it logged: the
@@ -233,15 +247,11 @@ describe("the widget cannot be used as a free AI endpoint", () => {
 });
 
 describe("public lead collection has a ceiling", () => {
-  const seedLeads = (count, at) => {
+  /** Sends this many submissions, one after another, and expects each to be accepted. */
+  const submit = async (count, body = (i) => ({ email: `x${i}@visitor.example` })) => {
     for (let i = 0; i < count; i += 1) {
-      db.table("leads").push({
-        id: `lead-${i}`,
-        tenant_id: "company-1",
-        site_id: "site-1",
-        email: `x${i}@spam.example`,
-        created_at: at,
-      });
+      const response = await collect(body(i));
+      assert.equal(response.status, 200, `submission ${i + 1} of ${count}`);
     }
   };
 
@@ -252,15 +262,92 @@ describe("public lead collection has a ceiling", () => {
   });
 
   it("turns away a site flooding leads this minute", async () => {
-    seedLeads(LEADS_PER_MINUTE_PER_SITE, secondsAgo(10));
+    await submit(LEADS_PER_MINUTE_PER_SITE);
     const response = await collect({ email: "one-more@spam.example" });
     assert.equal(response.status, 429);
     assert.match(response.headers.get("retry-after"), /^\d+$/);
     assert.equal(db.table("leads").length, LEADS_PER_MINUTE_PER_SITE);
   });
 
-  it("does not count yesterday's leads against today's limit", async () => {
-    seedLeads(LEADS_PER_MINUTE_PER_SITE, secondsAgo(86400));
+  it("counts every submission, not every different email address", async () => {
+    // Reported: the limit counted rows in leads, and one email address only
+    // ever has one row there. The same address could be submitted for ever,
+    // each time writing to the contact, the lead and the audit log.
+    await submit(LEADS_PER_MINUTE_PER_SITE, (i) => ({
+      email: "same@visitor.example",
+      name: `Name ${i}`,
+    }));
+    assert.equal(db.table("leads").length, 1);
+
+    const response = await collect({ email: "same@visitor.example", name: "One too many" });
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get("retry-after"), "60");
+    assert.notEqual(db.table("leads")[0].name, "One too many");
+  });
+
+  it("counts webhook deliveries for one email address the same way", async () => {
+    const delivery = (i) => JSON.stringify({ email: "same@shop.example", name: `Name ${i}` });
+    for (let i = 0; i < LEADS_PER_MINUTE_PER_SITE; i += 1) {
+      const response = await postWebhook(wordpressRoute, delivery(i));
+      assert.equal(response.status, 200, `delivery ${i + 1}`);
+    }
+    const response = await postWebhook(wordpressRoute, delivery("one too many"));
+    assert.equal(response.status, 429);
+    assert.equal(db.table("leads").length, 1);
+  });
+
+  it("applies the hourly limit to one address submitted again and again", async () => {
+    // Slowly enough to stay under the minute limit, for as long as it takes.
+    const rounds = LEADS_PER_HOUR_PER_SITE / LEADS_PER_MINUTE_PER_SITE;
+    for (let round = 0; round < rounds; round += 1) {
+      await submit(LEADS_PER_MINUTE_PER_SITE, () => ({ email: "same@visitor.example" }));
+      timePasses(61);
+    }
+    const response = await collect({ email: "same@visitor.example" });
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get("retry-after"), "3600");
+  });
+
+  it("does not count yesterday's submissions against today's limit", async () => {
+    await submit(LEADS_PER_MINUTE_PER_SITE);
+    timePasses(86400);
+    assert.equal((await collect({ email: "buyer@example.com" })).status, 200);
+  });
+
+  it("does not count another site's submissions against this one", async () => {
+    db.table("lead_sites").push(
+      { ...site(), id: "site-2", site_key: "site-key-public-0002" },
+      { ...site(), id: "site-3", site_key: "site-key-public-0003", tenant_id: "company-2" },
+    );
+    await submit(LEADS_PER_MINUTE_PER_SITE);
+    assert.equal((await collect({ email: "one-more@visitor.example" })).status, 429);
+    for (const siteKey of ["site-key-public-0002", "site-key-public-0003"]) {
+      const response = await collect({ siteKey, email: "buyer@example.com" });
+      assert.equal(response.status, 200, siteKey);
+    }
+  });
+
+  it("writes nothing for a submission it turns away", async () => {
+    // Counting submissions means recording them. A flood that is already
+    // being refused must not be able to fill the database with those records.
+    await submit(LEADS_PER_MINUTE_PER_SITE);
+    const rowsBefore = totalRows();
+    for (let i = 0; i < 5; i += 1) {
+      assert.equal((await collect({ email: `flood${i}@spam.example` })).status, 429);
+    }
+    assert.equal(totalRows(), rowsBefore);
+  });
+
+  it("does not accept a submission it could not count", async () => {
+    // A submission that leaves no record is one the limit can never see.
+    db.fail("audit_log:insert", { message: "connection reset" });
+    const { response, lines } = await logged(() => collect({ email: "buyer@example.com" }));
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get("retry-after"), /^\d+$/);
+    assert.equal(db.table("leads").length, 0);
+    assert.ok(lines.length > 0, "the failure is logged, not silent");
+
+    db.recover("audit_log:insert");
     assert.equal((await collect({ email: "buyer@example.com" })).status, 200);
   });
 });
@@ -376,14 +463,9 @@ describe("a delivery that was not finished can be sent again", () => {
   }
 
   it("saves the lead when the provider retries after being told to slow down", async () => {
+    // A busy minute on the same site uses the limit up.
     for (let i = 0; i < LEADS_PER_MINUTE_PER_SITE; i += 1) {
-      db.table("leads").push({
-        id: `lead-${i}`,
-        tenant_id: "company-1",
-        site_id: "site-1",
-        email: `x${i}@busy.example`,
-        created_at: secondsAgo(10),
-      });
+      assert.equal((await collect({ email: `x${i}@busy.example` })).status, 200);
     }
     const limited = await postWebhook(wordpressRoute, body);
     assert.equal(limited.status, 429);
@@ -391,7 +473,7 @@ describe("a delivery that was not finished can be sent again", () => {
     assert.equal(db.table("webhook_dedup").length, 0, "the claim was given back");
 
     // The minute passes and the provider sends the delivery again.
-    for (const row of db.table("leads")) row.created_at = secondsAgo(120);
+    timePasses(61);
     const retry = await postWebhook(wordpressRoute, body);
     assert.equal(retry.status, 200);
     assert.deepEqual(await retry.json(), { ok: true });

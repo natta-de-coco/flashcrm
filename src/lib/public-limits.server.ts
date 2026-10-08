@@ -3,13 +3,22 @@
 //
 // A site key lives in public website code and a webhook signature can be
 // replayed byte-for-byte, so "the caller proved who they are" is not the same
-// as "this request should be done again". Each limit below counts the rows the
-// work would create, using columns and indexes that already exist — there is no
-// new table and no migration, so this protects the live site as soon as it
-// deploys.
+// as "this request should be done again". The widget limits count the rows the
+// work creates; the lead limit counts a record it writes itself for every
+// submission it lets through. Both use tables, columns and indexes that already
+// exist — there is no new table and no migration, so this protects the live
+// site as soon as it deploys.
 import { createHash } from "node:crypto";
 
-export type LimitDecision = { ok: true } | { ok: false; retryAfterSeconds: number; error: string };
+export type LimitDecision =
+  | { ok: true }
+  | {
+      ok: false;
+      /** 429: over the limit. 503: the request could not be counted, so it was not let through. */
+      status: 429 | 503;
+      retryAfterSeconds: number;
+      error: string;
+    };
 
 const ok: LimitDecision = { ok: true };
 
@@ -49,6 +58,7 @@ export async function widgetChatAllowed(args: {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const tooMany = {
     ok: false as const,
+    status: 429 as const,
     retryAfterSeconds: 60,
     error: "Too many messages just now. Please wait a moment and send it again.",
   };
@@ -88,25 +98,64 @@ export async function widgetChatAllowed(args: {
 export const LEADS_PER_MINUTE_PER_SITE = 20;
 export const LEADS_PER_HOUR_PER_SITE = 200;
 
+/**
+ * The audit entry written for every lead submission that is let through, and
+ * the thing the limit counts.
+ *
+ * The limit used to count rows in `leads`. A lead is stored once per email
+ * address, so the same address could be submitted for ever — writing to the
+ * contact, the lead and the audit log each time — while the count stayed at
+ * one. The audit log is append-only, so an entry there is one per submission
+ * whatever the submission says. Plugin activation is limited the same way.
+ */
+export const LEAD_SUBMISSION_ACTION = "lead.submission";
+
 export async function leadIntakeAllowed(args: {
   tenantId: string;
   siteId: string;
 }): Promise<LimitDecision> {
-  const filters = { tenant_id: args.tenantId, site_id: args.siteId };
-  const lastMinute = await countSince("leads", ago(60), filters);
+  const submissions = {
+    tenant_id: args.tenantId,
+    action: LEAD_SUBMISSION_ACTION,
+    entity_id: args.siteId,
+  };
+  const lastMinute = await countSince("audit_log", ago(60), submissions);
   if (lastMinute !== null && lastMinute >= LEADS_PER_MINUTE_PER_SITE) {
     return {
       ok: false,
+      status: 429,
       retryAfterSeconds: 60,
       error: "Too many submissions from this site in the last minute.",
     };
   }
-  const lastHour = await countSince("leads", ago(60 * 60), filters);
+  const lastHour = await countSince("audit_log", ago(60 * 60), submissions);
   if (lastHour !== null && lastHour >= LEADS_PER_HOUR_PER_SITE) {
     return {
       ok: false,
+      status: 429,
       retryAfterSeconds: 3600,
       error: "This site has reached its hourly submission limit.",
+    };
+  }
+
+  // Only a submission that is let through is recorded: one that is already
+  // being turned away writes nothing, so a flood cannot fill the audit log.
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await supabaseAdmin.from("audit_log").insert({
+    tenant_id: args.tenantId,
+    action: LEAD_SUBMISSION_ACTION,
+    entity_type: "lead_site",
+    entity_id: args.siteId,
+  });
+  if (error) {
+    // A submission that leaves no record is one the limit can never see, so it
+    // is not let through. The sender is asked to try again shortly.
+    console.error("[limits] could not record a lead submission", error.message);
+    return {
+      ok: false,
+      status: 503,
+      retryAfterSeconds: 30,
+      error: "This could not be accepted just now. Please try again shortly.",
     };
   }
   return ok;

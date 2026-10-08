@@ -179,7 +179,7 @@ export async function receivePlatformLead(args: {
         siteId: args.site.id,
       });
       if (!limit.ok) {
-        return json({ error: limit.error }, 429, {
+        return json({ error: limit.error }, limit.status, {
           "retry-after": String(limit.retryAfterSeconds),
         });
       }

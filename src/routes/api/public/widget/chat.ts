@@ -95,7 +95,7 @@ export const Route = createFileRoute("/api/public/widget/chat")({
         });
         if (!limit.ok) {
           return new Response(JSON.stringify({ error: limit.error }), {
-            status: 429,
+            status: limit.status,
             headers: { ...corsHeaders, "retry-after": String(limit.retryAfterSeconds) },
           });
         }
