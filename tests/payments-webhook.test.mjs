@@ -6,6 +6,8 @@ import { Route } from "../node_modules/.cache/flas-payments-webhook.mjs";
 // real route; only the signature check and the database are doubles.
 
 let rows, faults, event;
+// The Paddle environment each delivery's signature was checked against.
+let verifiedAs = [];
 
 class Query {
   constructor(table) {
@@ -66,7 +68,8 @@ class Query {
 
 globalThis.paymentsWebhook = {
   db: { from: (table) => new Query(table) },
-  verify: async () => {
+  verify: async (_request, env) => {
+    verifiedAs.push(env);
     if (event instanceof Error) throw event;
     return event;
   },
@@ -81,6 +84,7 @@ beforeEach(() => {
     ],
   };
   faults = {};
+  verifiedAs = [];
   globalThis.paymentsWebhook.alerts = [];
   process.env.PADDLE_ENV = "live";
 });
@@ -201,3 +205,30 @@ test("an event with a bad signature is refused with 400 and raises no billing al
   assert.equal((await deliver()).status, 400);
   assert.equal(globalThis.paymentsWebhook.alerts.length, 0);
 });
+
+// .env.example tells a deployment to set PADDLE_ENV to "sandbox" or
+// "production". Only the literal "live" used to count as live, so a deployment
+// that followed the instructions had its live deliveries checked against the
+// sandbox secret: every one failed, and paid subscriptions stopped syncing.
+for (const [setting, expected] of [
+  ["production", "live"],
+  ["Production", "live"],
+  ["live", "live"],
+  ["LIVE", "live"],
+  [" production ", "live"],
+  ["sandbox", "sandbox"],
+  ["", "sandbox"],
+  [undefined, "sandbox"],
+  // Anything not recognised must never be treated as live.
+  ["prod", "sandbox"],
+  ["staging", "sandbox"],
+]) {
+  test(`PADDLE_ENV ${JSON.stringify(setting) ?? "unset"} checks a delivery against the ${expected} secret`, async () => {
+    if (setting === undefined) delete process.env.PADDLE_ENV;
+    else process.env.PADDLE_ENV = setting;
+    event = { eventType: "subscription.created", data: subscription() };
+    assert.equal((await deliver()).status, 200);
+    assert.deepEqual(verifiedAs, [expected]);
+    assert.equal(rows.subscriptions[0].environment, expected);
+  });
+}
