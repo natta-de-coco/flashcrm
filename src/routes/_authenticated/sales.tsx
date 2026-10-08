@@ -28,7 +28,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowRight, Download, FileText, Plus, Receipt, Send } from "lucide-react";
+import { ArrowRight, Download, FileText, KanbanSquare, LayoutList, Plus, Receipt, Send } from "lucide-react";
+import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
+import { isSubscriptionReceipt } from "@/lib/sales-pipeline";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -132,6 +134,7 @@ function SalesPage() {
   const convertQuote = useServerFn(convertQuotationToInvoice);
 
   const [tab, setTab] = useState("all");
+  const [viewMode, setViewMode] = useState<"board" | "list">("board");
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [payFor, setPayFor] = useState<DocRow | null>(null);
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
@@ -144,7 +147,9 @@ function SalesPage() {
   });
 
   const documents = (data?.documents ?? []) as unknown as DocRow[];
-  const visible = documents.filter((doc) =>
+  // Internal SaaS billing receipts (Stripe) must never appear in the customer sales view.
+  const customerDocs = documents.filter((doc) => !isSubscriptionReceipt(doc as { custom_fields?: Record<string, unknown> | null }));
+  const visible = customerDocs.filter((doc) =>
     tab === "all"
       ? true
       : tab === "quotations"
@@ -387,17 +392,77 @@ function SalesPage() {
         }
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="quotations">Quotations</TabsTrigger>
-          <TabsTrigger value="unpaid">Unpaid</TabsTrigger>
-          <TabsTrigger value="paid">Paid</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Toolbar: view toggle + list-mode filters */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        {/* Board / List toggle */}
+        <div className="flex rounded-lg border p-0.5">
+          <Button
+            variant={viewMode === "board" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            onClick={() => setViewMode("board")}
+          >
+            <KanbanSquare className="h-3.5 w-3.5" /> Board
+          </Button>
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            onClick={() => setViewMode("list")}
+          >
+            <LayoutList className="h-3.5 w-3.5" /> List
+          </Button>
+        </div>
+
+        {/* Filters — only shown in list mode */}
+        {viewMode === "list" && (
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="quotations">Quotations</TabsTrigger>
+              <TabsTrigger value="unpaid">Unpaid</TabsTrigger>
+              <TabsTrigger value="paid">Paid</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+      </div>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading your sales documents…</p>
+      ) : viewMode === "board" ? (
+        customerDocs.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Receipt className="h-4 w-4" /> Nothing here yet
+              </CardTitle>
+              <CardDescription>
+                Create your first quotation — when the customer accepts, one click turns it into an
+                invoice with the same lines.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : (
+          <SalesPipelineBoard
+            documents={customerDocs}
+            currency={
+              (data?.settings as { default_currency?: string } | undefined)?.default_currency ??
+              "AED"
+            }
+            onOpenExisting={(id) => openExisting.mutate(id)}
+            onSendWhatsApp={(doc) => setSendFor(doc)}
+            onConvertQuotation={(id) => convert.mutate(id)}
+            onRecordPayment={(doc) => {
+              setPayFor(doc);
+              setPayForm({
+                amount: String(Number(doc.balance).toFixed(2)),
+                reference: "",
+                method: "bank_transfer",
+              });
+            }}
+            onDownloadPdf={(id) => download.mutate(id)}
+          />
+        )
       ) : visible.length === 0 ? (
         <Card>
           <CardHeader>
