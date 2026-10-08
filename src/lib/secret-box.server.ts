@@ -213,14 +213,8 @@ export async function sealTenantSecrets(
       .from("wa_numbers")
       .select("id, access_token, app_secret")
       .eq("tenant_id", tenantId),
-    supabaseAdmin
-      .from("ai_provider_keys")
-      .select("id, api_key")
-      .eq("tenant_id", tenantId),
-    supabaseAdmin
-      .from("wordpress_sites")
-      .select("id, app_password")
-      .eq("tenant_id", tenantId),
+    supabaseAdmin.from("ai_provider_keys").select("id, api_key").eq("tenant_id", tenantId),
+    supabaseAdmin.from("wordpress_sites").select("id, app_password").eq("tenant_id", tenantId),
   ]);
 
   const seal = async (value: string | null): Promise<string | null> => {
@@ -306,7 +300,8 @@ export async function sealTenantSecrets(
         .update({ app_password: pass })
         .eq("id", row.id)
         .eq("tenant_id", tenantId);
-      if (error) throw new Error(`Could not store a sealed WordPress app password: ${error.message}`);
+      if (error)
+        throw new Error(`Could not store a sealed WordPress app password: ${error.message}`);
       report.sealedNow++;
     }
   }

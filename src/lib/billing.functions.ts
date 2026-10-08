@@ -84,9 +84,16 @@ export const getSalesWorkspace = createServerFn({ method: "GET" })
     ]);
     if (docs.error) throw docs.error;
 
+    const customerDocs = (docs.data ?? []).filter(
+      (d: { custom_fields?: Record<string, unknown> | null }) =>
+        !d.custom_fields?.["is_subscription_receipt"] &&
+        d.custom_fields?.["provider"] !== "stripe" &&
+        !d.custom_fields?.["stripe_invoice_id"],
+    );
+
     return {
       settings,
-      documents: docs.data ?? [],
+      documents: customerDocs,
       contacts: contacts.data ?? [],
       products: products.data ?? [],
       banks: banks.data ?? [],

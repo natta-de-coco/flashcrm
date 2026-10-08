@@ -57,6 +57,7 @@ import {
 import { useRef, useState } from "react";
 import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
+import { isSubscriptionReceipt } from "@/lib/sales-pipeline";
 
 /**
  * Why a document cannot be finalised yet, or null when it can.
@@ -189,7 +190,8 @@ function SalesPage() {
     queryFn: () => loadWorkspace(),
   });
 
-  const documents = (data?.documents ?? []) as unknown as DocRow[];
+  const rawDocs = (data?.documents ?? []) as unknown as DocRow[];
+  const documents = rawDocs.filter((doc) => !isSubscriptionReceipt(doc));
   const visible = documents.filter((doc) =>
     tab === "all"
       ? true

@@ -77,3 +77,15 @@ export function getDocStage(doc: DocRow): StageId {
   }
   return "unpaid";
 }
+
+/** Identifies internal SaaS billing receipts which must not appear in customer sales pipeline or lists. */
+export function isSubscriptionReceipt(doc: {
+  custom_fields?: Record<string, unknown> | null;
+}): boolean {
+  if (!doc.custom_fields) return false;
+  return (
+    doc.custom_fields["is_subscription_receipt"] === true ||
+    doc.custom_fields["provider"] === "stripe" ||
+    Boolean(doc.custom_fields["stripe_invoice_id"])
+  );
+}

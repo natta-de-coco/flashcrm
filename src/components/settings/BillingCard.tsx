@@ -121,12 +121,18 @@ export function BillingCard() {
           </CardTitle>
           <div className="flex items-center gap-2">
             {isStripeSubscriber && (
-              <Badge variant="outline" className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
+              <Badge
+                variant="outline"
+                className="border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+              >
                 <ShieldCheck className="me-1 h-3 w-3" /> Stripe
               </Badge>
             )}
             {isPaddleSubscriber && !isStripeSubscriber && (
-              <Badge variant="outline" className="border-blue-500/40 text-blue-600 dark:text-blue-400">
+              <Badge
+                variant="outline"
+                className="border-blue-500/40 text-blue-600 dark:text-blue-400"
+              >
                 Paddle (Legacy)
               </Badge>
             )}

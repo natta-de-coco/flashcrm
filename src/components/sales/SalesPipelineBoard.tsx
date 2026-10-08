@@ -20,6 +20,7 @@ import {
   type StageDef,
   STAGES,
   getDocStage,
+  isSubscriptionReceipt,
 } from "@/lib/sales-pipeline";
 
 export type { DocRow, StageId, StageDef };
@@ -51,6 +52,7 @@ export function SalesPipelineBoard({
       paid: [],
     };
     for (const doc of documents) {
+      if (isSubscriptionReceipt(doc)) continue;
       const stage = getDocStage(doc);
       map[stage].push(doc);
     }
@@ -83,7 +85,11 @@ export function SalesPipelineBoard({
                   <span className="text-muted-foreground truncate">{stage.description}</span>
                 </div>
                 <div className="mt-1.5 font-bold text-sm tracking-tight">
-                  {currency} {totalVal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                  {currency}{" "}
+                  {totalVal.toLocaleString(undefined, {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
+                  })}
                 </div>
               </div>
 

@@ -62,6 +62,16 @@ class Query {
     this.single = true;
     return this;
   }
+  limit() {
+    return this;
+  }
+  order() {
+    return this;
+  }
+  delete() {
+    this.mode = "delete";
+    return this;
+  }
   update(patch) {
     this.mode = "update";
     this.patch = patch;
@@ -82,6 +92,10 @@ class Query {
     const table = (rows[this.table] ??= []);
     let found = table.filter((r) => this.filters.every((f) => f(r)));
 
+    if (this.mode === "delete") {
+      rows[this.table] = table.filter((r) => !this.filters.every((f) => f(r)));
+      found = [];
+    }
     if (this.mode === "update") {
       for (const r of found) Object.assign(r, this.patch);
     }
@@ -238,7 +252,10 @@ describe("Stripe Checkout & Billing Integration", () => {
   });
 
   it("rejects webhook with invalid or tampered signature with 400", async () => {
-    const req = makeSignedRequest({ type: "checkout.session.completed" }, "whsec_wrong_signature_secret");
+    const req = makeSignedRequest(
+      { type: "checkout.session.completed" },
+      "whsec_wrong_signature_secret",
+    );
     const res = await handleStripeWebhook(req);
     assert.equal(res.status, 400);
     const text = await res.text();
@@ -274,7 +291,8 @@ describe("Stripe Checkout & Billing Integration", () => {
           client_reference_id: "user-1",
           customer: "cus_checkout_1",
           subscription: "sub_checkout_1",
-          metadata: { plan: "flash_yearly" },
+          metadata: { tenantId: "tenant-1", plan: "flash_yearly" },
+          payment_status: "paid",
           amount_total: 49000,
           currency: "usd",
           livemode: false,
@@ -291,10 +309,175 @@ describe("Stripe Checkout & Billing Integration", () => {
     assert.equal(org.plan, "flash_yearly");
   });
 
+  it("preserves immutable tenant ownership when subscriber user moves to another company", async () => {
+    // 1. Initial checkout for user-1 at tenant-1
+    const checkoutPayload = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          client_reference_id: "user-1",
+          customer: "cus_immut_1",
+          subscription: "sub_immut_1",
+          metadata: { tenantId: "tenant-1", plan: "flash_monthly" },
+          payment_status: "paid",
+          amount_total: 4900,
+          currency: "usd",
+          livemode: false,
+        },
+      },
+    };
+    await handleStripeWebhook(makeSignedRequest(checkoutPayload));
+
+    const org1 = rows.organizations.find((o) => o.id === "tenant-1");
+    assert.equal(org1.subscription_status, "active");
+
+    // 2. User moves to another tenant
+    rows.organizations.push({
+      id: "tenant-2",
+      name: "New Enterprise",
+      subscription_status: "trial",
+      plan: "flash_monthly",
+    });
+    const profile = rows.profiles.find((p) => p.id === "user-1");
+    profile.tenant_id = "tenant-2";
+
+    // 3. Renewal webhook arrives for the subscription
+    const renewalPayload = {
+      type: "invoice.payment_succeeded",
+      data: {
+        object: {
+          id: "in_renew_1",
+          subscription: "sub_immut_1",
+          customer: "cus_immut_1",
+          amount_paid: 4900,
+          total: 4900,
+          currency: "usd",
+          number: "INV-RENEW-001",
+          lines: {
+            data: [
+              {
+                description: "Flas CRM Monthly",
+                period: { end: Math.floor(Date.now() / 1000) + 60 * 86400 },
+              },
+            ],
+          },
+        },
+      },
+    };
+    await handleStripeWebhook(makeSignedRequest(renewalPayload));
+
+    // tenant-1 must be updated with the renewal, NOT tenant-2
+    const org2 = rows.organizations.find((o) => o.id === "tenant-2");
+    assert.equal(
+      org2.subscription_status,
+      "trial",
+      "tenant-2 must not be affected by tenant-1 renewal",
+    );
+    assert.equal(org1.subscription_status, "active");
+
+    // 4. Cancellation webhook arrives
+    const cancelPayload = {
+      type: "customer.subscription.deleted",
+      data: {
+        object: {
+          id: "sub_immut_1",
+        },
+      },
+    };
+    await handleStripeWebhook(makeSignedRequest(cancelPayload));
+
+    // tenant-1 must be canceled, NOT tenant-2
+    assert.equal(org1.subscription_status, "canceled");
+    assert.equal(org2.subscription_status, "trial");
+  });
+
+  it("does not activate subscription or create paid invoice when checkout session is unpaid", async () => {
+    const payload = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          client_reference_id: "user-1",
+          customer: "cus_delayed_1",
+          subscription: "sub_delayed_1",
+          metadata: { tenantId: "tenant-1", plan: "flash_monthly" },
+          payment_status: "unpaid",
+          amount_total: 4900,
+          currency: "usd",
+          livemode: false,
+          invoice: "in_delayed_1",
+        },
+      },
+    };
+
+    const res = await handleStripeWebhook(makeSignedRequest(payload));
+    assert.equal(res.status, 200);
+
+    // Organization should not be activated yet
+    const org = rows.organizations.find((o) => o.id === "tenant-1");
+    assert.notEqual(org.subscription_status, "active");
+
+    // Subscription status should be incomplete
+    const sub = rows.subscriptions.find((s) => s.stripe_subscription_id === "sub_delayed_1");
+    assert.ok(sub);
+    assert.equal(sub.status, "incomplete");
+
+    // No paid invoice should be created
+    const inv = rows.sales_documents.find(
+      (d) => d.custom_fields?.stripe_invoice_id === "in_delayed_1",
+    );
+    assert.equal(inv, undefined);
+  });
+
+  it("handles repeated webhook events idempotently without duplicating invoices", async () => {
+    const invoicePayload = {
+      type: "invoice.payment_succeeded",
+      data: {
+        object: {
+          id: "in_repeat_1",
+          subscription: "sub_rec_repeat",
+          customer: "cus_rec_repeat",
+          amount_paid: 4900,
+          total: 4900,
+          currency: "usd",
+          number: "INV-REPEAT-001",
+          lines: {
+            data: [
+              {
+                description: "Flas CRM Monthly",
+                period: { end: Math.floor(Date.now() / 1000) + 30 * 86400 },
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    rows.subscriptions.push({
+      stripe_subscription_id: "sub_rec_repeat",
+      tenant_id: "tenant-1",
+      user_id: "user-1",
+      status: "active",
+    });
+
+    // Send first time
+    const res1 = await handleStripeWebhook(makeSignedRequest(invoicePayload));
+    assert.equal(res1.status, 200);
+
+    // Send second time
+    const res2 = await handleStripeWebhook(makeSignedRequest(invoicePayload));
+    assert.equal(res2.status, 200);
+
+    const matching = rows.sales_documents.filter(
+      (d) => d.custom_fields?.stripe_invoice_id === "in_repeat_1",
+    );
+    assert.equal(matching.length, 1);
+  });
+
   it("handles verified invoice.payment_succeeded webhook and creates a saved invoice", async () => {
     // Pre-insert subscription row
     rows.subscriptions.push({
       stripe_subscription_id: "sub_rec_1",
+      tenant_id: "tenant-1",
       user_id: "user-1",
       status: "active",
     });

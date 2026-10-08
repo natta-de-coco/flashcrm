@@ -466,7 +466,10 @@ Relevant website excerpts: ${JSON.stringify(websiteExcerpts)}`;
   }
 
   try {
-    const cleaned = raw.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
+    const cleaned = raw
+      .replace(/^\s*```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .trim();
     const reply: unknown = JSON.parse(cleaned);
     if (
       !reply ||

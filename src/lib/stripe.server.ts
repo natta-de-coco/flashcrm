@@ -5,27 +5,15 @@ import Stripe from "stripe";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export function getStripeKey(): string {
-  return (
-    process.env["STRIPE_SECRET_KEY"] ||
-    process.env["VITE_STRIPE_SECRET_KEY"] ||
-    ""
-  );
+  return process.env["STRIPE_SECRET_KEY"] || "";
 }
 
 export function getStripeWebhookSecret(): string {
-  return (
-    process.env["STRIPE_WEBHOOK_SECRET"] ||
-    process.env["VITE_STRIPE_WEBHOOK_SECRET"] ||
-    ""
-  );
+  return process.env["STRIPE_WEBHOOK_SECRET"] || "";
 }
 
 export function getStripePublishableKey(): string {
-  return (
-    process.env["VITE_STRIPE_PUBLISHABLE_KEY"] ||
-    process.env["STRIPE_PUBLISHABLE_KEY"] ||
-    ""
-  );
+  return process.env["VITE_STRIPE_PUBLISHABLE_KEY"] || process.env["STRIPE_PUBLISHABLE_KEY"] || "";
 }
 
 let stripeInstance: Stripe | null = null;
@@ -159,10 +147,7 @@ export async function syncStripeOrganization(sync: {
   }
   if (sync.periodEnd) patch["subscription_renews_at"] = sync.periodEnd;
 
-  const { error } = await supabaseAdmin
-    .from("organizations")
-    .update(patch)
-    .eq("id", sync.tenantId);
+  const { error } = await supabaseAdmin.from("organizations").update(patch).eq("id", sync.tenantId);
 
   if (error) {
     throw new Error(`Could not update company subscription: ${error.message}`);
@@ -195,7 +180,10 @@ export async function recordStripeSubscriptionInvoice(params: {
 }): Promise<string> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-  // Check if invoice already saved
+  const amount = Number((params.amountPaid || 0).toFixed(2));
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1. Concurrency & idempotency check: if invoice already exists, verify it has items
   const { data: existing } = await supabaseAdmin
     .from("sales_documents")
     .select("id")
@@ -204,6 +192,30 @@ export async function recordStripeSubscriptionInvoice(params: {
     .maybeSingle();
 
   if (existing) {
+    const { data: existingItems } = await supabaseAdmin
+      .from("sales_document_items")
+      .select("id")
+      .eq("document_id", existing.id)
+      .limit(1);
+
+    if (existingItems && existingItems.length > 0) {
+      return existing.id;
+    }
+
+    // Recover empty document if previous attempt failed after document insert
+    const { error: recoveryErr } = await supabaseAdmin.from("sales_document_items").insert({
+      tenant_id: params.tenantId,
+      document_id: existing.id,
+      name_snapshot: `Flas CRM — ${params.planName || "Subscription"}`,
+      quantity: 1,
+      unit_price: amount,
+      line_total: amount,
+      position: 0,
+    } as any);
+
+    if (recoveryErr) {
+      throw new Error(`Could not record subscription invoice line items: ${recoveryErr.message}`);
+    }
     return existing.id;
   }
 
@@ -213,13 +225,11 @@ export async function recordStripeSubscriptionInvoice(params: {
     try {
       docNumber = await allocateNumber(params.tenantId, "invoice");
     } catch {
-      docNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
+      docNumber = `INV-${today.replace(/-/g, "")}-${Math.floor(1000 + Math.random() * 9000)}`;
     }
   }
 
-  const amount = Number((params.amountPaid || 0).toFixed(2));
-  const today = new Date().toISOString().slice(0, 10);
-
+  // 2. Insert invoice document (segregated from customer sales with is_subscription_receipt)
   const { data: inserted, error: insertError } = await supabaseAdmin
     .from("sales_documents")
     .insert({
@@ -240,13 +250,13 @@ export async function recordStripeSubscriptionInvoice(params: {
       },
       company_snapshot: {
         name: "Flas CRM",
-        tax_id: "FLAS-STRIPE-GLOBAL",
       },
       custom_fields: {
         stripe_invoice_id: params.stripeInvoiceId,
         stripe_subscription_id: params.stripeSubscriptionId ?? null,
         stripe_customer_id: params.customerId ?? null,
         provider: "stripe",
+        is_subscription_receipt: true,
       },
       finalized_at: new Date().toISOString(),
       created_by: params.userId ?? null,
@@ -256,13 +266,23 @@ export async function recordStripeSubscriptionInvoice(params: {
     .single();
 
   if (insertError) {
+    // If concurrent insert occurred, return existing document
+    if (insertError.code === "23505" || insertError.message.includes("unique")) {
+      const { data: conflictDoc } = await supabaseAdmin
+        .from("sales_documents")
+        .select("id")
+        .eq("tenant_id", params.tenantId)
+        .filter("custom_fields->>stripe_invoice_id", "eq", params.stripeInvoiceId)
+        .maybeSingle();
+      if (conflictDoc) return conflictDoc.id;
+    }
     throw new Error(`Could not record subscription invoice: ${insertError.message}`);
   }
 
   const docId = inserted.id;
 
-  // Insert sales document line item
-  await supabaseAdmin.from("sales_document_items").insert({
+  // 3. Insert line items atomically; rollback document on failure so we never leave an empty invoice
+  const { error: itemError } = await supabaseAdmin.from("sales_document_items").insert({
     tenant_id: params.tenantId,
     document_id: docId,
     name_snapshot: `Flas CRM — ${params.planName || "Subscription"}`,
@@ -271,6 +291,11 @@ export async function recordStripeSubscriptionInvoice(params: {
     line_total: amount,
     position: 0,
   } as any);
+
+  if (itemError) {
+    await supabaseAdmin.from("sales_documents").delete().eq("id", docId);
+    throw new Error(`Could not record subscription invoice line items: ${itemError.message}`);
+  }
 
   return docId;
 }
@@ -314,6 +339,7 @@ export async function walkTestSubscriptionFlow(params: {
   // 1. Record subscription row
   await supabaseAdmin.from("subscriptions").upsert(
     {
+      tenant_id: params.tenantId,
       user_id: params.userId,
       stripe_subscription_id: testSubId,
       stripe_customer_id: testCustId,
@@ -410,50 +436,70 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
             : session?.subscription?.id;
         const plan = session?.metadata?.plan || "flash_monthly";
 
-        if (!userId) {
-          console.warn("checkout.session.completed received without userId");
-          break;
+        // Immutable tenant resolution from checkout session metadata
+        let tenantId = session?.metadata?.tenantId;
+        if (!tenantId && userId) {
+          const { data: profile, error: pErr } = await supabaseAdmin
+            .from("profiles")
+            .select("tenant_id")
+            .eq("id", userId)
+            .maybeSingle();
+          if (pErr) throw new Error(`DB error fetching profile: ${pErr.message}`);
+          tenantId = profile?.tenant_id;
         }
 
-        const { data: profile } = await supabaseAdmin
-          .from("profiles")
-          .select("tenant_id")
-          .eq("id", userId)
-          .maybeSingle();
-
-        const tenantId = profile?.tenant_id;
         if (!tenantId) {
-          console.warn("No tenant profile found for subscriber user:", userId);
+          console.warn("checkout.session.completed received without tenant binding");
           break;
         }
+
+        // Validate tenant exists in organizations
+        const { data: org, error: orgErr } = await supabaseAdmin
+          .from("organizations")
+          .select("id")
+          .eq("id", tenantId)
+          .maybeSingle();
+        if (orgErr) throw new Error(`DB error verifying organization: ${orgErr.message}`);
+        if (!org) {
+          throw new Error(`Target organization ${tenantId} not found for checkout session`);
+        }
+
+        const isPaid = session.payment_status === "paid";
 
         if (subscriptionId) {
-          await supabaseAdmin.from("subscriptions").upsert(
+          const { error: subErr } = await supabaseAdmin.from("subscriptions").upsert(
             {
+              tenant_id: tenantId,
               user_id: userId,
               stripe_subscription_id: subscriptionId,
               stripe_customer_id: customerId,
               product_id: `prod_${plan}`,
               price_id: `price_${plan}`,
-              status: "active",
+              status: isPaid ? "active" : "incomplete",
               provider: "stripe",
               environment: session.livemode ? "live" : "test",
               updated_at: new Date().toISOString(),
             } as any,
             { onConflict: "stripe_subscription_id" },
           );
+          if (subErr) {
+            throw new Error(`DB error upserting subscription: ${subErr.message}`);
+          }
 
-          await syncStripeOrganization({
-            tenantId,
-            status: "active",
-            plan,
-            customerId,
-            subscriptionId,
-          });
+          if (isPaid) {
+            await syncStripeOrganization({
+              tenantId,
+              status: "active",
+              plan,
+              customerId,
+              subscriptionId,
+            });
+          }
         }
 
         const invoiceId = session?.invoice;
-        if (invoiceId && tenantId) {
+        // Verify settlement before creating paid invoice evidence
+        if (isPaid && invoiceId && tenantId) {
           const amount = (session.amount_total || 0) / 100;
           await recordStripeSubscriptionInvoice({
             tenantId,
@@ -484,33 +530,39 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
         let tenantId: string | null = null;
         let userId: string | null = null;
 
+        // 1. Resolve tenant immutably from subscription binding
         if (subscriptionId) {
-          const { data: sub } = await supabaseAdmin
+          const { data: sub, error: subErr } = await supabaseAdmin
             .from("subscriptions")
-            .select("user_id")
+            .select("tenant_id, user_id")
             .eq("stripe_subscription_id", subscriptionId)
             .maybeSingle();
 
-          if (sub?.user_id) {
+          if (subErr) throw new Error(`DB error fetching subscription: ${subErr.message}`);
+          if (sub?.tenant_id) {
+            tenantId = sub.tenant_id;
             userId = sub.user_id;
-            const { data: profile } = await supabaseAdmin
-              .from("profiles")
-              .select("tenant_id")
-              .eq("id", userId)
-              .maybeSingle();
-            tenantId = profile?.tenant_id ?? null;
           }
         }
 
+        // 2. Resolve from organization by customer ID
         if (!tenantId && customerId) {
-          const { data: org } = await supabaseAdmin
+          const { data: org, error: orgErr } = await supabaseAdmin
             .from("organizations")
             .select("id")
             .eq("stripe_customer_id", customerId)
             .maybeSingle();
+          if (orgErr) throw new Error(`DB error fetching organization: ${orgErr.message}`);
           tenantId = org?.id ?? null;
         }
 
+        // 3. Fallback to invoice metadata
+        if (!tenantId) {
+          tenantId =
+            invoice.subscription_details?.metadata?.tenantId || invoice.metadata?.tenantId || null;
+        }
+
+        // Immutable ownership: never fall back to current profiles.tenant_id
         if (tenantId) {
           const periodEnd = invoice.lines?.data?.[0]?.period?.end
             ? new Date(invoice.lines.data[0].period.end * 1000).toISOString()
@@ -538,6 +590,11 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
             invoiceNumber: invoice.number,
             periodEnd,
           });
+        } else {
+          console.warn(
+            "invoice.payment_succeeded could not resolve tenant ownership for subscription:",
+            subscriptionId,
+          );
         }
         break;
       }
@@ -550,7 +607,7 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
           ? new Date(sub.current_period_end * 1000).toISOString()
           : null;
 
-        const { data: row } = await supabaseAdmin
+        const { data: row, error: subErr } = await supabaseAdmin
           .from("subscriptions")
           .update({
             status,
@@ -562,24 +619,31 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
             updated_at: new Date().toISOString(),
           } as any)
           .eq("stripe_subscription_id", subscriptionId)
-          .select("user_id")
+          .select("tenant_id, user_id")
           .maybeSingle();
 
-        if (row?.user_id) {
-          const { data: profile } = await supabaseAdmin
-            .from("profiles")
-            .select("tenant_id")
-            .eq("id", row.user_id)
-            .maybeSingle();
+        if (subErr) {
+          throw new Error(`DB error updating subscription: ${subErr.message}`);
+        }
 
-          if (profile?.tenant_id) {
-            await syncStripeOrganization({
-              tenantId: profile.tenant_id,
-              status,
-              periodEnd,
-              subscriptionId,
-            });
-          }
+        let tenantId = row?.tenant_id;
+        if (!tenantId) {
+          const { data: org, error: orgErr } = await supabaseAdmin
+            .from("organizations")
+            .select("id")
+            .eq("stripe_subscription_id", subscriptionId)
+            .maybeSingle();
+          if (orgErr) throw new Error(`DB error fetching org by subscription: ${orgErr.message}`);
+          tenantId = org?.id ?? sub.metadata?.tenantId ?? null;
+        }
+
+        if (tenantId) {
+          await syncStripeOrganization({
+            tenantId,
+            status,
+            periodEnd,
+            subscriptionId,
+          });
         }
         break;
       }
@@ -588,30 +652,37 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
         const sub = event.data?.object;
         const subscriptionId = sub.id;
 
-        const { data: row } = await supabaseAdmin
+        const { data: row, error: subErr } = await supabaseAdmin
           .from("subscriptions")
           .update({
             status: "canceled",
             updated_at: new Date().toISOString(),
           } as any)
           .eq("stripe_subscription_id", subscriptionId)
-          .select("user_id")
+          .select("tenant_id, user_id")
           .maybeSingle();
 
-        if (row?.user_id) {
-          const { data: profile } = await supabaseAdmin
-            .from("profiles")
-            .select("tenant_id")
-            .eq("id", row.user_id)
-            .maybeSingle();
+        if (subErr) {
+          throw new Error(`DB error updating subscription cancellation: ${subErr.message}`);
+        }
 
-          if (profile?.tenant_id) {
-            await syncStripeOrganization({
-              tenantId: profile.tenant_id,
-              status: "canceled",
-              subscriptionId,
-            });
-          }
+        let tenantId = row?.tenant_id;
+        if (!tenantId) {
+          const { data: org, error: orgErr } = await supabaseAdmin
+            .from("organizations")
+            .select("id")
+            .eq("stripe_subscription_id", subscriptionId)
+            .maybeSingle();
+          if (orgErr) throw new Error(`DB error fetching org by subscription: ${orgErr.message}`);
+          tenantId = org?.id ?? sub.metadata?.tenantId ?? null;
+        }
+
+        if (tenantId) {
+          await syncStripeOrganization({
+            tenantId,
+            status: "canceled",
+            subscriptionId,
+          });
         }
         break;
       }
@@ -622,12 +693,16 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
           typeof invoice?.customer === "string" ? invoice.customer : invoice?.customer?.id;
 
         if (customerId) {
-          const { data: org } = await supabaseAdmin
+          const { data: org, error: orgErr } = await supabaseAdmin
             .from("organizations")
             .update({ subscription_status: "past_due" })
             .eq("stripe_customer_id", customerId)
             .select("id")
             .maybeSingle();
+
+          if (orgErr) {
+            throw new Error(`DB error updating past_due status: ${orgErr.message}`);
+          }
 
           if (org) {
             const { raiseAlert } = await import("@/lib/monitoring.server");
@@ -657,6 +732,5 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __mockStripe: any;
 }

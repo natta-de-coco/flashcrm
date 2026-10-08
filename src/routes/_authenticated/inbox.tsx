@@ -385,7 +385,7 @@ function InboxPage() {
           setLiveStatus("offline");
         else setLiveStatus("connecting");
       });
-  return () => {
+    return () => {
       void supabase.removeChannel(channel);
     };
   }, [qc]);

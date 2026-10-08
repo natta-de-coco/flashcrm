@@ -4075,6 +4075,7 @@ export type Database = {
           price_id: string
           product_id: string
           status: string
+          tenant_id?: string | null
           updated_at: string | null
           user_id: string
         }
@@ -4093,6 +4094,7 @@ export type Database = {
           price_id: string
           product_id: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -4111,6 +4113,7 @@ export type Database = {
           price_id?: string
           product_id?: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string | null
           user_id?: string
         }

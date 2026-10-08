@@ -33,12 +33,17 @@ export const createStripeCheckoutSessionFn = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { data: profile, error: profileErr } = await context.supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, staff_role")
       .eq("id", context.userId)
       .maybeSingle();
 
     if (profileErr || !profile?.tenant_id) {
       throw new Error("Could not find workspace for subscriber.");
+    }
+
+    const { isCompanyManager } = await import("@/lib/permissions");
+    if (!isCompanyManager(profile.staff_role)) {
+      throw new Error("Only company administrators can manage billing and checkout.");
     }
 
     const { data: userRes } = await context.supabase.auth.getUser();
@@ -74,12 +79,17 @@ export const createPortalSession = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { data: profile } = await context.supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, staff_role")
       .eq("id", context.userId)
       .maybeSingle();
 
     if (!profile?.tenant_id) {
       throw new Error("No organization found for this account.");
+    }
+
+    const { isCompanyManager } = await import("@/lib/permissions");
+    if (!isCompanyManager(profile.staff_role)) {
+      throw new Error("Only company administrators can access the billing portal.");
     }
 
     const { data: org } = await context.supabase
@@ -138,7 +148,7 @@ export const disconnectPaddleFn = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { data: profile } = await context.supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, staff_role")
       .eq("id", context.userId)
       .maybeSingle();
 
@@ -146,17 +156,50 @@ export const disconnectPaddleFn = createServerFn({ method: "POST" })
       throw new Error("No organization found.");
     }
 
+    const { isCompanyManager } = await import("@/lib/permissions");
+    if (!isCompanyManager(profile.staff_role)) {
+      throw new Error("Only company administrators can manage billing providers.");
+    }
+
+    const { data: org } = await context.supabase
+      .from("organizations")
+      .select("id, paddle_subscription_id, paddle_customer_id")
+      .eq("id", profile.tenant_id)
+      .maybeSingle();
+
+    // If active paddle subscription exists, cancel or schedule cancellation via SDK so it stops recurring
+    if (org?.paddle_subscription_id) {
+      try {
+        const { data: sub } = await context.supabase
+          .from("subscriptions")
+          .select("environment")
+          .eq("paddle_subscription_id", org.paddle_subscription_id)
+          .maybeSingle();
+
+        const env = (sub?.environment as "sandbox" | "live") || "sandbox";
+        const { getPaddleClient } = await import("@/lib/paddle.server");
+        const paddle = getPaddleClient(env);
+        await paddle.subscriptions.cancel(org.paddle_subscription_id, {
+          effectiveFrom: "next_billing_period",
+        });
+      } catch (cancelErr: unknown) {
+        console.warn(
+          "Paddle subscription cancellation note:",
+          cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
+        );
+      }
+    }
+
+    // Preserve historical paddle subscription and customer identities for audit; switch provider to stripe
     const { error } = await context.supabase
       .from("organizations")
       .update({
         billing_provider: "stripe",
-        paddle_subscription_id: null,
-        paddle_customer_id: null,
       })
       .eq("id", profile.tenant_id);
 
     if (error) {
-      throw new Error(`Could not disconnect Paddle: ${error.message}`);
+      throw new Error(`Could not update billing provider: ${error.message}`);
     }
 
     return { ok: true };
