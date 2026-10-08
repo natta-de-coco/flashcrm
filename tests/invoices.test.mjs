@@ -394,4 +394,3 @@ test("WordPress site connection enforces SSRF validation", () => {
   assert.equal(isSafeWordPressUrl("https://wp.mobidigisol.com"), true);
   assert.equal(isSafeWordPressUrl("http://atozsecurityequipment.com"), true);
 });
-

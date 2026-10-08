@@ -276,4 +276,3 @@ describe("the app does not offer what it cannot do", () => {
     }
   });
 });
-
