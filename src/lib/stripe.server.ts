@@ -711,6 +711,7 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
               message: `Renewal payment failed for company ${org.id}. Retries running via Stripe.`,
               severity: "critical",
               source: "billing",
+              tenantId: org.id,
             });
           }
         }
