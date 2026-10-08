@@ -52,6 +52,13 @@ function harness({
   source = "shared",
   callbackUri = null,
   whatsappNumbers = [],
+  // How the readiness query behaves once a sign-in has been refused:
+  //   background  what invalidateQueries does, which nobody waits for:
+  //               "instant" refetches at once, "slow" has not finished yet,
+  //               "fails" never succeeds;
+  //   recheck     "ok" or "fails": a refetch the screen waits for (fetchQuery).
+  background = "instant",
+  recheck = "ok",
 } = {}) {
   const state = [],
     requests = [],
@@ -78,8 +85,30 @@ function harness({
     credentials: {},
     blockers,
   }));
+  // What the server would answer now, and what the screen has cached. They
+  // differ until a refetch lands: that gap is what the review was about.
+  let serverRows = rows;
+  let cachedRows = rows;
+  let holdRead = null;
+  const server = {
+    /** Every read of the server waits until the test calls the function given to `hold`. */
+    holdReads(hold) {
+      holdRead = hold;
+    },
+    /** The blockers the server reports from now on, for every connector. */
+    setBlockers(list) {
+      serverRows = rows.map((r) => ({ ...r, blockers: list }));
+    },
+    cached: () => cachedRows,
+  };
+  const readServer = async () => {
+    if (holdRead) return new Promise((resolve) => holdRead(resolve));
+    if (recheck === "fails") throw new Error("offline");
+    return { rows: serverRows };
+  };
   const start = async (request) => {
     requests.push(request);
+    if (result instanceof Error) throw result;
     return result;
   };
   const modules = {
@@ -106,9 +135,21 @@ function harness({
       },
     },
     "@tanstack/react-query": {
-      useQueryClient: () => ({ invalidateQueries: async () => {} }),
+      useQueryClient: () => ({
+        // Marks the data stale and refetches in the background; the caller does
+        // not wait, so neither does this.
+        invalidateQueries: async () => {
+          if (background === "instant") cachedRows = (await readServer()).rows;
+        },
+        // Fetches now, puts the answer in the cache and hands it back.
+        fetchQuery: async ({ queryFn }) => {
+          const data = await queryFn();
+          cachedRows = data.rows;
+          return data;
+        },
+      }),
       useQuery: ({ queryKey }) => ({
-        data: queryKey[0] === "connections" ? { accounts, whatsappNumbers } : { rows },
+        data: queryKey[0] === "connections" ? { accounts, whatsappNumbers } : { rows: cachedRows },
       }),
       useMutation(options) {
         const index = mutationCursor++;
@@ -142,6 +183,7 @@ function harness({
       startConnect: start,
       getIntegrationHealthReport: async () => ({ rows: [] }),
     },
+    "@/lib/integration-readiness.functions": { getIntegrationReadiness: readServer },
     "@/lib/connection-setup": {
       credentialSpec: () => ({ scope: "provider", fields: [] }),
       OAUTH_REDIRECT_PATH: "/api/public/oauth-callback",
@@ -175,7 +217,19 @@ function harness({
     return exports.IntegrationsAuditFixed({});
   };
   const find = (tree, name) => nodes(tree).find((node) => (node.type?.name ?? node.type) === name);
-  return { render, find, requests, redirects, flush: () => Promise.all(pending) };
+  return {
+    render,
+    find,
+    server,
+    requests,
+    redirects,
+    flush: () => Promise.all(pending),
+    /** Waits for a refused start to finish re-reading what is still blocking. */
+    settle: async () => {
+      await Promise.all(pending);
+      await new Promise((resolve) => setImmediate(resolve));
+    },
+  };
 }
 
 test("saving an Instagram app continues its OAuth flow even when cached readiness is blocked", async () => {
@@ -784,4 +838,145 @@ test("WhatsApp counts its connected numbers and shows each one's phone number ID
   const id = page.find((n) => n.type?.name === "CopyRow" && n.props.label === "Phone number ID");
   assert.equal(id.props.value, "109876543210");
   assert.ok(page.some((n) => n.type === "Button" && text(n) === "Add a number manually"));
+});
+
+// ── Review of PR #11: what the problem panel says after a refused sign-in ─────
+const CLIENT_ID_MISSING = {
+  code: "CLIENT_ID_MISSING",
+  title: "App client ID is missing",
+  userMessage: "Add the app's client ID.",
+  severity: "BLOCKING",
+  owner: "FLAS_ADMIN",
+};
+const CLIENT_SECRET_MISSING = {
+  code: "CLIENT_SECRET_MISSING",
+  title: "App client secret is missing",
+  userMessage: "Add the app's client secret.",
+  severity: "BLOCKING",
+  owner: "FLAS_ADMIN",
+};
+const STORAGE_MISSING = {
+  code: "STORAGE",
+  title: "OAuth database schema is missing",
+  userMessage: "Run the pending database migrations.",
+  severity: "BLOCKING",
+  owner: "FLAS_ADMIN",
+};
+// Array.from: the screen runs in its own realm, and an empty array made there
+// is not deep-equal to one made here.
+const listed = (h) => Array.from(h.find(h.render(), "Problem").props.blockers, (b) => b.code);
+
+/** The admin types in the app details, saves, and the server still refuses to start. */
+async function saveAppDetailsAndGetRefused(h) {
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("instagram");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.settle();
+}
+
+test("after a refused sign-in the panel lists what still blocks, not what was just saved", async () => {
+  // The cached readiness is from before the save: it says the client ID and
+  // secret are missing. The server now has them; something else is wrong.
+  for (const background of ["slow", "fails", "instant"]) {
+    const h = harness({
+      result: { ready: false },
+      blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+      background,
+    });
+    h.server.setBlockers([STORAGE_MISSING]);
+    await saveAppDetailsAndGetRefused(h);
+    assert.deepEqual(listed(h), ["STORAGE"], `background refetch: ${background}`);
+    assert.deepEqual(h.redirects, []);
+  }
+});
+
+test("a sign-in that could not start at all is explained from what the server says now", async () => {
+  const h = harness({
+    result: new Error("network down"),
+    blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+    background: "slow",
+  });
+  h.server.setBlockers([STORAGE_MISSING]);
+  await saveAppDetailsAndGetRefused(h);
+  const problem = h.find(h.render(), "Problem");
+  assert.match(problem.props.message, /could not start/);
+  assert.deepEqual(listed(h), ["STORAGE"]);
+});
+
+test("when what still blocks cannot be re-read, no out-of-date list is shown", async () => {
+  // Better a panel that says only that setup is unfinished than one that names
+  // details the admin has just saved.
+  const h = harness({
+    result: { ready: false },
+    blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+    background: "fails",
+    recheck: "fails",
+  });
+  await saveAppDetailsAndGetRefused(h);
+  assert.deepEqual(listed(h), []);
+  assert.match(h.find(h.render(), "Problem").props.message, /administrator setup/);
+});
+
+test("nothing is listed when the server says nothing is left that could be fixed", async () => {
+  const h = harness({ result: { ready: false }, blockers: [CLIENT_ID_MISSING] });
+  h.server.setBlockers([]);
+  await saveAppDetailsAndGetRefused(h);
+  assert.deepEqual(listed(h), []);
+});
+
+test("an earlier refusal's answer never replaces a later one's", async () => {
+  // Two refusals in a row; the first one's re-read comes back last.
+  const h = harness({ result: { ready: false }, blockers: [CLIENT_ID_MISSING] });
+  const answers = [];
+  h.server.holdReads((release) => answers.push(release));
+  h.find(h.render(), "ProviderReadiness").props.onConnect("instagram");
+  await Promise.all([h.flush(), new Promise((resolve) => setImmediate(resolve))]);
+  h.find(h.render(), "ProviderReadiness").props.onConnect("instagram");
+  await Promise.all([h.flush(), new Promise((resolve) => setImmediate(resolve))]);
+  assert.equal(answers.length, 2, "each refusal asked the server again");
+  answers[1]({ rows: [{ id: "instagram", blockers: [STORAGE_MISSING] }] });
+  await h.settle();
+  answers[0]({ rows: [{ id: "instagram", blockers: [CLIENT_SECRET_MISSING] }] });
+  await h.settle();
+  assert.deepEqual(listed(h), ["STORAGE"]);
+});
+
+test("Open provider setup after a refusal keeps the product the admin chose", async () => {
+  // The admin tries Instagram. The server refuses (its configuration changed
+  // since the page loaded). They open setup from the problem panel and repair
+  // the shared Meta app from the Facebook row. Saving must connect Instagram.
+  const h = harness({
+    status: "READY",
+    setupOwner: null,
+    connectors: [FACEBOOK, INSTAGRAM],
+    result: { ready: false },
+  });
+  const card = nodes(h.render()).find(
+    (n) => n.type?.name === "MarketplaceCard" && n.props.connector.id === "instagram",
+  );
+  card.props.onConnect();
+  h.find(h.render(), "ConnectConsent").props.onContinue();
+  await h.settle();
+  assert.deepEqual(
+    h.requests.map((r) => r.data.platform),
+    ["instagram"],
+  );
+
+  h.find(h.render(), "Problem").props.onAdmin();
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.settle();
+  assert.deepEqual(
+    h.requests.map((r) => r.data.platform),
+    ["instagram", "instagram"],
+    "the second attempt is for Instagram, the product that was chosen",
+  );
+});
+
+test("Open provider setup from the general button chooses no product", async () => {
+  // Nothing was chosen, so saving the Facebook row connects Facebook.
+  const h = harness({ connectors: [FACEBOOK, INSTAGRAM] });
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.settle();
+  assert.equal(h.requests[0].data.platform, "facebook");
 });

@@ -202,7 +202,18 @@ export function IntegrationsAuditFixed({
     message: string;
     /** Nothing for this person to do: FLAS itself is finishing setup. */
     calm?: boolean;
+    /**
+     * What still blocks this connection, read from the server after the refusal.
+     * Empty until that answer arrives, and if it never does: the readiness rows
+     * on screen can be from before the admin saved the details, and naming them
+     * as missing would be wrong. Absent for a panel that was not the result of
+     * a refusal; those read the rows on screen.
+     */
+    blockers?: ReadinessBlocker[];
   } | null>(null);
+  // Which refusal the latest panel belongs to, so a slow answer for an earlier
+  // one cannot replace what a later one found.
+  const refusals = useRef(0);
 
   const allAccounts = (connections.data?.accounts ?? []) as Account[];
   const waNumbers = (
@@ -256,6 +267,29 @@ export function IntegrationsAuditFixed({
     });
   }, [category, query]);
 
+  /**
+   * After a refusal, asks the server what is still blocking this connection and
+   * waits for the answer. The old way was to mark the readiness data stale and
+   * go on: the panel then listed whatever the rows on screen said, which for an
+   * admin who had just saved the missing app details was the list from before
+   * they saved — until the refetch landed, and for good if it failed.
+   */
+  async function showWhatStillBlocks(platform: string, refusal: number) {
+    let blockers: ReadinessBlocker[] = [];
+    try {
+      const fresh = await qc.fetchQuery({
+        queryKey: ["integration-readiness", window.location.origin],
+        queryFn: () => getIntegrationReadiness({ data: { origin: window.location.origin } }),
+        staleTime: 0,
+      });
+      blockers = actionableBlockers(fresh.rows.find((r) => r.id === platform));
+    } catch {
+      // Not re-read: say less rather than say what may no longer be true.
+    }
+    if (refusal !== refusals.current) return;
+    setBlocked((current) => (current?.platform === platform ? { ...current, blockers } : current));
+  }
+
   const connect = useMutation({
     mutationFn: async (platform: string) => {
       setBlocked(null);
@@ -266,16 +300,18 @@ export function IntegrationsAuditFixed({
       starting.current = false;
       setConnecting(null);
       if (!result.ready) {
-        void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
+        const refusal = ++refusals.current;
         setBlocked(
           isSuperAdmin
             ? {
                 platform,
                 message:
                   "This connection is temporarily unavailable while administrator setup is completed.",
+                blockers: [],
               }
             : { platform, calm: true, message: notYetMessage(platformName(platform)) },
         );
+        void showWhatStillBlocks(platform, refusal);
         return;
       }
       window.location.assign(result.url);
@@ -283,11 +319,13 @@ export function IntegrationsAuditFixed({
     onError: (_e: Error, platform) => {
       starting.current = false;
       setConnecting(null);
-      void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
+      const refusal = ++refusals.current;
       setBlocked({
         platform,
         message: "The connection could not start. Please try again in a moment.",
+        blockers: [],
       });
+      void showWhatStillBlocks(platform, refusal);
     },
   });
 
@@ -458,8 +496,14 @@ export function IntegrationsAuditFixed({
           <Problem
             message={blocked.message}
             calm={blocked.calm}
-            blockers={isSuperAdmin ? actionableBlockers(readinessMap.get(blocked.platform)) : []}
-            onAdmin={isSuperAdmin ? () => openDiagnostics(null) : undefined}
+            blockers={
+              isSuperAdmin
+                ? (blocked.blockers ?? actionableBlockers(readinessMap.get(blocked.platform)))
+                : []
+            }
+            // Keep the product that was being connected: if the admin repairs
+            // the shared app from a sibling row, saving continues with this one.
+            onAdmin={isSuperAdmin ? () => openDiagnostics(blocked.platform) : undefined}
           />
         )}
         <ConnectionOutcome
@@ -750,7 +794,7 @@ export function IntegrationsAuditFixed({
             <Problem
               message={blocked.message}
               calm={blocked.calm}
-              onAdmin={isSuperAdmin ? () => openDiagnostics(null) : undefined}
+              onAdmin={isSuperAdmin ? () => openDiagnostics(blocked.platform) : undefined}
             />
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
