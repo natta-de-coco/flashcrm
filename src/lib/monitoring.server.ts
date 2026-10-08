@@ -59,6 +59,16 @@ export type WaWebhookBody = {
 /**
  * Creates an alert, skipping duplicates of the same unresolved title within a
  * dedupe window. Returns true when a new alert row was actually inserted.
+ *
+ * `tenantId` is the company the alert is about. A company sees only the
+ * alerts filed under it, so one raised without it reaches the platform owner
+ * alone: every delivery and deliverability warning used to be raised that
+ * way, and the company it concerned never saw it in Monitoring. Leave it out
+ * only when there is no company to name (an unrecognised number, a payload
+ * that could not be read or verified, billing).
+ *
+ * A repeat is looked for within the same company -- or among the platform's
+ * own -- so one company's open alert cannot hide another's of the same name.
  */
 export async function raiseAlert(args: {
   title: string;
@@ -66,23 +76,44 @@ export async function raiseAlert(args: {
   severity?: "info" | "warning" | "critical";
   source?: string;
   dedupeMinutes?: number;
+  tenantId?: string | null;
 }): Promise<boolean> {
+  const tenantId = args.tenantId ?? null;
   const since = new Date(Date.now() - (args.dedupeMinutes ?? 10) * 60 * 1000).toISOString();
-  const { data: existing } = await supabaseAdmin
+  const open = supabaseAdmin
     .from("system_alerts")
     .select("id")
     .eq("title", args.title)
     .eq("resolved", false)
-    .gte("created_at", since)
-    .maybeSingle();
-  if (existing) return false;
+    .gte("created_at", since);
+  // Any open copy makes this a repeat. Asking for exactly one row answered
+  // with an error once two were open, and the error read as "none": from then
+  // on every call added another.
+  const { data: existing, error: lookupError } = await (
+    tenantId ? open.eq("tenant_id", tenantId) : open.is("tenant_id", null)
+  ).limit(1);
+  if (lookupError) {
+    // It cannot be told whether this is a repeat. Said twice is better than
+    // not said, so it is raised.
+    console.error("[alerts] could not check for an open alert", lookupError.code ?? "");
+  } else if ((existing ?? []).length > 0) {
+    return false;
+  }
 
-  await supabaseAdmin.from("system_alerts").insert({
+  const { error } = await supabaseAdmin.from("system_alerts").insert({
     title: args.title,
     message: args.message ?? null,
     severity: args.severity ?? "warning",
     source: args.source ?? "webhook",
+    tenant_id: tenantId,
+    // An alert starts open. The column's default says the same; it is written
+    // here so the row reads the same wherever it is looked at.
+    resolved: false,
   });
+  if (error) {
+    console.error("[alerts] could not raise an alert", error.code ?? "");
+    return false;
+  }
   return true;
 }
 
@@ -127,6 +158,8 @@ export async function finishWebhookEvent(
 
 type WaNumberHealth = {
   id: string;
+  /** The company the number belongs to, and so the one its alerts are for. */
+  tenant_id: string | null;
   label: string;
   alerts_enabled: boolean;
   deliverability_min: number | null;
@@ -239,6 +272,7 @@ export async function checkNumberHealth(waNumberId: string | null) {
       severity: "critical",
       source: "health",
       dedupeMinutes: 360,
+      tenantId: num.tenant_id,
     });
   }
   if (readRate < thresholds.readRateMin) {
@@ -248,6 +282,7 @@ export async function checkNumberHealth(waNumberId: string | null) {
       severity: "warning",
       source: "health",
       dedupeMinutes: 360,
+      tenantId: num.tenant_id,
     });
   }
 }
@@ -504,6 +539,7 @@ export async function processWaPayload(body: WaWebhookBody) {
             message: WA_FAILURE_TEXT[reason],
             severity: "warning",
             source: "delivery",
+            tenantId,
           });
         }
       }
@@ -605,6 +641,7 @@ export async function processWaPayload(body: WaWebhookBody) {
               message: outcome.message,
               severity: outcome.state === "rejected" ? "critical" : "warning",
               source: "delivery",
+              tenantId,
             });
             // The event itself is not failed. It used to be, for a refusal,
             // which put a Retry button on it in Monitoring -- and that retry

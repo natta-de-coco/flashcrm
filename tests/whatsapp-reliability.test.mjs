@@ -6,12 +6,16 @@
 // timeout shown as "failed", a late receipt turning "read" back into "sent",
 // one workspace reaching another's number.
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
 import { createDb, secondsAgo } from "./support/db-double.mjs";
 
+import { Route as webhookRoute } from "../node_modules/.cache/flas-whatsapp-webhook.mjs";
 import {
+  checkNumberHealth,
+  raiseAlert,
   describeSendContext,
   evidenceOfReceipt,
   evidenceOfSend,
@@ -2072,5 +2076,289 @@ describe("nothing reaches a customer around the pipeline", () => {
     assert.match(crm, /sendConversationMessage\(\{/);
     assert.match(crm, /sendTemplate\(\{/);
     assert.match(crm, /describeSendContext\(tenantId, data\.conversationId\)/);
+  });
+});
+
+// ── What Monitoring is told, and who is told it ─────────────────────────────
+
+/** Switches the assistant on for A's conversation, so a customer's message gets a reply. */
+function assistantAnswers() {
+  rows.tenant_bot_settings.push({
+    tenant_id: A,
+    enabled: true,
+    bot_name: "Flas",
+    greeting: "Hello!",
+    instructions: "We sell CCTV kits in Dubai and install on Saturdays.",
+    model: "default",
+    handoff_keywords: [],
+  });
+  rows.conversations[0].bot_enabled = true;
+  db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+}
+const wantsAPerson = (id = "wamid.IN-ALERT") => ({
+  id,
+  from: "971501234567",
+  type: "text",
+  text: { body: "I want to talk to a human" },
+});
+const alertsTitled = (title) => rows.system_alerts.filter((a) => a.title === title);
+/** An outbound message of A's, on its WhatsApp line, inside the last day. */
+function outboundOfA(id, status, extra = {}) {
+  const row = {
+    id,
+    tenant_id: A,
+    conversation_id: "conv-a",
+    direction: "outbound",
+    sender: "agent",
+    body: "Hello",
+    status,
+    wa_message_id: `wamid.${id}`,
+    created_at: secondsAgo(600),
+    ...extra,
+  };
+  rows.messages.push(row);
+  return row;
+}
+const manyOfA = (count, status, prefix = status) => {
+  for (let i = 0; i < count; i += 1) outboundOfA(`${prefix}-${i}`, status);
+};
+
+describe("an alert belongs to the company it is about", () => {
+  const FAILED = "WhatsApp message delivery failed";
+
+  it("files a failed delivery under the company whose message it was", async () => {
+    outboundOfA("out-t", "sent", { wa_message_id: "wamid.OUT-T" });
+    await processWaPayload(
+      statusPayload("pn-a", { id: "wamid.OUT-T", status: "failed", errors: [{ code: 131026 }] }),
+    );
+    const [alert] = alertsTitled(FAILED);
+    assert.ok(alert);
+    // It had no company at all, so only the platform owner could ever see it.
+    assert.equal(alert.tenant_id, A);
+  });
+
+  it("files a failure FLAS holds no message for under the company whose number reported it", async () => {
+    await processWaPayload(statusPayload("pn-b", { id: "wamid.ELSEWHERE", status: "failed" }));
+    assert.equal(alertsTitled(FAILED)[0].tenant_id, B);
+  });
+
+  it("files a refused assistant reply under the company it was for", async () => {
+    assistantAnswers();
+    provider.next.push(refused(131047));
+    await processWaPayload(inboundPayload("pn-a", wantsAPerson()));
+    const [alert] = alertsTitled("WhatsApp reply could not be delivered");
+    assert.ok(alert);
+    assert.equal(alert.tenant_id, A);
+  });
+
+  it("files an unconfirmed assistant reply under the company it was for", async () => {
+    assistantAnswers();
+    provider.fail = new Error("timeout");
+    await processWaPayload(inboundPayload("pn-a", wantsAPerson()));
+    const [alert] = alertsTitled("WhatsApp did not confirm a reply");
+    assert.ok(alert);
+    assert.equal(alert.tenant_id, A);
+  });
+
+  it("files low delivery and read rates under the company that owns the number", async () => {
+    rows.wa_numbers[0].alerts_enabled = true;
+    manyOfA(10, "delivered");
+    manyOfA(10, "failed");
+    await checkNumberHealth("num-a");
+    const [delivery] = alertsTitled("Low deliverability on Sales line");
+    const [read] = alertsTitled("Low read rate on Sales line");
+    assert.ok(delivery && read);
+    assert.equal(delivery.tenant_id, A);
+    assert.equal(read.tenant_id, A);
+  });
+
+  it("leaves a webhook for a number nobody has connected with the platform", async () => {
+    await processWaPayload(statusPayload("pn-unknown", { id: "wamid.X", status: "read" }));
+    const [alert] = alertsTitled("WhatsApp webhook for an unrecognized number");
+    assert.ok(alert);
+    assert.equal(alert.tenant_id ?? null, null, "there is no company to file it under");
+  });
+
+  /** An alert that is already open, as the table holds it. */
+  const openAlert = (id, tenantId) =>
+    rows.system_alerts.push({
+      id,
+      title: FAILED,
+      tenant_id: tenantId,
+      resolved: false,
+      created_at: secondsAgo(60),
+    });
+
+  it("does not let one company's open alert hide the same alert from another", async () => {
+    openAlert("open-a", A);
+    // The check for a repeat matched on the title alone, so the second company
+    // was never told.
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: B }), true);
+    assert.deepEqual(
+      alertsTitled(FAILED).map((a) => a.tenant_id),
+      [A, B],
+    );
+    // A itself is still told only once.
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+  });
+
+  it("does not let a platform alert hide a company's alert of the same name", async () => {
+    openAlert("open-platform", null);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), true);
+    assert.equal(await raiseAlert({ title: FAILED }), false, "the platform's own is a repeat");
+    assert.deepEqual(
+      alertsTitled(FAILED).map((a) => a.tenant_id),
+      [null, A],
+    );
+  });
+
+  it("does not let a company's alert hide the platform's alert of the same name", async () => {
+    openAlert("open-a", A);
+    assert.equal(await raiseAlert({ title: FAILED }), true);
+    assert.equal(alertsTitled(FAILED).at(-1).tenant_id ?? null, null);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+  });
+
+  it("still says a thing once per company while it is open, and again once it is resolved", async () => {
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), true);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+    assert.equal(alertsTitled(FAILED).length, 1);
+    alertsTitled(FAILED)[0].resolved = true;
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), true);
+  });
+
+  it("is not repeated for ever once two copies of it are open", async () => {
+    // A single-row read of two rows is an error, and the error read as "no
+    // such alert": from then on every call added one more.
+    for (const id of ["dup-1", "dup-2"]) {
+      rows.system_alerts.push({
+        id,
+        title: FAILED,
+        tenant_id: A,
+        resolved: false,
+        created_at: secondsAgo(60),
+      });
+    }
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+    assert.equal(alertsTitled(FAILED).length, 2);
+  });
+
+  it("says it was not raised when the database refused it", async () => {
+    db.fail("system_alerts:insert", STATEMENT_TIMEOUT);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+    assert.equal(alertsTitled(FAILED).length, 0);
+  });
+
+  it("is still raised when it cannot tell whether it is a repeat", async () => {
+    // Told twice is better than not told.
+    db.fail("system_alerts:read", STATEMENT_TIMEOUT);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), true);
+    assert.equal(alertsTitled(FAILED)[0].tenant_id, A);
+  });
+});
+
+describe("the webhook endpoint", () => {
+  const { GET: handshake, POST: deliver } = webhookRoute.options.server.handlers;
+  const ENDPOINT = "https://flas.example/api/public/whatsapp/webhook";
+  const APP_SECRET = "meta-app-secret-for-tests";
+  const signed = (payload, secret = APP_SECRET) => {
+    const raw = JSON.stringify(payload);
+    const signature = createHmac("sha256", secret).update(raw, "utf8").digest("hex");
+    return new Request(ENDPOINT, {
+      method: "POST",
+      headers: { "x-hub-signature-256": `sha256=${signature}` },
+      body: raw,
+    });
+  };
+  const FAILED_EVENT = "WhatsApp webhook event failed";
+  let verifyToken;
+  beforeEach(() => {
+    for (const number of rows.wa_numbers) number.app_secret = APP_SECRET;
+    verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
+    process.env.WHATSAPP_VERIFY_TOKEN = "handshake-token-for-tests";
+  });
+  afterEach(() => {
+    if (verifyToken === undefined) delete process.env.WHATSAPP_VERIFY_TOKEN;
+    else process.env.WHATSAPP_VERIFY_TOKEN = verifyToken;
+  });
+
+  it("tells a company when a delivery for its number could not be processed", async () => {
+    outboundOfA("out-w", "sent", { wa_message_id: "wamid.OUT-W" });
+    db.fail("messages:update", STATEMENT_TIMEOUT);
+    const response = await deliver({
+      request: signed(statusPayload("pn-a", { id: "wamid.OUT-W", status: "delivered" })),
+    });
+    assert.equal(response.status, 200);
+    const [alert] = alertsTitled(FAILED_EVENT);
+    assert.ok(alert);
+    assert.equal(alert.tenant_id, A);
+    // The event is filed under the same company, failed, for its Retry button.
+    assert.equal(rows.webhook_events.at(-1).tenant_id, A);
+    assert.equal(rows.webhook_events.at(-1).status, "failed");
+  });
+
+  it("does not pick a company for a failed delivery that carried two companies' numbers", async () => {
+    outboundOfA("out-w", "sent", { wa_message_id: "wamid.OUT-W" });
+    const both = statusPayload("pn-a", { id: "wamid.OUT-W", status: "delivered" });
+    both.entry.push(statusPayload("pn-b", { id: "wamid.OTHER", status: "delivered" }).entry[0]);
+    db.fail("messages:update", STATEMENT_TIMEOUT);
+    const response = await deliver({ request: signed(both) });
+    assert.equal(response.status, 200);
+    const [alert] = alertsTitled(FAILED_EVENT);
+    assert.ok(alert);
+    assert.equal(alert.tenant_id ?? null, null, "one company was shown a failure that may be another's");
+  });
+
+  it("files nothing under a company on the word of a delivery it could not verify", async () => {
+    const forged = signed(
+      statusPayload("pn-a", { id: "wamid.X", status: "failed" }),
+      "not-the-app-secret",
+    );
+    const response = await deliver({ request: forged });
+    assert.equal(response.status, 401);
+    assert.equal(rows.messages.filter((m) => m.direction === "outbound").length, 0);
+    for (const alert of rows.system_alerts) assert.equal(alert.tenant_id ?? null, null);
+    assert.equal(
+      alertsTitled("Rejected a WhatsApp webhook with an invalid signature").length,
+      1,
+    );
+  });
+
+  // Meta's handshake is one GET to one address shared by every company, with
+  // one token shared by every company. Nothing in it says whose setup it is.
+  it("answers Meta's handshake without calling any company verified", async () => {
+    rows.tenant_wa_config = [
+      { tenant_id: A, webhook_verified: false },
+      { tenant_id: B, webhook_verified: false },
+    ];
+    const response = await handshake({
+      request: new Request(
+        `${ENDPOINT}?hub.mode=subscribe&hub.verify_token=handshake-token-for-tests&hub.challenge=4242`,
+      ),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "4242");
+    assert.deepEqual(
+      rows.tenant_wa_config.map((c) => c.webhook_verified),
+      [false, false],
+      "a company was marked verified on a handshake that does not name it",
+    );
+    assert.equal(
+      db.state.rpcCalls.filter((c) => c.name === "mark_wa_webhook_verified").length,
+      0,
+    );
+  });
+
+  it("refuses a handshake with the wrong token, or with none configured", async () => {
+    const ask = (token) =>
+      handshake({
+        request: new Request(
+          `${ENDPOINT}?hub.mode=subscribe&hub.verify_token=${token}&hub.challenge=4242`,
+        ),
+      });
+    assert.equal((await ask("something-else")).status, 403);
+    delete process.env.WHATSAPP_VERIFY_TOKEN;
+    assert.equal((await ask("")).status, 403);
+    assert.equal((await ask("handshake-token-for-tests")).status, 403);
   });
 });

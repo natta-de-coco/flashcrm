@@ -37,7 +37,7 @@ await build({
     contents: [
       `export * from './src/lib/wa-delivery';`,
       `export { sendConversationMessage, sendTemplate, describeSendContext } from './src/lib/wa-send.server';`,
-      `export { processWaPayload } from './src/lib/monitoring.server';`,
+      `export { processWaPayload, raiseAlert, checkNumberHealth } from './src/lib/monitoring.server';`,
       `export { checkSendPermission } from './src/lib/safety.server';`,
       `export { generateBotReply, evidenceProbe, ingestInboundMessage, newChatAutomation } from './src/lib/wa.server';`,
       `export * from './src/lib/billing-whatsapp.server';`,
@@ -52,6 +52,35 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
   plugins: [boundaries],
+});
+
+// The webhook route itself: the handshake, the signature check, and what is
+// recorded when processing fails. The route shell is a double; everything the
+// handlers call is the code above, over the same database double.
+await build({
+  entryPoints: ["src/routes/api/public/whatsapp/webhook.ts"],
+  outfile: "node_modules/.cache/flas-whatsapp-webhook.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [
+    {
+      name: "whatsapp-route-shell",
+      setup(b) {
+        b.onResolve({ filter: /^@tanstack\/react-router$/ }, () => ({
+          path: "router",
+          namespace: "wa-route-shell",
+        }));
+        b.onLoad({ filter: /.*/, namespace: "wa-route-shell" }, () => ({
+          contents: "export const createFileRoute = () => (options) => ({ options });",
+          loader: "js",
+        }));
+      },
+    },
+    boundaries,
+  ],
 });
 
 // Where a customer's link may point. On its own, with only the database
