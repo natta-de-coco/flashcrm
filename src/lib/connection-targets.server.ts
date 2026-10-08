@@ -12,7 +12,7 @@
  * with two or more the connection was saved with no channel at all, and sync
  * then stopped at "add your ID" with nowhere to add it.
  */
-import { providerPages } from "./provider-pages.server";
+import { providerPages, ProviderPagesError } from "./provider-pages.server";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 
 export type ConnectionTarget = {
@@ -29,6 +29,8 @@ export type TargetList =
 
 function targetListFailure(platform: string, error: unknown): TargetList {
   const diagnostic = error instanceof Error ? error.message : "The platform did not respond.";
+  const providerReason = error instanceof ProviderPagesError ? error.providerReason : null;
+  const providerMessage = error instanceof ProviderPagesError ? error.providerMessage : null;
 
   // Google returns 429 when the Business Profile API is enabled but the
   // project still has its default zero quota. Retrying OAuth cannot fix that:
@@ -51,6 +53,94 @@ function targetListFailure(platform: string, error: unknown): TargetList {
         "Google Business Profile API access is not ready. An administrator must enable both Business Profile APIs and complete Google's one-time access application.",
       diagnostic,
     };
+  }
+
+  if (platform === "youtube") {
+    // 1. YouTube Data API v3 not enabled in Google Cloud Console
+    if (
+      providerReason === "accessNotConfigured" ||
+      providerReason === "SERVICE_DISABLED" ||
+      /accessNotConfigured|SERVICE_DISABLED|has not been used in project/i.test(diagnostic) ||
+      (providerMessage &&
+        /accessNotConfigured|SERVICE_DISABLED|has not been used in project/i.test(providerMessage))
+    ) {
+      return {
+        ok: false,
+        targets: [],
+        reason:
+          "YouTube Data API v3 is not enabled in the Google Cloud project. A FLAS administrator must enable YouTube Data API v3 in Google Cloud Console before connecting.",
+        diagnostic:
+          `YouTube Data API v3 disabled in Google Cloud Console (accessNotConfigured, HTTP 403). ${providerMessage ?? ""}`.trim(),
+      };
+    }
+
+    // 2. YouTube Data API quota exceeded
+    if (
+      providerReason === "quotaExceeded" ||
+      providerReason === "dailyLimitExceeded" ||
+      providerReason === "rateLimitExceeded" ||
+      /quotaExceeded|dailyLimitExceeded|rateLimitExceeded/i.test(diagnostic) ||
+      /HTTP 429\b/.test(diagnostic) ||
+      (providerMessage && /quotaExceeded|exceeded your quota/i.test(providerMessage))
+    ) {
+      return {
+        ok: false,
+        targets: [],
+        reason:
+          "YouTube API quota has been exceeded for this project. Please retry later or ask a FLAS administrator to request a quota increase from Google.",
+        diagnostic:
+          `YouTube API quota exceeded (quotaExceeded, HTTP 403). ${providerMessage ?? ""}`.trim(),
+      };
+    }
+
+    // 3. Channel access permissions not granted by user during OAuth consent
+    if (
+      providerReason === "insufficientPermissions" ||
+      /insufficientPermissions/i.test(diagnostic) ||
+      (providerMessage &&
+        /insufficientPermissions|caller does not have permission/i.test(providerMessage))
+    ) {
+      return {
+        ok: false,
+        targets: [],
+        reason:
+          "This Google sign-in did not grant channel access permissions for YouTube. Reconnect and check the YouTube channel permissions on Google's consent screen.",
+        diagnostic:
+          `YouTube permissions missing (insufficientPermissions, HTTP 403). ${providerMessage ?? ""}`.trim(),
+      };
+    }
+
+    // 4. No active YouTube channel or sign-up required
+    if (
+      providerReason === "youtubeSignupRequired" ||
+      providerReason === "channelNotFound" ||
+      /youtubeSignupRequired|channelNotFound/i.test(diagnostic) ||
+      (providerMessage && /youtubeSignupRequired|channelNotFound/i.test(providerMessage))
+    ) {
+      return {
+        ok: false,
+        targets: [],
+        reason:
+          "No active YouTube channel was found for this Google account. Open YouTube Studio to create a channel, or reconnect using the Brand Account that owns the channel.",
+        diagnostic:
+          `No YouTube channel attached (youtubeSignupRequired, HTTP 403). ${providerMessage ?? ""}`.trim(),
+      };
+    }
+
+    // 5. Generic HTTP 403 for YouTube
+    if (
+      /HTTP 403\b/.test(diagnostic) ||
+      (error instanceof ProviderPagesError && error.status === 403)
+    ) {
+      return {
+        ok: false,
+        targets: [],
+        reason:
+          "Google refused access to your YouTube channels (HTTP 403). Verify YouTube Data API v3 is enabled in Google Cloud Console and that the signed-in account owns an active channel.",
+        diagnostic:
+          `Google returned HTTP 403 for YouTube channels. ${providerMessage ?? diagnostic}`.trim(),
+      };
+    }
   }
 
   return { ok: false, targets: [], reason: diagnostic };
