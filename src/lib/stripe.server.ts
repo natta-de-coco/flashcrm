@@ -275,7 +275,7 @@ export async function recordStripeSubscriptionInvoice(params: {
   return docId;
 }
 
-/** Walks a test subscription through from checkout simulation to a saved invoice. */
+/** Walks a test subscription through from checkout simulation to a saved invoice. Only callable in automated tests. */
 export async function walkTestSubscriptionFlow(params: {
   tenantId: string;
   userId: string;
@@ -289,6 +289,10 @@ export async function walkTestSubscriptionFlow(params: {
   salesDocumentId: string;
   docNumber: string;
 }> {
+  if (process.env["NODE_ENV"] !== "test") {
+    throw new Error("walkTestSubscriptionFlow is strictly limited to automated unit tests.");
+  }
+
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   const nonce = Math.floor(100000 + Math.random() * 900000);
@@ -372,24 +376,23 @@ export async function walkTestSubscriptionFlow(params: {
 export async function handleStripeWebhook(request: Request): Promise<Response> {
   const rawBody = await request.text();
   const signature = request.headers.get("stripe-signature");
+  if (!signature) {
+    return new Response("Missing stripe-signature header", { status: 400 });
+  }
+
   const webhookSecret = getStripeWebhookSecret();
+  if (!webhookSecret) {
+    console.error("Stripe webhook secret is not configured in server environment.");
+    return new Response("Stripe webhook secret not configured", { status: 500 });
+  }
 
+  const stripe = getStripeClient();
   let event: any;
-
-  if (webhookSecret && signature) {
-    const stripe = getStripeClient();
-    try {
-      event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
-    } catch (err: any) {
-      console.error("Stripe webhook signature verification failed:", err.message);
-      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
-    }
-  } else {
-    try {
-      event = JSON.parse(rawBody);
-    } catch {
-      return new Response("Invalid JSON payload", { status: 400 });
-    }
+  try {
+    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+  } catch (err: any) {
+    console.error("Stripe webhook signature verification failed:", err.message);
+    return new Response(`Webhook signature verification failed: ${err.message}`, { status: 400 });
   }
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

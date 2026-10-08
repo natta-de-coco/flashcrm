@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach } from "node:test";
+import Stripe from "stripe";
 import {
   resolveStripeLineItem,
   syncStripeOrganization,
@@ -7,6 +8,29 @@ import {
   walkTestSubscriptionFlow,
   handleStripeWebhook,
 } from "../node_modules/.cache/flas-stripe.mjs";
+
+process.env.NODE_ENV = "test";
+process.env.STRIPE_SECRET_KEY = "sk_test_mock_secret_key_123";
+const TEST_WEBHOOK_SECRET = "whsec_test_secret_stripe_999";
+process.env.STRIPE_WEBHOOK_SECRET = TEST_WEBHOOK_SECRET;
+
+const stripeHelper = new Stripe("sk_test_mock_secret_key_123");
+
+function makeSignedRequest(payload, secret = TEST_WEBHOOK_SECRET) {
+  const body = typeof payload === "string" ? payload : JSON.stringify(payload);
+  const sig = stripeHelper.webhooks.generateTestHeaderString({
+    payload: body,
+    secret,
+  });
+  return new Request("https://flas.mobidigisol.com/api/public/payments/webhook", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "stripe-signature": sig,
+    },
+    body,
+  });
+}
 
 let rows = {};
 
@@ -200,7 +224,49 @@ describe("Stripe Checkout & Billing Integration", () => {
     assert.equal(savedDoc.balance, 0);
   });
 
-  it("handles checkout.session.completed webhook and activates subscription", async () => {
+  it("rejects webhook without stripe-signature header with 400", async () => {
+    const req = new Request("https://flas.mobidigisol.com/api/public/payments/webhook", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "checkout.session.completed" }),
+    });
+
+    const res = await handleStripeWebhook(req);
+    assert.equal(res.status, 400);
+    const text = await res.text();
+    assert.match(text, /Missing stripe-signature header/);
+  });
+
+  it("rejects webhook with invalid or tampered signature with 400", async () => {
+    const req = makeSignedRequest({ type: "checkout.session.completed" }, "whsec_wrong_signature_secret");
+    const res = await handleStripeWebhook(req);
+    assert.equal(res.status, 400);
+    const text = await res.text();
+    assert.match(text, /Webhook signature verification failed/);
+  });
+
+  it("fails closed with 500 when server STRIPE_WEBHOOK_SECRET is missing", async () => {
+    const savedSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    delete process.env.STRIPE_WEBHOOK_SECRET;
+    try {
+      const req = new Request("https://flas.mobidigisol.com/api/public/payments/webhook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "stripe-signature": "t=123,v1=abc",
+        },
+        body: JSON.stringify({ type: "checkout.session.completed" }),
+      });
+      const res = await handleStripeWebhook(req);
+      assert.equal(res.status, 500);
+      const text = await res.text();
+      assert.match(text, /Stripe webhook secret not configured/);
+    } finally {
+      process.env.STRIPE_WEBHOOK_SECRET = savedSecret;
+    }
+  });
+
+  it("handles verified checkout.session.completed webhook and activates subscription", async () => {
     const payload = {
       type: "checkout.session.completed",
       data: {
@@ -216,12 +282,7 @@ describe("Stripe Checkout & Billing Integration", () => {
       },
     };
 
-    const req = new Request("https://flas.mobidigisol.com/api/public/payments/webhook", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
+    const req = makeSignedRequest(payload);
     const res = await handleStripeWebhook(req);
     assert.equal(res.status, 200);
 
@@ -230,7 +291,7 @@ describe("Stripe Checkout & Billing Integration", () => {
     assert.equal(org.plan, "flash_yearly");
   });
 
-  it("handles invoice.payment_succeeded webhook and creates a saved invoice", async () => {
+  it("handles verified invoice.payment_succeeded webhook and creates a saved invoice", async () => {
     // Pre-insert subscription row
     rows.subscriptions.push({
       stripe_subscription_id: "sub_rec_1",
@@ -261,12 +322,7 @@ describe("Stripe Checkout & Billing Integration", () => {
       },
     };
 
-    const req = new Request("https://flas.mobidigisol.com/api/public/payments/webhook", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
+    const req = makeSignedRequest(payload);
     const res = await handleStripeWebhook(req);
     assert.equal(res.status, 200);
 

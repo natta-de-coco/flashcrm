@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { CreditCard, ExternalLink, Sparkles, CheckCircle2, ShieldCheck, Unlink } from "lucide-react";
+import { CreditCard, ExternalLink, Sparkles, ShieldCheck, Unlink } from "lucide-react";
 import { toast } from "sonner";
 
 import { useTenant } from "@/hooks/useTenant";
@@ -12,7 +12,6 @@ import {
   createPortalSession,
   createStripeCheckoutSessionFn,
   disconnectPaddleFn,
-  walkTestSubscriptionFn,
 } from "@/utils/payments.functions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,12 +35,10 @@ export function BillingCard() {
   const stripeCheckoutFn = useServerFn(createStripeCheckoutSessionFn);
   const portalFn = useServerFn(createPortalSession);
   const disconnectPaddle = useServerFn(disconnectPaddleFn);
-  const walkTestSub = useServerFn(walkTestSubscriptionFn);
 
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [disconnectLoading, setDisconnectLoading] = useState(false);
-  const [testWalkLoading, setTestWalkLoading] = useState(false);
 
   // Detect returning successful checkout once, then refresh tenant state.
   useQuery({
@@ -111,22 +108,6 @@ export function BillingCard() {
       toast.error(e instanceof Error ? e.message : "Failed to disconnect Paddle");
     } finally {
       setDisconnectLoading(false);
-    }
-  };
-
-  const handleTestWalk = async () => {
-    setTestWalkLoading(true);
-    try {
-      const res = await walkTestSub({ data: { plan: "flash_monthly" } });
-      toast.success(
-        `Test subscription active! Invoice #${res.docNumber} created and saved in Sales.`,
-        { duration: 5000 },
-      );
-      await refresh();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to run test subscription walk");
-    } finally {
-      setTestWalkLoading(false);
     }
   };
 
@@ -223,28 +204,6 @@ export function BillingCard() {
         </div>
 
         <p className="text-xs text-muted-foreground">{t("settings.billing.selfService")}</p>
-
-        {/* Developer / Acceptance walkthrough utility */}
-        <div className="mt-4 rounded-lg border border-dashed border-border/80 bg-muted/30 p-3 text-xs">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <span className="font-semibold text-foreground">Stripe Integration & Verification</span>
-              <p className="text-muted-foreground">
-                Walk a test subscription through from checkout simulation to a saved invoice.
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={handleTestWalk}
-              disabled={testWalkLoading}
-              className="text-xs"
-            >
-              <CheckCircle2 className="me-1 h-3.5 w-3.5 text-emerald-600" />
-              {testWalkLoading ? "Walking test subscription…" : "Walk Test Subscription (Stripe)"}
-            </Button>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );

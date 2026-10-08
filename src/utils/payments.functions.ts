@@ -161,36 +161,3 @@ export const disconnectPaddleFn = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
-
-/** Walks a test subscription through from checkout simulation to a saved invoice. */
-export const walkTestSubscriptionFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) =>
-    z
-      .object({
-        plan: z.enum(["flash_monthly", "flash_yearly"]).default("flash_monthly"),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data, context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", context.userId)
-      .maybeSingle();
-
-    if (!profile?.tenant_id) {
-      throw new Error("No organization found for test subscription.");
-    }
-
-    const { data: userRes } = await context.supabase.auth.getUser();
-    const userEmail = userRes?.user?.email ?? null;
-
-    const { walkTestSubscriptionFlow } = await import("@/lib/stripe.server");
-    return await walkTestSubscriptionFlow({
-      tenantId: profile.tenant_id,
-      userId: context.userId,
-      userEmail,
-      plan: data.plan,
-    });
-  });
