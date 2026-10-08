@@ -516,4 +516,85 @@ describe("Stripe Checkout & Billing Integration", () => {
     assert.equal(saved.status, "paid");
     assert.equal(saved.grand_total, 49);
   });
+
+  it("handles out-of-order invoice.payment_succeeded by retrieving live subscription from Stripe", async () => {
+    // rows.subscriptions is empty; subscription not recorded in local DB yet
+    globalThis.__mockStripe = {
+      webhooks: stripeHelper.webhooks,
+      subscriptions: {
+        retrieve: async (subId) => {
+          assert.equal(subId, "sub_live_ooo");
+          return {
+            id: subId,
+            metadata: { tenantId: "tenant-1", userId: "user-1" },
+          };
+        },
+      },
+    };
+
+    try {
+      const payload = {
+        type: "invoice.payment_succeeded",
+        data: {
+          object: {
+            id: "in_ooo_1",
+            subscription: "sub_live_ooo",
+            customer: "cus_ooo_1",
+            amount_paid: 4900,
+            total: 4900,
+            currency: "usd",
+            number: "INV-STRIPE-OOO-1",
+            lines: {
+              data: [
+                {
+                  description: "Flas CRM Monthly",
+                  period: { end: Math.floor(Date.now() / 1000) + 30 * 86400 },
+                },
+              ],
+            },
+          },
+        },
+      };
+
+      const req = makeSignedRequest(payload);
+      const res = await handleStripeWebhook(req);
+      assert.equal(res.status, 200);
+
+      const saved = rows.sales_documents.find(
+        (d) => d.custom_fields?.stripe_invoice_id === "in_ooo_1",
+      );
+      assert.ok(saved);
+      assert.equal(saved.tenant_id, "tenant-1");
+      assert.equal(saved.status, "paid");
+    } finally {
+      delete globalThis.__mockStripe;
+    }
+  });
+
+  it("fails closed with 500 when invoice.payment_succeeded cannot resolve tenant ownership", async () => {
+    // rows.subscriptions is empty and no live mock
+    const payload = {
+      type: "invoice.payment_succeeded",
+      data: {
+        object: {
+          id: "in_unresolved_1",
+          subscription: "sub_unknown_999",
+          customer: "cus_unknown_999",
+          amount_paid: 4900,
+          total: 4900,
+          currency: "usd",
+          number: "INV-UNKNOWN-1",
+          lines: {
+            data: [],
+          },
+        },
+      },
+    };
+
+    const req = makeSignedRequest(payload);
+    const res = await handleStripeWebhook(req);
+    assert.equal(res.status, 500);
+    const text = await res.text();
+    assert.match(text, /could not resolve tenant ownership/);
+  });
 });

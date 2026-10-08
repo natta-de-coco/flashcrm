@@ -241,11 +241,19 @@ export async function humanizeHtml(
 
 export type WpCreds = { siteUrl: string; username: string; appPassword: string };
 
+export { isSafeWordPressUrl } from "./seo-url";
+import { isSafeWordPressUrl } from "./seo-url";
+
 function wpAuth(c: WpCreds): string {
   return `Basic ${Buffer.from(`${c.username}:${c.appPassword}`).toString("base64")}`;
 }
 
 async function wpFetch(c: WpCreds, path: string, init?: RequestInit): Promise<Response> {
+  if (!isSafeWordPressUrl(c.siteUrl)) {
+    throw new Error(
+      "WordPress site URL rejected: cannot point to internal, private, loopback, or cloud metadata network addresses.",
+    );
+  }
   const url = `${c.siteUrl.replace(/\/+$/, "")}/wp-json/wp/v2${path}`;
   return fetch(url, {
     ...init,

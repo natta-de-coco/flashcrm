@@ -3,6 +3,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { isSubscriptionReceipt } from "./sales-pipeline";
 
 const ItemSchema = z.object({
   product_id: z.string().uuid().nullable().optional(),
@@ -84,12 +85,7 @@ export const getSalesWorkspace = createServerFn({ method: "GET" })
     ]);
     if (docs.error) throw docs.error;
 
-    const customerDocs = (docs.data ?? []).filter(
-      (d: { custom_fields?: Record<string, unknown> | null }) =>
-        !d.custom_fields?.["is_subscription_receipt"] &&
-        d.custom_fields?.["provider"] !== "stripe" &&
-        !d.custom_fields?.["stripe_invoice_id"],
-    );
+    const customerDocs = (docs.data ?? []).filter((d) => !isSubscriptionReceipt(d));
 
     return {
       settings,

@@ -88,7 +88,12 @@ export const testWpConnectionFn = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const { testWpConnection } = await import("@/lib/seo.server");
+    const { testWpConnection, isSafeWordPressUrl } = await import("@/lib/seo.server");
+    if (!isSafeWordPressUrl(data.siteUrl)) {
+      throw new Error(
+        "WordPress site URL rejected: cannot point to internal, private, loopback, or cloud metadata network addresses.",
+      );
+    }
     return testWpConnection({
       siteUrl: data.siteUrl,
       username: data.username,
@@ -202,6 +207,13 @@ export const saveWordPressSiteFn = createServerFn({ method: "POST" })
       throw new Error("Only company admins can connect WordPress sites.");
     }
     const tenantId = profile.tenant_id;
+
+    const { isSafeWordPressUrl } = await import("@/lib/seo.server");
+    if (!isSafeWordPressUrl(data.siteUrl)) {
+      throw new Error(
+        "WordPress site URL rejected: cannot point to internal, private, loopback, or cloud metadata network addresses.",
+      );
+    }
 
     const { sealSecret } = await import("@/lib/secret-box.server");
     const sealedPassword = await sealSecret(data.appPassword.replace(/\s+/g, ""));

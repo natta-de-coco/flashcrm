@@ -562,6 +562,20 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
             invoice.subscription_details?.metadata?.tenantId || invoice.metadata?.tenantId || null;
         }
 
+        // 4. Fallback to live Stripe subscription retrieval (handles out-of-order webhook delivery)
+        if (!tenantId && subscriptionId) {
+          try {
+            const stripeClient = getStripeClient();
+            if (stripeClient?.subscriptions?.retrieve) {
+              const liveSub = await stripeClient.subscriptions.retrieve(subscriptionId);
+              tenantId = liveSub?.metadata?.["tenantId"] ?? null;
+              if (!userId) userId = liveSub?.metadata?.["userId"] ?? null;
+            }
+          } catch (liveErr) {
+            console.warn("Could not retrieve subscription live from Stripe:", liveErr);
+          }
+        }
+
         // Immutable ownership: never fall back to current profiles.tenant_id
         if (tenantId) {
           const periodEnd = invoice.lines?.data?.[0]?.period?.end
@@ -591,6 +605,12 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
             periodEnd,
           });
         } else {
+          // If subscriptionId is present but tenantId could not be resolved yet, fail with 500 to preserve Stripe webhook retry
+          if (subscriptionId) {
+            throw new Error(
+              `invoice.payment_succeeded could not resolve tenant ownership for subscription ${subscriptionId}; retrying`,
+            );
+          }
           console.warn(
             "invoice.payment_succeeded could not resolve tenant ownership for subscription:",
             subscriptionId,
