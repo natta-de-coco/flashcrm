@@ -7,6 +7,14 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { COUNTRIES, LANGUAGES } from "@/lib/locale";
+import {
   askAdvisor,
   getAdvisorContext,
   getLatestAdvisorAnalysis,
@@ -113,6 +121,11 @@ function AdvisorPage() {
     competitors: "",
     description: "",
     website_url: "",
+    mobile_phone: "",
+    landline_phone: "",
+    whatsapp_number: "",
+    tax_registration_number: "",
+    language: "",
   });
 
   const context = useQuery({ queryKey: ["advisor_context"], queryFn: () => loadContext({}) });
@@ -135,6 +148,16 @@ function AdvisorPage() {
       competitors: p.competitors ?? "",
       description: p.description ?? "",
       website_url: p.website_url ?? "",
+      // @ts-ignore - Supabase type might not be updated
+      mobile_phone: p.mobile_phone ?? "",
+      // @ts-ignore
+      landline_phone: p.landline_phone ?? "",
+      // @ts-ignore
+      whatsapp_number: p.whatsapp_number ?? "",
+      // @ts-ignore
+      tax_registration_number: p.tax_registration_number ?? "",
+      // @ts-ignore
+      language: p.language ?? "",
     });
   }, [context.data]);
 
@@ -162,6 +185,11 @@ function AdvisorPage() {
           monthly_revenue_target: brief.monthly_revenue_target
             ? Number(brief.monthly_revenue_target)
             : null,
+          mobile_phone: brief.mobile_phone || null,
+          landline_phone: brief.landline_phone || null,
+          whatsapp_number: brief.whatsapp_number || null,
+          tax_registration_number: brief.tax_registration_number || null,
+          language: brief.language || null,
         },
       }),
     onSuccess: () => {
@@ -538,14 +566,6 @@ function AdvisorPage() {
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="country">Country</Label>
-                    <Input
-                      id="country"
-                      value={brief.country}
-                      onChange={(e) => setBrief({ ...brief, country: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
                     <Label htmlFor="stage">Stage</Label>
                     <Input
                       id="stage"
@@ -564,6 +584,96 @@ function AdvisorPage() {
                     />
                   </div>
                 </div>
+
+                <div className="grid gap-2">
+                  <h3 className="font-semibold text-sm">Contact details</h3>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="mobile_phone">Mobile phone</Label>
+                      <Input
+                        id="mobile_phone"
+                        placeholder="+971 50 123 4567"
+                        value={brief.mobile_phone}
+                        onChange={(e) => setBrief({ ...brief, mobile_phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="landline_phone">Landline phone</Label>
+                      <Input
+                        id="landline_phone"
+                        placeholder="+971 4 123 4567"
+                        value={brief.landline_phone}
+                        onChange={(e) => setBrief({ ...brief, landline_phone: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="whatsapp_number">WhatsApp number</Label>
+                      <Input
+                        id="whatsapp_number"
+                        placeholder="+971 50 123 4567"
+                        value={brief.whatsapp_number}
+                        onChange={(e) => setBrief({ ...brief, whatsapp_number: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <h3 className="font-semibold text-sm">Tax & legal</h3>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="tax_registration_number">VAT / Tax Registration No.</Label>
+                    <Input
+                      id="tax_registration_number"
+                      placeholder="100123456700003"
+                      value={brief.tax_registration_number}
+                      onChange={(e) => setBrief({ ...brief, tax_registration_number: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">This will appear on all your invoices and quotations.</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  <h3 className="font-semibold text-sm">Region</h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-1.5">
+                      <Label>Country</Label>
+                      <Select
+                        value={brief.country}
+                        onValueChange={(value) => setBrief({ ...brief, country: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select country" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {COUNTRIES.map((c) => (
+                            <SelectItem key={c.code} value={c.code}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label>Language</Label>
+                      <Select
+                        value={brief.language}
+                        onValueChange={(value) => setBrief({ ...brief, language: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select language" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LANGUAGES.map((l) => (
+                            <SelectItem key={l.code} value={l.code}>
+                              {l.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid gap-1.5">
                   <Label htmlFor="target">Monthly revenue target</Label>
                   <Input

@@ -21,6 +21,7 @@ import {
   Download,
   Globe,
   MessageCircle,
+  Plug,
   Route as RouteIcon,
   Sparkles,
   Store,
@@ -117,6 +118,9 @@ function ConnectPage() {
   const numbers = waNumbers.data ?? [];
   const allSites = sites.data ?? [];
   const site = allSites.find((s) => s.id === selectedSite) ?? allSites[0] ?? null;
+  const hasData = numbers.length > 0 || allSites.length > 0;
+  const isPending = waNumbers.isPending || sites.isPending;
+  const [showSetup, setShowSetup] = useState(false);
 
   const popupSnippet = site
     ? `<script src="${origin}/flas-popup.js" data-site-key="${site.site_key}" async></script>`
@@ -141,6 +145,20 @@ function ConnectPage() {
         title="Integrations"
         description="Every connection in one place: platforms, WhatsApp, your website and stores, plus a full activity log."
       />
+
+      {!isPending && !hasData && !showSetup ? (
+        <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
+          <Plug className="mx-auto mb-4 size-12 text-muted-foreground" />
+          <h2 className="mb-2 text-xl font-bold">No platforms connected</h2>
+          <p className="mb-4 max-w-sm text-sm text-muted-foreground">
+            Connect WhatsApp or your website to start capturing and messaging leads.
+          </p>
+          <Button onClick={() => setShowSetup(true)}>
+            <Plug className="mr-2 size-4" /> Connect a platform
+          </Button>
+        </Card>
+      ) : (
+        <>
 
       {/* How it works */}
       <Card className="mb-6 max-w-4xl">
@@ -416,6 +434,7 @@ function ConnectPage() {
       <div className="mt-8">
         <IntegrationLogs />
       </div>
+      </>)}
     </main>
   );
 }

@@ -479,7 +479,7 @@ function SalesPage() {
         <div className="space-y-3">
           {visible.map((doc) => (
             <Card key={doc.id}>
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 items-start">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
@@ -607,3 +607,4 @@ function SalesPage() {
     </div>
   );
 }
+

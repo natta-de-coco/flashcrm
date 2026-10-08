@@ -1,7 +1,9 @@
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { IncidentsCard } from "@/components/monitoring/IncidentsCard";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { retryWebhookEvent } from "@/lib/crm.functions";
 import { getAnalyticsInsights, getWhatsAppAnalytics } from "@/lib/flash-ai.functions";
@@ -10,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
   CheckCircle2,
@@ -20,6 +23,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendly-error";
+
 
 export const Route = createFileRoute("/_authenticated/monitoring")({
   head: () => ({
@@ -83,7 +88,7 @@ function MonitoringPage() {
   const insightsMutation = useMutation({
     mutationFn: () => fetchInsights(),
     onSuccess: (res) => setInsights(res.insights),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const events = useQuery({
@@ -174,14 +179,28 @@ function MonitoringPage() {
       void qc.invalidateQueries({ queryKey: ["webhook_stats"] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   async function resolveAlert(id: string) {
     const { error } = await supabase.from("system_alerts").update({ resolved: true }).eq("id", id);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlyError(error));
     else void qc.invalidateQueries({ queryKey: ["system_alerts"] });
   }
+
+  if (waAnalytics.isLoading || events.isLoading || alerts.isLoading || stats.isLoading || numbers.isLoading) return (
+  <div className="space-y-3 p-6">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
   const openAlerts = (alerts.data ?? []).filter((a) => !a.resolved);
 
@@ -247,24 +266,29 @@ function MonitoringPage() {
                 Delivery and engagement from your workspace, synced with Meta where available.
               </CardDescription>
             </div>
-            <Button
-              size="sm"
-              onClick={() => insightsMutation.mutate()}
-              // Advice needs something to advise on. Asked with no traffic, the
-              // model has nothing but the prompt and invents plausible-sounding
-              // recommendations, which is worse than an unavailable button.
-              disabled={
-                insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total
-              }
-              title={!stats.data?.total ? "Available once messages have been sent" : undefined}
-            >
-              {insightsMutation.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Sparkles className="size-4" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    size="sm"
+                    onClick={() => insightsMutation.mutate()}
+                    disabled={insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total}
+                  >
+                    {insightsMutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-4" />
+                    )}
+                    Ask Flas AI what to improve
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {(insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total) && (
+                <TooltipContent>
+                  {!stats.data?.total ? "Available once messages have been sent" : insightsMutation.isPending ? "Generating insights..." : "Loading analytics..."}
+                </TooltipContent>
               )}
-              Ask Flas AI what to improve
-            </Button>
+            </Tooltip>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -468,9 +492,16 @@ function MonitoringPage() {
         <CardContent className="space-y-2">
           {events.isLoading && <p className="text-sm text-muted-foreground">Loading events…</p>}
           {!events.isLoading && (events.data ?? []).length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No webhook events recorded yet. They appear here as soon as Meta starts posting.
-            </p>
+            <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg border-dashed bg-muted/20">
+              <Activity className="mx-auto mb-4 size-12 text-muted-foreground" />
+              <h2 className="mb-2 text-xl font-bold">No events yet</h2>
+              <p className="mb-4 max-w-sm text-sm text-muted-foreground">
+                Live delivery status for every WhatsApp event will appear here.
+              </p>
+              <Button onClick={() => void qc.invalidateQueries({ queryKey: ["webhook_events"] })}>
+                <RefreshCw className="mr-2 size-4" /> Refresh now
+              </Button>
+            </div>
           )}
           {(events.data ?? []).map((event) => (
             <div key={event.id} className="rounded-lg border p-3">

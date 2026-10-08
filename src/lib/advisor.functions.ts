@@ -2,8 +2,15 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+const FAKE_NAMES = new Set(["test", "admin", "user", "company", "my company", "abc"]);
+
 const ProfileSchema = z.object({
-  business_name: z.string().max(160).nullable().default(null),
+  business_name: z.string().max(160).nullable().default(null).refine((val) => {
+    if (!val) return true;
+    if (val.trim().length < 3) return false;
+    if (FAKE_NAMES.has(val.trim().toLowerCase())) return false;
+    return true;
+  }, { message: "Please provide a real business name (min 3 chars)." }),
   industry: z.string().max(120).nullable().default(null),
   niche: z.string().max(160).nullable().default(null),
   city: z.string().max(120).nullable().default(null),
@@ -15,6 +22,17 @@ const ProfileSchema = z.object({
   competitors: z.string().max(500).nullable().default(null),
   description: z.string().max(1500).nullable().default(null),
   website_url: z.string().max(300).nullable().default(null),
+  mobile_phone: z.string().max(30).nullable().default(null).refine((val) => {
+    if (!val) return true;
+    return /^\+\d{7,15}$/.test(val.replace(/[\s-]/g, ""));
+  }, { message: "Mobile phone must include country code (e.g. +971 50 123 4567)." }),
+  landline_phone: z.string().max(30).nullable().default(null),
+  whatsapp_number: z.string().max(30).nullable().default(null),
+  tax_registration_number: z.string().max(60).nullable().default(null).refine((val) => {
+    if (!val) return true;
+    return val.trim().length >= 5;
+  }, { message: "Tax registration number must be at least 5 characters." }),
+  language: z.string().max(10).nullable().default(null),
 });
 
 const AskSchema = z.object({
@@ -50,9 +68,11 @@ export const saveAdvisorContext = createServerFn({ method: "POST" })
     if (tenantError) throw new Error(`Could not load your workspace: ${tenantError.message}`);
     if (!tenantId) throw new Error("No workspace found for this account.");
 
+    // @ts-ignore - DB types might not include newer fields yet
+    const payload: any = { tenant_id: tenantId as string, ...data };
     const { error } = await supabase
       .from("business_profiles")
-      .upsert({ tenant_id: tenantId as string, ...data }, { onConflict: "tenant_id" });
+      .upsert(payload, { onConflict: "tenant_id" });
     if (error) throw new Error(error.message);
     return { ok: true };
   });

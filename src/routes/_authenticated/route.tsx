@@ -1,3 +1,4 @@
+import { useLocale } from "@/hooks/useLocale";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -6,6 +7,7 @@ import { OnboardingModal } from "@/components/OnboardingModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickCreate } from "@/components/QuickCreate";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
+import { ProfileBanner } from "@/components/ProfileBanner";
 
 import { useAuth } from "@/hooks/useAuth";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
@@ -117,6 +119,9 @@ function NavMenu({
 function AuthenticatedLayout() {
   const { session, loading, signOut, user, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
+  // Reads saved locale from DB and applies lang + dir to <html> live.
+  // Must be called inside the QueryClientProvider (which wraps this tree).
+  useLocale();
   const [sidebarW, setSidebarW] = useState(264);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -337,15 +342,16 @@ function AuthenticatedLayout() {
             >
               <Search className="size-4" />
               Search Flas…
-              <kbd className="ml-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
+              <kbd className="ml-auto rtl:mr-auto rtl:ml-0 rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
                 ⌘K
               </kbd>
             </button>
-            <div className="ml-auto">
+            <div className="ml-auto rtl:mr-auto rtl:ml-0">
               <QuickCreate />
             </div>
           </header>
 
+          <ProfileBanner />
           <Outlet />
           <MobileBottomNav onMore={() => setMobileOpen(true)} />
         </div>
@@ -354,3 +360,4 @@ function AuthenticatedLayout() {
     </TenantProvider>
   );
 }
+

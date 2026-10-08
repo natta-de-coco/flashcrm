@@ -1,3 +1,4 @@
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +12,11 @@ import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Copy, Download, Loader2, Plus, Send, Sparkles, Trash2 } from "lucide-react";
+import { Copy, Download, Loader2, Mail, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendly-error";
+
 
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({
@@ -202,7 +205,7 @@ function MarketingPage() {
       toast.success("Routing rule added");
       void qc.invalidateQueries({ queryKey: ["routing_rules"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const toggleRule = useMutation({
@@ -211,7 +214,7 @@ function MarketingPage() {
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["routing_rules"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const deleteRule = useMutation({
@@ -223,7 +226,7 @@ function MarketingPage() {
       toast.success("Rule removed");
       void qc.invalidateQueries({ queryKey: ["routing_rules"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const createSite = useMutation({
@@ -238,7 +241,7 @@ function MarketingPage() {
       toast.success("Site added — copy its snippet below");
       void qc.invalidateQueries({ queryKey: ["lead_sites"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const createCampaign = useMutation({
@@ -257,7 +260,7 @@ function MarketingPage() {
       toast.success("Campaign saved as a draft");
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const generateDraft = useMutation({
@@ -274,7 +277,7 @@ function MarketingPage() {
       setAiDraft(res.draft);
       toast.success("Flas AI drafted your message");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   function useDraftInCampaign() {
@@ -293,7 +296,7 @@ function MarketingPage() {
       .from("campaigns")
       .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
       .eq("id", id);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlyError(error));
     else {
       toast.success("Campaign queued. It sends once your email sending domain is verified.");
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
@@ -304,6 +307,20 @@ function MarketingPage() {
     void navigator.clipboard.writeText(value);
     toast.success("Copied to clipboard");
   }
+
+  if (leads.isLoading || sites.isLoading || campaigns.isLoading || routingRules.isLoading || waNumbers.isLoading) return (
+  <div className="space-y-3 p-6">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
   const activeSite =
     (sites.data ?? []).find((s) => s.id === selectedSite) ?? sites.data?.[0] ?? null;
@@ -319,7 +336,7 @@ function MarketingPage() {
       toast.success("Site activated");
       void qc.invalidateQueries({ queryKey: ["lead_sites"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const revokeSite = useMutation({
@@ -334,7 +351,7 @@ function MarketingPage() {
       toast.success("Site revoked");
       void qc.invalidateQueries({ queryKey: ["lead_sites"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const popupSnippet = activeSite
@@ -861,7 +878,18 @@ function MarketingPage() {
             </div>
 
             <div className="space-y-2">
-              {(campaigns.data ?? []).map((campaign) => (
+              {!campaigns.isPending && (campaigns.data ?? []).length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg border-dashed bg-muted/20">
+                  <Mail className="mx-auto mb-4 size-12 text-muted-foreground" />
+                  <h2 className="mb-2 text-xl font-bold">No campaigns yet</h2>
+                  <p className="mb-4 max-w-sm text-sm text-muted-foreground">
+                    Write a campaign for your subscribed leads to keep them engaged.
+                  </p>
+                  <Button onClick={() => document.getElementById("c_name")?.focus()}>
+                    <Plus className="mr-2 size-4" /> New campaign
+                  </Button>
+                </div>
+              ) : (campaigns.data ?? []).map((campaign) => (
                 <div
                   key={campaign.id}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"

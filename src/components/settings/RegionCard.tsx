@@ -116,19 +116,51 @@ export function RegionCard() {
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label>Language</Label>
+                <Label>
+                  Interface Language
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    — changes site direction &amp; date formatting
+                  </span>
+                </Label>
                 <Select value={locale} onValueChange={setLocale}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue>
+                      {(() => {
+                        const lang = LANGUAGES.find((l) => l.code === locale);
+                        return lang ? (
+                          <span className="flex items-center gap-2">
+                            <span>{lang.native}</span>
+                            <span className="text-muted-foreground">({lang.label})</span>
+                            {lang.rtl && (
+                              <span className="rounded border px-1 text-[10px] font-medium text-primary">
+                                RTL
+                              </span>
+                            )}
+                          </span>
+                        ) : null;
+                      })()}
+                    </SelectValue>
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-72">
                     {LANGUAGES.map((l) => (
                       <SelectItem key={l.code} value={l.code}>
-                        {l.label} — {l.native}
+                        <span className="flex items-center gap-2">
+                          <span className="min-w-[120px]">{l.native}</span>
+                          <span className="text-xs text-muted-foreground">{l.label}</span>
+                          {l.rtl && (
+                            <span className="rounded border px-1 text-[10px] font-medium text-primary">
+                              RTL
+                            </span>
+                          )}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Saved here, applied immediately after saving. Arabic, Urdu, Farsi and Hebrew
+                  activate right-to-left layout automatically.
+                </p>
               </div>
               <div className="grid gap-1.5">
                 <Label>Timezone</Label>

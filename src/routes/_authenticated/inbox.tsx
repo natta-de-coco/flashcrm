@@ -1,4 +1,5 @@
 import { SocialInbox } from "@/components/inbox/SocialInbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendly-error";
+
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   head: () => ({
@@ -212,6 +215,20 @@ function InboxPage() {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages.data?.length, activeId]);
 
+  if (team.isLoading || templates.isLoading || products.isLoading || conversations.isLoading) return (
+  <div className="space-y-3 p-6">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
   const list = useMemo(() => {
     const all = conversations.data ?? [];
     return all.filter((c) => {
@@ -256,13 +273,13 @@ function InboxPage() {
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const suggestMutation = useMutation({
     mutationFn: async () => suggest({ data: { conversationId: activeId! } }),
     onSuccess: (res) => setDraft(res.draft),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   type ConvPatch = {
@@ -276,7 +293,7 @@ function InboxPage() {
     if (!activeId) return;
     const { error } = await supabase.from("conversations").update(patch).eq("id", activeId);
     if (error) {
-      toast.error(error.message);
+      toast.error(friendlyError(error));
       return;
     }
     if (patch.assigned_to !== undefined) {
@@ -321,7 +338,7 @@ function InboxPage() {
       toast.success("Follow-up reminder set");
       void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const templateMutation = useMutation({
@@ -339,7 +356,7 @@ function InboxPage() {
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const translateMutation = useMutation({
@@ -353,7 +370,7 @@ function InboxPage() {
       });
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const catalogMutation = useMutation({
@@ -363,12 +380,12 @@ function InboxPage() {
       setSelectedProductIds([]);
       toast.success("Catalog message inserted — press Send to deliver");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   async function toggleReminderDone(id: string, done: boolean) {
     const { error } = await supabase.from("reminders").update({ done }).eq("id", id);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlyError(error));
     else void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
   }
 
@@ -459,7 +476,7 @@ function InboxPage() {
       {/* Conversation list */}
       <div
         className={cn(
-          "w-full shrink-0 flex-col border-r bg-card lg:flex lg:max-w-sm",
+          "w-full shrink-0 flex-col border-r bg-card md:flex md:max-w-sm",
           active ? "hidden" : "flex",
         )}
       >
@@ -514,9 +531,7 @@ function InboxPage() {
           </div>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Search chats"
+            <Input aria-label="Search chats" className="pl-9" placeholder="Search chats"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -599,7 +614,7 @@ function InboxPage() {
       </div>
 
       {/* Chat pane */}
-      <div className={cn("min-w-0 flex-1 flex-col lg:flex", active ? "flex" : "hidden")}>
+      <div className={cn("min-w-0 flex-1 flex-col md:flex", active ? "flex" : "hidden")}>
         {!active ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
             Select a conversation to start monitoring.
@@ -611,7 +626,7 @@ function InboxPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="-ml-2 shrink-0 lg:hidden"
+                  className="-ml-2 shrink-0 md:hidden"
                   onClick={() => setActiveId(null)}
                   aria-label="Back to conversations"
                 >
@@ -698,9 +713,7 @@ function InboxPage() {
                     </button>
                   </Badge>
                 ))}
-                <Input
-                  className="h-8 w-40"
-                  placeholder="Add tag"
+                <Input aria-label="Add tag" className="h-8 w-40" placeholder="Add tag"
                   value={tagDraft}
                   onChange={(e) => setTagDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -743,9 +756,7 @@ function InboxPage() {
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Package className="size-4 text-muted-foreground" />
-                  <Input
-                    className="h-8 w-48"
-                    placeholder="Search products"
+                  <Input aria-label="Search products" className="h-8 w-48" placeholder="Search products"
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                   />
@@ -813,15 +824,11 @@ function InboxPage() {
 
               <div className="flex flex-wrap items-center gap-2">
                 <Bell className="size-4 text-muted-foreground" />
-                <Input
-                  className="h-8 w-56"
-                  placeholder="Follow-up note"
+                <Input aria-label="Follow-up note" className="h-8 w-56" placeholder="Follow-up note"
                   value={reminderNote}
                   onChange={(e) => setReminderNote(e.target.value)}
                 />
-                <Input
-                  type="datetime-local"
-                  className="h-8 w-52"
+                <Input aria-label="Reminder time" type="datetime-local" className="h-8 w-52"
                   value={reminderDue}
                   onChange={(e) => setReminderDue(e.target.value)}
                 />
@@ -870,7 +877,7 @@ function InboxPage() {
                     key={m.id}
                     className={cn(
                       "flex",
-                      m.direction === "outbound" ? "justify-end" : "justify-start",
+                      m.direction === "outbound" ? "justify-end rtl:justify-start" : "justify-start rtl:justify-end",
                     )}
                   >
                     <div
@@ -1010,3 +1017,5 @@ function ChannelSwitch({
     </div>
   );
 }
+
+

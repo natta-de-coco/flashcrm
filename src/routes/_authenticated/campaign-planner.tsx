@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendly-error";
+
 
 export const Route = createFileRoute("/_authenticated/campaign-planner")({
   head: () => ({
@@ -254,7 +256,7 @@ function CampaignPlannerPage() {
       toast.success("Campaign plan ready");
       void qc.invalidateQueries({ queryKey: ["campaign-plans"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const deleteMutation = useMutation({
@@ -263,7 +265,7 @@ function CampaignPlannerPage() {
       toast.success("Plan removed");
       void qc.invalidateQueries({ queryKey: ["campaign-plans"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const segments = intel.data?.segments;
