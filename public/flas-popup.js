@@ -27,8 +27,31 @@
   } catch (error) {
     state = {};
   }
-  if (!state.sessionId) {
-    state.sessionId = "web-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  // The chat endpoint refuses a session id shorter than 32 characters, so that
+  // one cannot be guessed. This script used to make one of about 23, so every
+  // chat message it sent was refused. An id saved by that version is too short
+  // as well, so it is replaced here and not only for new visitors.
+  function newSessionId() {
+    var id = "web-";
+    try {
+      var bytes = new Uint8Array(24);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      for (var i = 0; i < bytes.length; i += 1) id += ("0" + bytes[i].toString(16)).slice(-2);
+      return id;
+    } catch (error) {
+      // No secure random source. Math.random can give as little as one
+      // character at a time, so keep adding until the id is long enough.
+      id = "web-";
+      while (id.length < 44) id += Math.random().toString(36).slice(2);
+      return (id + Date.now().toString(36)).slice(0, 64);
+    }
+  }
+  if (
+    typeof state.sessionId !== "string" ||
+    state.sessionId.length < 32 ||
+    state.sessionId.length > 80
+  ) {
+    state.sessionId = newSessionId();
   }
   function persist() {
     try {
@@ -222,10 +245,18 @@
       }),
     })
       .then(function (res) {
-        return res.json();
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        });
       })
-      .then(function (data) {
-        pending.textContent = data.reply || "Thanks! A team member will reply shortly.";
+      .then(function (result) {
+        // A refused message used to be answered "a team member will reply
+        // shortly", so a visitor believed it had been sent when it had not.
+        if (!result.ok) {
+          pending.textContent = "We couldn't send that. Please try again.";
+          return;
+        }
+        pending.textContent = result.data.reply || "Thanks! A team member will reply shortly.";
       })
       .catch(function () {
         pending.textContent = "We couldn't send that. Please try again.";

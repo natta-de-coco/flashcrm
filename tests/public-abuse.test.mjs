@@ -4,6 +4,8 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { createHash, createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
 
 import { createDb, secondsAgo } from "./support/db-double.mjs";
 import { Route as widgetRoute } from "../node_modules/.cache/flas-widget-chat.mjs";
@@ -573,5 +575,177 @@ describe("an API key's last-use stamp is not rewritten on every call", () => {
     seed(null);
     await authenticateApiKey(request());
     assert.ok(db.table("api_keys")[0].last_used_at);
+  });
+});
+
+describe("the website popup's chat messages reach the chat endpoint", () => {
+  // Reported: the popup made a session id of about 23 characters, the endpoint
+  // requires 32, and so every chat message from the popup was refused -- while
+  // the popup told the visitor a team member would reply shortly.
+  const popupSource = readFileSync(new URL("../public/flas-popup.js", import.meta.url), "utf8");
+  const storeKey = `flas_popup_${SITE_KEY}`;
+
+  /**
+   * Runs the real popup script in a page that has just enough of a browser for
+   * it, with its chat requests answered by the real chat endpoint.
+   */
+  function openPopup({ stored, page = {} } = {}) {
+    const storage = new Map(stored ? [[storeKey, JSON.stringify(stored)]] : []);
+    const chatRequests = [];
+    const inFlight = [];
+    const element = () => {
+      const el = {
+        style: {},
+        value: "",
+        textContent: "",
+        checked: true,
+        children: [],
+        found: {},
+        handlers: {},
+        classList: { add() {}, remove() {} },
+        get childElementCount() {
+          return el.children.length;
+        },
+        appendChild(child) {
+          el.children.push(child);
+          return child;
+        },
+        addEventListener(type, handler) {
+          el.handlers[type] = handler;
+        },
+        querySelector(selector) {
+          return (el.found[selector] ??= element());
+        },
+      };
+      return el;
+    };
+    const elements = [];
+    const fetch = (url, init) => {
+      const answer = url.endsWith("/api/public/widget/chat")
+        ? widgetRoute.options.server.handlers
+            .POST({ request: new Request(url, { method: "POST", body: init.body }) })
+            .then((response) => {
+              chatRequests.push({ body: JSON.parse(init.body), status: response.status });
+              return response;
+            })
+        : Promise.resolve(new Response("{}", { status: 200 }));
+      inFlight.push(answer);
+      return answer;
+    };
+    vm.runInNewContext(popupSource, {
+      document: {
+        currentScript: {
+          src: "https://flas.mobidigisol.com/flas-popup.js",
+          getAttribute: (name) => (name === "data-site-key" ? SITE_KEY : null),
+        },
+        createElement: () => {
+          const el = element();
+          elements.push(el);
+          return el;
+        },
+        head: element(),
+        body: element(),
+      },
+      window: { location: { origin: "https://shop.example", href: "https://shop.example/" } },
+      localStorage: {
+        getItem: (key) => storage.get(key) ?? null,
+        setItem: (key, value) => storage.set(key, String(value)),
+      },
+      fetch,
+      URL,
+      ...page,
+    });
+    // The popup's own root is the element it asked for its parts.
+    const root = elements.find((el) => el.found[".flasp-foot"]);
+    return {
+      chatRequests,
+      saved: () => JSON.parse(storage.get(storeKey) ?? "{}"),
+      /** Types a message, sends it, and returns what the visitor is then shown. */
+      async say(text) {
+        root.found[".flasp-input"].value = text;
+        root.found[".flasp-foot"].handlers.submit({ preventDefault() {} });
+        await Promise.all(inFlight);
+        await new Promise((resolve) => setImmediate(resolve));
+        return root.found[".flasp-body"].children.at(-1).textContent;
+      },
+    };
+  }
+
+  const returning = (sessionId) => ({ sessionId, captured: true, name: "Sara", pinged: true });
+
+  it("a new visitor's message is accepted", async () => {
+    const popup = openPopup();
+    const shown = await popup.say("Do you deliver to Sharjah?");
+    assert.equal(popup.chatRequests.length, 1);
+    assert.equal(popup.chatRequests[0].status, 200);
+    assert.ok(popup.chatRequests[0].body.sessionId.length >= 32);
+    assert.equal(popup.saved().sessionId, popup.chatRequests[0].body.sessionId);
+    assert.doesNotMatch(shown, /couldn't send/);
+  });
+
+  it("a returning visitor whose saved id is too short gets a new one, and it is saved", async () => {
+    // What the earlier version of this script left in every visitor's browser.
+    const popup = openPopup({ stored: returning("web-k3j9x0a7q2lz8f1ab") });
+    await popup.say("Hello again");
+    assert.equal(popup.chatRequests[0].status, 200);
+    const { sessionId } = popup.chatRequests[0].body;
+    assert.ok(sessionId.length >= 32);
+    assert.equal(popup.saved().sessionId, sessionId, "the next visit uses the same id");
+    assert.equal(popup.saved().name, "Sara", "the rest of what was saved is kept");
+  });
+
+  it("a saved id that is already long enough is kept, so the conversation continues", async () => {
+    const popup = openPopup({ stored: returning(SESSION) });
+    await popup.say("Hello again");
+    assert.equal(popup.chatRequests[0].body.sessionId, SESSION);
+    assert.equal(popup.chatRequests[0].status, 200);
+  });
+
+  it("makes an id long enough even from the shortest random values, in an old browser", async () => {
+    // 0.5 is "0.i" in base 36: one usable character per call, and no
+    // crypto.getRandomValues to fall back on.
+    const popup = openPopup({ page: { Math: { random: () => 0.5 } } });
+    await popup.say("Hello");
+    assert.equal(popup.chatRequests[0].status, 200);
+    assert.ok(popup.chatRequests[0].body.sessionId.length >= 32);
+    assert.ok(popup.chatRequests[0].body.sessionId.length <= 80);
+  });
+
+  it("takes the id from the browser's secure random source when there is one", async () => {
+    const popup = openPopup({
+      page: {
+        window: {
+          location: { origin: "https://shop.example", href: "https://shop.example/" },
+          crypto: globalThis.crypto,
+        },
+      },
+    });
+    await popup.say("Hello");
+    assert.equal(popup.chatRequests[0].status, 200);
+    assert.match(popup.chatRequests[0].body.sessionId, /^web-[0-9a-f]{48}$/);
+  });
+
+  it("does not tell the visitor a refused message was sent", async () => {
+    // The session is being hammered, so the endpoint answers 429.
+    db.table("conversations").push({
+      id: "conv-1",
+      tenant_id: "company-1",
+      channel: "web",
+      web_session_id: SESSION,
+      created_at: secondsAgo(120),
+      bot_enabled: true,
+    });
+    for (let i = 0; i < WIDGET_MESSAGES_PER_MINUTE; i += 1) {
+      db.table("messages").push({
+        id: `m-${i}`,
+        conversation_id: "conv-1",
+        created_at: secondsAgo(10),
+      });
+    }
+    const popup = openPopup({ stored: returning(SESSION) });
+    const shown = await popup.say("again");
+    assert.equal(popup.chatRequests[0].status, 429);
+    assert.match(shown, /couldn't send/);
+    assert.doesNotMatch(shown, /will reply/);
   });
 });
