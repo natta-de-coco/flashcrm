@@ -261,13 +261,28 @@ describe("the widget does not answer when its limits cannot be checked", () => {
       bot_enabled: true,
     });
 
+  // The double can refuse one kind of read on a table and not another: looking
+  // a session up reads one row, counting new sessions counts them.
+  const timeout = { message: "statement timeout" };
+  const lookupFails = (query) => (query.counting ? null : timeout);
+  const countFails = (query) => (query.counting ? timeout : null);
+
   it("turns a message away when the session cannot be looked up", async () => {
-    db.fail("conversations:read", { message: "statement timeout" });
+    // Unchecked, a failed lookup read as "a new visitor".
+    db.fail("conversations:read", lookupFails);
     const { response, lines } = await logged(() => chat({ message: "hello" }));
     assert.equal(response.status, 503);
     assert.match(response.headers.get("retry-after"), /^\d+$/);
     assert.equal(db.table("messages").length, 0);
     assert.ok(lines.length > 0, "the failure is logged, not silent");
+  });
+
+  it("turns a message away when new sessions cannot be counted", async () => {
+    db.fail("conversations:read", countFails);
+    const { response } = await logged(() => chat({ message: "hello" }));
+    assert.equal(response.status, 503);
+    assert.equal(db.table("conversations").length, 0);
+    assert.equal(db.table("messages").length, 0);
   });
 
   it("turns a message away when the session's messages cannot be counted", async () => {
@@ -441,6 +456,21 @@ describe("requests that arrive together cannot all slip under a lead limit", () 
 
     db.recover("audit_log:read");
     assert.equal((await collect({ email: "buyer@example.com" })).status, 200);
+  });
+
+  it("asks a webhook delivery to come back when the limit cannot be counted, and takes it then", async () => {
+    const delivery = JSON.stringify({ email: "lead@shop.example", name: "Lead" });
+    db.fail("audit_log:read", { message: "statement timeout" });
+    const { response } = await logged(() => postWebhook(wordpressRoute, delivery));
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get("retry-after"), /^\d+$/);
+    assert.equal(db.table("leads").length, 0);
+    assert.equal(db.table("webhook_dedup").length, 0, "the claim was given back");
+
+    db.recover("audit_log:read");
+    const retry = await postWebhook(wordpressRoute, delivery);
+    assert.deepEqual(await retry.json(), { ok: true });
+    assert.equal(db.table("leads").length, 1);
   });
 });
 
