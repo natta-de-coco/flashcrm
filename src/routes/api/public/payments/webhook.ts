@@ -245,6 +245,11 @@ export const Route = createFileRoute("/api/public/payments/webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        if (request.headers.get("stripe-signature")) {
+          const { handleStripeWebhook } = await import("@/lib/stripe.server");
+          return await handleStripeWebhook(request);
+        }
+
         // Anchor env to a server-side env var, never the URL. A query string
         // is attacker-controlled — hitting `?env=sandbox` on the prod URL
         // used to force verification against the sandbox secret, and if that

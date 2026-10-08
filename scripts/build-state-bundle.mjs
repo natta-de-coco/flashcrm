@@ -195,3 +195,65 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
 });
+
+// Visual sales board deal stages & pipeline rules
+await build({
+  entryPoints: ["src/lib/sales-pipeline.ts"],
+  outfile: "node_modules/.cache/flas-sales-pipeline.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+// Stripe checkout & subscription services
+const stubSupabasePayments = {
+  name: "stub-supabase-payments",
+  setup(b) {
+    b.onResolve({ filter: /client\.server$/ }, () => ({
+      path: "stub-supabase-payments",
+      namespace: "stub",
+    }));
+    b.onLoad({ filter: /stub-supabase-payments/, namespace: "stub" }, () => ({
+      contents:
+        "export const supabaseAdmin = new Proxy({}, { get: (_, key) => globalThis.paymentsWebhook?.db?.[key] ?? globalThis.paymentsWebhook?.db?.from(key) });",
+      loader: "js",
+    }));
+    b.onResolve({ filter: /audit\.server$/ }, () => ({
+      path: "stub-audit-payments",
+      namespace: "stub",
+    }));
+    b.onLoad({ filter: /stub-audit-payments/, namespace: "stub" }, () => ({
+      contents: "export async function logAudit() {}",
+      loader: "js",
+    }));
+    b.onResolve({ filter: /monitoring\.server$/ }, () => ({
+      path: "stub-monitoring-payments",
+      namespace: "stub",
+    }));
+    b.onLoad({ filter: /stub-monitoring-payments/, namespace: "stub" }, () => ({
+      contents: "export async function raiseAlert() { return true; }",
+      loader: "js",
+    }));
+    b.onResolve({ filter: /billing\.server$/ }, () => ({
+      path: "stub-billing-payments",
+      namespace: "stub",
+    }));
+    b.onLoad({ filter: /stub-billing-payments/, namespace: "stub" }, () => ({
+      contents: "export async function allocateNumber() { return 'INV-2026-TEST'; }",
+      loader: "js",
+    }));
+  },
+};
+
+await build({
+  entryPoints: ["src/lib/stripe.server.ts"],
+  outfile: "node_modules/.cache/flas-stripe.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [stubSupabasePayments],
+});

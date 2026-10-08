@@ -51,9 +51,12 @@ import {
   Receipt,
   Send,
   Share2,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { referenceFor, type SendReference } from "@/lib/send-reference";
+import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
 
 /**
  * Why a document cannot be finalised yet, or null when it can.
@@ -164,6 +167,7 @@ function SalesPage() {
   const convertQuote = useServerFn(convertQuotationToInvoice);
 
   const [tab, setTab] = useState("all");
+  const [viewMode, setViewMode] = useState<"list" | "board">("board");
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [payFor, setPayFor] = useState<DocRow | null>(null);
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
@@ -534,17 +538,58 @@ function SalesPage() {
         }
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="all">{t("sales.all")}</TabsTrigger>
-          <TabsTrigger value="quotations">{t("sales.quotations")}</TabsTrigger>
-          <TabsTrigger value="unpaid">{t("sales.unpaid")}</TabsTrigger>
-          <TabsTrigger value="paid">{t("sales.paid")}</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+          <Button
+            variant={viewMode === "board" ? "default" : "ghost"}
+            size="sm"
+            className="h-8 px-3 text-xs"
+            onClick={() => setViewMode("board")}
+          >
+            <LayoutGrid className="me-1.5 h-3.5 w-3.5" />
+            Deal Stages Board
+          </Button>
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            className="h-8 px-3 text-xs"
+            onClick={() => setViewMode("list")}
+          >
+            <List className="me-1.5 h-3.5 w-3.5" />
+            List View
+          </Button>
+        </div>
+
+        {viewMode === "list" && (
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="all">{t("sales.all")}</TabsTrigger>
+              <TabsTrigger value="quotations">{t("sales.quotations")}</TabsTrigger>
+              <TabsTrigger value="unpaid">{t("sales.unpaid")}</TabsTrigger>
+              <TabsTrigger value="paid">{t("sales.paid")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+      </div>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">{t("sales.loadingYourSalesDocuments")}</p>
+      ) : viewMode === "board" ? (
+        <SalesPipelineBoard
+          documents={documents}
+          onOpenExisting={(id) => openExisting.mutate(id)}
+          onSendWhatsApp={(doc) => setSendFor(doc)}
+          onRecordPayment={(doc) => {
+            setPayFor(doc);
+            setPayForm({
+              amount: String(doc.balance > 0 ? doc.balance : doc.grand_total),
+              reference: "",
+              method: "bank_transfer",
+            });
+          }}
+          onConvertQuotation={(id) => convert.mutate(id)}
+          onDownloadPdf={(id) => download.mutate(id)}
+        />
       ) : visible.length === 0 ? (
         <Card>
           <CardHeader>
