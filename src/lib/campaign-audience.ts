@@ -77,16 +77,36 @@ export type CampaignAudience = {
   fromLeads: number;
   /** Consented, but holding no address for this channel — undeliverable, not excluded by choice. */
   optedInUnreachable: number;
-  /** Reachable on this channel but with no recorded consent. Must never be sent to. */
+  /**
+   * Reachable on this channel but not to be sent to: no recorded consent, or the
+   * person unsubscribed (see `resolveCampaignAudience`). Never counted in `total`.
+   */
   withoutConsent: number;
   /** A table hit the query row limit, so `total` is a floor rather than the exact figure. */
   truncated: boolean;
 };
 
 /**
- * The opt-in test. `consent_given` must be explicitly true — a missing or null
- * value is not consent — and an explicit `subscribed: false` suppresses a
- * person who consented earlier and has since unsubscribed.
+ * The rows both figures are worked out from: the audience of a campaign and the
+ * count of opted-in people the AI is told. They take the same input and the
+ * same limits, so they are the same people.
+ */
+export type AudienceInput = {
+  contacts?: ConsentRow[] | null;
+  leads?: ConsentRow[] | null;
+  identities?: ContactIdentityRow[] | null;
+  /** The ceiling the caller read `contacts` and `leads` with; a full table is then a floor. */
+  rowLimit?: number;
+  /** The same for `identities`, which are several per contact. */
+  identityRowLimit?: number;
+};
+
+/**
+ * The opt-in test for one record. `consent_given` must be explicitly true — a
+ * missing or null value is not consent — and an explicit `subscribed: false`
+ * suppresses a person who consented earlier and has since unsubscribed. What an
+ * unsubscribe means for the *other* records of the same person is decided in
+ * `resolveCampaignAudience`, which sees all the records.
  */
 export function isOptedIn(row: ConsentRow): boolean {
   if (row.consent_given !== true) return false;
@@ -116,117 +136,182 @@ export function channelAddress(row: ConsentRow, channel: CampaignChannel): strin
 /** Which kind of contact identity a channel is delivered to. */
 const IDENTITY_KIND: Record<CampaignChannel, string> = { email: "email", whatsapp: "phone" };
 
+const ALL_CHANNELS: CampaignChannel[] = ["email", "whatsapp"];
+
+/** One address of one kind, as a string two records can be compared by. */
+const addressKey = (channel: CampaignChannel, address: string) =>
+  `${IDENTITY_KIND[channel]}:${address}`;
+
+/** The address in `value`, read as `channel`'s kind, or null when it is not one. */
+const parseAddress = (value: string | null | undefined, channel: CampaignChannel) =>
+  channelAddress(
+    channel === "email" ? { email: value ?? null } : { phone: value ?? null },
+    channel,
+  );
+
+type Held = { channel: CampaignChannel; address: string; key: string };
+
 type Member = {
   origin: "contact" | "lead";
   name: string | null;
+  /**
+   * Opted in, and not taken out by an unsubscribe: either of this record's own
+   * or of another record of the same person (see `groupPeople`).
+   */
   optedIn: boolean;
-  /** Every address this record can be reached at on the channel, best first. */
-  addresses: string[];
+  /** Every address this record has, best first, before any unsubscribe is applied. */
+  held: Held[];
+  /** The addresses a message may go to: `held` less the ones an unsubscribe covers. */
+  usable: Held[];
   /** Where this record sits in the union-find below. */
   node: string;
 };
 
 /**
- * Turns raw rows from the tables into the single audience a campaign has.
+ * Sorts every record into the *people* they are. A person is what is counted,
+ * not a row. Several rows are one person when they share an address, when a
+ * lead points at the contact the website form made from it
+ * (`leads.contact_id`), or when they are the same contact seen through its
+ * other addresses. Without that, one person with three numbers was three
+ * recipients, and a contact whose only address was added on the contact card
+ * was unreachable.
  *
- * A *person* is what is counted, not a row. Several rows are one person when
- * they share an address on the channel, when a lead points at the contact the
- * website form made from it (`leads.contact_id`), or when they are the same
- * contact seen through its other addresses (`identities`). Without that, one
- * person with three numbers was three recipients, and a contact whose only
- * address was added on the contact card was unreachable.
+ * Which addresses are a contact's own is decided by its card
+ * (`contact_identities`), not by the old `contacts.email` / `contacts.phone`
+ * columns: removing an address from a card deletes its identity row and leaves
+ * the column behind, and the same address can then be added to another card.
+ *   - a contact with addresses of a kind on its card is reached at those, and
+ *     its column of that kind is ignored;
+ *   - the column is its address only when the card has none of that kind (a
+ *     contact made by the Contacts page or an import has only the column), and
+ *     not even then when that address now sits on a different contact's card;
+ *   - a contact left with no address of a kind is unreachable that way.
  *
  * Consent is read per record and is never borrowed across them: an address is a
- * candidate for sending only if the record it belongs to is opted in. A
- * contact's own addresses all follow the contact's consent, and which they are
- * is decided by the contact card: a contact with addresses of a kind on its card
- * is reached at those and its old column of that kind is ignored; the column is
- * its address only when the card has none of that kind, and not even then when
- * the address now sits on another contact's card.
+ * candidate for sending only if the record it belongs to is opted in.
  *
- * `rowLimit` is the ceiling the caller queried with: when a table comes back
- * full, the result is flagged `truncated` so the UI can say "at least N"
- * instead of quietly under-reporting the list. `identityRowLimit` is the same
- * for the identities, which are several per contact.
+ * An unsubscribe counts for the person, not only for the row it is written on.
+ * A lead with `subscribed: false` covers (a) its own email and phone, on
+ * whichever record holds them and in whatever letter case, and (b) the contact
+ * it points at, at every address that contact has, and the other leads that
+ * point at that contact. This only ever removes people: it never makes anyone a
+ * recipient. A person it removes is still counted among those excluded.
  */
-export function resolveCampaignAudience(input: {
-  contacts?: ConsentRow[] | null;
-  leads?: ConsentRow[] | null;
-  identities?: ContactIdentityRow[] | null;
-  channel: CampaignChannel;
-  rowLimit?: number;
-  identityRowLimit?: number;
-}): CampaignAudience {
-  const { channel, rowLimit, identityRowLimit } = input;
+function groupPeople(input: AudienceInput, channels: CampaignChannel[]): Member[][] {
   const contacts = input.contacts ?? [];
   const leads = input.leads ?? [];
   const identities = input.identities ?? [];
 
-  const identitiesByContact = new Map<string, ContactIdentityRow[]>();
+  const cardOf = new Map<string, ContactIdentityRow[]>();
+  const onACard = new Set<string>();
   for (const identity of identities) {
-    if (identity.kind !== IDENTITY_KIND[channel]) continue;
-    const list = identitiesByContact.get(identity.contact_id) ?? [];
+    const channel = channels.find((c) => IDENTITY_KIND[c] === identity.kind);
+    if (!channel) continue;
+    const slot = `${identity.kind}|${identity.contact_id}`;
+    const list = cardOf.get(slot) ?? [];
     list.push(identity);
-    identitiesByContact.set(identity.contact_id, list);
+    cardOf.set(slot, list);
+    const address = parseAddress(identity.value, channel);
+    if (address) onACard.add(addressKey(channel, address));
   }
 
-  const addressOf = (value: string): string | null =>
-    channelAddress(channel === "email" ? { email: value } : { phone: value }, channel);
-
-  // Who holds each address on a contact card. Removing an address from a card
-  // deletes its identity row and leaves `contacts.email` / `contacts.phone` as
-  // they were, and the same address may then be added to another card, so the
-  // column cannot be taken at its word about who an address belongs to.
-  const cardHolders = new Map<string, Set<string>>();
-  for (const [contactId, list] of identitiesByContact) {
-    for (const identity of list) {
-      const address = addressOf(identity.value);
-      if (!address) continue;
-      const holders = cardHolders.get(address) ?? new Set<string>();
-      holders.add(contactId);
-      cardHolders.set(address, holders);
-    }
-  }
-
-  const members: Member[] = [];
-  contacts.forEach((row, index) => {
-    const own = identitiesByContact.get(row.id ?? "") ?? [];
-    let ordered: string[];
+  // The raw values a contact is reached at on one channel, best first. The one
+  // marked primary is the one the card shows first, so it is the one used.
+  const contactValues = (row: ConsentRow, channel: CampaignChannel): string[] => {
+    const own = cardOf.get(`${IDENTITY_KIND[channel]}|${row.id ?? ""}`) ?? [];
     if (own.length > 0) {
-      // A contact with addresses of this kind on its card is reached at those,
-      // the one marked primary first (it is the one the card shows first). The
-      // old column is not an address of theirs any more: it can be what an
-      // address removed from the card left behind.
-      ordered = [
+      return [
         ...own.filter((identity) => identity.is_primary === true).map((i) => i.value),
         ...own.filter((identity) => identity.is_primary !== true).map((i) => i.value),
       ];
-    } else {
-      // Nothing of this kind on the card: the column is all there is (a contact
-      // made by the Contacts page or an import has only the column), unless the
-      // address has since been given to a different contact's card. Then it is
-      // theirs, and consent recorded here must not follow it there.
-      const raw = channel === "email" ? (row.email ?? "") : (row.phone ?? "");
-      const column = addressOf(raw);
-      ordered = column && !cardHolders.has(column) ? [raw] : [];
     }
-    members.push({
-      origin: "contact",
+    const raw = (channel === "email" ? row.email : row.phone) ?? "";
+    const address = parseAddress(raw, channel);
+    // With nothing of this kind on its card the column is all there is, unless
+    // the address has since been given to a card — and, the contact having no
+    // card address of this kind, that card is someone else's.
+    return address && !onACard.has(addressKey(channel, address)) ? [raw] : [];
+  };
+
+  const heldBy = (values: Array<[CampaignChannel, string]>): Held[] => {
+    const seen = new Set<string>();
+    const held: Held[] = [];
+    for (const [channel, value] of values) {
+      const address = parseAddress(value, channel);
+      if (!address) continue;
+      const key = addressKey(channel, address);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      held.push({ channel, address, key });
+    }
+    return held;
+  };
+
+  // Who has unsubscribed, as addresses and as the contacts they point at.
+  const unsubscribedAddresses = new Set<string>();
+  const unsubscribedContacts = new Set<string>();
+  for (const lead of leads) {
+    if (lead.subscribed !== false) continue;
+    for (const channel of ALL_CHANNELS) {
+      const address = channelAddress(lead, channel);
+      if (address) unsubscribedAddresses.add(addressKey(channel, address));
+    }
+    if (lead.contact_id) unsubscribedContacts.add(lead.contact_id);
+  }
+
+  const member = (
+    origin: Member["origin"],
+    row: ConsentRow,
+    held: Held[],
+    node: string,
+    unsubscribedPerson: boolean,
+  ): Member => {
+    const usable = unsubscribedPerson
+      ? []
+      : held.filter((address) => !unsubscribedAddresses.has(address.key));
+    return {
+      origin,
       name: row.name?.trim() || null,
-      optedIn: isOptedIn(row),
-      addresses: [...new Set(ordered.map(addressOf).filter((a): a is string => a !== null))],
-      node: row.id ? `contact:${row.id}` : `contact#${index}`,
-    });
+      // Having addresses and every one of them covered by an unsubscribe is the
+      // same as having unsubscribed; having none is just being unreachable.
+      optedIn: isOptedIn(row) && !unsubscribedPerson && (held.length === 0 || usable.length > 0),
+      held,
+      usable,
+      node,
+    };
+  };
+
+  const members: Member[] = [];
+  contacts.forEach((row, index) => {
+    members.push(
+      member(
+        "contact",
+        row,
+        heldBy(
+          channels.flatMap((c) =>
+            contactValues(row, c).map((v): [CampaignChannel, string] => [c, v]),
+          ),
+        ),
+        row.id ? `contact:${row.id}` : `contact#${index}`,
+        row.id != null && unsubscribedContacts.has(row.id),
+      ),
+    );
   });
   leads.forEach((row, index) => {
-    const address = channelAddress(row, channel);
-    members.push({
-      origin: "lead",
-      name: row.name?.trim() || null,
-      optedIn: isOptedIn(row),
-      addresses: address ? [address] : [],
-      node: `lead#${index}`,
-    });
+    members.push(
+      member(
+        "lead",
+        row,
+        heldBy(
+          channels.map((c): [CampaignChannel, string] => [
+            c,
+            (c === "email" ? row.email : row.phone) ?? "",
+          ]),
+        ),
+        `lead#${index}`,
+        row.contact_id != null && unsubscribedContacts.has(row.contact_id),
+      ),
+    );
   });
 
   // Union-find: every record starts as itself and is joined to whatever it
@@ -253,45 +338,72 @@ export function resolveCampaignAudience(input: {
     const rootB = find(b);
     if (rootA !== rootB) parent.set(rootB, rootA);
   };
-  for (const member of members) {
-    for (const address of member.addresses) join(member.node, `address:${address}`);
+  // Joined on every address a record has, covered by an unsubscribe or not: the
+  // unsubscribing lead and the contact at the same address are one person.
+  for (const one of members) {
+    for (const address of one.held) join(one.node, `address:${address.key}`);
   }
   leads.forEach((row, index) => {
     if (row.contact_id) join(`lead#${index}`, `contact:${row.contact_id}`);
   });
 
   const people = new Map<string, Member[]>();
-  for (const member of members) {
-    const root = find(member.node);
+  for (const one of members) {
+    const root = find(one.node);
     const group = people.get(root);
-    if (group) group.push(member);
-    else people.set(root, [member]);
+    if (group) group.push(one);
+    else people.set(root, [one]);
   }
+  return [...people.values()];
+}
 
+const reachedCeiling = (input: AudienceInput): boolean =>
+  (input.rowLimit != null &&
+    ((input.contacts ?? []).length >= input.rowLimit ||
+      (input.leads ?? []).length >= input.rowLimit)) ||
+  (input.identityRowLimit != null && (input.identities ?? []).length >= input.identityRowLimit);
+
+/**
+ * Turns raw rows from the tables into the single audience a campaign has: who
+ * can be sent to on `channel`, and, counted separately and never in the total,
+ * who is consented but has nowhere to be reached and who is left out (no
+ * recorded consent, or unsubscribed). How rows become people, and whose
+ * addresses are whose, is described at `groupPeople`.
+ *
+ * `rowLimit` is the ceiling the caller queried with: when a table comes back
+ * full, the result is flagged `truncated` so the UI can say "at least N"
+ * instead of quietly under-reporting the list. `identityRowLimit` is the same
+ * for the identities, which are several per contact.
+ */
+export function resolveCampaignAudience(
+  input: AudienceInput & { channel: CampaignChannel },
+): CampaignAudience {
+  const { channel } = input;
   const recipients: AudienceRecipient[] = [];
   let fromContacts = 0;
   let fromLeads = 0;
   let optedInUnreachable = 0;
   let withoutConsent = 0;
 
-  for (const group of people.values()) {
+  for (const group of groupPeople(input, [channel])) {
     // Contacts come first in `members`, so a person recorded in both tables is
     // attributed to their contact record when that record can be reached.
-    const sendable = group.find((member) => member.optedIn && member.addresses.length > 0);
+    const sendable = group.find((one) => one.optedIn && one.usable.length > 0);
     if (sendable) {
       recipients.push({
-        address: sendable.addresses[0] as string,
+        address: (sendable.usable[0] as Held).address,
         name: sendable.name,
         origin: sendable.origin,
       });
       if (sendable.origin === "contact") fromContacts += 1;
       else fromLeads += 1;
-    } else if (group.some((member) => member.optedIn)) {
+    } else if (group.some((one) => one.optedIn)) {
       // Consented, but there is nowhere on this channel to send to.
       optedInUnreachable += 1;
-    } else if (group.some((member) => member.addresses.length > 0)) {
+    } else if (group.some((one) => one.held.length > 0)) {
       // Tracked so the UI can explain *why* the audience is empty rather than
-      // leaving the user staring at a zero.
+      // leaving the user staring at a zero. A person an unsubscribe took out of
+      // the audience is one of these: reachable, and not to be sent to.
       withoutConsent += 1;
     }
   }
@@ -304,10 +416,21 @@ export function resolveCampaignAudience(input: {
     fromLeads,
     optedInUnreachable,
     withoutConsent,
-    truncated:
-      (rowLimit != null && (contacts.length >= rowLimit || leads.length >= rowLimit)) ||
-      (identityRowLimit != null && identities.length >= identityRowLimit),
+    truncated: reachedCeiling(input),
   };
+}
+
+/**
+ * How many different people are opted in, on either channel and whether or not
+ * there is an address to reach them at: the figure the AI is told. It is the
+ * same sorting of rows into people as the audience, over both channels at once,
+ * so the page and the AI cannot count one workspace's people two ways.
+ */
+export function countOptedInPeople(input: AudienceInput): { people: number; truncated: boolean } {
+  const people = groupPeople(input, ALL_CHANNELS).filter((group) =>
+    group.some((one) => one.optedIn),
+  ).length;
+  return { people, truncated: reachedCeiling(input) };
 }
 
 const CHANNEL_NOUN: Record<CampaignChannel, string> = {
@@ -343,7 +466,9 @@ export function describeAudience(audience: CampaignAudience): string {
     parts.push(`${audience.optedInUnreachable} consented but unreachable on this channel`);
   }
   if (audience.withoutConsent > 0) {
-    parts.push(`${audience.withoutConsent} excluded for having no recorded consent`);
+    parts.push(
+      `${audience.withoutConsent} excluded for having no recorded consent or having unsubscribed`,
+    );
   }
   return parts.join("; ");
 }

@@ -876,3 +876,125 @@ describe("PR #58: consent is not lent to a number that changed hands", () => {
     assert.equal(real.name, "Two");
   });
 });
+
+describe("PR #58: an unsubscribe counts for the person, not only for its row", () => {
+  // The unsubscribing record is a lead with `subscribed: false`. Before, it
+  // dropped out on its own and the contact (or any other record) of the same
+  // person stayed a recipient on its consent.
+  const unsubscribed = (id, extra = {}) =>
+    aLead(id, { consent_given: true, subscribed: false, ...extra });
+  const resolveOver = (channel, rows) => audienceMod.resolveCampaignAudience({ channel, ...rows });
+
+  test("a lead linked to a contact takes the contact out, at every address it has", () => {
+    const rows = {
+      contacts: [
+        aContact("c1", { name: "Amal", email: "amal@example.com", phone: "+971500000001" }),
+      ],
+      identities: [anIdentity("i1", "c1", "email", "amal.work@example.com")],
+      leads: [unsubscribed("l1", { contact_id: "c1", email: "other@example.com" })],
+    };
+    for (const channel of ["email", "whatsapp"]) {
+      const audience = resolveOver(channel, rows);
+      assert.equal(audience.total, 0, channel);
+      assert.deepEqual(addresses(audience), [], channel);
+      assert.equal(audience.withoutConsent, 1, `${channel}: counted as excluded, once`);
+    }
+  });
+
+  test("a lead with no link takes out the contact that has its email, in any letter case", () => {
+    const audience = resolveOver("email", {
+      contacts: [aContact("c1", { email: "amal@example.com" })],
+      leads: [unsubscribed("l1", { email: " AMAL@Example.COM " })],
+    });
+    assert.equal(audience.total, 0);
+    assert.equal(audience.withoutConsent, 1, "one person, not two");
+  });
+
+  test("and the contact that has its phone, written another way", () => {
+    const audience = resolveOver("whatsapp", {
+      contacts: [aContact("c1", { phone: "+971 50 000 0001" })],
+      leads: [unsubscribed("l1", { email: "x@example.com", phone: "00971500000001" })],
+    });
+    assert.equal(audience.total, 0);
+    assert.equal(audience.withoutConsent, 1);
+  });
+
+  test("and a contact it only shares a card address with", () => {
+    const audience = resolveOver("email", {
+      contacts: [aContact("c1")],
+      identities: [anIdentity("i1", "c1", "email", "amal@example.com")],
+      leads: [unsubscribed("l1", { email: "amal@example.com" })],
+    });
+    assert.equal(audience.total, 0);
+    assert.equal(audience.withoutConsent, 1);
+  });
+
+  test("another lead at that address, still marked subscribed, is covered too", () => {
+    const audience = resolveOver("email", {
+      leads: [
+        unsubscribed("l1", { email: "amal@example.com" }),
+        aLead("l2", { email: "Amal@example.com" }),
+      ],
+    });
+    assert.equal(audience.total, 0);
+    assert.equal(audience.withoutConsent, 1);
+  });
+
+  test("and a lead pointing at the same contact", () => {
+    const audience = resolveOver("email", {
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      leads: [
+        unsubscribed("l1", { contact_id: "c1", email: "a@example.com" }),
+        aLead("l2", { contact_id: "c1", email: "second@example.com" }),
+      ],
+    });
+    assert.equal(audience.total, 0);
+    assert.equal(audience.withoutConsent, 1);
+  });
+
+  test("it does not take out someone who is not that person", () => {
+    const audience = resolveOver("email", {
+      contacts: [
+        aContact("c1", { name: "Amal", email: "amal@example.com" }),
+        aContact("c2", { name: "Bilal", email: "bilal@example.com" }),
+      ],
+      leads: [
+        unsubscribed("l1", { contact_id: "c1", email: "amal@example.com" }),
+        aLead("l2", { email: "carla@example.com" }),
+      ],
+    });
+    assert.deepEqual(addresses(audience).sort(), ["bilal@example.com", "carla@example.com"]);
+    assert.equal(audience.withoutConsent, 1, "only Amal");
+  });
+
+  test("an unsubscribe never adds a recipient, and the AI line says who is left out", () => {
+    const audience = resolveOver("email", {
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      leads: [unsubscribed("l1", { contact_id: "c1", email: "a@example.com" })],
+    });
+    assert.equal(audience.total, 0);
+    assert.match(
+      describeAudience(audience),
+      /^0 opted-in email recipients;.*1 excluded for having/,
+    );
+    assert.equal(audience.optedInUnreachable, 0, "not 'consented but nowhere to send'");
+  });
+
+  test("through the server read, the figure the page shows leaves the person out", async () => {
+    db.reset({
+      contacts: [
+        aContact("c1", { email: "a@example.com" }),
+        aContact("c2", { email: "b@example.com" }),
+      ],
+      leads: [unsubscribed("l1", { contact_id: "c1", email: "a@example.com" })],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email), ["b@example.com"]);
+    assert.equal(email.withoutConsent, 1);
+    const saved = await server.serverFns.saveCampaignDraft({
+      data: { name: "n", subject: "s", body: "b" },
+      context: { supabase: client, userId: "u1" },
+    });
+    assert.equal(saved.recipientsCount, 1, "the count stored with a campaign agrees");
+  });
+});
