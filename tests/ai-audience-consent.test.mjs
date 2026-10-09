@@ -164,14 +164,17 @@ describe("PR #35: one person is one opt-in", () => {
     assert.equal(summary.optedInContacts, 0);
   });
 
-  it("an unsubscribed lead does not un-count the contact, and is not counted itself", async () => {
+  it("an unsubscribed lead takes the contact it points at out, and is not counted itself", async () => {
+    // Pinned the other way before the review of PR #58: the contact stayed an
+    // opted-in person on its own consent while the person had unsubscribed.
     db.reset({
       contacts: [aContact(1, OPTED_IN)],
       leads: [aLead(1, { ...OPTED_IN, subscribed: false, contact_id: "c00001" })],
     });
     const summary = await gatherLeadSummary(client);
     assert.equal(summary.optedInLeads, 0);
-    assert.equal(summary.optedInPeople, 1);
+    assert.equal(summary.optedInContacts, 1, "the table still reports its own row truthfully");
+    assert.equal(summary.optedInPeople, 0);
   });
 
   it("two leads pointing at one contact are one person", async () => {
@@ -370,11 +373,10 @@ describe("a failed read is not a count of zero", () => {
     // Each part of the summary fails on its own, with the others working: an
     // exact count can time out on a big table while a short read does not.
     const parts = {
-      "the exact count": (query) => (query.counting ? refused : undefined),
+      "the exact count": (query) => (query.counting && !query.sort ? refused : undefined),
       "the sample the breakdowns come from": (query) =>
-        !query.counting && query.sort?.column === "created_at" ? refused : undefined,
-      "the scan for who opted in": (query) =>
-        !query.counting && query.sort?.column === "id" ? refused : undefined,
+        query.sort?.column === "created_at" ? refused : undefined,
+      "the scan for who opted in": (query) => (query.sort?.column === "id" ? refused : undefined),
     };
     for (const [part, fault] of Object.entries(parts)) {
       it(`${part} failing alone is still no summary (${table})`, async () => {
@@ -387,4 +389,168 @@ describe("a failed read is not a count of zero", () => {
       });
     }
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* The review of PR #58: one definition of "a person"                  */
+/* ------------------------------------------------------------------ */
+
+// The campaign page's audience, built from the same source with only the model
+// call replaced, so the two figures can be put side by side on one database.
+await build({
+  stdin: {
+    contents: "export { gatherCampaignAudiences } from './src/lib/campaign-audience.server';",
+    resolveDir: process.cwd(),
+  },
+  outfile: "node_modules/.cache/flas-audience-page-for-ai.mjs",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [
+    {
+      name: "page-audience-boundaries",
+      setup(b) {
+        b.onResolve({ filter: /flash-ai\.server$/ }, () => ({
+          path: "flash-ai-stub",
+          namespace: "page-audience-stub",
+        }));
+        b.onLoad({ filter: /.*/, namespace: "page-audience-stub" }, () => ({
+          contents:
+            "export const aiOptionsFor = async () => ({}); export const getBusinessContext = async () => null; export const callFlashAi = async () => '';",
+          loader: "js",
+        }));
+      },
+    },
+  ],
+});
+const { gatherCampaignAudiences } =
+  await import("../node_modules/.cache/flas-audience-page-for-ai.mjs");
+
+describe("PR #58: the page and the AI count the same people", () => {
+  const withEmail = (row, email) => ({ ...row, email });
+  const contact = (i, email, extra = {}) =>
+    withEmail(aContact(i, { ...OPTED_IN, ...extra }), email);
+  const lead = (i, email, extra = {}) => withEmail(aLead(i, { ...OPTED_IN, ...extra }), email);
+
+  // Every person here has an email, so "people the AI counts" and "people the
+  // email audience has" must be one number.
+  const scenarios = {
+    "a contact and an unlinked lead at one email": {
+      contacts: [contact(1, "amal@example.com")],
+      leads: [lead(1, "amal@example.com")],
+      people: 1,
+    },
+    "the same email saved on two contacts": {
+      contacts: [contact(1, "amal@example.com"), contact(2, "Amal@Example.com")],
+      leads: [],
+      people: 1,
+    },
+    "two unlinked leads at one email": {
+      contacts: [],
+      leads: [lead(1, "amal@example.com"), lead(2, "AMAL@example.com")],
+      people: 1,
+    },
+    "a lead linked to a contact with another email": {
+      contacts: [contact(1, "amal@example.com")],
+      leads: [lead(1, "amal.home@example.com", { contact_id: "c00001" })],
+      people: 1,
+    },
+    "different people": {
+      contacts: [contact(1, "amal@example.com"), contact(2, "bilal@example.com")],
+      leads: [lead(1, "carla@example.com")],
+      people: 3,
+    },
+    "an unsubscribe on a linked lead": {
+      contacts: [contact(1, "amal@example.com"), contact(2, "bilal@example.com")],
+      leads: [lead(1, "other@example.com", { contact_id: "c00001", subscribed: false })],
+      people: 1,
+    },
+    "an unsubscribe on an unlinked lead with the contact's email, in another letter case": {
+      contacts: [contact(1, "amal@example.com"), contact(2, "bilal@example.com")],
+      leads: [lead(1, " AMAL@Example.com", { subscribed: false })],
+      people: 1,
+    },
+  };
+
+  for (const [name, { contacts, leads, people }] of Object.entries(scenarios)) {
+    it(`${name}: ${people}`, async () => {
+      db.reset({ contacts, leads, contact_identities: [] });
+      const summary = await gatherLeadSummary(client);
+      const { email } = await gatherCampaignAudiences(client);
+      assert.equal(summary.optedInPeople, people, "what the AI is told");
+      assert.equal(email.total, people, "what the page shows");
+      assert.equal(summary.optedInIsFloor, false);
+    });
+  }
+
+  it("an address added on a contact card links records for the AI as it does for the page", async () => {
+    db.reset({
+      contacts: [aContact(1, { ...OPTED_IN })],
+      leads: [lead(1, "amal.work@example.com")],
+      contact_identities: [
+        {
+          id: "i1",
+          contact_id: "c00001",
+          kind: "email",
+          value: "amal.work@example.com",
+          is_primary: true,
+        },
+      ],
+    });
+    const summary = await gatherLeadSummary(client);
+    const { email } = await gatherCampaignAudiences(client);
+    assert.equal(summary.optedInPeople, 1);
+    assert.equal(email.total, 1);
+  });
+
+  it("a number that moved to another contact is not lent the first contact's consent", async () => {
+    db.reset({
+      contacts: [
+        { ...aContact(1, OPTED_IN), phone: "+971500000001" },
+        { ...aContact(2, OPTED_IN), phone: null },
+      ],
+      leads: [],
+      contact_identities: [
+        { id: "i1", contact_id: "c00002", kind: "phone", value: "+971500000001", is_primary: true },
+      ],
+    });
+    // Two different people: Dana, who has no number any more, and Chris.
+    const summary = await gatherLeadSummary(client);
+    const { whatsapp } = await gatherCampaignAudiences(client);
+    assert.equal(summary.optedInPeople, 2);
+    assert.equal(whatsapp.total + whatsapp.optedInUnreachable, 2);
+  });
+
+  it("the AI's line says who is left out", () => {
+    const facts = leadSummaryFacts({
+      totalLeads: 1,
+      totalContacts: 1,
+      optedInLeads: 0,
+      optedInContacts: 1,
+      optedInPeople: 0,
+      optedInIsFloor: false,
+      sampledLeads: 1,
+      bySource: {},
+      topTags: [],
+      sampledContacts: 1,
+      contactsByStage: {},
+    }).join("\n");
+    assert.match(
+      facts,
+      /Opted-in people overall: 0 \(.*people who have unsubscribed are not counted\)/,
+    );
+  });
+
+  it("when nobody has opted in, the tables the audience is made of are not read", async () => {
+    db.reset({ contacts: [aContact(1)], leads: [aLead(1)], contact_identities: [] });
+    reads.length = 0;
+    const summary = await gatherLeadSummary(client);
+    assert.equal(summary.optedInPeople, 0);
+    assert.ok(
+      reads.every((r) => r.head || r.columns === "source, tags" || r.columns === "stage"),
+      "with nobody opted in there is no audience to read",
+    );
+  });
 });

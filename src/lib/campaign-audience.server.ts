@@ -14,58 +14,16 @@ import {
   resolveCampaignAudience,
   type CampaignAudience,
   type CampaignChannel,
-  type ConsentRow,
-  type ContactIdentityRow,
 } from "./campaign-audience";
+import {
+  AUDIENCE_IDENTITY_LIMIT,
+  AUDIENCE_ROW_LIMIT,
+  readAudienceRows,
+} from "./audience-rows.server";
 import { looksLikeRefusal, refusalSummary } from "./campaign-draft";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
 
-/** Same ceiling gatherAudienceSegments uses. A full page sets `truncated`. */
-export const AUDIENCE_ROW_LIMIT = 2000;
-
-/**
- * The same ceiling for `contact_identities`, which holds several rows per
- * contact. Reaching it also sets `truncated`.
- */
-export const AUDIENCE_IDENTITY_LIMIT = 10_000;
-
-/**
- * Rows asked for per request. A request returns at most the project's "max
- * rows" setting (1,000 by default) however large a `.limit()` it asks for, and
- * says nothing when rows were left behind, so a bigger single read would stop
- * there without anyone being told.
- */
-const PAGE_SIZE = 1000;
-
-/**
- * Reads up to `ceiling` rows of a table, a page at a time, in a stable order.
- * A failed read throws: it is never an empty table.
- */
-async function readRows<T>(
-  supabase: SupabaseClient,
-  table: string,
-  columns: string,
-  ceiling: number,
-): Promise<T[]> {
-  const rows: T[] = [];
-  while (rows.length < ceiling) {
-    const from = rows.length;
-    const asked = Math.min(PAGE_SIZE, ceiling - from);
-    const { data, error, count } = await supabase
-      .from(table)
-      .select(columns, { count: "exact" })
-      .order("id", { ascending: true })
-      .range(from, from + asked - 1);
-    if (error) throw new Error(error.message);
-    const page = (data ?? []) as unknown as T[];
-    rows.push(...page);
-    // The response, not the request, says how much there is: stop at the
-    // reported total, or at a page that came back short or empty.
-    if (page.length === 0) break;
-    if (count != null ? rows.length >= count : page.length < asked) break;
-  }
-  return rows;
-}
+export { AUDIENCE_IDENTITY_LIMIT, AUDIENCE_ROW_LIMIT };
 
 /**
  * Both channels in one round trip: the page shows the email figure next to the
@@ -80,30 +38,7 @@ async function readRows<T>(
 export async function gatherCampaignAudiences(
   supabase: SupabaseClient,
 ): Promise<Record<CampaignChannel, CampaignAudience>> {
-  const [contacts, leads, identities] = await Promise.all([
-    readRows<ConsentRow>(
-      supabase,
-      "contacts",
-      "id, name, email, phone, consent_given",
-      AUDIENCE_ROW_LIMIT,
-    ),
-    // `subscribed` exists on leads only, and is read as a suppression flag.
-    // `contact_id` ties a website lead to the contact made from it.
-    readRows<ConsentRow>(
-      supabase,
-      "leads",
-      "id, contact_id, name, email, phone, consent_given, subscribed",
-      AUDIENCE_ROW_LIMIT,
-    ),
-    // An address added on the contact card lives here and is not copied to
-    // `contacts.email` / `contacts.phone`.
-    readRows<ContactIdentityRow>(
-      supabase,
-      "contact_identities",
-      "id, contact_id, kind, value, is_primary",
-      AUDIENCE_IDENTITY_LIMIT,
-    ),
-  ]);
+  const { contacts, leads, identities } = await readAudienceRows(supabase);
 
   const resolve = (channel: CampaignChannel) =>
     resolveCampaignAudience({

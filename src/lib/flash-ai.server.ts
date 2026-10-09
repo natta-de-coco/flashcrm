@@ -2,6 +2,8 @@
 // AI recommendations. All tenant data is read through the caller's RLS-scoped
 // client; only Meta credentials are read with the admin client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { AUDIENCE_IDENTITY_LIMIT, readAudienceRows } from "./audience-rows.server";
+import { countOptedInPeople } from "./campaign-audience";
 
 export const FLASH_MODEL = "openai/gpt-5.6-sol";
 
@@ -543,9 +545,6 @@ export async function getBusinessContext(supabase: RlsClient): Promise<BusinessC
 /** Rows read for the breakdowns (sources, tags, stages). They are a sample, and are labelled as one. */
 const SUMMARY_SAMPLE_ROWS = 500;
 
-/** Rows asked for per request when scanning for who opted in; see `scanOptedIn`. */
-const SUMMARY_PAGE_SIZE = 1000;
-
 /**
  * The most rows of either table read to work out how many different people
  * opted in. Past it the answer is given as "at least", never as the total.
@@ -572,6 +571,10 @@ export type LeadSummary = {
    * writes a lead and a contact with the same consent and links them
    * (`leads.contact_id`), and adding the two tables counted that one person
    * twice, so a linked lead and its contact are one person here.
+   *
+   * Worked out by `countOptedInPeople`, the grouping of rows into people the
+   * campaign page uses too, so a shared address or a duplicate contact is one
+   * person in both, and someone who unsubscribed is in neither.
    */
   optedInPeople: number;
   /** True when the scan stopped at `CONSENT_SCAN_LIMIT`: `optedInPeople` is then a floor. */
@@ -608,31 +611,6 @@ async function countMatching(query: SummaryQuery, what: string): Promise<number>
   if (error) throw new Error(error.message);
   if (count == null) throw new Error(`Could not count ${what}.`);
   return count;
-}
-
-/**
- * Reads the rows of one filtered table, a page at a time, until it has the
- * `expected` number the database counted or `limit` rows, whichever is first.
- * A request returns at most the project's row cap (1,000 by default) whatever
- * it asks for, and says nothing about rows left behind, so a single read of any
- * size is not a count.
- */
-async function scanOptedIn<T>(
-  page: (from: number, to: number) => SummaryQuery,
-  expected: number,
-  limit: number,
-): Promise<{ rows: T[]; complete: boolean }> {
-  const wanted = Math.min(expected, limit);
-  const rows: T[] = [];
-  while (rows.length < wanted) {
-    const from = rows.length;
-    const { data, error } = await page(from, Math.min(from + SUMMARY_PAGE_SIZE, wanted) - 1);
-    if (error) throw new Error(error.message);
-    const got = (data ?? []) as T[];
-    if (got.length === 0) break;
-    rows.push(...got);
-  }
-  return { rows, complete: rows.length >= expected };
 }
 
 /**
@@ -675,34 +653,25 @@ export async function gatherLeadSummary(
   if (leadSample.error) throw new Error(leadSample.error.message);
   if (contactSample.error) throw new Error(contactSample.error.message);
 
-  // Different people, not rows: a lead is the same person as the contact it
-  // points at, and two leads at one contact are one person too.
-  const [consentedContacts, consentedLeads] = await Promise.all([
-    scanOptedIn<{ id: string }>(
-      (from, to) =>
-        contactsTable()
-          .select("id")
-          .eq("consent_given", true)
-          .order("id", { ascending: true })
-          .range(from, to),
-      optedInContacts,
-      scanLimit,
-    ),
-    scanOptedIn<{ id: string; contact_id: string | null }>(
-      (from, to) =>
-        optedInLeadsOnly(leadsTable().select("id, contact_id"))
-          .order("id", { ascending: true })
-          .range(from, to),
-      optedInLeads,
-      scanLimit,
-    ),
-  ]);
-  const people = new Set<string>();
-  for (const contact of consentedContacts.rows) people.add(`contact:${contact.id}`);
-  for (const lead of consentedLeads.rows) {
-    people.add(lead.contact_id ? `contact:${lead.contact_id}` : `lead:${lead.id}`);
+  // Different people, not rows. Worked out from the same rows, and by the same
+  // function, as the campaign page's audience, so a lead and the contact made
+  // from it, two records at one address and an unsubscribe are all counted the
+  // way the page counts them. Nobody opted in means there is nothing to count.
+  let people = 0;
+  let optedInIsFloor = false;
+  if (optedInContacts > 0 || optedInLeads > 0) {
+    const rows = await readAudienceRows(supabase as never, {
+      rowLimit: scanLimit,
+      identityLimit: AUDIENCE_IDENTITY_LIMIT,
+    });
+    const counted = countOptedInPeople({
+      ...rows,
+      rowLimit: scanLimit,
+      identityRowLimit: AUDIENCE_IDENTITY_LIMIT,
+    });
+    people = counted.people;
+    optedInIsFloor = counted.truncated;
   }
-  const optedInIsFloor = !(consentedContacts.complete && consentedLeads.complete);
 
   const bySource: Record<string, number> = {};
   const tagCounts = new Map<string, number>();
@@ -727,7 +696,7 @@ export async function gatherLeadSummary(
     optedInContacts,
     // Every opted-in contact is a person, so that is a floor even when the scan
     // was cut short.
-    optedInPeople: optedInIsFloor ? Math.max(people.size, optedInContacts) : people.size,
+    optedInPeople: optedInIsFloor ? Math.max(people, optedInContacts) : people,
     optedInIsFloor,
     sampledLeads: leadRows.length,
     bySource,
@@ -758,7 +727,7 @@ export function leadSummaryFacts(summary: LeadSummary): string[] {
   return [
     `Website leads: ${summary.totalLeads} in total, ${summary.optedInLeads} opted in`,
     `Contacts: ${summary.totalContacts} in total, ${summary.optedInContacts} opted in`,
-    `Opted-in people overall: ${summary.optedInIsFloor ? "at least " : ""}${summary.optedInPeople} (a website lead and the contact made from it are one person, counted once)`,
+    `Opted-in people overall: ${summary.optedInIsFloor ? "at least " : ""}${summary.optedInPeople} (a website lead and the contact made from it are one person, counted once; people who have unsubscribed are not counted)`,
     `Lead sources${sample(summary.sampledLeads, summary.totalLeads, "leads")}: ${counts(summary.bySource)}`,
     `Top tags${sample(summary.sampledLeads, summary.totalLeads, "leads")}: ${summary.topTags.join(", ") || "none"}`,
     `Pipeline stages${sample(summary.sampledContacts, summary.totalContacts, "contacts")}: ${counts(summary.contactsByStage)}`,
