@@ -558,7 +558,7 @@ echo bin2hex($defaults['greeting']), ' ', bin2hex($defaults['site_key']);
         );
         const run = spawnSync("php", [probe], { encoding: "utf8" });
         assert.equal(run.status, 0, run.stdout + run.stderr);
-        const [greetingHex, keyHex] = run.stdout.trim().split(" ");
+        const [greetingHex, keyHex] = run.stdout.split(" ");
         assert.equal(Buffer.from(greetingHex, "hex").toString("utf8"), readsBackAs(greeting));
         assert.equal(Buffer.from(keyHex ?? "", "hex").toString("utf8"), SITE_KEY);
       } finally {
