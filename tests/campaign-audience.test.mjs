@@ -475,16 +475,27 @@ describe("PR #33: an address added on the contact card counts", () => {
     assert.equal(email.withoutConsent, 0);
   });
 
-  test("two records of one person share their other addresses too", async () => {
-    // The same number saved twice is one person, and a lead at that person's
-    // second address is not a third.
+  test("a lead at the contact's second address, and one linked to it, are not extra people", async () => {
+    // A lead at that person's second address is not a second person, and nor
+    // is a lead the website form linked to the contact.
+    db.reset({
+      contacts: [aContact("c2")],
+      contact_identities: [
+        anIdentity("i0", "c2", "email", "a@example.com"),
+        anIdentity("i1", "c2", "email", "b@example.com"),
+      ],
+      leads: [aLead("l1", { email: "b@example.com" }), aLead("l2", { contact_id: "c2" })],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1);
+  });
+
+  test("the same email saved on two contacts that have no card addresses is one person", async () => {
     db.reset({
       contacts: [
         aContact("c1", { email: "a@example.com" }),
-        aContact("c2", { email: "a@example.com" }),
+        aContact("c2", { email: "A@example.com" }),
       ],
-      contact_identities: [anIdentity("i1", "c2", "email", "b@example.com")],
-      leads: [aLead("l1", { email: "b@example.com" }), aLead("l2", { contact_id: "c2" })],
     });
     const { email } = await server.gatherCampaignAudiences(client);
     assert.equal(email.total, 1);
@@ -740,5 +751,128 @@ describe("PR #33: a saved campaign records the audience it really had", () => {
     assert.doesNotMatch(route, /\.from\("campaigns"\)\s*\.insert\(/);
     // "Not saved" has to be said, in the reader's language.
     assert.match(route, /if \(!res\.ok\) \{\s*toast\.error\(t\("marketing\.campaignNotSaved"\)\)/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The review of PR #58: consent does not travel with a number         */
+/* ------------------------------------------------------------------ */
+
+describe("PR #58: consent is not lent to a number that changed hands", () => {
+  // `contacts.phone` / `contacts.email` are the old, single address. Removing
+  // an address from a contact card deletes its `contact_identities` row and
+  // leaves the column as it was, so the column alone says nothing about who
+  // holds a number now.
+  const P = "+971500000001";
+
+  test("a number moved to a contact who never consented is not the first contact's any more", async () => {
+    db.reset({
+      contacts: [
+        aContact("dana", { name: "Dana", phone: P }),
+        aContact("chris", { name: "Chris", consent_given: false }),
+      ],
+      contact_identities: [anIdentity("i1", "chris", "phone", P, { is_primary: true })],
+    });
+    const { whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(whatsapp), [], "Chris holds the number and never consented");
+    assert.equal(whatsapp.total, 0);
+    assert.equal(whatsapp.optedInUnreachable, 1, "Dana consented and has no number now");
+    assert.equal(whatsapp.withoutConsent, 1, "Chris is reachable and did not consent");
+  });
+
+  test("and when the new holder did consent, it is theirs alone", async () => {
+    db.reset({
+      contacts: [
+        aContact("dana", { name: "Dana", phone: P }),
+        aContact("chris", { name: "Chris" }),
+      ],
+      contact_identities: [anIdentity("i1", "chris", "phone", P, { is_primary: true })],
+    });
+    const { whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(
+      whatsapp.recipients.map((r) => [r.address, r.name]),
+      [["971500000001", "Chris"]],
+    );
+    assert.equal(whatsapp.optedInUnreachable, 1, "Dana is a different person, with no number");
+  });
+
+  test("an email taken over by another contact is not used for the first one", async () => {
+    db.reset({
+      contacts: [
+        aContact("a", { email: "old@example.com" }),
+        aContact("b", { consent_given: false }),
+      ],
+      contact_identities: [anIdentity("i1", "b", "email", "OLD@example.com", { is_primary: true })],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 0);
+    assert.equal(email.optedInUnreachable, 1);
+    assert.equal(email.withoutConsent, 1);
+  });
+
+  test("an email removed from a card and another added: the removed one is not used", async () => {
+    // The old address is gone from the card. The column still holds it.
+    db.reset({
+      contacts: [aContact("c1", { email: "old@example.com" })],
+      contact_identities: [anIdentity("i1", "c1", "email", "new@example.com")],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email), ["new@example.com"]);
+  });
+
+  test("the column is the address of a contact that has no card address of that kind", async () => {
+    // A contact made by the Contacts page or a CSV import has only the column.
+    // A new contact looks exactly like one whose only address was removed, so
+    // this is the one case the data cannot tell apart; it stays reachable.
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com", phone: "+971500000009" })],
+      contact_identities: [],
+    });
+    const { email, whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email), ["a@example.com"]);
+    assert.deepEqual(addresses(whatsapp), ["971500000009"]);
+  });
+
+  test("an address of the other kind on the card does not hide the column of this kind", async () => {
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      contact_identities: [anIdentity("i1", "c1", "phone", "+971500000009")],
+    });
+    const { email, whatsapp } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email), ["a@example.com"]);
+    assert.deepEqual(addresses(whatsapp), ["971500000009"]);
+  });
+
+  test("three people who share an office inbox in the column are three recipients", async () => {
+    db.reset({
+      contacts: [
+        aContact("c1", { email: "info@acme.com" }),
+        aContact("c2", { email: "info@acme.com" }),
+        aContact("c3", { email: "info@acme.com" }),
+      ],
+      contact_identities: [
+        anIdentity("i1", "c1", "email", "ann@acme.com"),
+        anIdentity("i2", "c2", "email", "bob@acme.com"),
+        anIdentity("i3", "c3", "email", "cy@acme.com"),
+      ],
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email).sort(), ["ann@acme.com", "bob@acme.com", "cy@acme.com"]);
+    assert.equal(email.total, 3);
+  });
+
+  test("a real number on a card beats the placeholder in the column", async () => {
+    db.reset({
+      contacts: [
+        aContact("c1", { name: "One", phone: "0000000000" }),
+        aContact("c2", { name: "Two", phone: "0000000000" }),
+        aContact("c3", { name: "Three", phone: "0000000000" }),
+      ],
+      contact_identities: [anIdentity("i1", "c2", "phone", "+971501111111")],
+    });
+    const { whatsapp } = await server.gatherCampaignAudiences(client);
+    const real = whatsapp.recipients.find((r) => r.address === "971501111111");
+    assert.ok(real, "the real number is a recipient");
+    assert.equal(real.name, "Two");
   });
 });

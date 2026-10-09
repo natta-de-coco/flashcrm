@@ -138,8 +138,11 @@ type Member = {
  *
  * Consent is read per record and is never borrowed across them: an address is a
  * candidate for sending only if the record it belongs to is opted in. A
- * contact's own addresses (its columns and its identities) all follow the
- * contact's consent.
+ * contact's own addresses all follow the contact's consent, and which they are
+ * is decided by the contact card: a contact with addresses of a kind on its card
+ * is reached at those and its old column of that kind is ignored; the column is
+ * its address only when the card has none of that kind, and not even then when
+ * the address now sits on another contact's card.
  *
  * `rowLimit` is the ceiling the caller queried with: when a table comes back
  * full, the result is flagged `truncated` so the UI can say "at least N"
@@ -170,16 +173,43 @@ export function resolveCampaignAudience(input: {
   const addressOf = (value: string): string | null =>
     channelAddress(channel === "email" ? { email: value } : { phone: value }, channel);
 
+  // Who holds each address on a contact card. Removing an address from a card
+  // deletes its identity row and leaves `contacts.email` / `contacts.phone` as
+  // they were, and the same address may then be added to another card, so the
+  // column cannot be taken at its word about who an address belongs to.
+  const cardHolders = new Map<string, Set<string>>();
+  for (const [contactId, list] of identitiesByContact) {
+    for (const identity of list) {
+      const address = addressOf(identity.value);
+      if (!address) continue;
+      const holders = cardHolders.get(address) ?? new Set<string>();
+      holders.add(contactId);
+      cardHolders.set(address, holders);
+    }
+  }
+
   const members: Member[] = [];
   contacts.forEach((row, index) => {
     const own = identitiesByContact.get(row.id ?? "") ?? [];
-    // The one marked primary is the one the contact card shows first, so it is
-    // the one a message goes to; the old column follows it, then the others.
-    const ordered = [
-      ...own.filter((identity) => identity.is_primary === true).map((i) => i.value),
-      channel === "email" ? (row.email ?? "") : (row.phone ?? ""),
-      ...own.filter((identity) => identity.is_primary !== true).map((i) => i.value),
-    ];
+    let ordered: string[];
+    if (own.length > 0) {
+      // A contact with addresses of this kind on its card is reached at those,
+      // the one marked primary first (it is the one the card shows first). The
+      // old column is not an address of theirs any more: it can be what an
+      // address removed from the card left behind.
+      ordered = [
+        ...own.filter((identity) => identity.is_primary === true).map((i) => i.value),
+        ...own.filter((identity) => identity.is_primary !== true).map((i) => i.value),
+      ];
+    } else {
+      // Nothing of this kind on the card: the column is all there is (a contact
+      // made by the Contacts page or an import has only the column), unless the
+      // address has since been given to a different contact's card. Then it is
+      // theirs, and consent recorded here must not follow it there.
+      const raw = channel === "email" ? (row.email ?? "") : (row.phone ?? "");
+      const column = addressOf(raw);
+      ordered = column && !cardHolders.has(column) ? [raw] : [];
+    }
     members.push({
       origin: "contact",
       name: row.name?.trim() || null,
