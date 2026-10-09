@@ -5,7 +5,9 @@
 //     `.limit()` asks for. On a default Supabase project that cap is 1,000, and
 //     nothing in the response says rows were left behind;
 //   * `.range(from, to)` returns that window, and `{ count: "exact" }` reports
-//     every row the query matches, not the rows in the window;
+//     every row the query matches, not the rows in the window. A ranged read
+//     with no `.order()` has no stable order: every window after the first is
+//     served in reverse;
 //   * only the columns named in `.select()` come back, and `{ head: true }`
 //     returns the count with no rows at all.
 //
@@ -69,7 +71,15 @@ export function asPostgrest(db, { maxRows = SERVER_MAX_ROWS } = {}) {
         return run((result) => {
           // A fault: there are no rows to window.
           if (!Array.isArray(result.data)) return result;
-          const matched = result.data;
+          // Without an ORDER BY, which rows come back in which window is the
+          // database's choice, and it may choose differently for each request.
+          // Every window after the first is therefore served in reverse here,
+          // so a paged read that forgot to order loses and repeats rows exactly
+          // as it can on a real table, instead of working because the double
+          // happens to hand rows back in insertion order.
+          const ordered = query.sort != null;
+          const matched =
+            !ordered && window && window[0] > 0 ? [...result.data].reverse() : result.data;
           const from = window ? window[0] : 0;
           const asked = window ? window[1] - window[0] + 1 : (limit ?? matched.length);
           const page = matched.slice(from, from + Math.min(asked, maxRows));

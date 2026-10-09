@@ -554,3 +554,68 @@ describe("PR #58: the page and the AI count the same people", () => {
     );
   });
 });
+
+describe("PR #58: the summary's reads are checked against what they can really do", () => {
+  // A count the database did not give is not a count of zero.
+  const withoutCounts = (base) => ({
+    ...base,
+    from(table) {
+      const query = base.from(table);
+      const original = query.then.bind(query);
+      query.then = (resolve, reject) =>
+        original((result) => ({ ...result, count: query.counting ? null : result.count })).then(
+          resolve,
+          reject,
+        );
+      return query;
+    },
+  });
+
+  it("an answer with no count in it is an error, not zero people", async () => {
+    db.reset({ leads: [aLead(1, OPTED_IN)], contacts: [aContact(1, OPTED_IN)] });
+    await assert.rejects(gatherLeadSummary(withoutCounts(client)), /Could not count/);
+    // The same data, counted, is a summary.
+    assert.equal((await gatherLeadSummary(client)).optedInPeople, 2);
+  });
+
+  it("a project whose row cap is below the page size still gives every person", async () => {
+    const contacts = Array.from({ length: 1200 }, (_, i) => aContact(i, OPTED_IN));
+    db.reset({ contacts, leads: [] });
+    const low = asPostgrest(db, { maxRows: 500 });
+    const summary = await gatherLeadSummary(low.client);
+    assert.equal(summary.optedInContacts, 1200);
+    assert.equal(summary.optedInPeople, 1200);
+    assert.equal(summary.optedInIsFloor, false);
+  });
+
+  it("people are read in a stable order, so no one is lost or counted twice between pages", async () => {
+    // Later windows of an unordered read come back in reverse in the double.
+    const contacts = Array.from({ length: 1700 }, (_, i) => ({
+      ...aContact(i, OPTED_IN),
+      email: `p${i}@example.com`,
+    }));
+    db.reset({ contacts, leads: [] });
+    assert.equal((await gatherLeadSummary(client)).optedInPeople, 1700);
+  });
+
+  it("a workspace with as many card addresses as the ceiling reads is given as a floor", async () => {
+    const identities = Array.from({ length: 10_000 }, (_, i) => ({
+      id: `i${String(i).padStart(6, "0")}`,
+      contact_id: "c-elsewhere",
+      kind: "phone",
+      value: `+9715${1000000 + i}`,
+      is_primary: false,
+    }));
+    db.reset({ contacts: [aContact(1, OPTED_IN)], leads: [], contact_identities: identities });
+    const summary = await gatherLeadSummary(client);
+    assert.equal(summary.optedInPeople, 1);
+    assert.equal(summary.optedInIsFloor, true);
+    assert.match(leadSummaryFacts(summary).join("\n"), /Opted-in people overall: at least 1 /);
+    db.reset({
+      contacts: [aContact(1, OPTED_IN)],
+      leads: [],
+      contact_identities: identities.slice(1),
+    });
+    assert.equal((await gatherLeadSummary(client)).optedInIsFloor, false);
+  });
+});

@@ -1094,3 +1094,76 @@ describe("PR #58: a field that is too long is a sentence, not the validator's JS
     }
   });
 });
+
+/* ------------------------------------------------------------------ */
+/* Four ways the reads could break that no test caught (PR #58 review) */
+/* ------------------------------------------------------------------ */
+
+describe("PR #58: the paged reads are checked against what they can really do", () => {
+  const distinct = (n) =>
+    Array.from({ length: n }, (_, i) =>
+      aContact(`c${String(i).padStart(5, "0")}`, { email: `p${i}@example.com` }),
+    );
+
+  test("a paged read without a stable order loses and repeats rows, so the order is required", async () => {
+    // The double serves every later window of an unordered read in reverse, as a
+    // real table may. 1,500 different people must still be 1,500 recipients.
+    db.reset({ contacts: distinct(1500) });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1500);
+  });
+
+  test("a project whose row cap is below the page size is still read in full", async () => {
+    // The response says how many rows there are; its length does not. With a cap
+    // of 500 a page of 500 looks like "short, so that was the last one".
+    db.reset({
+      contacts: distinct(1500),
+      contact_identities: [anIdentity("i1", "c00000", "phone", "+971500000001")],
+    });
+    const low = asPostgrest(db, { maxRows: 500 });
+    const { email, whatsapp } = await server.gatherCampaignAudiences(low.client);
+    assert.equal(email.total, 1500);
+    assert.equal(email.truncated, false);
+    assert.equal(whatsapp.total, 1, "the one number on a card");
+    assert.ok(low.reads.filter((r) => r.table === "contacts").length >= 3);
+  });
+
+  test("the identity ceiling makes the figure a floor, in the pure resolver", () => {
+    const rows = Array.from({ length: 10 }, (_, i) =>
+      anIdentity(`i${i}`, "c1", "email", `e${i}@example.com`),
+    );
+    const base = { channel: "email", contacts: [aContact("c1")], identities: rows };
+    const full = audienceMod.resolveCampaignAudience({ ...base, identityRowLimit: 10 });
+    assert.equal(full.truncated, true);
+    assert.match(describeAudience(full), /^at least /);
+    const room = audienceMod.resolveCampaignAudience({ ...base, identityRowLimit: 11 });
+    assert.equal(room.truncated, false);
+  });
+
+  test("and through the server read, at the real ceiling", async () => {
+    const rows = Array.from({ length: server.AUDIENCE_IDENTITY_LIMIT }, (_, i) =>
+      anIdentity(`i${String(i).padStart(6, "0")}`, "c-other", "phone", `+9715${1000000 + i}`),
+    );
+    db.reset({ contacts: [aContact("c1", { email: "a@example.com" })], contact_identities: rows });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1);
+    assert.equal(email.truncated, true, "10,000 identities is where the read stops");
+    assert.match(describeAudience(email), /^at least 1 /);
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      contact_identities: rows.slice(1),
+    });
+    assert.equal((await server.gatherCampaignAudiences(client)).email.truncated, false);
+  });
+
+  test("the leads table at its ceiling is a floor too", async () => {
+    db.reset({
+      leads: Array.from({ length: server.AUDIENCE_ROW_LIMIT }, (_, i) =>
+        aLead(`l${String(i).padStart(5, "0")}`),
+      ),
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, server.AUDIENCE_ROW_LIMIT);
+    assert.equal(email.truncated, true);
+  });
+});
