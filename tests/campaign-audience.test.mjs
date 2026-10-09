@@ -998,3 +998,99 @@ describe("PR #58: an unsubscribe counts for the person, not only for its row", (
     assert.equal(saved.recipientsCount, 1, "the count stored with a campaign agrees");
   });
 });
+
+describe("PR #58: a field that is too long is a sentence, not the validator's JSON", () => {
+  const { CAMPAIGN_FIELD_LIMITS, AI_DRAFT_FIELD_LIMITS, CAMPAIGN_TOO_LONG, AI_DRAFT_TOO_LONG } =
+    audienceMod;
+  const context = { supabase: client, userId: "user-1" };
+  const saveWith = (fields) =>
+    server.serverFns.saveCampaignDraft({
+      data: { name: "Spring", subject: "New in", body: "Hi", ...fields },
+      context,
+    });
+  const route = readFileSync("src/routes/_authenticated/marketing.tsx", "utf8")
+    .split("\r\n")
+    .join("\n");
+
+  beforeEach(() => {
+    db.reset({ contacts: [aContact("c1", { email: "a@example.com" })], campaigns: [] });
+  });
+
+  test("the limits the form uses are the ones the server enforces", async () => {
+    // Exactly at each limit is saved; one over is refused. If the constant and
+    // the schema ever came apart, one of the two halves would fail.
+    for (const [field, limit] of Object.entries(CAMPAIGN_FIELD_LIMITS)) {
+      const ok = await saveWith({ [field]: "x".repeat(limit) });
+      assert.equal(ok.ok, true, `${field} at ${limit}`);
+      await assert.rejects(
+        saveWith({ [field]: "x".repeat(limit + 1) }),
+        (error) => error.message === CAMPAIGN_TOO_LONG,
+        `${field} at ${limit + 1}`,
+      );
+    }
+  });
+
+  test("what the page receives is a code, never JSON, and nothing is saved", async () => {
+    await assert.rejects(
+      saveWith({ name: "n".repeat(CAMPAIGN_FIELD_LIMITS.name + 1) }),
+      (error) => {
+        assert.equal(error.message, CAMPAIGN_TOO_LONG);
+        assert.doesNotMatch(error.message, /[{}[\]"]/);
+        return true;
+      },
+    );
+    assert.equal(db.table("campaigns").length, 0);
+    assert.equal(reads.length, 0, "refused before anything was read");
+  });
+
+  test("a different mistake is still the validator's own error, not mislabelled", async () => {
+    await assert.rejects(saveWith({ name: "   " }), (error) => error.message !== CAMPAIGN_TOO_LONG);
+  });
+
+  test("the AI writer's two free-text fields work the same way", async () => {
+    const draftWith = (fields) =>
+      server.serverFns.draftCampaignForAudience({
+        data: { goal: "Win back wholesale buyers", channel: "email", ...fields },
+        context,
+      });
+    for (const [field, limit] of Object.entries(AI_DRAFT_FIELD_LIMITS)) {
+      const ok = await draftWith({ [field]: "x".repeat(limit) });
+      assert.equal(ok.ok, true, `${field} at ${limit}`);
+      await assert.rejects(
+        draftWith({ [field]: "x".repeat(limit + 1) }),
+        (error) => error.message === AI_DRAFT_TOO_LONG,
+        `${field} at ${limit + 1}`,
+      );
+    }
+  });
+
+  test("every limited input on the page carries its limit, from the shared constant", () => {
+    for (const [id, constant] of [
+      ["c_name", "CAMPAIGN_FIELD_LIMITS.name"],
+      ["c_subject", "CAMPAIGN_FIELD_LIMITS.subject"],
+      ["c_body", "CAMPAIGN_FIELD_LIMITS.body"],
+      ["ai_goal", "AI_DRAFT_FIELD_LIMITS.goal"],
+      ["ai_audience", "AI_DRAFT_FIELD_LIMITS.audience"],
+    ]) {
+      const opening = new RegExp(String.raw`<(?:Input|Textarea)\s+id="${id}"[^>]*?>`, "s");
+      const tag = route.match(opening);
+      assert.ok(tag, `${id} is on the page`);
+      assert.ok(tag[0].includes(`maxLength={${constant}}`), `${id} has maxLength={${constant}}`);
+    }
+  });
+
+  test("the page shows a sentence in the reader's language for each code", () => {
+    assert.match(
+      route,
+      /e\.message === CAMPAIGN_TOO_LONG \? t\("marketing\.campaignTooLong"\) : e\.message/,
+    );
+    assert.match(
+      route,
+      /e\.message === AI_DRAFT_TOO_LONG \? t\("marketing\.draftTooLong"\) : e\.message/,
+    );
+    const screens = readFileSync("src/lib/i18n/screens/marketing.ts", "utf8");
+    for (const key of ["marketing.campaignTooLong", "marketing.draftTooLong"]) {
+      assert.equal(screens.split(`"${key}"`).length - 1, 5, `${key} in five languages`);
+    }
+  });
+});

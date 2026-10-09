@@ -7,7 +7,14 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { audienceBlockedReason, type CampaignAudience } from "@/lib/campaign-audience";
+import {
+  AI_DRAFT_FIELD_LIMITS,
+  AI_DRAFT_TOO_LONG,
+  CAMPAIGN_FIELD_LIMITS,
+  CAMPAIGN_TOO_LONG,
+  audienceBlockedReason,
+  type CampaignAudience,
+} from "@/lib/campaign-audience";
 import {
   draftCampaignForAudience,
   getCampaignAudience,
@@ -393,7 +400,10 @@ function MarketingPage() {
       toast.success(t("marketing.campaignSavedAsADraft"));
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    // A field that got past `maxLength` is refused by the server with a code,
+    // which is shown as a sentence and not as the validator's own text.
+    onError: (e: Error) =>
+      toast.error(e.message === CAMPAIGN_TOO_LONG ? t("marketing.campaignTooLong") : e.message),
   });
 
   const generateDraft = useMutation({
@@ -423,7 +433,8 @@ function MarketingPage() {
         }),
       );
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) =>
+      toast.error(e.message === AI_DRAFT_TOO_LONG ? t("marketing.draftTooLong") : e.message),
   });
 
   function useDraftInCampaign() {
@@ -767,6 +778,7 @@ function MarketingPage() {
               <Textarea
                 id="ai_goal"
                 rows={2}
+                maxLength={AI_DRAFT_FIELD_LIMITS.goal}
                 placeholder={t("marketing.eGReEngageWholesale")}
                 value={aiForm.goal}
                 onChange={(e) => setAiForm({ ...aiForm, goal: e.target.value })}
@@ -777,6 +789,7 @@ function MarketingPage() {
                 <Label htmlFor="ai_audience">{t("marketing.audienceOptional")}</Label>
                 <Input
                   id="ai_audience"
+                  maxLength={AI_DRAFT_FIELD_LIMITS.audience}
                   placeholder={t("marketing.eGPopupChatLeads")}
                   value={aiForm.audience}
                   onChange={(e) => setAiForm({ ...aiForm, audience: e.target.value })}
@@ -1100,6 +1113,7 @@ function MarketingPage() {
                 <Label htmlFor="c_name">{t("marketing.campaignName")}</Label>
                 <Input
                   id="c_name"
+                  maxLength={CAMPAIGN_FIELD_LIMITS.name}
                   value={campaignForm.name}
                   onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
                 />
@@ -1108,6 +1122,7 @@ function MarketingPage() {
                 <Label htmlFor="c_subject">{t("marketing.emailSubject")}</Label>
                 <Input
                   id="c_subject"
+                  maxLength={CAMPAIGN_FIELD_LIMITS.subject}
                   value={campaignForm.subject}
                   onChange={(e) => setCampaignForm({ ...campaignForm, subject: e.target.value })}
                 />
@@ -1118,6 +1133,7 @@ function MarketingPage() {
               <Textarea
                 id="c_body"
                 rows={5}
+                maxLength={CAMPAIGN_FIELD_LIMITS.body}
                 value={campaignForm.body}
                 onChange={(e) => setCampaignForm({ ...campaignForm, body: e.target.value })}
               />

@@ -102,6 +102,24 @@ export type AudienceInput = {
 };
 
 /**
+ * The longest each field of a saved campaign may be. The form's `maxLength` and
+ * the server's check both read these, so a limit cannot be changed in one place
+ * and left behind in the other.
+ */
+export const CAMPAIGN_FIELD_LIMITS = { name: 200, subject: 500, body: 100_000 } as const;
+
+/** The same for the Flas AI campaign writer's two free-text fields. */
+export const AI_DRAFT_FIELD_LIMITS = { goal: 500, audience: 300 } as const;
+
+/**
+ * What the server answers when one of those fields was too long. A code and not
+ * a sentence, so the page can show it in the reader's own language instead of
+ * the validator's JSON.
+ */
+export const CAMPAIGN_TOO_LONG = "campaign_field_too_long";
+export const AI_DRAFT_TOO_LONG = "ai_draft_field_too_long";
+
+/**
  * The opt-in test for one record. `consent_given` must be explicitly true — a
  * missing or null value is not consent — and an explicit `subscribed: false`
  * suppresses a person who consented earlier and has since unsubscribed. What an

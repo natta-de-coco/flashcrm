@@ -158,6 +158,10 @@ export default screen({
     "marketing.starter.3.audience": "Opted-in recent customers",
     "marketing.campaignNotSaved":
       "The campaign was not saved because we could not check who is in your audience. Please try again.",
+    "marketing.campaignTooLong":
+      "That is too long to save. Shorten the name or subject and try again.",
+    "marketing.draftTooLong":
+      "That is too long for Flas AI to use. Shorten the goal or the audience and try again.",
   },
   ar: {
     "marketing.checkingWhoHasOptedIn": "جارٍ التحقق ممن وافقوا على الاشتراك…",
@@ -312,6 +316,10 @@ export default screen({
     "marketing.starter.3.audience": "العملاء الجدد الموافقون",
     "marketing.campaignNotSaved":
       "لم تُحفظ الحملة لأننا لم نتمكن من التحقق من الأشخاص في جمهورك. يرجى المحاولة مرة أخرى.",
+    "marketing.campaignTooLong":
+      "هذا النص أطول من أن يُحفظ. اختصر الاسم أو الموضوع ثم حاول مرة أخرى.",
+    "marketing.draftTooLong":
+      "هذا النص أطول من أن يستخدمه Flas AI. اختصر الهدف أو الجمهور ثم حاول مرة أخرى.",
   },
   ms: {
     "marketing.checkingWhoHasOptedIn": "Menyemak siapa yang telah memberi persetujuan…",
@@ -469,6 +477,10 @@ export default screen({
     "marketing.starter.3.audience": "Pelanggan terkini yang bersetuju",
     "marketing.campaignNotSaved":
       "Kempen tidak disimpan kerana kami tidak dapat menyemak siapa dalam audiens anda. Sila cuba lagi.",
+    "marketing.campaignTooLong":
+      "Ini terlalu panjang untuk disimpan. Pendekkan nama atau subjek dan cuba lagi.",
+    "marketing.draftTooLong":
+      "Ini terlalu panjang untuk digunakan oleh Flas AI. Pendekkan matlamat atau audiens dan cuba lagi.",
   },
   fil: {
     "marketing.checkingWhoHasOptedIn": "Tinitingnan kung sino ang pumayag…",
@@ -627,6 +639,10 @@ export default screen({
     "marketing.starter.3.audience": "Mga kamakailang customer na pumayag",
     "marketing.campaignNotSaved":
       "Hindi na-save ang campaign dahil hindi namin nasuri kung sino ang nasa audience mo. Pakisubukan ulit.",
+    "marketing.campaignTooLong":
+      "Masyadong mahaba ito para i-save. Paikliin ang pangalan o subject at subukan ulit.",
+    "marketing.draftTooLong":
+      "Masyadong mahaba ito para magamit ng Flas AI. Paikliin ang layunin o ang audience at subukan ulit.",
   },
   sw: {
     "marketing.checkingWhoHasOptedIn": "Inakagua nani amekubali…",
@@ -784,5 +800,9 @@ export default screen({
     "marketing.starter.3.audience": "Wateja wa hivi karibuni waliokubali",
     "marketing.campaignNotSaved":
       "Kampeni haikuhifadhiwa kwa sababu hatukuweza kuangalia ni nani walio kwenye hadhira yako. Tafadhali jaribu tena.",
+    "marketing.campaignTooLong":
+      "Hii ni ndefu mno kuhifadhiwa. Fupisha jina au mada na ujaribu tena.",
+    "marketing.draftTooLong":
+      "Hii ni ndefu mno kwa Flas AI kutumia. Fupisha lengo au hadhira na ujaribu tena.",
   },
 });
