@@ -60,10 +60,27 @@ export async function gatherCampaignAudience(
   return (await gatherCampaignAudiences(supabase))[channel];
 }
 
-export type SaveCampaignInput = { name: string; subject: string; body: string };
+export type SaveCampaignInput = {
+  name: string;
+  subject: string;
+  body: string;
+  /**
+   * One id per draft on the page, new after each successful save. The campaign
+   * is stored under it, so the same draft arriving twice (a double click, a
+   * retry after a dropped answer) is one campaign. Optional: without it a save
+   * is always a new campaign, as before.
+   */
+  id?: string | undefined;
+};
 
 export type SaveCampaignResult =
-  { ok: true; recipientsCount: number } | { ok: false; reason: "audience_unavailable" };
+  | {
+      ok: true;
+      recipientsCount: number;
+      /** This draft had been saved already; nothing new was stored. */
+      repeated?: true;
+    }
+  | { ok: false; reason: "audience_unavailable" };
 
 /**
  * Saves a campaign as a draft with the audience it has right now.
@@ -91,13 +108,31 @@ export async function saveCampaignDraft(
   }
 
   const { error } = await supabase.from("campaigns").insert({
+    ...(input.id ? { id: input.id } : {}),
     name: input.name,
     subject: input.subject,
     body: input.body,
     recipients_count: audience.total,
     created_by: actor.userId ?? null,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // 23505 is unique_violation. On a draft's own id it means "already saved",
+    // but only if the caller can see that campaign: the row is read back through
+    // the caller's own client, so an id that belongs to someone else's campaign
+    // (or to nothing the caller may see) is a failure, never a success.
+    if (input.id && error.code === "23505") {
+      const { data, error: readError } = await supabase
+        .from("campaigns")
+        .select("id, recipients_count")
+        .eq("id", input.id)
+        .maybeSingle();
+      if (readError) throw new Error(readError.message);
+      if (!data) throw new Error(error.message);
+      const stored = (data as { recipients_count?: number | null }).recipients_count;
+      return { ok: true, recipientsCount: typeof stored === "number" ? stored : 0, repeated: true };
+    }
+    throw new Error(error.message);
+  }
   return { ok: true, recipientsCount: audience.total };
 }
 

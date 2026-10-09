@@ -1167,3 +1167,106 @@ describe("PR #58: the paged reads are checked against what they can really do", 
     assert.equal(email.truncated, true);
   });
 });
+
+describe("PR #58: saving the same draft twice makes one campaign", () => {
+  const context = { supabase: client, userId: "user-1" };
+  const DRAFT = "6f1c7a1e-4b0d-4c55-8a3e-0a1b2c3d4e5f";
+  const save = (extra = {}) =>
+    server.serverFns.saveCampaignDraft({
+      data: { name: "Spring launch", subject: "New in", body: "Hi", ...extra },
+      context,
+    });
+
+  beforeEach(() => {
+    db.reset({
+      contacts: [
+        aContact("c1", { email: "a@example.com" }),
+        aContact("c2", { email: "b@example.com" }),
+      ],
+      campaigns: [],
+    });
+    // The table's primary key, so that a second insert of one id is a 23505.
+    db.unique("campaigns", ["id"]);
+  });
+
+  test("the second save of one draft is the same campaign, reported as already saved", async () => {
+    const first = await save({ id: DRAFT });
+    const second = await save({ id: DRAFT });
+    assert.deepEqual(first, { ok: true, recipientsCount: 2 });
+    assert.deepEqual(second, { ok: true, recipientsCount: 2, repeated: true });
+    assert.equal(db.table("campaigns").length, 1);
+    assert.equal(db.table("campaigns")[0].id, DRAFT, "stored under the id the page sent");
+  });
+
+  test("two saves at once are one campaign", async () => {
+    const results = await Promise.all([save({ id: DRAFT }), save({ id: DRAFT })]);
+    assert.equal(db.table("campaigns").length, 1);
+    assert.equal(results.filter((r) => r.repeated === true).length, 1);
+    assert.ok(results.every((r) => r.ok === true && r.recipientsCount === 2));
+  });
+
+  test("the count reported for a repeat is the one that was stored", async () => {
+    await save({ id: DRAFT });
+    db.table("contacts").push(aContact("c3", { email: "c@example.com" }));
+    const second = await save({ id: DRAFT });
+    assert.equal(second.recipientsCount, 2, "not re-counted: nothing new was saved");
+    assert.equal(db.table("campaigns")[0].recipients_count, 2);
+  });
+
+  test("a new draft gets a new id and is a new campaign", async () => {
+    await save({ id: DRAFT });
+    await save({ id: "0a1b2c3d-4e5f-4a6b-8c7d-9e8f7a6b5c4d" });
+    assert.equal(db.table("campaigns").length, 2);
+  });
+
+  test("an id the caller cannot see is a failure, not a success", async () => {
+    // Someone else's campaign under that id: the unique key refuses the insert,
+    // and the caller's own client cannot read it back.
+    db.table("campaigns").push({ id: DRAFT, name: "Theirs", recipients_count: 40 });
+    db.fail("campaigns:read", { empty: true });
+    await assert.rejects(save({ id: DRAFT }), /duplicate key/);
+    assert.equal(db.table("campaigns").length, 1);
+  });
+
+  test("a failed read-back is a failure too", async () => {
+    await save({ id: DRAFT });
+    db.fail("campaigns:read", { message: "permission denied for table" });
+    await assert.rejects(save({ id: DRAFT }), /permission denied/);
+  });
+
+  test("a unique violation without an id from the page is still an error", async () => {
+    db.fail("campaigns:insert", { code: "23505", message: "duplicate key value" });
+    await assert.rejects(save(), /duplicate key/);
+    assert.equal(
+      reads.some((r) => r.table === "campaigns"),
+      false,
+      "nothing is read back",
+    );
+  });
+
+  test("without an id a save is a new campaign each time, as before", async () => {
+    await save();
+    await save();
+    assert.equal(db.table("campaigns").length, 2);
+  });
+
+  test("an id that is not a uuid is refused", async () => {
+    await assert.rejects(save({ id: "not-a-uuid" }));
+    assert.equal(db.table("campaigns").length, 0);
+  });
+
+  test("the page sends one id per draft and takes a new one after each save", () => {
+    const route = readFileSync("src/routes/_authenticated/marketing.tsx", "utf8")
+      .split("\r\n")
+      .join("\n");
+    assert.match(
+      route,
+      /const \[draftId, setDraftId\] = useState\(\(\) => crypto\.randomUUID\(\)\)/,
+    );
+    assert.match(route, /data: \{\s*id: draftId,/);
+    assert.match(
+      route,
+      /setCampaignForm\(\{ name: "", subject: "", body: "" \}\);\s*setDraftId\(crypto\.randomUUID\(\)\);/,
+    );
+  });
+});

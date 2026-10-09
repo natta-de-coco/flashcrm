@@ -33,6 +33,7 @@ export const getCampaignAudience = createServerFn({ method: "GET" })
   });
 
 const SaveCampaignSchema = z.object({
+  id: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(CAMPAIGN_FIELD_LIMITS.name),
   subject: z.string().max(CAMPAIGN_FIELD_LIMITS.subject).default(""),
   body: z.string().max(CAMPAIGN_FIELD_LIMITS.body).default(""),

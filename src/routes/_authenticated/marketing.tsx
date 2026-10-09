@@ -235,6 +235,10 @@ function MarketingPage() {
   const draftWithFlashAi = useServerFn(draftCampaignForAudience);
   const loadAudience = useServerFn(getCampaignAudience);
   const saveCampaign = useServerFn(saveCampaignDraft);
+  // One id for the draft on screen. The server stores the campaign under it, so
+  // a second click, or a retry after an answer that never arrived, cannot make a
+  // second campaign. It is replaced once the draft has been saved.
+  const [draftId, setDraftId] = useState(() => crypto.randomUUID());
   const loadWhatsAppGrowthSegments = useServerFn(getWhatsAppGrowthSegments);
 
   useEffect(() => setOrigin(window.location.origin), []);
@@ -384,6 +388,7 @@ function MarketingPage() {
     mutationFn: () =>
       saveCampaign({
         data: {
+          id: draftId,
           name: campaignForm.name,
           subject: campaignForm.subject,
           body: campaignForm.body,
@@ -397,6 +402,7 @@ function MarketingPage() {
         return;
       }
       setCampaignForm({ name: "", subject: "", body: "" });
+      setDraftId(crypto.randomUUID());
       toast.success(t("marketing.campaignSavedAsADraft"));
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
