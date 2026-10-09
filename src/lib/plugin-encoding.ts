@@ -16,10 +16,13 @@
 export const GREETING_MAX_LENGTH = 300;
 
 // Every control character except tab (0x09) and newline (0x0A): NUL, carriage
-// return, escape, delete and the 0x80-0x9F block.
+// return, escape, delete and the 0x80-0x9F block. (Matching control characters
+// is the point of these three patterns, so the lint rule against it is off.)
+// eslint-disable-next-line no-control-regex
 const CONTROL_EXCEPT_TAB_AND_NEWLINE = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g;
 
 // All control characters, for text that is going to be on a single line.
+// eslint-disable-next-line no-control-regex
 const ANY_CONTROL = /[\u0000-\u001F\u007F-\u009F]/g;
 
 const SITE_KEY = /^[A-Za-z0-9_-]{10,120}$/;
@@ -27,6 +30,7 @@ const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i;
 
 // Characters that never belong in an address and could end a quoted value if
 // one slipped through: whitespace, quotes, angle brackets, backslash, control.
+// eslint-disable-next-line no-control-regex
 const NOT_IN_AN_ADDRESS = /[\s\u0000-\u001F\u007F-\u009F"'`<>\\]/;
 
 /** Cuts a greeting to its limit by whole characters, never through the middle of one. */
