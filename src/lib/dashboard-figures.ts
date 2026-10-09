@@ -75,6 +75,44 @@ export function pendingBreakdownNote(pending: { total: number; counted: number }
   return `Showing the ${pending.counted} most recent of ${pending.total} waiting for a reply — open the Inbox for the rest.`;
 }
 
+/**
+ * When a brief was written, as a date, or null when there is no usable
+ * timestamp. A missing or unreadable one used to reach `new Date(...)
+ * .toLocaleTimeString()` and print "Invalid Date" to the reader.
+ */
+export function briefWrittenAt(generatedAt: string | null | undefined): Date | null {
+  if (!generatedAt) return null;
+  const written = new Date(generatedAt);
+  return Number.isFinite(written.getTime()) ? written : null;
+}
+
+/**
+ * How old a brief is at the moment the server answers, worked out on the
+ * server from its own clock and the brief's own timestamp. Null when it cannot
+ * be worked out. The reader's device clock plays no part: it can be minutes or
+ * hours off, which made a brief look "just written" or very old at will.
+ */
+export function briefAgeMs(generatedAt: string | null | undefined, now: Date): number | null {
+  const written = briefWrittenAt(generatedAt);
+  return written ? Math.max(0, now.getTime() - written.getTime()) : null;
+}
+
+/**
+ * How far the brief is behind the cards beside it: the age the server gave when
+ * the brief was fetched, plus the time between fetching the brief and last
+ * fetching the cards. Both fetch times come from the same device clock, so only
+ * their difference is used, and a wrong clock cancels out. NaN when the age is
+ * unknown, which `briefSnapshotKind` never calls fresh.
+ */
+export function briefAgeBesideCards(input: {
+  ageMs: number | null | undefined;
+  briefFetchedAt: number;
+  cardsFetchedAt: number;
+}): number {
+  if (typeof input.ageMs !== "number" || !Number.isFinite(input.ageMs)) return Number.NaN;
+  return input.ageMs + Math.max(0, input.cardsFetchedAt - input.briefFetchedAt);
+}
+
 /** Beyond this, a cached brief and the live cards have had time to diverge. */
 export const BRIEF_DIVERGENCE_MS = 5 * 60_000;
 

@@ -4,12 +4,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
 import { getDashboardOverviewData } from "./dashboard.server";
+import { briefAgeMs } from "./dashboard-figures";
 
 export type DailyBrief = {
   headline: string;
   summary: string;
   actions: string[];
-  generatedAt: string;
+  /** Null when the stored brief has no usable timestamp. */
+  generatedAt: string | null;
+  /**
+   * How old the brief was when this answer was made, by the server's clock. The
+   * page uses this and not its own clock to say how fresh the brief is.
+   */
+  ageMs: number | null;
   cached: boolean;
 };
 
@@ -76,6 +83,7 @@ async function generateDailyBrief(supabase: SupabaseClient): Promise<DailyBrief>
     summary: parsed.summary?.trim() || "No summary available right now.",
     actions: (parsed.actions ?? []).filter((a) => typeof a === "string" && a.trim()).slice(0, 3),
     generatedAt: new Date().toISOString(),
+    ageMs: 0,
     cached: false,
   };
 }
@@ -109,7 +117,8 @@ export async function buildDailyBrief(
         headline: existing.headline,
         summary: existing.summary,
         actions: Array.isArray(existing.actions) ? (existing.actions as string[]) : [],
-        generatedAt: existing.created_at,
+        generatedAt: existing.created_at ?? null,
+        ageMs: briefAgeMs(existing.created_at, new Date()),
         cached: true,
       };
     }
@@ -124,7 +133,7 @@ export async function buildDailyBrief(
       headline: fresh.headline,
       summary: fresh.summary,
       actions: fresh.actions,
-      created_at: fresh.generatedAt,
+      created_at: fresh.generatedAt ?? new Date().toISOString(),
     },
     { onConflict: "tenant_id,brief_date" },
   );

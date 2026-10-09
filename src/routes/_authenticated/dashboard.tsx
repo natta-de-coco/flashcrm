@@ -16,7 +16,12 @@ import { getDashboardOverview } from "@/lib/dashboard.functions";
 import { getDailyBrief } from "@/lib/brief.functions";
 import type { BusinessHealth, Trend } from "@/lib/dashboard.server";
 import { getMetaSyncHealth } from "@/lib/meta-health.functions";
-import { briefSnapshotKind, pendingBreakdownNote } from "@/lib/dashboard-figures";
+import {
+  briefAgeBesideCards,
+  briefSnapshotKind,
+  briefWrittenAt,
+  pendingBreakdownNote,
+} from "@/lib/dashboard-figures";
 import { usePersistentTimestamp } from "@/hooks/usePersistentTimestamp";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, type MessageKey } from "@/lib/i18n";
@@ -283,6 +288,7 @@ function DashboardPage() {
     onError: (e: Error) => toast.error(e.message),
   });
   const briefBusy = brief.isFetching || regenerateBrief.isPending;
+  const writtenAt = briefWrittenAt(brief.data?.generatedAt);
 
   // Widget error logging — report each distinct failure once per message so
   // slow/flaky endpoints are visible in function logs and the audit trail.
@@ -463,18 +469,25 @@ function DashboardPage() {
                     every 30 seconds. Saying so is the honest fix for the brief
                     quoting health 62 beside a card reading 60 (QA M7):
                     regenerating is the only way to make them one number. */}
+                {/* How old the brief is comes from the server, which knows when it
+                    wrote it. The device's own clock is used only to tell how long
+                    ago the brief and the cards were each fetched, as a difference,
+                    so a wrong clock cannot make an old brief look new. A brief
+                    with no usable timestamp says so and prints no time. */}
                 <p className="text-[11px] text-muted-foreground">
-                  {t(
-                    `dashboard.brief.note.${briefSnapshotKind({
-                      cached: brief.data.cached,
-                      ageMs: Math.max(
-                        0,
-                        (overview.dataUpdatedAt || Date.now()) -
-                          new Date(brief.data.generatedAt).getTime(),
-                      ),
-                    })}`,
-                    { time: new Date(brief.data.generatedAt).toLocaleTimeString() },
-                  )}
+                  {writtenAt
+                    ? t(
+                        `dashboard.brief.note.${briefSnapshotKind({
+                          cached: brief.data.cached,
+                          ageMs: briefAgeBesideCards({
+                            ageMs: brief.data.ageMs,
+                            briefFetchedAt: brief.dataUpdatedAt,
+                            cardsFetchedAt: overview.dataUpdatedAt,
+                          }),
+                        })}`,
+                        { time: writtenAt.toLocaleTimeString() },
+                      )
+                    : t("dashboard.brief.note.unknown")}
                 </p>
               </div>
             ) : (
