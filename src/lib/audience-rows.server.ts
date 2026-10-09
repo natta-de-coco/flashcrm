@@ -25,6 +25,12 @@ const PAGE_SIZE = 1000;
 /**
  * Reads up to `ceiling` rows of a table, a page at a time, in a stable order.
  * A failed read throws: it is never an empty table.
+ *
+ * Pages follow one another by `id`, each asking for the rows after the last one
+ * seen, rather than by position: a row added or removed between two requests
+ * moves every position after it and would repeat or skip a row, and a late page
+ * by offset costs the database more the further it goes. The exact count is
+ * asked of the first request only, since it is the same on every page.
  */
 export async function readRows<T>(
   supabase: SupabaseClient,
@@ -33,21 +39,26 @@ export async function readRows<T>(
   ceiling: number,
 ): Promise<T[]> {
   const rows: T[] = [];
+  let total: number | null = null;
+  let after: string | null = null;
   while (rows.length < ceiling) {
-    const from = rows.length;
-    const asked = Math.min(PAGE_SIZE, ceiling - from);
-    const { data, error, count } = await supabase
-      .from(table)
-      .select(columns, { count: "exact" })
+    const asked = Math.min(PAGE_SIZE, ceiling - rows.length);
+    const first = rows.length === 0;
+    const query = supabase.from(table).select(columns, first ? { count: "exact" } : {});
+    const { data, error, count } = await (after === null ? query : query.gt("id", after))
       .order("id", { ascending: true })
-      .range(from, from + asked - 1);
+      .limit(asked);
     if (error) throw new Error(error.message);
     const page = (data ?? []) as unknown as T[];
+    if (first) total = count;
     rows.push(...page);
     // The response, not the request, says how much there is: stop at the
     // reported total, or at a page that came back short or empty.
     if (page.length === 0) break;
-    if (count != null ? rows.length >= count : page.length < asked) break;
+    if (total != null ? rows.length >= total : page.length < asked) break;
+    const lastId = (page[page.length - 1] as { id?: string | null }).id;
+    if (lastId == null) throw new Error(`Could not read ${table}: a row came back without an id.`);
+    after = lastId;
   }
   return rows;
 }

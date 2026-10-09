@@ -1270,3 +1270,60 @@ describe("PR #58: saving the same draft twice makes one campaign", () => {
     );
   });
 });
+
+describe("PR #58: pages follow the last id, and only the first is counted", () => {
+  const people = (n) =>
+    Array.from({ length: n }, (_, i) =>
+      aContact(`c${String(i).padStart(5, "0")}`, { email: `p${i}@example.com` }),
+    );
+
+  test("the exact count is asked once per table, and no page is asked for by position", async () => {
+    db.reset({ contacts: people(1500) });
+    await server.gatherCampaignAudiences(client);
+    const ofContacts = reads.filter((r) => r.table === "contacts");
+    assert.equal(ofContacts.length, 2);
+    assert.deepEqual(
+      ofContacts.map((r) => [r.counted, r.after]),
+      [
+        [true, false],
+        [false, true],
+      ],
+    );
+    assert.ok(
+      reads.every((r) => r.window === null),
+      "no offset is used to find a page",
+    );
+  });
+
+  test("a row that goes away between two pages does not make the next one skip a person", async () => {
+    // By position, page two starts one row too late once an earlier row is gone.
+    db.reset({ contacts: people(1500) });
+    let requests = 0;
+    db.fail("contacts:read", () => {
+      requests += 1;
+      if (requests === 2) db.table("contacts").splice(0, 1);
+      return undefined;
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.total, 1500, "everyone seen on page one, and everyone after them");
+  });
+
+  test("a late page in a long table is found by its id, whatever is before it", async () => {
+    // 2,601 card addresses over three pages; the one that matters is on page two,
+    // where a read that is not ordered by id serves other rows.
+    const rows = Array.from({ length: 2601 }, (_, i) =>
+      anIdentity(
+        `i${String(i).padStart(5, "0")}`,
+        i === 1200 ? "c1" : "c-other",
+        i === 1200 ? "email" : "phone",
+        i === 1200 ? "late@example.com" : `+9715${1000000 + i}`,
+      ),
+    );
+    db.reset({
+      contacts: [aContact("c1"), aContact("c-other", { consent_given: false })],
+      contact_identities: rows,
+    });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.deepEqual(addresses(email), ["late@example.com"]);
+  });
+});

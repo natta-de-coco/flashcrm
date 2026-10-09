@@ -43,6 +43,11 @@ export function createDb() {
       if (value === null) this.filters.push((r) => r[key] == null);
       return this;
     }
+    gt(key, value) {
+      // Compared the way `order` sorts, so "after this id" and "ordered by id" agree.
+      this.filters.push((r) => String(r[key] ?? "").localeCompare(String(value)) > 0);
+      return this;
+    }
     gte(key, value) {
       this.filters.push((r) => String(r[key] ?? "") >= value);
       return this;

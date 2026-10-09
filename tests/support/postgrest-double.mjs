@@ -6,8 +6,8 @@
 //     nothing in the response says rows were left behind;
 //   * `.range(from, to)` returns that window, and `{ count: "exact" }` reports
 //     every row the query matches, not the rows in the window. A ranged read
-//     with no `.order()` has no stable order: every window after the first is
-//     served in reverse;
+//     with no `.order()` has no stable order: every window after the first (and
+//     every read for the rows after a given id) is served in reverse;
 //   * only the columns named in `.select()` come back, and `{ head: true }`
 //     returns the count with no rows at all.
 //
@@ -42,6 +42,7 @@ export function asPostgrest(db, { maxRows = SERVER_MAX_ROWS } = {}) {
       let head = false;
       let window = null;
       let limit = null;
+      let keyset = false;
 
       const select = query.select.bind(query);
       query.select = (wanted, options) => {
@@ -55,6 +56,12 @@ export function asPostgrest(db, { maxRows = SERVER_MAX_ROWS } = {}) {
       query.range = (from, to) => {
         window = [from, to];
         return query;
+      };
+      const gt = query.gt.bind(query);
+      query.gt = (key, value) => {
+        // "The rows after this one" is a way of paging that needs an order.
+        keyset = true;
+        return gt(key, value);
       };
       query.limit = (n) => {
         limit = n;
@@ -73,17 +80,29 @@ export function asPostgrest(db, { maxRows = SERVER_MAX_ROWS } = {}) {
           if (!Array.isArray(result.data)) return result;
           // Without an ORDER BY, which rows come back in which window is the
           // database's choice, and it may choose differently for each request.
-          // Every window after the first is therefore served in reverse here,
-          // so a paged read that forgot to order loses and repeats rows exactly
-          // as it can on a real table, instead of working because the double
-          // happens to hand rows back in insertion order.
+          // Every window after the first, and every read for the rows after a
+          // given one, is therefore served in reverse here, so a paged read that
+          // forgot to order loses and repeats rows exactly as it can on a real
+          // table, instead of working because the double happens to hand rows
+          // back in insertion order.
           const ordered = query.sort != null;
           const matched =
-            !ordered && window && window[0] > 0 ? [...result.data].reverse() : result.data;
+            !ordered && ((window && window[0] > 0) || keyset)
+              ? [...result.data].reverse()
+              : result.data;
           const from = window ? window[0] : 0;
           const asked = window ? window[1] - window[0] + 1 : (limit ?? matched.length);
           const page = matched.slice(from, from + Math.min(asked, maxRows));
-          reads.push({ table, columns, head, window, limit, returned: head ? 0 : page.length });
+          reads.push({
+            table,
+            columns,
+            head,
+            window,
+            limit,
+            counted: query.counting === true,
+            after: keyset,
+            returned: head ? 0 : page.length,
+          });
           return {
             ...result,
             data: head ? null : page.map((row) => project(row, columns)),
