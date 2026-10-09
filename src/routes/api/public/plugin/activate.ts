@@ -37,6 +37,16 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
           const { requestSiteActivation } = await import("@/lib/plugin-activation.server");
           const { siteHostname } = await import("@/lib/domain-pin");
 
+          const domain = siteHostname(parsed.domain);
+          // An invalid supplied address must not turn into an unrestricted
+          // null pin. Omission may still preserve an existing registered pin.
+          if (parsed.domain !== undefined && !domain) {
+            return new Response(JSON.stringify({ error: "Invalid website address" }), {
+              status: 400,
+              headers: corsHeaders,
+            });
+          }
+
           const { data: site } = await supabaseAdmin
             .from("lead_sites")
             .select("id, status, active")
@@ -54,9 +64,8 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
             siteId: site.id,
             origin: new URL(request.url).origin,
             // The plugin reports its full address (home_url()); the pin is
-            // checked against the host name, so that is what is stored. An
-            // address that cannot be read is dropped, not stored.
-            domain: siteHostname(parsed.domain),
+            // checked against the host name, so that is what is stored.
+            domain,
             adminEmail: parsed.adminEmail ?? null,
             platform: parsed.platform ?? "wordpress",
           });

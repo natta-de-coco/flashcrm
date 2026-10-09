@@ -354,17 +354,27 @@ describe("plugin activation stores the site's name, not its address", () => {
     });
   }
 
-  it("stores no new address when the one reported cannot be read", async () => {
+  it("refuses an invalid supplied address before any activation side effects", async () => {
     for (const junk of ["??", "http://", "   ", "a b"]) {
       const response = await activate({ domain: junk });
-      assert.equal(response.status, 200);
+      assert.equal(response.status, 400);
+      assert.match((await response.json()).error, /website address/i);
       assert.equal(db.table("lead_sites")[0].domain, null, JSON.stringify(junk));
+      assert.equal(db.table("lead_sites")[0].status, "pending");
+      assert.equal(globalThis.publicIntake.emails.length, 0);
+      assert.equal(globalThis.publicIntake.audits.length, 0);
     }
   });
 
   it("keeps the address a pending site already had when the new one is junk", async () => {
     db.table("lead_sites")[0].domain = "shop.example";
-    await activate({ domain: "??" });
+    assert.equal((await activate({ domain: "??" })).status, 400);
+    assert.equal(db.table("lead_sites")[0].domain, "shop.example");
+  });
+
+  it("preserves the existing domain when the caller omits it", async () => {
+    db.table("lead_sites")[0].domain = "shop.example";
+    assert.equal((await activate({})).status, 200);
     assert.equal(db.table("lead_sites")[0].domain, "shop.example");
   });
 
