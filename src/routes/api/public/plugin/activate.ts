@@ -35,6 +35,7 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
         try {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const { requestSiteActivation } = await import("@/lib/plugin-activation.server");
+          const { siteHostname } = await import("@/lib/domain-pin");
 
           const { data: site } = await supabaseAdmin
             .from("lead_sites")
@@ -52,7 +53,10 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
           const result = await requestSiteActivation({
             siteId: site.id,
             origin: new URL(request.url).origin,
-            domain: parsed.domain ?? null,
+            // The plugin reports its full address (home_url()); the pin is
+            // checked against the host name, so that is what is stored. An
+            // address that cannot be read is dropped, not stored.
+            domain: siteHostname(parsed.domain),
             adminEmail: parsed.adminEmail ?? null,
             platform: parsed.platform ?? "wordpress",
           });
