@@ -19,6 +19,7 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as WhatsappBusinessApiRouteImport } from './routes/whatsapp-business-api'
 import { Route as WidgetDemoRouteImport } from './routes/widget-demo'
 import { Route as AuthenticatedAdvisorRouteImport } from './routes/_authenticated/advisor'
@@ -43,6 +44,7 @@ import { Route as BlogSlugRouteImport } from './routes/blog.$slug'
 import { Route as PayTokenRouteImport } from './routes/pay.$token'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as AuthenticatedCompaniesOrgIdRouteImport } from './routes/_authenticated/companies.$orgId'
+import { Route as AuthenticatedCompaniesEmailSettingsRouteImport } from './routes/_authenticated/companies.email-settings'
 import { Route as AuthenticatedCompaniesEmailsRouteImport } from './routes/_authenticated/companies.emails'
 import { Route as AuthenticatedCompaniesErrorsRouteImport } from './routes/_authenticated/companies.errors'
 import { Route as AuthenticatedCompaniesSubscribersRouteImport } from './routes/_authenticated/companies.subscribers'
@@ -111,6 +113,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WhatsappBusinessApiRoute = WhatsappBusinessApiRouteImport.update({
@@ -235,6 +242,12 @@ const AuthenticatedCompaniesOrgIdRoute =
     path: '/$orgId',
     getParentRoute: () => AuthenticatedCompaniesRoute,
   } as any)
+const AuthenticatedCompaniesEmailSettingsRoute =
+  AuthenticatedCompaniesEmailSettingsRouteImport.update({
+    id: '/email-settings',
+    path: '/email-settings',
+    getParentRoute: () => AuthenticatedCompaniesRoute,
+  } as any)
 const AuthenticatedCompaniesEmailsRoute =
   AuthenticatedCompaniesEmailsRouteImport.update({
     id: '/emails',
@@ -356,6 +369,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/widget-demo': typeof WidgetDemoRoute
   '/advisor': typeof AuthenticatedAdvisorRoute
@@ -380,6 +394,7 @@ export interface FileRoutesByFullPath {
   '/verify/$token': typeof VerifyTokenRoute
   '/blog/': typeof BlogIndexRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/companies/email-settings': typeof AuthenticatedCompaniesEmailSettingsRoute
   '/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
@@ -410,6 +425,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/widget-demo': typeof WidgetDemoRoute
   '/advisor': typeof AuthenticatedAdvisorRoute
@@ -433,6 +449,7 @@ export interface FileRoutesByTo {
   '/verify/$token': typeof VerifyTokenRoute
   '/blog': typeof BlogIndexRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/companies/email-settings': typeof AuthenticatedCompaniesEmailSettingsRoute
   '/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
@@ -466,6 +483,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/widget-demo': typeof WidgetDemoRoute
   '/_authenticated/advisor': typeof AuthenticatedAdvisorRoute
@@ -490,6 +508,7 @@ export interface FileRoutesById {
   '/verify/$token': typeof VerifyTokenRoute
   '/blog/': typeof BlogIndexRoute
   '/_authenticated/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/_authenticated/companies/email-settings': typeof AuthenticatedCompaniesEmailSettingsRoute
   '/_authenticated/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/_authenticated/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/_authenticated/companies/subscribers': typeof AuthenticatedCompaniesSubscribersRoute
@@ -523,6 +542,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/unsubscribe'
     | '/whatsapp-business-api'
     | '/widget-demo'
     | '/advisor'
@@ -547,6 +567,7 @@ export interface FileRouteTypes {
     | '/verify/$token'
     | '/blog/'
     | '/companies/$orgId'
+    | '/companies/email-settings'
     | '/companies/emails'
     | '/companies/errors'
     | '/companies/subscribers'
@@ -577,6 +598,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/unsubscribe'
     | '/whatsapp-business-api'
     | '/widget-demo'
     | '/advisor'
@@ -600,6 +622,7 @@ export interface FileRouteTypes {
     | '/verify/$token'
     | '/blog'
     | '/companies/$orgId'
+    | '/companies/email-settings'
     | '/companies/emails'
     | '/companies/errors'
     | '/companies/subscribers'
@@ -632,6 +655,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/unsubscribe'
     | '/whatsapp-business-api'
     | '/widget-demo'
     | '/_authenticated/advisor'
@@ -656,6 +680,7 @@ export interface FileRouteTypes {
     | '/verify/$token'
     | '/blog/'
     | '/_authenticated/companies/$orgId'
+    | '/_authenticated/companies/email-settings'
     | '/_authenticated/companies/emails'
     | '/_authenticated/companies/errors'
     | '/_authenticated/companies/subscribers'
@@ -689,6 +714,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  UnsubscribeRoute: typeof UnsubscribeRoute
   WhatsappBusinessApiRoute: typeof WhatsappBusinessApiRoute
   WidgetDemoRoute: typeof WidgetDemoRoute
   PayTokenRoute: typeof PayTokenRoute
@@ -779,6 +805,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/whatsapp-business-api': {
@@ -949,6 +982,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCompaniesOrgIdRouteImport
       parentRoute: typeof AuthenticatedCompaniesRoute
     }
+    '/_authenticated/companies/email-settings': {
+      id: '/_authenticated/companies/email-settings'
+      path: '/email-settings'
+      fullPath: '/companies/email-settings'
+      preLoaderRoute: typeof AuthenticatedCompaniesEmailSettingsRouteImport
+      parentRoute: typeof AuthenticatedCompaniesRoute
+    }
     '/_authenticated/companies/emails': {
       id: '/_authenticated/companies/emails'
       path: '/emails'
@@ -1094,6 +1134,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedCompaniesRouteChildren {
   AuthenticatedCompaniesOrgIdRoute: typeof AuthenticatedCompaniesOrgIdRoute
+  AuthenticatedCompaniesEmailSettingsRoute: typeof AuthenticatedCompaniesEmailSettingsRoute
   AuthenticatedCompaniesEmailsRoute: typeof AuthenticatedCompaniesEmailsRoute
   AuthenticatedCompaniesErrorsRoute: typeof AuthenticatedCompaniesErrorsRoute
   AuthenticatedCompaniesSubscribersRoute: typeof AuthenticatedCompaniesSubscribersRoute
@@ -1102,6 +1143,8 @@ interface AuthenticatedCompaniesRouteChildren {
 const AuthenticatedCompaniesRouteChildren: AuthenticatedCompaniesRouteChildren =
   {
     AuthenticatedCompaniesOrgIdRoute: AuthenticatedCompaniesOrgIdRoute,
+    AuthenticatedCompaniesEmailSettingsRoute:
+      AuthenticatedCompaniesEmailSettingsRoute,
     AuthenticatedCompaniesEmailsRoute: AuthenticatedCompaniesEmailsRoute,
     AuthenticatedCompaniesErrorsRoute: AuthenticatedCompaniesErrorsRoute,
     AuthenticatedCompaniesSubscribersRoute:
@@ -1205,6 +1248,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  UnsubscribeRoute: UnsubscribeRoute,
   WhatsappBusinessApiRoute: WhatsappBusinessApiRoute,
   WidgetDemoRoute: WidgetDemoRoute,
   PayTokenRoute: PayTokenRoute,

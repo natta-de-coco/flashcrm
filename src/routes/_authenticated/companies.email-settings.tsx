@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Activity, ArrowLeft, Mail } from "lucide-react";
 
-export const Route = createFileRoute("/_authenticated/companies/email-settings" as any)({
+export const Route = createFileRoute("/_authenticated/companies/email-settings")({
   head: () => ({
     meta: [
       { title: "Platform System Email — Flas Manager" },
