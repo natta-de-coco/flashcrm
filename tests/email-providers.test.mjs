@@ -165,8 +165,23 @@ const TENANT = "tenant-acme";
 const context = { supabase: db.client, userId: ADMIN };
 const savedRow = () => db.table("tenant_smtp_config").find((row) => row.tenant_id === TENANT);
 
+// The double's rpc never fails. This database can be told to fail the lookup of
+// a company's saved key, and only that.
+let keyFault = null;
+const dbWithKeyLookup = () => ({
+  ...db.client,
+  rpc: async (name, args) => {
+    if (name === "get_tenant_smtp_api_key" && keyFault) {
+      db.state.rpcCalls.push({ name, args });
+      return { data: null, error: keyFault };
+    }
+    return db.client.rpc(name, args);
+  },
+});
+
 beforeEach(() => {
-  globalThis.emailDb = db.client;
+  keyFault = null;
+  globalThis.emailDb = dbWithKeyLookup();
   globalThis.emailAudits = [];
   globalThis.fetch = realFetch;
   db.reset({
@@ -382,7 +397,6 @@ describe("a database error does not send a company's email through the platform 
   const envBefore = {};
   const quietLog = console.error;
   let logged;
-  let keyFault;
   let sent;
 
   /** What the platform's mailer or the company's provider is asked to do. */
@@ -410,18 +424,6 @@ describe("a database error does not send a company's email through the platform 
     logged = [];
     console.error = (...args) =>
       logged.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
-    // The double's rpc never fails; this one can, for the key lookup only.
-    keyFault = null;
-    globalThis.emailDb = {
-      ...db.client,
-      rpc: async (name, args) => {
-        if (name === "get_tenant_smtp_api_key" && keyFault) {
-          db.state.rpcCalls.push({ name, args });
-          return { data: null, error: keyFault };
-        }
-        return db.client.rpc(name, args);
-      },
-    };
     db.table("tenant_smtp_config").push({ ...COMPANY_ROW });
     db.state.rpcResults.get_tenant_smtp_api_key = "their-own-key";
     mailerRecords();
@@ -580,5 +582,131 @@ describe("the server's answer to a tab that still offers AWS SES", () => {
     assert.ok(error);
     assert.equal(validationMessage.isValidationDump(error.message), true);
     assert.equal(savedRow(), undefined);
+  });
+});
+
+// ── "Send test" for a provider that cannot send ───────────────────────────────
+// A company that saved AWS SES or an SMTP relay has no key field on the screen
+// any more. "Send test" used to look for a key first and answer "API key not
+// set — paste your provider key first", an instruction the screen cannot follow.
+describe("Send test for a provider that cannot send", () => {
+  const envBefore = {};
+  const quietLog = console.error;
+  const sent = [];
+  const keyLookups = () =>
+    db.state.rpcCalls.filter((call) => call.name === "get_tenant_smtp_api_key");
+  /** What "Send test" answers: the returned result, or the message it threw. */
+  const sendTest = (toEmail = "me@acme.test") =>
+    testTenantSmtp({ data: { toEmail }, context }).then(
+      (result) => ({ result }),
+      (error) => ({ thrown: error.message }),
+    );
+  const words = (outcome) => outcome.result?.error ?? outcome.thrown;
+
+  beforeEach(() => {
+    for (const k of ["PLATFORM_EMAIL_PROVIDER", "PLATFORM_EMAIL_API_KEY", "PLATFORM_EMAIL_FROM"])
+      envBefore[k] = process.env[k];
+    delete process.env.PLATFORM_EMAIL_PROVIDER;
+    delete process.env.PLATFORM_EMAIL_API_KEY;
+    delete process.env.PLATFORM_EMAIL_FROM;
+    console.error = () => {};
+    sent.length = 0;
+    globalThis.fetch = async (url) => {
+      sent.push(String(url));
+      return new Response(JSON.stringify({ id: "msg-1" }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-message-id": "msg-1" },
+      });
+    };
+  });
+  afterEach(() => {
+    console.error = quietLog;
+    for (const [k, v] of Object.entries(envBefore)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  for (const [provider, name] of [
+    ["ses", "AWS SES"],
+    ["smtp_relay", "SMTP relay"],
+  ]) {
+    it(`says ${name} does not send and what to choose, not "paste your key"`, async () => {
+      db.table("tenant_smtp_config").push({ tenant_id: TENANT, provider, verified: false });
+      db.state.rpcResults.get_tenant_smtp_api_key = null; // no key was ever saved
+      const out = await sendTest();
+      assert.equal(out.result?.ok, false, "a failed test, not an instruction");
+      assert.match(out.result.error, new RegExp(`${name} is not supported`));
+      assert.match(out.result.error, /Resend, Postmark, Mailgun or SendGrid/);
+      assert.doesNotMatch(words(out), /API key|paste/i);
+      assert.equal(keyLookups().length, 0, "nobody looked for a key that cannot be used");
+      assert.deepEqual(sent, [], "and nothing was sent anywhere");
+    });
+
+    it(`records that the ${name} test did not send`, async () => {
+      db.table("tenant_smtp_config").push({ tenant_id: TENANT, provider, verified: true });
+      await sendTest();
+      assert.equal(savedRow().last_test_ok, false);
+      assert.match(savedRow().last_test_error, new RegExp(`${name} is not supported`));
+      assert.equal(savedRow().verified, true, "a failed test does not undo an earlier success");
+      const logged = db.state.rpcCalls.find((call) => call.name === "log_email_delivery");
+      assert.equal(logged.args._status, "failed");
+    });
+  }
+
+  it("still asks a provider that does send for its key when none is saved", async () => {
+    db.table("tenant_smtp_config").push({ tenant_id: TENANT, provider: "resend" });
+    db.state.rpcResults.get_tenant_smtp_api_key = null;
+    const out = await sendTest();
+    assert.match(out.thrown, /API key not set/);
+    assert.equal(keyLookups().length, 1);
+    assert.deepEqual(sent, []);
+  });
+
+  it("still sends the test through a provider that does send", async () => {
+    db.table("tenant_smtp_config").push({
+      tenant_id: TENANT,
+      provider: "resend",
+      from_email: "no-reply@acme.test",
+    });
+    db.state.rpcResults.get_tenant_smtp_api_key = "their-own-key";
+    const out = await sendTest();
+    assert.equal(out.result?.ok, true);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0], /api\.resend\.com/);
+  });
+
+  it("does not tell a company to paste a key when the key could not be read", async () => {
+    db.table("tenant_smtp_config").push({ tenant_id: TENANT, provider: "resend" });
+    keyFault = { message: "statement timeout" };
+    const out = await sendTest();
+    assert.match(words(out), /could not be read/);
+    assert.doesNotMatch(words(out), /paste|statement timeout/);
+    assert.deepEqual(sent, []);
+  });
+
+  it("does not tell a company to save settings first when they could not be read", async () => {
+    db.table("tenant_smtp_config").push({ tenant_id: TENANT, provider: "resend" });
+    db.fail("tenant_smtp_config:read", { message: "statement timeout" });
+    const out = await sendTest();
+    assert.match(words(out), /could not be read/);
+    assert.doesNotMatch(words(out), /save settings first|statement timeout/);
+    db.recover("tenant_smtp_config:read");
+    assert.deepEqual(sent, []);
+  });
+
+  it("shows that answer on the screen of a company that saved AWS SES", async () => {
+    db.table("tenant_smtp_config").push({ tenant_id: TENANT, provider: "ses" });
+    const h = page(settings({ provider: "ses" }), {
+      test: (args) => testTenantSmtp({ ...args, context }),
+    });
+    await h.open();
+    assert.equal(h.button("Save API key"), undefined, "there is no key box to paste into");
+    h.type("you@yourdomain.com", "me@acme.test");
+    await h.button("Send test").props.onClick();
+    const shown = h.toasts.at(-1);
+    assert.equal(shown.kind, "error");
+    assert.match(shown.message, /AWS SES is not supported/);
+    assert.doesNotMatch(shown.message, /API key|paste/i);
   });
 });

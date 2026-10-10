@@ -1,5 +1,5 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { SELECTABLE_PROVIDERS } from "@/lib/email-providers";
+import { isSendingProvider, SELECTABLE_PROVIDERS } from "@/lib/email-providers";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
@@ -152,21 +152,38 @@ export const testTenantSmtp = createServerFn({ method: "POST" })
     const tenantId = await requireCompanyAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: config } = await supabaseAdmin
+    const { data: config, error: configError } = await supabaseAdmin
       .from("tenant_smtp_config")
       .select("*")
       .eq("tenant_id", tenantId)
       .maybeSingle();
+    // Not being able to read the row is not the same as having saved nothing, and
+    // telling someone to save first would send them to overwrite what they have.
+    if (configError) {
+      console.error("[email] test: could not read the company's email settings", configError);
+      throw new Error("Your email settings could not be read just now. Try again in a moment.");
+    }
     if (!config) throw new Error("No SMTP config saved yet — save settings first");
     if (config.provider === "platform") {
       return { ok: true, note: "Using platform default; nothing to test." };
     }
 
-    // Reveal api key (server-side only)
-    const { data: apiKey } = await supabaseAdmin.rpc("get_tenant_smtp_api_key", {
-      _tenant_id: tenantId,
-    });
-    if (!apiKey) throw new Error("API key not set — paste your provider key first");
+    // Reveal api key (server-side only). Only a provider that can send has one
+    // to look for: the screen has no key box for the others, so "paste your
+    // key" would be an instruction nobody can follow. For those the sender
+    // answers with the plain "not supported — choose …" text instead.
+    let apiKey = "";
+    if (isSendingProvider(config.provider)) {
+      const { data: key, error: keyError } = await supabaseAdmin.rpc("get_tenant_smtp_api_key", {
+        _tenant_id: tenantId,
+      });
+      if (keyError) {
+        console.error("[email] test: could not read the company's email key", keyError);
+        throw new Error("Your email key could not be read just now. Try again in a moment.");
+      }
+      if (!key) throw new Error("API key not set — paste your provider key first");
+      apiKey = key as string;
+    }
 
     const from = config.from_email ?? "no-reply@flas.mobidigisol.com";
     const fromLabel = config.from_name ? `${config.from_name} <${from}>` : from;
@@ -174,7 +191,7 @@ export const testTenantSmtp = createServerFn({ method: "POST" })
     const { dispatchEmail } = await import("@/lib/email-dispatch.server");
     let result: { ok: boolean; providerId?: string; error?: string };
     try {
-      result = await dispatchEmail(config.provider, apiKey as string, {
+      result = await dispatchEmail(config.provider, apiKey, {
         from: fromLabel,
         to: data.toEmail,
         subject: `Flas CRM — test email from ${config.provider}`,
