@@ -176,6 +176,42 @@ describe("the AI brief is a snapshot, not a live figure (M7)", () => {
     });
     assert.match(note, /just now/i);
   });
+
+  // Review of PR #37. Pressing Regenerate leaves `cached: false` in the page's
+  // memory for as long as the page stays open, while the cards beside it keep
+  // refetching. "Not served from the cache" was read as "fresh", so a brief
+  // written at 08:14 still said "Written just now" at lunchtime.
+  test("a regenerated brief stops being 'just now' once it has aged", () => {
+    const threeHours = 3 * 60 * 60_000;
+    assert.equal(figures.briefSnapshotKind({ cached: false, ageMs: threeHours }), "diverged");
+    const note = figures.briefSnapshotNote({
+      generatedAtTime: "08:14",
+      cached: false,
+      ageMs: threeHours,
+    });
+    assert.doesNotMatch(note, /just now/i);
+    assert.match(note, /08:14/);
+    assert.match(note, /can differ/i);
+    assert.match(note, /Regenerate/);
+  });
+
+  test("the warning depends on the brief's age, however the server delivered it", () => {
+    const limit = figures.BRIEF_DIVERGENCE_MS;
+    for (const cached of [true, false]) {
+      assert.equal(figures.briefSnapshotKind({ cached, ageMs: limit }), "diverged");
+      assert.equal(figures.briefSnapshotKind({ cached, ageMs: limit * 40 }), "diverged");
+      assert.notEqual(figures.briefSnapshotKind({ cached, ageMs: limit - 1 }), "diverged");
+    }
+    // Inside the window both wordings are true, and say which one this is.
+    assert.equal(figures.briefSnapshotKind({ cached: false, ageMs: limit - 1 }), "fresh");
+    assert.equal(figures.briefSnapshotKind({ cached: true, ageMs: limit - 1 }), "cached");
+  });
+
+  test("a brief whose age cannot be worked out is never called fresh", () => {
+    for (const cached of [true, false]) {
+      assert.equal(figures.briefSnapshotKind({ cached, ageMs: Number.NaN }), "diverged");
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -427,5 +463,94 @@ describe("the fixes are wired into the routed screens", () => {
     assert.match(source, /toPlainError/);
     assert.match(source, /if \(!plain\.recognised\) throw error;/);
     assert.match(source, /console\.error\("\[billing\] saveSalesDocument failed"/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* PR #58 review — the brief's age comes from the server's clock       */
+/* ------------------------------------------------------------------ */
+
+describe("how old the brief is does not depend on the reader's clock", () => {
+  const HOUR = 60 * 60_000;
+
+  test("the server works the age out from the brief's own timestamp", () => {
+    const now = new Date("2026-10-01T12:00:00.000Z");
+    assert.equal(figures.briefAgeMs("2026-10-01T09:00:00.000Z", now), 3 * HOUR);
+    assert.equal(figures.briefAgeMs("2026-10-01T12:00:00.000Z", now), 0);
+    // A timestamp ahead of the server's clock is "just now", never a negative age.
+    assert.equal(figures.briefAgeMs("2026-10-01T12:00:05.000Z", now), 0);
+  });
+
+  test("a missing or unreadable timestamp has no age, and is never called fresh", () => {
+    const now = new Date("2026-10-01T12:00:00.000Z");
+    for (const bad of [null, undefined, "", "not a date", "2026-13-45"]) {
+      assert.equal(figures.briefAgeMs(bad, now), null, String(bad));
+      assert.equal(figures.briefWrittenAt(bad), null, String(bad));
+      const age = figures.briefAgeBesideCards({
+        ageMs: null,
+        briefFetchedAt: 1,
+        cardsFetchedAt: 2,
+      });
+      assert.ok(Number.isNaN(age));
+      assert.equal(figures.briefSnapshotKind({ cached: false, ageMs: age }), "diverged");
+    }
+    assert.ok(figures.briefWrittenAt("2026-10-01T09:00:00.000Z") instanceof Date);
+  });
+
+  test("the age beside the cards adds how long ago the brief was fetched", () => {
+    const limit = figures.BRIEF_DIVERGENCE_MS;
+    const fetched = { briefFetchedAt: 1_000_000, cardsFetchedAt: 1_000_000 };
+    // Fetched together, and written a minute ago: well inside the window.
+    assert.equal(figures.briefAgeBesideCards({ ageMs: 60_000, ...fetched }), 60_000);
+    assert.equal(
+      figures.briefSnapshotKind({
+        cached: false,
+        ageMs: figures.briefAgeBesideCards({ ageMs: 60_000, ...fetched }),
+      }),
+      "fresh",
+    );
+    // Cards refetched five minutes later while the brief was left alone.
+    const later = { briefFetchedAt: 1_000_000, cardsFetchedAt: 1_000_000 + limit };
+    assert.equal(figures.briefAgeBesideCards({ ageMs: 60_000, ...later }), 60_000 + limit);
+    assert.equal(
+      figures.briefSnapshotKind({
+        cached: false,
+        ageMs: figures.briefAgeBesideCards({ ageMs: 60_000, ...later }),
+      }),
+      "diverged",
+    );
+  });
+
+  test("a device clock that is hours out changes nothing", () => {
+    const input = { ageMs: 2 * 60_000, briefFetchedAt: 5_000, cardsFetchedAt: 65_000 };
+    const skewed = {
+      ...input,
+      briefFetchedAt: input.briefFetchedAt + 7 * HOUR,
+      cardsFetchedAt: input.cardsFetchedAt + 7 * HOUR,
+    };
+    assert.equal(figures.briefAgeBesideCards(input), figures.briefAgeBesideCards(skewed));
+    // And the cards being older than the brief does not make it younger.
+    assert.equal(
+      figures.briefAgeBesideCards({ ageMs: 90_000, briefFetchedAt: 9_000, cardsFetchedAt: 1_000 }),
+      90_000,
+    );
+  });
+
+  test("the routed screen and the server use it, and the screen never prints Invalid Date", async () => {
+    const route = (await read("src/routes/_authenticated/dashboard.tsx")).split("\r\n").join("\n");
+    assert.match(route, /briefAgeBesideCards\(\{/);
+    assert.match(route, /ageMs: brief\.data\.ageMs/);
+    assert.match(route, /const writtenAt = briefWrittenAt\(brief\.data\?\.generatedAt\)/);
+    assert.match(route, /t\("dashboard\.brief\.note\.unknown"\)/);
+    assert.doesNotMatch(route, /new Date\(brief\.data\.generatedAt\)/);
+    assert.doesNotMatch(
+      route,
+      /Date\.now\(\)\) -/,
+      "the device clock is not subtracted from a server time",
+    );
+    const server = (await read("src/lib/brief.server.ts")).split("\r\n").join("\n");
+    assert.match(server, /ageMs: briefAgeMs\(existing\.created_at, new Date\(\)\)/);
+    const messages = (await read("src/lib/i18n/screens/dashboard.ts")).split("\r\n").join("\n");
+    assert.equal(messages.split('"dashboard.brief.note.unknown"').length - 1, 5, "five languages");
   });
 });

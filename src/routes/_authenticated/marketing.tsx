@@ -7,8 +7,19 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { audienceBlockedReason, type CampaignAudience } from "@/lib/campaign-audience";
-import { draftCampaignForAudience, getCampaignAudience } from "@/lib/campaign-audience.functions";
+import {
+  AI_DRAFT_FIELD_LIMITS,
+  AI_DRAFT_TOO_LONG,
+  CAMPAIGN_FIELD_LIMITS,
+  CAMPAIGN_TOO_LONG,
+  audienceBlockedReason,
+  type CampaignAudience,
+} from "@/lib/campaign-audience";
+import {
+  draftCampaignForAudience,
+  getCampaignAudience,
+  saveCampaignDraft,
+} from "@/lib/campaign-audience.functions";
 import { getWhatsAppGrowthSegments } from "@/lib/whatsapp-growth.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -201,7 +212,7 @@ function AudienceNote({
 
 function MarketingPage() {
   const { t, tr } = useI18n();
-  const { isAdmin, user } = useAuth();
+  const { isAdmin } = useAuth();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
@@ -223,6 +234,11 @@ function MarketingPage() {
   const [aiDraft, setAiDraft] = useState("");
   const draftWithFlashAi = useServerFn(draftCampaignForAudience);
   const loadAudience = useServerFn(getCampaignAudience);
+  const saveCampaign = useServerFn(saveCampaignDraft);
+  // One id for the draft on screen. The server stores the campaign under it, so
+  // a second click, or a retry after an answer that never arrived, cannot make a
+  // second campaign. It is replaced once the draft has been saved.
+  const [draftId, setDraftId] = useState(() => crypto.randomUUID());
   const loadWhatsAppGrowthSegments = useServerFn(getWhatsAppGrowthSegments);
 
   useEffect(() => setOrigin(window.location.origin), []);
@@ -364,27 +380,36 @@ function MarketingPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // The recipient count is worked out on the server as part of the save. It used
+  // to be `emailAudience?.total ?? 0`, taken from this page's own audience
+  // request: zero while that was still loading and zero again if it had failed,
+  // and the list below showed that zero as the audience "when saved".
   const createCampaign = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("campaigns").insert({
-        name: campaignForm.name,
-        subject: campaignForm.subject,
-        body: campaignForm.body,
-        // Was `leads.filter(l => l.subscribed).length`: `subscribed` defaults to
-        // true, so every captured lead was counted as a recipient whether or not
-        // they had consented, and contacts were never counted at all. This is the
-        // same number the card displays above the form.
-        recipients_count: emailAudience?.total ?? 0,
-        created_by: user?.id ?? null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
+    mutationFn: () =>
+      saveCampaign({
+        data: {
+          id: draftId,
+          name: campaignForm.name,
+          subject: campaignForm.subject,
+          body: campaignForm.body,
+        },
+      }),
+    onSuccess: (res) => {
+      // `ok: false` means the audience could not be read, so nothing was saved.
+      // The form is left as it is for another try.
+      if (!res.ok) {
+        toast.error(t("marketing.campaignNotSaved"));
+        return;
+      }
       setCampaignForm({ name: "", subject: "", body: "" });
+      setDraftId(crypto.randomUUID());
       toast.success(t("marketing.campaignSavedAsADraft"));
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    // A field that got past `maxLength` is refused by the server with a code,
+    // which is shown as a sentence and not as the validator's own text.
+    onError: (e: Error) =>
+      toast.error(e.message === CAMPAIGN_TOO_LONG ? t("marketing.campaignTooLong") : e.message),
   });
 
   const generateDraft = useMutation({
@@ -414,7 +439,8 @@ function MarketingPage() {
         }),
       );
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) =>
+      toast.error(e.message === AI_DRAFT_TOO_LONG ? t("marketing.draftTooLong") : e.message),
   });
 
   function useDraftInCampaign() {
@@ -758,6 +784,7 @@ function MarketingPage() {
               <Textarea
                 id="ai_goal"
                 rows={2}
+                maxLength={AI_DRAFT_FIELD_LIMITS.goal}
                 placeholder={t("marketing.eGReEngageWholesale")}
                 value={aiForm.goal}
                 onChange={(e) => setAiForm({ ...aiForm, goal: e.target.value })}
@@ -768,6 +795,7 @@ function MarketingPage() {
                 <Label htmlFor="ai_audience">{t("marketing.audienceOptional")}</Label>
                 <Input
                   id="ai_audience"
+                  maxLength={AI_DRAFT_FIELD_LIMITS.audience}
                   placeholder={t("marketing.eGPopupChatLeads")}
                   value={aiForm.audience}
                   onChange={(e) => setAiForm({ ...aiForm, audience: e.target.value })}
@@ -1091,6 +1119,7 @@ function MarketingPage() {
                 <Label htmlFor="c_name">{t("marketing.campaignName")}</Label>
                 <Input
                   id="c_name"
+                  maxLength={CAMPAIGN_FIELD_LIMITS.name}
                   value={campaignForm.name}
                   onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
                 />
@@ -1099,6 +1128,7 @@ function MarketingPage() {
                 <Label htmlFor="c_subject">{t("marketing.emailSubject")}</Label>
                 <Input
                   id="c_subject"
+                  maxLength={CAMPAIGN_FIELD_LIMITS.subject}
                   value={campaignForm.subject}
                   onChange={(e) => setCampaignForm({ ...campaignForm, subject: e.target.value })}
                 />
@@ -1109,6 +1139,7 @@ function MarketingPage() {
               <Textarea
                 id="c_body"
                 rows={5}
+                maxLength={CAMPAIGN_FIELD_LIMITS.body}
                 value={campaignForm.body}
                 onChange={(e) => setCampaignForm({ ...campaignForm, body: e.target.value })}
               />

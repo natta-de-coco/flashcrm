@@ -1,5 +1,6 @@
-// The home dashboard. Health-factor details and the AI brief itself are written
-// by the server and are not in here; their titles, grades and notes are.
+// Text for the "dashboard" screen, in every language. Extracted by
+// scripts/i18n-extract.mjs; the Arabic, Malay, Filipino and Swahili are by
+// Claude and want a native speaker's review.
 import { screen } from "../define";
 
 export default screen({
@@ -87,6 +88,8 @@ export default screen({
     "dashboard.channel.web": "Website",
     "dashboard.channel.whatsapp": "WhatsApp",
     "dashboard.recent.new": "{count} new",
+    "dashboard.brief.note.unknown":
+      "We cannot tell when this was written, so its figures may be out of date. The cards on this page are live — press Regenerate for a brief on today's current figures.",
   },
   ar: {
     "dashboard.title": "لوحة التحكم",
@@ -169,6 +172,8 @@ export default screen({
     "dashboard.channel.web": "الموقع",
     "dashboard.channel.whatsapp": "واتساب",
     "dashboard.recent.new": "{count} جديدة",
+    "dashboard.brief.note.unknown":
+      "لا نعرف متى كُتب هذا الملخص، لذا قد تكون أرقامه قديمة. البطاقات في هذه الصفحة محدّثة مباشرة — اضغط «إعادة الإنشاء» للحصول على ملخص بأرقام اليوم الحالية.",
   },
   ms: {
     "dashboard.title": "Papan Pemuka",
@@ -256,6 +261,8 @@ export default screen({
     "dashboard.channel.web": "Laman web",
     "dashboard.channel.whatsapp": "WhatsApp",
     "dashboard.recent.new": "{count} baharu",
+    "dashboard.brief.note.unknown":
+      "Kami tidak dapat mengetahui bila ini ditulis, jadi angkanya mungkin sudah lapuk. Kad pada halaman ini adalah langsung — tekan Jana semula untuk ringkasan berdasarkan angka semasa hari ini.",
   },
   fil: {
     "dashboard.title": "Dashboard",
@@ -343,6 +350,8 @@ export default screen({
     "dashboard.channel.web": "Website",
     "dashboard.channel.whatsapp": "WhatsApp",
     "dashboard.recent.new": "{count} bago",
+    "dashboard.brief.note.unknown":
+      "Hindi namin alam kung kailan ito isinulat, kaya maaaring luma na ang mga numero. Live ang mga card sa pahinang ito — pindutin ang Gawing muli para sa brief na gamit ang kasalukuyang numero ngayong araw.",
   },
   sw: {
     "dashboard.title": "Dashibodi",
@@ -430,5 +439,7 @@ export default screen({
     "dashboard.channel.web": "Tovuti",
     "dashboard.channel.whatsapp": "WhatsApp",
     "dashboard.recent.new": "{count} mpya",
+    "dashboard.brief.note.unknown":
+      "Hatuwezi kujua hii iliandikwa lini, kwa hiyo takwimu zake zinaweza kuwa zimepitwa na wakati. Kadi zilizo kwenye ukurasa huu ni za moja kwa moja — bonyeza Tengeneza upya ili upate muhtasari wenye takwimu za sasa za leo.",
   },
 });

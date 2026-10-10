@@ -7,6 +7,7 @@ import {
   callFlashAi,
   gatherLeadSummary,
   gatherMessagingAnalytics,
+  leadSummaryFacts,
 } from "./flash-ai.server";
 import { getDashboardOverviewData } from "./dashboard.server";
 
@@ -120,24 +121,17 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
     );
   }
 
+  lines.push("\n## Leads & pipeline");
   if (leads) {
-    lines.push("\n## Leads & pipeline");
-    lines.push(`Total ${leads.totalLeads} leads, ${leads.consentedLeads} opted in`);
-    lines.push(
-      `By source: ${
-        Object.entries(leads.bySource)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(", ") || "none"
-      }`,
-    );
-    lines.push(`Top tags: ${leads.topTags.join(", ") || "none"}`);
-    lines.push(
-      `Pipeline stages: ${
-        Object.entries(leads.contactsByStage)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(", ") || "none"
-      }`,
-    );
+    // The same lines the campaign writer is given, so two features cannot
+    // report different consent figures for one workspace. Leads and contacts
+    // are stated separately: consent held only by a contact used to read as
+    // "Total 0 leads, 1 opted in".
+    lines.push(...leadSummaryFacts(leads));
+  } else {
+    // Could not be read. Said so, rather than leaving the section out or
+    // letting the advisor take a missing figure for a zero.
+    lines.push("Not available right now: the lead and contact figures could not be read.");
   }
 
   lines.push("\n## Social accounts (latest sync)");

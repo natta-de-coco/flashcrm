@@ -1,6 +1,7 @@
-// Server side of the campaign audience: reads both consent tables through the
-// caller's RLS client, then hands the rows to the pure resolver so the number
-// the user sees and the number the AI writer is told are the same number.
+// Server side of the campaign audience: reads the consent tables (and the
+// addresses kept beside them) through the caller's RLS client, then hands the
+// rows to the pure resolver so the number the user sees and the number the AI
+// writer is told are the same number.
 //
 // Defect H8 (QA, 26 Sep 2026): the writer's audience came from
 // `gatherLeadSummary` in flash-ai.server.ts, which reads `leads` only. A
@@ -14,31 +15,40 @@ import {
   type CampaignAudience,
   type CampaignChannel,
 } from "./campaign-audience";
+import {
+  AUDIENCE_IDENTITY_LIMIT,
+  AUDIENCE_ROW_LIMIT,
+  readAudienceRows,
+} from "./audience-rows.server";
 import { looksLikeRefusal, refusalSummary } from "./campaign-draft";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
 
-/** Same ceiling gatherAudienceSegments uses. A full page sets `truncated`. */
-export const AUDIENCE_ROW_LIMIT = 2000;
+export { AUDIENCE_IDENTITY_LIMIT, AUDIENCE_ROW_LIMIT };
 
 /**
  * Both channels in one round trip: the page shows the email figure next to the
  * campaign form and the WhatsApp figure next to the writer, and re-querying per
  * channel switch would let the two disagree mid-edit.
+ *
+ * Throws when any of the reads fails: a refused or failed read is not an empty
+ * table. Treating it as one reported "no audience" for a workspace that has
+ * one, or let the writer draft from half the data with nothing on screen to
+ * say so.
  */
 export async function gatherCampaignAudiences(
   supabase: SupabaseClient,
 ): Promise<Record<CampaignChannel, CampaignAudience>> {
-  const [{ data: contacts }, { data: leads }] = await Promise.all([
-    supabase.from("contacts").select("name, email, phone, consent_given").limit(AUDIENCE_ROW_LIMIT),
-    // `subscribed` exists on leads only, and is read as a suppression flag.
-    supabase
-      .from("leads")
-      .select("name, email, phone, consent_given, subscribed")
-      .limit(AUDIENCE_ROW_LIMIT),
-  ]);
+  const { contacts, leads, identities } = await readAudienceRows(supabase);
 
   const resolve = (channel: CampaignChannel) =>
-    resolveCampaignAudience({ contacts, leads, channel, rowLimit: AUDIENCE_ROW_LIMIT });
+    resolveCampaignAudience({
+      contacts,
+      leads,
+      identities,
+      channel,
+      rowLimit: AUDIENCE_ROW_LIMIT,
+      identityRowLimit: AUDIENCE_IDENTITY_LIMIT,
+    });
 
   return { email: resolve("email"), whatsapp: resolve("whatsapp") };
 }
@@ -48,6 +58,82 @@ export async function gatherCampaignAudience(
   channel: CampaignChannel,
 ): Promise<CampaignAudience> {
   return (await gatherCampaignAudiences(supabase))[channel];
+}
+
+export type SaveCampaignInput = {
+  name: string;
+  subject: string;
+  body: string;
+  /**
+   * One id per draft on the page, new after each successful save. The campaign
+   * is stored under it, so the same draft arriving twice (a double click, a
+   * retry after a dropped answer) is one campaign. Optional: without it a save
+   * is always a new campaign, as before.
+   */
+  id?: string | undefined;
+};
+
+export type SaveCampaignResult =
+  | {
+      ok: true;
+      recipientsCount: number;
+      /** This draft had been saved already; nothing new was stored. */
+      repeated?: true;
+    }
+  | { ok: false; reason: "audience_unavailable" };
+
+/**
+ * Saves a campaign as a draft with the audience it has right now.
+ *
+ * The recipient count is read here, as part of the save, and is not taken from
+ * the page. The page used to send whatever its audience request had returned so
+ * far: zero while that request was still loading, and zero again if it had
+ * failed, and the campaign list later showed that zero as the audience "when
+ * saved". If the audience cannot be read, nothing is saved: a campaign with a
+ * made-up count is worse than one the user is asked to save again.
+ *
+ * A refused insert is thrown, as it always was.
+ */
+export async function saveCampaignDraft(
+  supabase: SupabaseClient,
+  input: SaveCampaignInput,
+  actor: { userId?: string | null },
+): Promise<SaveCampaignResult> {
+  let audience: CampaignAudience;
+  try {
+    audience = await gatherCampaignAudience(supabase, "email");
+  } catch (error) {
+    console.error("[campaigns] not saved, the audience could not be read:", error);
+    return { ok: false, reason: "audience_unavailable" };
+  }
+
+  const { error } = await supabase.from("campaigns").insert({
+    ...(input.id ? { id: input.id } : {}),
+    name: input.name,
+    subject: input.subject,
+    body: input.body,
+    recipients_count: audience.total,
+    created_by: actor.userId ?? null,
+  });
+  if (error) {
+    // 23505 is unique_violation. On a draft's own id it means "already saved",
+    // but only if the caller can see that campaign: the row is read back through
+    // the caller's own client, so an id that belongs to someone else's campaign
+    // (or to nothing the caller may see) is a failure, never a success.
+    if (input.id && error.code === "23505") {
+      const { data, error: readError } = await supabase
+        .from("campaigns")
+        .select("id, recipients_count")
+        .eq("id", input.id)
+        .maybeSingle();
+      if (readError) throw new Error(readError.message);
+      if (!data) throw new Error(error.message);
+      const stored = (data as { recipients_count?: number | null }).recipients_count;
+      return { ok: true, recipientsCount: typeof stored === "number" ? stored : 0, repeated: true };
+    }
+    throw new Error(error.message);
+  }
+  return { ok: true, recipientsCount: audience.total };
 }
 
 export type DraftRequest = {
