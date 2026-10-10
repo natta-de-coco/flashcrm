@@ -60,6 +60,16 @@ export default screen({
     "connectionOutcome.noun.google_analytics": "GA4 property",
     "connectionOutcome.noun.search_console": "Search Console site",
     "connectionOutcome.noun.meta_ads": "ad account",
+    "connectionOutcome.youtubeApiNotEnabled":
+      "YouTube Data API v3 is not enabled in the Google Cloud project. A FLAS administrator must enable YouTube Data API v3 in Google Cloud Console before connecting.",
+    "connectionOutcome.youtubeQuotaExceeded":
+      "YouTube API quota has been exceeded for this project. Please retry later or ask a FLAS administrator to request a quota increase from Google.",
+    "connectionOutcome.youtubePermissionsMissing":
+      "This Google sign-in did not grant channel access permissions for YouTube. Reconnect and check the YouTube channel permissions on Google's consent screen.",
+    "connectionOutcome.youtubeNoChannel":
+      "No active YouTube channel was found for this Google account. Open YouTube Studio to create a channel, or reconnect using the Brand Account that owns the channel.",
+    "connectionOutcome.youtubeGeneric403":
+      "Google refused access to your YouTube channels (HTTP 403). Verify YouTube Data API v3 is enabled in Google Cloud Console and that the signed-in account owns an active channel.",
   },
   ar: {
     "connectionOutcome.signInToWasCancelled": "أُلغي تسجيل الدخول إلى {name}",
@@ -113,6 +123,16 @@ export default screen({
     "connectionOutcome.noun.google_analytics": "موقع GA4",
     "connectionOutcome.noun.search_console": "موقع Search Console",
     "connectionOutcome.noun.meta_ads": "حساب إعلاني",
+    "connectionOutcome.youtubeApiNotEnabled":
+      "لم يتم تفعيل YouTube Data API v3 في مشروع Google Cloud. يجب على مسؤول FLAS تفعيل YouTube Data API v3 في Google Cloud Console قبل الاتصال.",
+    "connectionOutcome.youtubeQuotaExceeded":
+      "تم تجاوز حصة YouTube API المحددة لهذا المشروع. يرجى إعادة المحاولة لاحقاً أو مطالبة مسؤول FLAS بطلب زيادة الحصة من Google.",
+    "connectionOutcome.youtubePermissionsMissing":
+      "لم يمنح تسجيل الدخول عبر Google أذونات الوصول لقناة YouTube. أعد الاتصال وحدد أذونات قناة YouTube في شاشة موافقة Google.",
+    "connectionOutcome.youtubeNoChannel":
+      "لم يتم العثور على قناة YouTube نشطة لحساب Google هذا. افتح YouTube Studio لإنشاء قناة، أو أعد الاتصال باستخدام حساب العلامة التجارية المالك للقناة.",
+    "connectionOutcome.youtubeGeneric403":
+      "رفضت Google الوصول إلى قنوات YouTube الخاصة بك (HTTP 403). تأكد من تفعيل YouTube Data API v3 في Google Cloud Console ومن أن الحساب يملك قناة نشطة.",
   },
   ms: {
     "connectionOutcome.signInToWasCancelled": "Log masuk ke {name} dibatalkan",
@@ -173,6 +193,16 @@ export default screen({
     "connectionOutcome.noun.google_analytics": "sifat GA4",
     "connectionOutcome.noun.search_console": "laman Search Console",
     "connectionOutcome.noun.meta_ads": "akaun iklan",
+    "connectionOutcome.youtubeApiNotEnabled":
+      "YouTube Data API v3 tidak didayakan dalam projek Google Cloud. Pentadbir FLAS mesti mendayakan YouTube Data API v3 dalam Google Cloud Console sebelum menyambung.",
+    "connectionOutcome.youtubeQuotaExceeded":
+      "Kuota YouTube API telah melebihi had bagi projek ini. Sila cuba lagi kemudian atau minta pentadbir FLAS memohon peningkatan kuota daripada Google.",
+    "connectionOutcome.youtubePermissionsMissing":
+      "Log masuk Google ini tidak memberikan kebenaran akses saluran untuk YouTube. Sambung semula dan tandakan kebenaran saluran YouTube pada skrin kebenaran Google.",
+    "connectionOutcome.youtubeNoChannel":
+      "Tiada saluran YouTube aktif ditemui untuk akaun Google ini. Buka YouTube Studio untuk mencipta saluran, atau sambung semula menggunakan Akaun Jenama yang memiliki saluran tersebut.",
+    "connectionOutcome.youtubeGeneric403":
+      "Google menolak akses ke saluran YouTube anda (HTTP 403). Sahkan YouTube Data API v3 didayakan dalam Google Cloud Console dan akaun tersebut memiliki saluran aktif.",
   },
   fil: {
     "connectionOutcome.signInToWasCancelled": "Kinansela ang pag-sign in sa {name}",
@@ -235,6 +265,16 @@ export default screen({
     "connectionOutcome.noun.google_analytics": "GA4 property",
     "connectionOutcome.noun.search_console": "Search Console site",
     "connectionOutcome.noun.meta_ads": "ad account",
+    "connectionOutcome.youtubeApiNotEnabled":
+      "Hindi naka-enable ang YouTube Data API v3 sa proyekto ng Google Cloud. Dapat i-enable ng FLAS administrator ang YouTube Data API v3 sa Google Cloud Console bago kumonekta.",
+    "connectionOutcome.youtubeQuotaExceeded":
+      "Lumampas na sa quota ng YouTube API para sa proyektong ito. Pakisubukan muli mamaya o hilingin sa FLAS administrator na humiling ng dagdag na quota sa Google.",
+    "connectionOutcome.youtubePermissionsMissing":
+      "Hindi nagbigay ng pahintulot sa pag-access ng channel sa YouTube ang pag-sign in na ito sa Google. Kumonekta muli at lagyan ng check ang mga pahintulot ng channel ng YouTube sa consent screen ng Google.",
+    "connectionOutcome.youtubeNoChannel":
+      "Walang nakitang aktibong channel sa YouTube para sa Google account na ito. Buksan ang YouTube Studio para gumawa ng channel, o kumonekta muli gamit ang Brand Account na nagmamay-ari ng channel.",
+    "connectionOutcome.youtubeGeneric403":
+      "Tinanggihan ng Google ang access sa iyong mga channel sa YouTube (HTTP 403). Tiyaking naka-enable ang YouTube Data API v3 sa Google Cloud Console at may aktibong channel ang account.",
   },
   sw: {
     "connectionOutcome.signInToWasCancelled": "Kuingia kwenye {name} kumeghairiwa",
@@ -295,5 +335,15 @@ export default screen({
     "connectionOutcome.noun.google_analytics": "mali ya GA4",
     "connectionOutcome.noun.search_console": "tovuti ya Search Console",
     "connectionOutcome.noun.meta_ads": "akaunti ya matangazo",
+    "connectionOutcome.youtubeApiNotEnabled":
+      "YouTube Data API v3 haijawezeshwa katika mradi wa Google Cloud. Msimamizi wa FLAS lazima awezeshe YouTube Data API v3 katika Google Cloud Console kabla ya kuunganisha.",
+    "connectionOutcome.youtubeQuotaExceeded":
+      "Kiwango cha mgawo wa YouTube API kimezidiwa kwa mradi huu. Tafadhali jaribu tena baadaye au umwombe msimamizi wa FLAS kuomba ongezeko la mgawo kutoka Google.",
+    "connectionOutcome.youtubePermissionsMissing":
+      "Kuingia huku kwa Google hakukutoa ruhusa za ufikiaji wa chaneli ya YouTube. Unganisha tena na uweke alama kwenye ruhusa za chaneli ya YouTube kwenye skrini ya idhini ya Google.",
+    "connectionOutcome.youtubeNoChannel":
+      "Hakuna chaneli inayotumika ya YouTube iliyopatikana kwa akaunti hii ya Google. Fungua YouTube Studio ili kuunda chaneli, au unganisha tena ukitumia Akaunti ya Biashara inayomiliki chaneli hiyo.",
+    "connectionOutcome.youtubeGeneric403":
+      "Google imekataa ufikiaji wa chaneli zako za YouTube (HTTP 403). Hakikisha YouTube Data API v3 imewezeshwa katika Google Cloud Console na kwamba akaunti ina chaneli inayotumika.",
   },
 });
