@@ -262,6 +262,18 @@ describe("a company that already saved a provider that never sent", () => {
       assert.equal(h.warning(), undefined, "saved: the warning is gone");
     });
 
+    it(`sends no request if Save is reached anyway for ${name}`, async () => {
+      // The button is off, but the handler is also called by anything that gets
+      // to it another way (a keyboard shortcut, a form submit, an old handler).
+      const h = page(settings({ provider }));
+      await h.open();
+      assert.equal(h.button("Save settings").props.disabled, true);
+      await h.button("Save settings").props.onClick();
+      await h.settle();
+      assert.deepEqual(h.saves, [], "nothing was sent to the server");
+      assert.deepEqual(h.toasts, [], "and nobody was told it was saved");
+    });
+
     it(`is not asked for an API key for ${name}`, async () => {
       // The key card invites pasting a key that nothing will ever use.
       const h = page(settings({ provider }));

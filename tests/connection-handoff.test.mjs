@@ -90,7 +90,15 @@ function harness({
   let serverRows = rows;
   let cachedRows = rows;
   let holdRead = null;
+  let reads = 0;
+  // Reads fetchQuery has started and not yet had answered, by query key. The
+  // real client (query-core) gives a second caller the read already out rather
+  // than starting another; a double that started another would let a test
+  // describe two answers that can never exist.
+  const inFlight = new Map();
   const server = {
+    /** How many times the server was actually asked for the readiness rows. */
+    reads: () => reads,
     /** Every read of the server waits until the test calls the function given to `hold`. */
     holdReads(hold) {
       holdRead = hold;
@@ -102,6 +110,7 @@ function harness({
     cached: () => cachedRows,
   };
   const readServer = async () => {
+    reads += 1;
     if (holdRead) return new Promise((resolve) => holdRead(resolve));
     if (recheck === "fails") throw new Error("offline");
     return { rows: serverRows };
@@ -141,11 +150,20 @@ function harness({
         invalidateQueries: async () => {
           if (background === "instant") cachedRows = (await readServer()).rows;
         },
-        // Fetches now, puts the answer in the cache and hands it back.
-        fetchQuery: async ({ queryFn }) => {
-          const data = await queryFn();
-          cachedRows = data.rows;
-          return data;
+        // Fetches now, puts the answer in the cache and hands it back. A caller
+        // that arrives while the read is still out is handed that same read.
+        fetchQuery: ({ queryKey, queryFn }) => {
+          const key = JSON.stringify(queryKey);
+          if (inFlight.has(key)) return inFlight.get(key);
+          const read = (async () => {
+            const data = await queryFn();
+            cachedRows = data.rows;
+            return data;
+          })();
+          inFlight.set(key, read);
+          const done = () => inFlight.delete(key);
+          read.then(done, done);
+          return read;
         },
       }),
       useQuery: ({ queryKey }) => ({
@@ -923,21 +941,109 @@ test("nothing is listed when the server says nothing is left that could be fixed
   assert.deepEqual(listed(h), []);
 });
 
-test("an earlier refusal's answer never replaces a later one's", async () => {
-  // Two refusals in a row; the first one's re-read comes back last.
-  const h = harness({ result: { ready: false }, blockers: [CLIENT_ID_MISSING] });
+// ── The answer to "what still blocks this?" goes only where it belongs ───────
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
+
+test("the real query client hands a second reader the read already in flight", async () => {
+  // What the harness's fetchQuery copies. If a later query-core stopped joining,
+  // this fails and the tests below would be describing the wrong thing.
+  const { QueryClient } = await import("@tanstack/query-core");
+  const client = new QueryClient();
+  const releases = [];
+  const options = {
+    queryKey: ["integration-readiness", "https://flas.example"],
+    queryFn: () => new Promise((resolve) => releases.push(resolve)),
+    staleTime: 0,
+  };
+  const first = client.fetchQuery(options);
+  const second = client.fetchQuery(options);
+  await nextTurn();
+  assert.equal(releases.length, 1, "one read was started, not two");
+  releases[0]({ rows: ["the one answer"] });
+  assert.deepEqual(await first, await second);
+});
+
+test("the panel does not list the rows on screen while the re-read is on its way", async () => {
+  // The rows on screen are from before the admin saved the details. Until the
+  // server answers, the panel says only that setup is unfinished.
+  const h = harness({
+    result: { ready: false },
+    blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+    background: "slow",
+  });
+  const answers = [];
+  h.server.holdReads((release) => answers.push(release));
+  await saveAppDetailsAndGetRefused(h);
+  assert.equal(answers.length, 1, "the server was asked what still blocks");
+  assert.deepEqual(listed(h), [], "nothing out of date is named before the answer");
+  assert.match(h.find(h.render(), "Problem").props.message, /administrator setup/);
+
+  answers[0]({ rows: [{ id: "instagram", blockers: [STORAGE_MISSING] }] });
+  await h.settle();
+  assert.deepEqual(listed(h), ["STORAGE"], "and the answer replaces it");
+});
+
+test("the same goes for a sign-in that could not start", async () => {
+  const h = harness({
+    result: new Error("network down"),
+    blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+    background: "slow",
+  });
+  const answers = [];
+  h.server.holdReads((release) => answers.push(release));
+  await saveAppDetailsAndGetRefused(h);
+  assert.deepEqual(listed(h), []);
+  answers[0]({ rows: [{ id: "instagram", blockers: [STORAGE_MISSING] }] });
+  await h.settle();
+  assert.deepEqual(listed(h), ["STORAGE"]);
+});
+
+test("two refusals while the first answer is out share one read, and each panel gets its own rows", async () => {
+  const h = harness({
+    result: { ready: false },
+    blockers: [CLIENT_ID_MISSING],
+    connectors: [FACEBOOK, INSTAGRAM],
+  });
   const answers = [];
   h.server.holdReads((release) => answers.push(release));
   h.find(h.render(), "ProviderReadiness").props.onConnect("instagram");
-  await Promise.all([h.flush(), new Promise((resolve) => setImmediate(resolve))]);
+  await Promise.all([h.flush(), nextTurn()]);
+  h.find(h.render(), "ProviderReadiness").props.onConnect("facebook");
+  await Promise.all([h.flush(), nextTurn()]);
+  assert.equal(answers.length, 1, "the second refusal joined the read already out");
+  assert.equal(h.server.reads(), 1);
+  assert.deepEqual(listed(h), [], "and nothing is named until it answers");
+
+  answers[0]({
+    rows: [
+      { id: "instagram", blockers: [STORAGE_MISSING] },
+      { id: "facebook", blockers: [CLIENT_SECRET_MISSING] },
+    ],
+  });
+  await h.settle();
+  assert.deepEqual(listed(h), ["CLIENT_SECRET_MISSING"], "the panel on screen is Facebook's");
+});
+
+test("an answer that arrives after the panel was closed does not bring it back", async () => {
+  const h = harness({
+    result: { ready: false },
+    blockers: [CLIENT_ID_MISSING],
+    background: "slow",
+  });
+  const answers = [];
+  h.server.holdReads((release) => answers.push(release));
   h.find(h.render(), "ProviderReadiness").props.onConnect("instagram");
-  await Promise.all([h.flush(), new Promise((resolve) => setImmediate(resolve))]);
-  assert.equal(answers.length, 2, "each refusal asked the server again");
-  answers[1]({ rows: [{ id: "instagram", blockers: [STORAGE_MISSING] }] });
+  await Promise.all([h.flush(), nextTurn()]);
+  assert.ok(h.find(h.render(), "Problem"), "the refusal put a panel on screen");
+
+  // The admin moves on: opening the list of integrations clears the panel.
+  const add = nodes(h.render()).find((n) => n.type === "Button" && /Add Integration/.test(text(n)));
+  add.props.onClick();
+  assert.equal(h.find(h.render(), "Problem"), undefined, "the panel is closed");
+
+  answers[0]({ rows: [{ id: "instagram", blockers: [STORAGE_MISSING] }] });
   await h.settle();
-  answers[0]({ rows: [{ id: "instagram", blockers: [CLIENT_SECRET_MISSING] }] });
-  await h.settle();
-  assert.deepEqual(listed(h), ["STORAGE"]);
+  assert.equal(h.find(h.render(), "Problem"), undefined, "the late answer did not reopen it");
 });
 
 test("Open provider setup after a refusal keeps the product the admin chose", async () => {
@@ -969,6 +1075,37 @@ test("Open provider setup after a refusal keeps the product the admin chose", as
     h.requests.map((r) => r.data.platform),
     ["instagram", "instagram"],
     "the second attempt is for Instagram, the product that was chosen",
+  );
+});
+
+test("Open provider setup from the problem panel in the integration list keeps the product too", async () => {
+  // The list has its own copy of the panel. A workspace admin chooses Instagram
+  // and is told it needs one more step; FLAS staff are then signed in (the
+  // account finishes loading) and open setup from that panel.
+  const auth = { isAdmin: true, isSuperAdmin: false };
+  const h = harness({
+    status: "ADMIN_SETUP_REQUIRED",
+    setupOwner: "workspace",
+    connectors: [FACEBOOK, INSTAGRAM],
+    auth,
+  });
+  const add = nodes(h.render()).find((n) => n.type === "Button" && /Add Integration/.test(text(n)));
+  add.props.onClick();
+  const card = nodes(h.render()).find(
+    (n) => n.type?.name === "MarketplaceCard" && n.props.connector.id === "instagram",
+  );
+  card.props.onConnect();
+  assert.ok(h.find(h.render(), "Problem"), "the list shows why Instagram cannot be connected yet");
+
+  auth.isSuperAdmin = true;
+  h.find(h.render(), "Problem").props.onAdmin();
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.settle();
+  assert.deepEqual(
+    h.requests.map((r) => r.data.platform),
+    ["instagram"],
+    "saving the shared app continues with Instagram, the product that was chosen",
   );
 });
 

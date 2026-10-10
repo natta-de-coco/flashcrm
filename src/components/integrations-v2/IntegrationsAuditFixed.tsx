@@ -119,6 +119,22 @@ const GROUP_LABELS: Record<ConnectorGroup, string> = {
   commerce: "Website & Commerce",
 };
 
+/** The problem panel shown after a connection could not be started. */
+type BlockedPanel = {
+  platform: string;
+  message: string;
+  /** Nothing for this person to do: FLAS itself is finishing setup. */
+  calm?: boolean;
+  /**
+   * What still blocks this connection, read from the server after the refusal.
+   * Empty until that answer arrives, and if it never does: the readiness rows
+   * on screen can be from before the admin saved the details, and naming them
+   * as missing would be wrong. Absent for a panel that was not the result of
+   * a refusal; those read the rows on screen.
+   */
+  blockers?: ReadinessBlocker[];
+};
+
 /** The channels a company thinks of as "my channels", each with its own page. */
 const CHANNELS = ["whatsapp", "facebook", "instagram"];
 
@@ -197,23 +213,7 @@ export function IntegrationsAuditFixed({
   const [category, setCategory] = useState<"popular" | ConnectorGroup>("popular");
   const [connecting, setConnecting] = useState<string | null>(null);
   const starting = useRef(false);
-  const [blocked, setBlocked] = useState<{
-    platform: string;
-    message: string;
-    /** Nothing for this person to do: FLAS itself is finishing setup. */
-    calm?: boolean;
-    /**
-     * What still blocks this connection, read from the server after the refusal.
-     * Empty until that answer arrives, and if it never does: the readiness rows
-     * on screen can be from before the admin saved the details, and naming them
-     * as missing would be wrong. Absent for a panel that was not the result of
-     * a refusal; those read the rows on screen.
-     */
-    blockers?: ReadinessBlocker[];
-  } | null>(null);
-  // Which refusal the latest panel belongs to, so a slow answer for an earlier
-  // one cannot replace what a later one found.
-  const refusals = useRef(0);
+  const [blocked, setBlocked] = useState<BlockedPanel | null>(null);
 
   const allAccounts = (connections.data?.accounts ?? []) as Account[];
   const waNumbers = (
@@ -273,8 +273,13 @@ export function IntegrationsAuditFixed({
    * go on: the panel then listed whatever the rows on screen said, which for an
    * admin who had just saved the missing app details was the list from before
    * they saved — until the refetch landed, and for good if it failed.
+   *
+   * The answer goes only to the panel this refusal put on screen. If the person
+   * has closed it since, or another refusal has replaced it, it is for something
+   * nobody is looking at: it must not bring a closed panel back, or put one
+   * connection's blockers on another's.
    */
-  async function showWhatStillBlocks(platform: string, refusal: number) {
+  async function showWhatStillBlocks(panel: BlockedPanel) {
     let blockers: ReadinessBlocker[] = [];
     try {
       const fresh = await qc.fetchQuery({
@@ -282,12 +287,11 @@ export function IntegrationsAuditFixed({
         queryFn: () => getIntegrationReadiness({ data: { origin: window.location.origin } }),
         staleTime: 0,
       });
-      blockers = actionableBlockers(fresh.rows.find((r) => r.id === platform));
+      blockers = actionableBlockers(fresh.rows.find((r) => r.id === panel.platform));
     } catch {
       // Not re-read: say less rather than say what may no longer be true.
     }
-    if (refusal !== refusals.current) return;
-    setBlocked((current) => (current?.platform === platform ? { ...current, blockers } : current));
+    setBlocked((current) => (current === panel ? { ...panel, blockers } : current));
   }
 
   const connect = useMutation({
@@ -300,18 +304,16 @@ export function IntegrationsAuditFixed({
       starting.current = false;
       setConnecting(null);
       if (!result.ready) {
-        const refusal = ++refusals.current;
-        setBlocked(
-          isSuperAdmin
-            ? {
-                platform,
-                message:
-                  "This connection is temporarily unavailable while administrator setup is completed.",
-                blockers: [],
-              }
-            : { platform, calm: true, message: notYetMessage(platformName(platform)) },
-        );
-        void showWhatStillBlocks(platform, refusal);
+        const panel: BlockedPanel = isSuperAdmin
+          ? {
+              platform,
+              message:
+                "This connection is temporarily unavailable while administrator setup is completed.",
+              blockers: [],
+            }
+          : { platform, calm: true, message: notYetMessage(platformName(platform)) };
+        setBlocked(panel);
+        void showWhatStillBlocks(panel);
         return;
       }
       window.location.assign(result.url);
@@ -319,13 +321,13 @@ export function IntegrationsAuditFixed({
     onError: (_e: Error, platform) => {
       starting.current = false;
       setConnecting(null);
-      const refusal = ++refusals.current;
-      setBlocked({
+      const panel: BlockedPanel = {
         platform,
         message: "The connection could not start. Please try again in a moment.",
         blockers: [],
-      });
-      void showWhatStillBlocks(platform, refusal);
+      };
+      setBlocked(panel);
+      void showWhatStillBlocks(panel);
     },
   });
 
