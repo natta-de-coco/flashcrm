@@ -182,7 +182,12 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     mutationFn: (v: { id: string | null; kind: "phone" | "email" }) =>
       makePrimary({ data: { id: v.id, contactId: contactId!, kind: v.kind } }),
     onSuccess: refresh,
-    onError: fail,
+    // A refused change can leave the contact with a different primary than the
+    // card shows (the server puts the old one back, but not always): read it again.
+    onError: (e: Error) => {
+      fail(e);
+      refresh();
+    },
   });
   const removeBranchMutation = useMutation({
     mutationFn: (id: string) => dropBranch({ data: { id } }),

@@ -165,18 +165,27 @@ export const removeContactIdentity = createServerFn({ method: "POST" })
 /**
  * Makes one identity the primary of its kind.
  *
- * Two writes rather than one because a partial unique index allows only one
- * primary per (contact, kind): the existing primary has to be cleared before
- * the new one is set, or the second write violates it.
+ * Two writes rather than one because a unique index
+ * (contact_identities_one_primary_key, on contact_id and kind where is_primary)
+ * allows only one primary per (contact, kind): the existing primary has to be
+ * cleared before the new one is set, or the second write violates it.
  *
  * `id` null means "the number on the contact record": the phone or email held
  * in `contacts` itself has no identity row to flag, and it counts as the
  * primary exactly when no identity of that kind is (see reachLines()). Choosing
  * it is therefore the first write alone.
  *
- * The identity is checked before anything is cleared. Clearing first and then
- * finding the number gone (removed in another tab, or never this contact's)
- * would leave the contact with no primary while telling the person it worked.
+ * Nothing is cleared until what is being chosen has been checked. Clearing first
+ * and then finding the number gone (removed in another tab, or never this
+ * contact's) would leave the contact with no primary while telling the person it
+ * worked. The same goes for the contact itself: an update that matches no row is
+ * not an error to the database, so "the number on the record" of a contact that
+ * cannot be seen would otherwise clear nothing and report success.
+ *
+ * Once the old primary is cleared the second write can still fail, or match no
+ * row. Then the old primary is put back so the contact keeps the one it had, and
+ * the person is told nothing was changed; if even that cannot be done they are
+ * told so, and the card reads the contact again to show what is really there.
  */
 export const setPrimaryIdentity = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -186,6 +195,19 @@ export const setPrimaryIdentity = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    const gone = () =>
+      new Error("That number is no longer on this contact. Close this card and open it again.");
+    // The contact, as this caller can see it (their own client, so another
+    // workspace's contact is not there). Read for both choices.
+    const contact = await context.supabase
+      .from("contacts")
+      .select("id, phone, email")
+      .eq("id", data.contactId)
+      .maybeSingle();
+    if (contact.error) throw contact.error;
+    if (!contact.data) {
+      throw new Error("This contact could not be found. Close this card and open it again.");
+    }
     if (data.id) {
       const found = await context.supabase
         .from("contact_identities")
@@ -195,27 +217,72 @@ export const setPrimaryIdentity = createServerFn({ method: "POST" })
         .eq("kind", data.kind)
         .maybeSingle();
       if (found.error) throw found.error;
-      if (!found.data) {
-        throw new Error(
-          "That number is no longer on this contact. Close this card and open it again.",
-        );
-      }
+      if (!found.data) throw gone();
+    } else {
+      // The number on the record has to be there to be chosen.
+      const onRecord = data.kind === "phone" ? contact.data.phone : contact.data.email;
+      if (!onRecord?.trim()) throw gone();
     }
     const cleared = await context.supabase
       .from("contact_identities")
       .update({ is_primary: false })
       .eq("contact_id", data.contactId)
-      .eq("kind", data.kind);
+      .eq("kind", data.kind)
+      .eq("is_primary", true)
+      .select("id");
     if (cleared.error) throw cleared.error;
+    const previous = (cleared.data ?? []).map((row) => row.id as string);
     if (data.id) {
-      const { error } = await context.supabase
+      const set = await context.supabase
         .from("contact_identities")
         .update({ is_primary: true })
-        .eq("id", data.id);
-      if (error) throw error;
+        .eq("id", data.id)
+        .select("id");
+      if (set.error || !set.data || set.data.length === 0) {
+        console.error(
+          "[contacts] could not set the primary identity",
+          set.error ?? "no row matched",
+        );
+        const restored = await putPreviousPrimaryBack(context.supabase, data.id, previous);
+        throw new Error(
+          restored
+            ? "That number could not be made primary, so nothing was changed. Try again in a moment."
+            : "That number could not be made primary, and the previous primary could not be put back. Close this card, open it again and choose the primary number again.",
+        );
+      }
     }
     return { ok: true };
   });
+
+/**
+ * After a failed change of primary: unflags the one that was being set, in case
+ * the write got further than its answer says, and flags the ones that were
+ * cleared. Best effort; says whether the contact has its old primary again.
+ */
+async function putPreviousPrimaryBack(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  attemptedId: string,
+  previous: string[],
+): Promise<boolean> {
+  try {
+    const undo = await supabase
+      .from("contact_identities")
+      .update({ is_primary: false })
+      .eq("id", attemptedId);
+    if (undo.error) console.error("[contacts] could not undo the attempted primary", undo.error);
+    if (previous.length === 0) return !undo.error;
+    const back = await supabase
+      .from("contact_identities")
+      .update({ is_primary: true })
+      .in("id", previous)
+      .select("id");
+    if (back.error) console.error("[contacts] could not restore the previous primary", back.error);
+    return !back.error && (back.data?.length ?? 0) === previous.length;
+  } catch (error) {
+    console.error("[contacts] could not restore the previous primary", error);
+    return false;
+  }
+}
 
 export const saveContactBranch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -12,7 +12,7 @@
 // — so the real component runs here, with its effects in order, and the real
 // server functions run against the database double.
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { runInNewContext } from "node:vm";
 
 import {
@@ -46,6 +46,7 @@ const MOBILE = "22222222-2222-4222-8222-222222222222";
 const SARA_EMAIL = "33333333-3333-4333-8333-333333333333";
 const OMAR_PHONE = "44444444-4444-4444-8444-444444444444";
 const GONE = "99999999-9999-4999-8999-999999999999";
+const NOBODY = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 /** What getContactDetail returns for one contact. */
 function detail(contact = {}, identities = []) {
@@ -87,6 +88,8 @@ function card() {
   const saves = []; // one per "Save notes" request: what was sent, and its answer
   const primaries = []; // every "Make primary" request
   const toasts = []; // everything the person was told: { kind, message }
+  const refetched = []; // the query keys the card asked to be read again
+  let primaryFailure = null; // an error "Make primary" answers with, when set
   const runtime = hookRuntime();
   const mutation = mutationDouble();
   let shown = null;
@@ -96,7 +99,9 @@ function card() {
     react: runtime.react,
     "@tanstack/react-query": {
       useQueryClient: () => ({
-        invalidateQueries: async () => {},
+        invalidateQueries: async ({ queryKey }) => {
+          refetched.push(queryKey);
+        },
         setQueryData(key, next) {
           const after = typeof next === "function" ? next(cache.get(key[1])) : next;
           if (after !== undefined) cache.set(key[1], after);
@@ -127,6 +132,7 @@ function card() {
       },
       setPrimaryIdentity: async ({ data }) => {
         primaries.push({ ...data });
+        if (primaryFailure) throw primaryFailure;
         return { ok: true };
       },
       addContactIdentity: async () => ({ ok: true }),
@@ -160,6 +166,10 @@ function card() {
     saves,
     primaries,
     toasts,
+    refetched,
+    failPrimary(error) {
+      primaryFailure = error;
+    },
     screen,
     settle: mutation.settle,
     /** Opens a contact's card, or closes the card with null. */
@@ -531,6 +541,13 @@ describe("saving a note on the server", () => {
 describe("choosing the primary on the server", () => {
   const seed = () =>
     db.reset({
+      contacts: [
+        // Sara's own number lives only on her record: no identity row mentions it.
+        { id: SARA, tenant_id: "t1", phone: "+971509630506", email: "s@e.com" },
+        { id: OMAR, tenant_id: "t1", phone: "+97150999", email: null },
+        // A contact with nothing on the record to choose.
+        { id: NOBODY, tenant_id: "t1", phone: null, email: null },
+      ],
       contact_identities: [
         { id: OFFICE, contact_id: SARA, kind: "phone", value: "+971559876543", is_primary: true },
         { id: MOBILE, contact_id: SARA, kind: "phone", value: "+971501112222", is_primary: false },
@@ -544,76 +561,171 @@ describe("choosing the primary on the server", () => {
       .filter((row) => row.is_primary)
       .map((row) => row.id)
       .sort();
+  const ORIGINAL = () => [OFFICE, SARA_EMAIL, OMAR_PHONE].sort();
+
+  /**
+   * contact_identities_one_primary_key, which the database double does not
+   * enforce: a contact has at most one primary identity of each kind, and a
+   * write that would make two is refused (23505), as Postgres refuses it.
+   */
+  const onePrimaryPerKind = (query) => {
+    if (query.patch?.is_primary !== true) return null;
+    const rows = db.table("contact_identities");
+    const touched = rows.filter((row) => query.filters.every((matches) => matches(row)));
+    const primaries = rows
+      .map((row) => (touched.includes(row) ? { ...row, is_primary: true } : row))
+      .filter((row) => row.is_primary)
+      .map((row) => `${row.contact_id}:${row.kind}`);
+    return new Set(primaries).size === primaries.length
+      ? null
+      : {
+          code: "23505",
+          message:
+            'duplicate key value violates unique constraint "contact_identities_one_primary_key"',
+        };
+  };
+  /**
+   * Makes the writes that set a primary fail the way a test says, but only for
+   * the first \`times\` of them: the ones after it (putting the old one back) get
+   * the database's own one-primary rule.
+   */
+  const refuseSetting = (answer, times = 1) => {
+    let calls = 0;
+    db.fail("contact_identities:update", (query) => {
+      if (query.patch?.is_primary !== true) return null;
+      calls += 1;
+      return calls <= times ? answer : onePrimaryPerKind(query);
+    });
+  };
+  const choose = (id, kind = "phone", contactId = SARA) =>
+    setPrimaryIdentity({ data: { id, contactId, kind }, context });
+
+  const realConsoleError = console.error;
+  let logged;
+  beforeEach(() => {
+    seed();
+    db.fail("contact_identities:update", onePrimaryPerKind);
+    logged = [];
+    console.error = (...args) =>
+      logged.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+  });
+  afterEach(() => {
+    console.error = realConsoleError;
+  });
 
   it("makes the chosen number the only primary of its kind on that contact", async () => {
-    seed();
-    await setPrimaryIdentity({ data: { id: MOBILE, contactId: SARA, kind: "phone" }, context });
+    await choose(MOBILE);
     assert.deepEqual(primaryIds(), [MOBILE, SARA_EMAIL, OMAR_PHONE].sort());
   });
 
   it("choosing the number on the record leaves no identity of that kind as primary", async () => {
-    seed();
-    const out = await setPrimaryIdentity({
-      data: { id: null, contactId: SARA, kind: "phone" },
-      context,
-    });
+    const out = await choose(null);
     assert.deepEqual(out, { ok: true });
     // Sara's email and Omar's number are not this choice's to change.
     assert.deepEqual(primaryIds(), [SARA_EMAIL, OMAR_PHONE].sort());
   });
 
   it("refuses a number that belongs to another contact, and changes nothing", async () => {
-    seed();
-    await assert.rejects(
-      setPrimaryIdentity({ data: { id: OMAR_PHONE, contactId: SARA, kind: "phone" }, context }),
-      /no longer on this contact/,
-    );
-    assert.deepEqual(primaryIds(), [OFFICE, SARA_EMAIL, OMAR_PHONE].sort());
+    await assert.rejects(choose(OMAR_PHONE), /no longer on this contact/);
+    assert.deepEqual(primaryIds(), ORIGINAL());
   });
 
   it("refuses a number that has since been removed, and changes nothing", async () => {
-    seed();
-    await assert.rejects(
-      setPrimaryIdentity({ data: { id: GONE, contactId: SARA, kind: "phone" }, context }),
-      /no longer on this contact/,
-    );
-    assert.deepEqual(primaryIds(), [OFFICE, SARA_EMAIL, OMAR_PHONE].sort());
+    await assert.rejects(choose(GONE), /no longer on this contact/);
+    assert.deepEqual(primaryIds(), ORIGINAL());
   });
 
   it("refuses an email offered as the primary phone", async () => {
-    seed();
-    await assert.rejects(
-      setPrimaryIdentity({ data: { id: SARA_EMAIL, contactId: SARA, kind: "phone" }, context }),
-      /no longer on this contact/,
-    );
-    assert.deepEqual(primaryIds(), [OFFICE, SARA_EMAIL, OMAR_PHONE].sort());
+    await assert.rejects(choose(SARA_EMAIL), /no longer on this contact/);
+    assert.deepEqual(primaryIds(), ORIGINAL());
   });
 
   it("does not mistake a database that cannot be read for a number that is gone", async () => {
-    seed();
     db.fail("contact_identities:read", { message: "statement timeout" });
-    await rejectsWith(
-      setPrimaryIdentity({ data: { id: MOBILE, contactId: SARA, kind: "phone" }, context }),
-      /statement timeout/,
-    );
+    await rejectsWith(choose(MOBILE), /statement timeout/);
     db.recover("contact_identities:read");
-    assert.deepEqual(primaryIds(), [OFFICE, SARA_EMAIL, OMAR_PHONE].sort());
+    assert.deepEqual(primaryIds(), ORIGINAL());
   });
 
-  it("does not say done when the database refuses the change", async () => {
-    seed();
-    db.fail("contact_identities:update", (query) =>
-      query.patch.is_primary ? { message: "write refused" } : null,
-    );
-    await rejectsWith(
-      setPrimaryIdentity({ data: { id: MOBILE, contactId: SARA, kind: "phone" }, context }),
-      /write refused/,
-    );
-    seed();
+  it("does not mistake a contact that cannot be read for one that is gone", async () => {
+    db.fail("contacts:read", { message: "statement timeout" });
+    await rejectsWith(choose(MOBILE), /statement timeout/);
+    await rejectsWith(choose(null), /statement timeout/);
+    db.recover("contacts:read");
+    assert.deepEqual(primaryIds(), ORIGINAL());
+  });
+
+  it("changes nothing when clearing the old primary is refused", async () => {
     db.fail("contact_identities:update", { message: "write refused" });
-    await rejectsWith(
-      setPrimaryIdentity({ data: { id: null, contactId: SARA, kind: "phone" }, context }),
-      /write refused/,
+    await rejectsWith(choose(MOBILE), /write refused/);
+    await rejectsWith(choose(null), /write refused/);
+    db.recover("contact_identities:update");
+    assert.deepEqual(primaryIds(), ORIGINAL());
+  });
+
+  describe("when the new primary cannot be set after the old one was cleared", () => {
+    it("puts the old primary back and says it was not changed, if the database refuses", async () => {
+      refuseSetting({ message: "write refused" });
+      await rejectsWith(choose(MOBILE), /could not be made primary.*nothing was changed/);
+      assert.deepEqual(primaryIds(), ORIGINAL(), "the contact still has the primary it had");
+      assert.ok(
+        logged.some((line) => /write refused/.test(line)),
+        "and the technical reason is in the log",
+      );
+    });
+
+    it("does not say done when the write touched no row", async () => {
+      // The number was removed in another tab between the check and the write:
+      // the database accepts an update that matches nothing.
+      refuseSetting({ empty: true });
+      await rejectsWith(choose(MOBILE), /could not be made primary.*nothing was changed/);
+      assert.deepEqual(primaryIds(), ORIGINAL());
+    });
+
+    it("says so, plainly, if the old primary cannot be put back either", async () => {
+      refuseSetting({ message: "write refused" }, 2);
+      await assert.rejects(choose(MOBILE), (error) => {
+        assert.match(error.message, /could not be put back/);
+        assert.match(error.message, /choose the primary number again/);
+        assert.doesNotMatch(error.message, /write refused/, "the technical reason is for the log");
+        return true;
+      });
+      assert.equal(
+        primaryIds().includes(MOBILE),
+        false,
+        "the number that failed is not left primary",
+      );
+    });
+  });
+
+  describe("choosing the number on the record", () => {
+    it("is refused for a contact this person cannot see, and changes nothing", async () => {
+      // Without a check, clearing zero rows reads as success.
+      await assert.rejects(choose(null, "phone", GONE), /could not be found/);
+      assert.deepEqual(primaryIds(), ORIGINAL());
+    });
+
+    it("is refused when the record has no number of that kind, and changes nothing", async () => {
+      await assert.rejects(choose(null, "phone", NOBODY), /no longer on this contact/);
+      await assert.rejects(choose(null, "email", NOBODY), /no longer on this contact/);
+      assert.deepEqual(primaryIds(), ORIGINAL());
+    });
+  });
+});
+
+describe("when choosing the primary fails on the card", () => {
+  it("shows why and reads the contact again, so the card shows what is really primary", async () => {
+    const h = card();
+    h.loaded(SARA, { phone: "+971509630506" }, [identity({ is_primary: true })]);
+    h.open(SARA);
+    h.failPrimary(new Error("That number could not be made primary, so nothing was changed."));
+    h.line("row:phone").makePrimary.props.onClick();
+    await h.settle();
+    assert.equal(h.toasts.at(-1).kind, "error");
+    assert.match(h.toasts.at(-1).message, /nothing was changed/);
+    assert.ok(
+      h.refetched.some((key) => key[0] === "contact-detail" && key[1] === SARA),
+      "the card asked for the contact again",
     );
   });
 });
