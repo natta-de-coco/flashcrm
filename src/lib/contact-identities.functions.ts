@@ -186,6 +186,14 @@ export const removeContactIdentity = createServerFn({ method: "POST" })
  * row. Then the old primary is put back so the contact keeps the one it had, and
  * the person is told nothing was changed; if even that cannot be done they are
  * told so, and the card reads the contact again to show what is really there.
+ *
+ * Choosing an identity also points the contact record at it: messages are sent
+ * to `contacts.phone` (and the campaign audience reads `contacts.email`), not to
+ * whichever identity is flagged. Changing only the flag left the card saying one
+ * number was primary while messages went to another. So that is a third write,
+ * and if it fails the flag change is undone as above and the person is told. The
+ * number that was on the record, if no identity covers it, is kept as an identity
+ * first, so replacing it on the record does not lose it.
  */
 export const setPrimaryIdentity = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -201,23 +209,27 @@ export const setPrimaryIdentity = createServerFn({ method: "POST" })
     // workspace's contact is not there). Read for both choices.
     const contact = await context.supabase
       .from("contacts")
-      .select("id, phone, email")
+      .select("id, tenant_id, phone, email")
       .eq("id", data.contactId)
       .maybeSingle();
     if (contact.error) throw contact.error;
     if (!contact.data) {
       throw new Error("This contact could not be found. Close this card and open it again.");
     }
+    // This contact's numbers (or emails) of the kind, for the identity chosen and
+    // for deciding what the record's own value is already covered by.
+    let target: { id: string; value: string } | undefined;
+    let ofKind: { id: string; value: string }[] = [];
     if (data.id) {
-      const found = await context.supabase
+      const listed = await context.supabase
         .from("contact_identities")
-        .select("id")
-        .eq("id", data.id)
+        .select("id, value")
         .eq("contact_id", data.contactId)
-        .eq("kind", data.kind)
-        .maybeSingle();
-      if (found.error) throw found.error;
-      if (!found.data) throw gone();
+        .eq("kind", data.kind);
+      if (listed.error) throw listed.error;
+      ofKind = (listed.data ?? []) as { id: string; value: string }[];
+      target = ofKind.find((row) => row.id === data.id);
+      if (!target) throw gone();
     } else {
       // The number on the record has to be there to be chosen.
       const onRecord = data.kind === "phone" ? contact.data.phone : contact.data.email;
@@ -232,27 +244,107 @@ export const setPrimaryIdentity = createServerFn({ method: "POST" })
       .select("id");
     if (cleared.error) throw cleared.error;
     const previous = (cleared.data ?? []).map((row) => row.id as string);
-    if (data.id) {
+    if (data.id && target) {
+      const thing = data.kind === "phone" ? "number" : "email address";
+      // Undoes the flag change, then says what happened. `why` is for a refusal
+      // the person can do something about; otherwise it is the general sentence.
+      const abandon = async (why: string | null, technical: unknown): Promise<never> => {
+        console.error("[contacts] could not make the identity primary", technical);
+        const restored = await putPreviousPrimaryBack(context.supabase, data.id!, previous);
+        throw new Error(
+          restored
+            ? (why ??
+                `That ${thing} could not be made primary, so nothing was changed. Try again in a moment.`)
+            : `That ${thing} could not be made primary, and the previous primary could not be put back. Close this card, open it again and choose the primary ${thing} again.`,
+        );
+      };
       const set = await context.supabase
         .from("contact_identities")
         .update({ is_primary: true })
         .eq("id", data.id)
         .select("id");
       if (set.error || !set.data || set.data.length === 0) {
-        console.error(
-          "[contacts] could not set the primary identity",
-          set.error ?? "no row matched",
-        );
-        const restored = await putPreviousPrimaryBack(context.supabase, data.id, previous);
-        throw new Error(
-          restored
-            ? "That number could not be made primary, so nothing was changed. Try again in a moment."
-            : "That number could not be made primary, and the previous primary could not be put back. Close this card, open it again and choose the primary number again.",
-        );
+        return abandon(null, set.error ?? "no row matched");
       }
+      const followed = await pointRecordAt(context, contact.data, data.kind, target.value, ofKind);
+      if (!followed.ok) return abandon(followed.why, followed.technical);
     }
     return { ok: true };
   });
+
+/** A phone number by its digits (a leading 00 is a +), an email by its lower-case form. */
+function sameContactDetail(kind: "phone" | "email", a: string, b: string): boolean {
+  const form = (value: string) =>
+    kind === "phone" ? value.replace(/\D/g, "").replace(/^00/, "") : value.trim().toLowerCase();
+  const left = form(a);
+  return left !== "" && left === form(b);
+}
+
+/**
+ * Makes the contact record carry the value that was chosen as primary, because
+ * that is the one messages are sent to. If the record held a different value that
+ * no identity of the contact covers, it is kept as an identity first (not
+ * primary): the New contact form and the CSV import write only the record, so
+ * for those contacts it is the only place that number exists.
+ *
+ * Says what to tell the person when the database refuses: a phone number that is
+ * not in international format, or one another contact in the workspace already
+ * sends to. Anything else is the general sentence (why null).
+ */
+async function pointRecordAt(
+  context: { supabase: import("@supabase/supabase-js").SupabaseClient; userId: string },
+  contact: { id: string; tenant_id: string | null; phone: string | null; email: string | null },
+  kind: "phone" | "email",
+  value: string,
+  identitiesOfKind: { id: string; value: string }[],
+): Promise<{ ok: true } | { ok: false; why: string | null; technical: unknown }> {
+  const onRecord = ((kind === "phone" ? contact.phone : contact.email) ?? "").trim();
+  if (sameContactDetail(kind, onRecord, value)) return { ok: true };
+  try {
+    if (onRecord && !identitiesOfKind.some((row) => sameContactDetail(kind, row.value, onRecord))) {
+      const kept = await context.supabase.from("contact_identities").insert({
+        tenant_id: contact.tenant_id ?? (await callerTenantId(context)),
+        contact_id: contact.id,
+        kind,
+        value: onRecord,
+        label: null,
+        is_primary: false,
+      });
+      // 23505: the workspace already has that number on a contact's list, so it is
+      // not lost, only not this contact's to list. Anything else stops here.
+      if (kept.error && kept.error.code !== "23505") {
+        return { ok: false, why: null, technical: kept.error };
+      }
+    }
+    const column = kind === "phone" ? "phone" : "email";
+    const changed = await context.supabase
+      .from("contacts")
+      .update({ [column]: value })
+      .eq("id", contact.id)
+      .select("id");
+    if (changed.error) {
+      const code = changed.error.code;
+      return {
+        ok: false,
+        technical: changed.error,
+        why:
+          code === "23514"
+            ? kind === "phone"
+              ? "That number is not in international format (a + and the country code), so messages cannot be sent to it as the primary. Nothing was changed."
+              : "That email address is not valid, so it cannot be the primary. Nothing was changed."
+            : code === "23505" && kind === "phone"
+              ? "Another contact in this workspace already uses that number as its main number, so nothing was changed."
+              : null,
+      };
+    }
+    if (!changed.data || changed.data.length === 0) {
+      return { ok: false, why: null, technical: "the contact record matched no row" };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, why: null, technical: error };
+  }
+}
 
 /**
  * After a failed change of primary: unflags the one that was being set, in case

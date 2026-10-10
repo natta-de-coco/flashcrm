@@ -882,6 +882,251 @@ describe("choosing the primary on the server", () => {
       assert.deepEqual(primaryIds(), ORIGINAL());
     });
   });
+
+  // ── The number on the card is the number messages are sent to ───────────────
+  // Sends read contacts.phone (billing-whatsapp.server.ts, agent.server.ts) and
+  // the campaign audience reads contacts.email. Choosing a primary used to change
+  // only the flag on the identity, so the card said one number was primary and
+  // messages went to another.
+  describe("and the number messages are sent to", () => {
+    const WORK_EMAIL = "55555555-5555-4555-8555-555555555555";
+    const OFFICE_NUMBER = "+971559876543";
+    const MOBILE_NUMBER = "+971501112222";
+    const ON_RECORD = "+971509630506";
+
+    /** Sara's record already says what her primary says: nothing has drifted. */
+    const seedInStep = () =>
+      db.reset({
+        contacts: [
+          { id: SARA, tenant_id: "t1", phone: OFFICE_NUMBER, email: "s@e.com" },
+          { id: OMAR, tenant_id: "t1", phone: "+97150999", email: null },
+        ],
+        contact_identities: [
+          { id: OFFICE, contact_id: SARA, kind: "phone", value: OFFICE_NUMBER, is_primary: true },
+          { id: MOBILE, contact_id: SARA, kind: "phone", value: MOBILE_NUMBER, is_primary: false },
+          { id: SARA_EMAIL, contact_id: SARA, kind: "email", value: "s@e.com", is_primary: true },
+          {
+            id: WORK_EMAIL,
+            contact_id: SARA,
+            kind: "email",
+            value: "sara@work.test",
+            is_primary: false,
+          },
+          { id: OMAR_PHONE, contact_id: OMAR, kind: "phone", value: "+97150999", is_primary: true },
+        ],
+      });
+    const record = (id = SARA) => db.table("contacts").find((row) => row.id === id);
+    const identitiesOf = (id = SARA) =>
+      db.table("contact_identities").filter((row) => row.contact_id === id);
+    /** What the card would show as primary, worked out by the card's own rules. */
+    const shownPrimary = (kind) =>
+      contactsView
+        .reachLines(record(), identitiesOf())
+        .find((line) => line.kind === kind && line.isPrimary)?.value;
+    /** A number by its digits, an address lower-cased: the way the database compares them. */
+    const sameForm = (kind, value) =>
+      kind === "phone"
+        ? String(value ?? "").replace(/\D/g, "")
+        : String(value ?? "")
+            .trim()
+            .toLowerCase();
+    /** The card and the sender agree: what is shown primary is what is sent to. */
+    const cardMatchesSending = (kind) =>
+      assert.equal(
+        sameForm(kind, shownPrimary(kind)),
+        sameForm(kind, record()[kind]),
+        "the card shows one number as primary while messages go to another",
+      );
+    /** Fails the writes to the contact record, but not the ones to identities. */
+    const refuseRecord = (answer) => db.fail("contacts:update", answer);
+
+    beforeEach(() => {
+      seedInStep();
+      db.fail("contact_identities:update", onePrimaryPerKind);
+    });
+
+    it("starts from a record that agrees with its card", () => {
+      cardMatchesSending("phone");
+      cardMatchesSending("email");
+    });
+
+    it("sends to the number that was made primary", async () => {
+      await choose(MOBILE);
+      assert.equal(record().phone, MOBILE_NUMBER);
+      cardMatchesSending("phone");
+    });
+
+    it("does the same for an email address", async () => {
+      await choose(WORK_EMAIL, "email");
+      assert.equal(record().email, "sara@work.test");
+      cardMatchesSending("email");
+    });
+
+    it("leaves the other kind alone", async () => {
+      await choose(MOBILE);
+      assert.equal(record().email, "s@e.com");
+      await choose(WORK_EMAIL, "email");
+      assert.equal(record().phone, MOBILE_NUMBER);
+    });
+
+    it("leaves another contact's record alone", async () => {
+      await choose(MOBILE);
+      assert.equal(record(OMAR).phone, "+97150999");
+    });
+
+    it("does not touch the record when the number on the record is chosen", async () => {
+      // Sara's record says one number and her flagged primary another (what choosing
+      // a primary used to leave behind); choosing the record's own number clears the flag.
+      record().phone = ON_RECORD;
+      await choose(null);
+      assert.equal(record().phone, ON_RECORD);
+      assert.equal(
+        identitiesOf().some((row) => row.kind === "phone" && row.is_primary),
+        false,
+      );
+      cardMatchesSending("phone");
+    });
+
+    it("keeps the number that was on the record as a number of the contact", async () => {
+      // Created with the New contact form: the number is on the record and
+      // nowhere else. Replacing it would lose it.
+      db.table("contacts").find((row) => row.id === SARA).phone = ON_RECORD;
+      await choose(MOBILE);
+      assert.equal(record().phone, MOBILE_NUMBER);
+      const kept = identitiesOf().find((row) => row.value === ON_RECORD);
+      assert.ok(kept, "the old number is still there, as a number of the contact");
+      assert.equal(kept.kind, "phone");
+      assert.equal(kept.is_primary, false);
+      assert.equal(kept.tenant_id, "t1");
+      cardMatchesSending("phone");
+    });
+
+    it("does not add a number that is already one of the contact's", async () => {
+      // The record's number is OFFICE's: it is covered, whatever way it is written.
+      db.table("contacts").find((row) => row.id === SARA).phone = "971559876543";
+      const before = identitiesOf().length;
+      await choose(MOBILE);
+      assert.equal(identitiesOf().length, before);
+    });
+
+    it("can go back: choosing the first number again sends to it again", async () => {
+      db.table("contacts").find((row) => row.id === SARA).phone = ON_RECORD;
+      await choose(MOBILE);
+      const old = identitiesOf().find((row) => row.value === ON_RECORD);
+      old.id = "66666666-6666-4666-8666-666666666666"; // the double does not make UUIDs
+      await choose(old.id);
+      assert.equal(record().phone, ON_RECORD);
+      cardMatchesSending("phone");
+    });
+
+    it("does not add anything when the record is already the number chosen", async () => {
+      const before = identitiesOf().length;
+      await choose(OFFICE);
+      assert.equal(identitiesOf().length, before);
+      assert.equal(record().phone, OFFICE_NUMBER);
+    });
+
+    describe("when the record cannot be changed", () => {
+      const expectNothingChanged = () => {
+        assert.deepEqual(primaryIds(), [OFFICE, SARA_EMAIL, OMAR_PHONE].sort());
+        assert.equal(record().phone, OFFICE_NUMBER);
+        cardMatchesSending("phone");
+      };
+
+      it("tells the person, puts the primary back, and leaves the record as it was", async () => {
+        refuseRecord({ message: "write refused" });
+        await assert.rejects(choose(MOBILE), (error) => {
+          assert.match(error.message, /could not be made primary.*nothing was changed/);
+          assert.doesNotMatch(error.message, /write refused/);
+          return true;
+        });
+        expectNothingChanged();
+        assert.ok(logged.some((line) => /write refused/.test(line)));
+      });
+
+      it("does not say done when the update matched no contact", async () => {
+        refuseRecord({ empty: true });
+        await assert.rejects(choose(MOBILE), /could not be made primary.*nothing was changed/);
+        expectNothingChanged();
+      });
+
+      it("says why when the number cannot be a sending number", async () => {
+        // The database requires international format on the record.
+        refuseRecord({
+          code: "23514",
+          message: "Phone number must use E.164 format, for example +971501234567.",
+        });
+        await assert.rejects(choose(MOBILE), (error) => {
+          assert.match(error.message, /international format/);
+          assert.match(error.message, /nothing was changed/i);
+          assert.doesNotMatch(error.message, /E\.164|23514/);
+          return true;
+        });
+        expectNothingChanged();
+      });
+
+      it("says why when another contact already sends to that number", async () => {
+        refuseRecord({ code: "23505", message: "duplicate key value violates unique constraint" });
+        await assert.rejects(choose(MOBILE), (error) => {
+          assert.match(error.message, /another contact/i);
+          assert.match(error.message, /nothing was changed/i);
+          return true;
+        });
+        expectNothingChanged();
+      });
+
+      it("says so, plainly, if the old primary cannot be put back either", async () => {
+        refuseRecord({ message: "write refused" });
+        let sets = 0;
+        db.fail("contact_identities:update", (query) => {
+          if (query.patch?.is_primary !== true) return null;
+          sets += 1;
+          return sets >= 2 ? { message: "write refused" } : onePrimaryPerKind(query);
+        });
+        await assert.rejects(choose(MOBILE), (error) => {
+          assert.match(error.message, /could not be put back/);
+          assert.match(error.message, /choose the primary number again/);
+          return true;
+        });
+        assert.equal(record().phone, OFFICE_NUMBER, "messages still go to the number they did");
+      });
+
+      it("keeps the old number on the contact even though nothing else changed", async () => {
+        db.table("contacts").find((row) => row.id === SARA).phone = ON_RECORD;
+        refuseRecord({ message: "write refused" });
+        await assert.rejects(choose(MOBILE));
+        assert.equal(record().phone, ON_RECORD);
+        // Whether or not it was added as a number of the contact first, it is
+        // still on the record, so the card still lists it.
+        assert.ok(
+          contactsView.reachLines(record(), identitiesOf()).some((l) => l.value === ON_RECORD),
+        );
+      });
+    });
+
+    describe("when the old number cannot be kept", () => {
+      it("stops, puts the primary back, and changes nothing", async () => {
+        db.table("contacts").find((row) => row.id === SARA).phone = ON_RECORD;
+        db.fail("contact_identities:insert", { message: "write refused" });
+        await assert.rejects(choose(MOBILE), /could not be made primary.*nothing was changed/);
+        assert.deepEqual(primaryIds(), [OFFICE, SARA_EMAIL, OMAR_PHONE].sort());
+        assert.equal(record().phone, ON_RECORD);
+        assert.equal(
+          identitiesOf().some((row) => row.value === ON_RECORD),
+          false,
+        );
+      });
+
+      it("goes ahead when the number already belongs to another contact's list", async () => {
+        // A unique number can have one owner in a workspace: it is theirs.
+        db.table("contacts").find((row) => row.id === SARA).phone = ON_RECORD;
+        db.fail("contact_identities:insert", { code: "23505", message: "duplicate key value" });
+        await choose(MOBILE);
+        assert.equal(record().phone, MOBILE_NUMBER);
+        cardMatchesSending("phone");
+      });
+    });
+  });
 });
 
 describe("when choosing the primary fails on the card", () => {
