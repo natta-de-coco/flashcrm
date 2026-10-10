@@ -4,6 +4,7 @@
 // server-only code paths (like plugin activation) can send real email too,
 // not just the company-admin "send a test email" flow.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { unsupportedProviderError } from "@/lib/email-providers";
 
 export type EmailMessage = {
   from: string;
@@ -82,10 +83,9 @@ export async function dispatchEmail(
     const txt = await r.text().catch(() => "");
     return { ok: false, error: `SendGrid HTTP ${r.status}: ${txt.slice(0, 200)}` };
   }
-  return {
-    ok: false,
-    error: `Provider ${provider} not implemented — add a dispatcher in email-dispatch.server.ts`,
-  };
+  // Nothing was sent. The words are for the company admin who reads them under
+  // "Last test" and in the delivery log, so no developer notes.
+  return { ok: false, error: unsupportedProviderError(provider) };
 }
 
 /**
@@ -100,11 +100,18 @@ export async function sendTenantEmail(
   tenantId: string,
   message: { to: string; subject: string; text: string },
 ): Promise<DispatchResult> {
-  const { data: config } = await supabaseAdmin
+  const { data: config, error: configError } = await supabaseAdmin
     .from("tenant_smtp_config")
     .select("*")
     .eq("tenant_id", tenantId)
     .maybeSingle();
+  // Not being able to read the row is not the same as the company having none.
+  // Treating it as "none" sent the email through the platform's own mailer, from
+  // the platform's address, and said it had worked. Nothing is sent instead.
+  if (configError) {
+    console.error("[email] could not read the company's email settings", configError);
+    return await couldNotRead(tenantId, message, "unknown", "email settings");
+  }
 
   let provider = config?.provider ?? "platform";
   let apiKey: string | null = null;
@@ -114,9 +121,14 @@ export async function sendTenantEmail(
   const domain = config?.domain ?? undefined;
 
   if (config && provider !== "platform") {
-    const { data: key } = await supabaseAdmin.rpc("get_tenant_smtp_api_key", {
+    const { data: key, error: keyError } = await supabaseAdmin.rpc("get_tenant_smtp_api_key", {
       _tenant_id: tenantId,
     });
+    // Same rule: a key that could not be read is not "no key saved".
+    if (keyError) {
+      console.error("[email] could not read the company's email key", keyError);
+      return await couldNotRead(tenantId, message, provider, "email key");
+    }
     apiKey = (key as string | null) ?? null;
   }
 
@@ -146,6 +158,21 @@ export async function sendTenantEmail(
     region,
     domain,
   });
+  await logEmailAttempt(tenantId, message, provider, result);
+  return result;
+}
+
+/** Nothing was sent because a company's own settings could not be read. */
+async function couldNotRead(
+  tenantId: string,
+  message: { to: string; subject: string },
+  provider: string,
+  what: string,
+): Promise<DispatchResult> {
+  const result: DispatchResult = {
+    ok: false,
+    error: `Your company's ${what} could not be read just now, so this email was not sent. Try again in a moment.`,
+  };
   await logEmailAttempt(tenantId, message, provider, result);
   return result;
 }

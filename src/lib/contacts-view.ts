@@ -23,9 +23,10 @@ export type ContactPrimaries = {
  * One line in the "Numbers & emails" list.
  *
  * `id` is null for a line that came from `contacts.phone` / `contacts.email`
- * rather than from an identity row. There is nothing to delete or re-flag in
- * that case, so the dialog hides those controls — the alternative would be
- * buttons that cannot work.
+ * rather than from an identity row. There is nothing to delete in that case, so
+ * the dialog hides that control — it would be a button that cannot work. Making
+ * such a line primary is a request with no identity id: it clears the flag on
+ * the identities of that kind, which is what leaves this line primary.
  */
 export type ReachLine = {
   id: string | null;
@@ -70,8 +71,15 @@ export function normalizeIdentityValue(kind: string, value: string | null | unde
  * New contact form and the CSV import both write `contacts.phone` / `.email`
  * and nothing else, so every contact created through the UI since then has a
  * number the dialog could not see. The row's own phone and email are folded in
- * here, marked primary, rather than being backfilled by a migration that would
- * go stale again the next time something writes only `contacts`.
+ * here, rather than being backfilled by a migration that would go stale again
+ * the next time something writes only `contacts`.
+ *
+ * The number on the record is shown as primary only while no identity of the
+ * same kind is. "Make primary" on an identity sets that identity's flag and
+ * leaves the contact row alone, so a line that was always marked primary showed
+ * two primary numbers the moment a second one was chosen (review of PR #32).
+ * At most one line of each kind is primary, and it is the one the person chose;
+ * choosing the number on the record again clears the flag on the identities.
  *
  * A contact-row value already covered by an identity is dropped, compared on
  * the canonical form so "+971 50 963 0506" does not appear twice next to
@@ -101,14 +109,15 @@ export function reachLines(contact: ContactPrimaries, identities: IdentityRow[])
     const key = `${kind}:${normalizeIdentityValue(kind, value)}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const chosenElsewhere = lines.some((line) => line.kind === kind && line.isPrimary);
     // Ahead of the identity rows: it is the number on the contact record, so
     // it is the one the user expects to read first.
     lines.unshift({
       id: null,
       kind,
       value,
-      label: "Primary — on the contact record",
-      isPrimary: true,
+      label: chosenElsewhere ? "On the contact record" : "Primary — on the contact record",
+      isPrimary: !chosenElsewhere,
       branchId: null,
       fromContactRow: true,
     });
@@ -125,6 +134,115 @@ export function reachSummary(lines: ReachLine[]): string {
   if (phones > 0) parts.push(`${phones} ${phones === 1 ? "number" : "numbers"}`);
   if (emails > 0) parts.push(`${emails} ${emails === 1 ? "email" : "emails"}`);
   return parts.join(" · ");
+}
+
+/**
+ * The longest note a contact may have. The notes box stops at this and the
+ * server refuses more, from this one number, so they cannot disagree.
+ */
+export const NOTES_MAX_LENGTH = 4000;
+
+/**
+ * What someone has typed into a contact's notes box and not yet saved.
+ *
+ * It carries the contact it was typed for. The card stays mounted while the
+ * person moves from one contact to the next, and typing that is not tied to a
+ * contact ends up shown on — or saved to — the wrong one.
+ */
+export type NotesDraft = { contactId: string; text: string };
+
+/**
+ * Words that have been sent to be saved and are not saved yet, by contact id.
+ *
+ * A save takes a moment, and the card may be closed or moved to another contact
+ * while it is out. If it then fails, what was typed would be gone: the box is
+ * emptied whenever the card moves on. So the words are held here from the moment
+ * Save is pressed until they are known to be saved, and a failed save leaves
+ * them where they were, to be shown again when that contact is opened.
+ *
+ * Kept in memory by the card for as long as the contacts page is open. Nothing
+ * is held for typing that was never sent: leaving that behind is still how a
+ * half-written note is dropped.
+ */
+export type KeptNotes = Readonly<Record<string, string>>;
+
+const holds = (kept: KeptNotes, contactId: string | null | undefined): contactId is string =>
+  Boolean(contactId) && Object.prototype.hasOwnProperty.call(kept, contactId as string);
+
+/** Holds what is being sent for this contact, from the moment Save is pressed. */
+export function keepNoteBeingSaved(kept: KeptNotes, sent: NotesDraft): KeptNotes {
+  return { ...kept, [sent.contactId]: sent.text };
+}
+
+/**
+ * Keeps up with the typing once something is held for that contact, so that
+ * closing the card after a failed save does not bring back older words than
+ * the ones last typed. Typing for a contact with nothing held is not held.
+ */
+export function followKeptNote(kept: KeptNotes, draft: NotesDraft): KeptNotes {
+  return holds(kept, draft.contactId) ? { ...kept, [draft.contactId]: draft.text } : kept;
+}
+
+/**
+ * Lets go of the words once exactly those words have been saved. If more was
+ * typed after Save was pressed, what is held is the newer text and it was not
+ * in the request: it stays, as unsaved typing does in the box (draftAfterSave).
+ */
+export function forgetSavedNote(kept: KeptNotes, sent: NotesDraft): KeptNotes {
+  if (!holds(kept, sent.contactId) || kept[sent.contactId] !== sent.text) return kept;
+  const rest = { ...kept };
+  delete rest[sent.contactId];
+  return rest;
+}
+
+/**
+ * What the notes box shows: this contact's unsaved typing if there is any, then
+ * words held after a failed save, otherwise the saved note.
+ *
+ * The saved note used to be copied into the box by one effect and the box
+ * emptied by another whenever the contact changed. Reopening a contact that
+ * was already loaded ran both at once, the emptying one last, and nothing
+ * changed afterwards to copy the note back in — so a saved note showed as
+ * blank and could be overwritten without ever being seen. Worked out from the
+ * saved note on every render instead, there is no order to get wrong.
+ */
+export function notesFieldValue(
+  contactId: string | null,
+  saved: string | null | undefined,
+  draft: NotesDraft | null,
+  kept: KeptNotes = {},
+): string {
+  if (draft && contactId && draft.contactId === contactId) return draft.text;
+  if (holds(kept, contactId)) return kept[contactId] ?? "";
+  return saved ?? "";
+}
+
+/** True when this contact has typing in the notes box that is not saved yet. */
+export function hasUnsavedNotes(
+  contactId: string | null,
+  draft: NotesDraft | null,
+  kept: KeptNotes = {},
+): boolean {
+  return Boolean((draft && contactId && draft.contactId === contactId) || holds(kept, contactId));
+}
+
+/**
+ * The unsaved typing that is left once a save has succeeded.
+ *
+ * Nothing, if the box still holds exactly what was sent. But a save takes a
+ * moment and the box stays editable while it does, so the person may have
+ * typed on: those words were not in the request, and marking the box "saved"
+ * put the stored note back over them. They stay as unsaved typing, with Save
+ * offered again. Typing that belongs to another contact — the card moved on
+ * before the answer came — is not this save's to clear either.
+ *
+ * Editing stays allowed during a save rather than being locked: a locked box
+ * drops the keys pressed while it is locked, and this way no keystroke is lost.
+ */
+export function draftAfterSave(draft: NotesDraft | null, sent: NotesDraft): NotesDraft | null {
+  if (!draft) return null;
+  if (draft.contactId !== sent.contactId) return draft;
+  return draft.text === sent.text ? null : draft;
 }
 
 /** Just enough of a contact to total a pipeline column. */

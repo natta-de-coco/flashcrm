@@ -10,11 +10,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  isSelectableProvider,
+  isSendingProvider,
+  providerName,
+  type SelectableProvider,
+} from "@/lib/email-providers";
+import {
   getTenantSmtpConfig,
   saveTenantSmtpConfig,
   setTenantSmtpApiKey,
   testTenantSmtp,
 } from "@/lib/tenant-smtp.functions";
+import { isValidationDump } from "@/lib/validation-message";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -62,6 +69,10 @@ function EmailSettingsPage() {
   const test = useServerFn(testTenantSmtp);
 
   const [config, setConfig] = useState<Config | null>(null);
+  // The provider as last saved, kept apart from the one being edited: a company
+  // that saved AWS SES or an SMTP relay is told it does not send until it has
+  // really saved something that does, not merely picked it in the list.
+  const [savedProvider, setSavedProvider] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [testTo, setTestTo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -76,8 +87,11 @@ function EmailSettingsPage() {
     void (async () => {
       try {
         setLoadError(null);
-        const c = await load({ data: undefined });
-        if (!cancelled) setConfig(c as Config);
+        const c = (await load({ data: undefined })) as Config;
+        if (!cancelled) {
+          setConfig(c);
+          setSavedProvider(c.provider);
+        }
       } catch (e) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : "Could not load settings.");
       }
@@ -109,13 +123,24 @@ function EmailSettingsPage() {
     );
   }
 
+  // The server checks every field before it acts, and says no with a list of
+  // issues in JSON. That is not for a person: say it in a sentence instead.
+  const shown = (e: unknown, fallback: string) =>
+    e instanceof Error
+      ? isValidationDump(e.message)
+        ? t("settingsEmail.invalidInput")
+        : e.message
+      : fallback;
+
   async function onSave() {
+    // Save is off for a provider that cannot send; this is the same rule again
+    // for anything that reaches here another way.
+    if (!isSelectableProvider(config!.provider)) return;
     setBusy(true);
     try {
       await save({
         data: {
-          provider: config!.provider as
-            "platform" | "resend" | "mailgun" | "sendgrid" | "postmark" | "ses" | "smtp_relay",
+          provider: config!.provider as SelectableProvider,
           fromEmail: config!.from_email,
           fromName: config!.from_name,
           replyTo: config!.reply_to,
@@ -123,9 +148,10 @@ function EmailSettingsPage() {
           domain: config!.domain,
         },
       });
+      setSavedProvider(config!.provider);
       toast.success(t("settingsEmail.settingsSavedRotateYourApi"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("settingsEmail.saveFailed"));
+      toast.error(shown(e, t("settingsEmail.saveFailed")));
     } finally {
       setBusy(false);
     }
@@ -142,7 +168,7 @@ function EmailSettingsPage() {
       setApiKey("");
       toast.success(t("settingsEmail.apiKeyStoredAndEncrypted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("settingsEmail.couldNotStoreKey"));
+      toast.error(shown(e, t("settingsEmail.couldNotStoreKey")));
     } finally {
       setBusy(false);
     }
@@ -163,15 +189,19 @@ function EmailSettingsPage() {
         toast.success(t("settingsEmail.testEmailSentVia", { provider: config!.provider }));
       else toast.error(res.error ?? t("settingsEmail.testFailed"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("settingsEmail.testFailed"));
+      toast.error(shown(e, t("settingsEmail.testFailed")));
     } finally {
       setBusy(false);
     }
   }
 
-  const needsKey = config.provider !== "platform";
+  // Only a provider the sender has code for takes a key, a domain or a region.
+  const needsKey = isSendingProvider(config.provider);
   const needsDomain = config.provider === "mailgun";
-  const needsRegion = config.provider === "mailgun" || config.provider === "ses";
+  const needsRegion = config.provider === "mailgun";
+  const canSave = isSelectableProvider(config.provider);
+  const unsendable =
+    savedProvider !== null && !isSelectableProvider(savedProvider) ? savedProvider : null;
 
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
@@ -200,11 +230,11 @@ function EmailSettingsPage() {
           <div className="space-y-2">
             <Label>{t("settingsEmail.provider")}</Label>
             <Select
-              value={config.provider}
+              value={canSave ? config.provider : ""}
               onValueChange={(v) => setConfig({ ...config, provider: v })}
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder={t("settingsEmail.chooseAProvider")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="platform">
@@ -216,12 +246,13 @@ function EmailSettingsPage() {
                 <SelectItem value="postmark">Postmark</SelectItem>
                 <SelectItem value="mailgun">Mailgun</SelectItem>
                 <SelectItem value="sendgrid">SendGrid</SelectItem>
-                <SelectItem value="ses">AWS SES (HTTPS)</SelectItem>
-                <SelectItem value="smtp_relay">
-                  {t("settingsEmail.smtpRelayHttpsGateway")}
-                </SelectItem>
               </SelectContent>
             </Select>
+            {unsendable && (
+              <p role="alert" className="text-sm text-destructive">
+                {t("settingsEmail.providerDoesNotSend", { provider: providerName(unsendable) })}
+              </p>
+            )}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -279,7 +310,7 @@ function EmailSettingsPage() {
             )}
           </div>
           <div className="flex gap-2">
-            <Button onClick={onSave} disabled={busy}>
+            <Button onClick={onSave} disabled={busy || !canSave}>
               {t("settingsEmail.saveSettings")}
             </Button>
           </div>

@@ -1,4 +1,5 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { isSendingProvider, SELECTABLE_PROVIDERS } from "@/lib/email-providers";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
@@ -11,8 +12,11 @@ import { z } from "zod";
  *   - mailgun      (EU / US regions)
  *   - sendgrid
  *   - postmark
- *   - ses          (AWS SES via HTTPS)
- *   - smtp_relay   (any provider that speaks SMTP via HTTPS gateway, e.g. SMTP2GO)
+ *
+ * The list lives in src/lib/email-providers.ts. AWS SES and an SMTP relay were
+ * once offered here too, but email-dispatch.server.ts never had code to send
+ * through either, so they are no longer accepted (a company that saved one
+ * earlier is told on the settings page and can move to one that sends).
  *
  * The api_key is encrypted at rest in Postgres via pgcrypto (see the migration
  * that creates `tenant_smtp_config`).  It is decrypted only inside a
@@ -20,15 +24,7 @@ import { z } from "zod";
  * over the API surface.
  */
 
-const ProviderEnum = z.enum([
-  "platform",
-  "resend",
-  "mailgun",
-  "sendgrid",
-  "postmark",
-  "ses",
-  "smtp_relay",
-]);
+const ProviderEnum = z.enum(SELECTABLE_PROVIDERS);
 
 const SettingsSchema = z.object({
   provider: ProviderEnum,
@@ -60,13 +56,18 @@ export const getTenantSmtpConfig = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const tenantId = await requireCompanyAdmin(context);
-    const { data } = await context.supabase
+    const { data, error } = await context.supabase
       .from("tenant_smtp_config")
       .select(
         "provider, from_email, from_name, reply_to, region, domain, verified, last_test_at, last_test_ok, last_test_error",
       )
       .eq("tenant_id", tenantId)
       .maybeSingle();
+    // Not being able to read the row is not the same as having none. Answering
+    // with the platform default here would show a company that saved a provider
+    // that cannot send a screen with nothing wrong on it, and Save would then
+    // overwrite what it had.
+    if (error) throw new Error("Your email settings could not be loaded. Try again in a moment.");
     return (
       data ?? {
         provider: "platform",
@@ -90,7 +91,7 @@ export const saveTenantSmtpConfig = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const tenantId = await requireCompanyAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    await supabaseAdmin.from("tenant_smtp_config").upsert(
+    const { error: saveError } = await supabaseAdmin.from("tenant_smtp_config").upsert(
       {
         tenant_id: tenantId,
         provider: data.provider,
@@ -104,6 +105,8 @@ export const saveTenantSmtpConfig = createServerFn({ method: "POST" })
       },
       { onConflict: "tenant_id" },
     );
+    if (saveError)
+      throw new Error("Your email settings could not be saved. Try again in a moment.");
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -149,21 +152,38 @@ export const testTenantSmtp = createServerFn({ method: "POST" })
     const tenantId = await requireCompanyAdmin(context);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: config } = await supabaseAdmin
+    const { data: config, error: configError } = await supabaseAdmin
       .from("tenant_smtp_config")
       .select("*")
       .eq("tenant_id", tenantId)
       .maybeSingle();
+    // Not being able to read the row is not the same as having saved nothing, and
+    // telling someone to save first would send them to overwrite what they have.
+    if (configError) {
+      console.error("[email] test: could not read the company's email settings", configError);
+      throw new Error("Your email settings could not be read just now. Try again in a moment.");
+    }
     if (!config) throw new Error("No SMTP config saved yet — save settings first");
     if (config.provider === "platform") {
       return { ok: true, note: "Using platform default; nothing to test." };
     }
 
-    // Reveal api key (server-side only)
-    const { data: apiKey } = await supabaseAdmin.rpc("get_tenant_smtp_api_key", {
-      _tenant_id: tenantId,
-    });
-    if (!apiKey) throw new Error("API key not set — paste your provider key first");
+    // Reveal api key (server-side only). Only a provider that can send has one
+    // to look for: the screen has no key box for the others, so "paste your
+    // key" would be an instruction nobody can follow. For those the sender
+    // answers with the plain "not supported — choose …" text instead.
+    let apiKey = "";
+    if (isSendingProvider(config.provider)) {
+      const { data: key, error: keyError } = await supabaseAdmin.rpc("get_tenant_smtp_api_key", {
+        _tenant_id: tenantId,
+      });
+      if (keyError) {
+        console.error("[email] test: could not read the company's email key", keyError);
+        throw new Error("Your email key could not be read just now. Try again in a moment.");
+      }
+      if (!key) throw new Error("API key not set — paste your provider key first");
+      apiKey = key as string;
+    }
 
     const from = config.from_email ?? "no-reply@flas.mobidigisol.com";
     const fromLabel = config.from_name ? `${config.from_name} <${from}>` : from;
@@ -171,7 +191,7 @@ export const testTenantSmtp = createServerFn({ method: "POST" })
     const { dispatchEmail } = await import("@/lib/email-dispatch.server");
     let result: { ok: boolean; providerId?: string; error?: string };
     try {
-      result = await dispatchEmail(config.provider, apiKey as string, {
+      result = await dispatchEmail(config.provider, apiKey, {
         from: fromLabel,
         to: data.toEmail,
         subject: `Flas CRM — test email from ${config.provider}`,

@@ -52,6 +52,13 @@ function harness({
   source = "shared",
   callbackUri = null,
   whatsappNumbers = [],
+  // How the readiness query behaves once a sign-in has been refused:
+  //   background  what invalidateQueries does, which nobody waits for:
+  //               "instant" refetches at once, "slow" has not finished yet,
+  //               "fails" never succeeds;
+  //   recheck     "ok" or "fails": a refetch the screen waits for (fetchQuery).
+  background = "instant",
+  recheck = "ok",
 } = {}) {
   const state = [],
     requests = [],
@@ -78,8 +85,39 @@ function harness({
     credentials: {},
     blockers,
   }));
+  // What the server would answer now, and what the screen has cached. They
+  // differ until a refetch lands: that gap is what the review was about.
+  let serverRows = rows;
+  let cachedRows = rows;
+  let holdRead = null;
+  let reads = 0;
+  // Reads fetchQuery has started and not yet had answered, by query key. The
+  // real client (query-core) gives a second caller the read already out rather
+  // than starting another; a double that started another would let a test
+  // describe two answers that can never exist.
+  const inFlight = new Map();
+  const server = {
+    /** How many times the server was actually asked for the readiness rows. */
+    reads: () => reads,
+    /** Every read of the server waits until the test calls the function given to `hold`. */
+    holdReads(hold) {
+      holdRead = hold;
+    },
+    /** The blockers the server reports from now on, for every connector. */
+    setBlockers(list) {
+      serverRows = rows.map((r) => ({ ...r, blockers: list }));
+    },
+    cached: () => cachedRows,
+  };
+  const readServer = async () => {
+    reads += 1;
+    if (holdRead) return new Promise((resolve) => holdRead(resolve));
+    if (recheck === "fails") throw new Error("offline");
+    return { rows: serverRows };
+  };
   const start = async (request) => {
     requests.push(request);
+    if (result instanceof Error) throw result;
     return result;
   };
   const modules = {
@@ -106,9 +144,30 @@ function harness({
       },
     },
     "@tanstack/react-query": {
-      useQueryClient: () => ({ invalidateQueries: async () => {} }),
+      useQueryClient: () => ({
+        // Marks the data stale and refetches in the background; the caller does
+        // not wait, so neither does this.
+        invalidateQueries: async () => {
+          if (background === "instant") cachedRows = (await readServer()).rows;
+        },
+        // Fetches now, puts the answer in the cache and hands it back. A caller
+        // that arrives while the read is still out is handed that same read.
+        fetchQuery: ({ queryKey, queryFn }) => {
+          const key = JSON.stringify(queryKey);
+          if (inFlight.has(key)) return inFlight.get(key);
+          const read = (async () => {
+            const data = await queryFn();
+            cachedRows = data.rows;
+            return data;
+          })();
+          inFlight.set(key, read);
+          const done = () => inFlight.delete(key);
+          read.then(done, done);
+          return read;
+        },
+      }),
       useQuery: ({ queryKey }) => ({
-        data: queryKey[0] === "connections" ? { accounts, whatsappNumbers } : { rows },
+        data: queryKey[0] === "connections" ? { accounts, whatsappNumbers } : { rows: cachedRows },
       }),
       useMutation(options) {
         const index = mutationCursor++;
@@ -142,6 +201,7 @@ function harness({
       startConnect: start,
       getIntegrationHealthReport: async () => ({ rows: [] }),
     },
+    "@/lib/integration-readiness.functions": { getIntegrationReadiness: readServer },
     "@/lib/connection-setup": {
       credentialSpec: () => ({ scope: "provider", fields: [] }),
       OAUTH_REDIRECT_PATH: "/api/public/oauth-callback",
@@ -175,7 +235,19 @@ function harness({
     return exports.IntegrationsAuditFixed({});
   };
   const find = (tree, name) => nodes(tree).find((node) => (node.type?.name ?? node.type) === name);
-  return { render, find, requests, redirects, flush: () => Promise.all(pending) };
+  return {
+    render,
+    find,
+    server,
+    requests,
+    redirects,
+    flush: () => Promise.all(pending),
+    /** Waits for a refused start to finish re-reading what is still blocking. */
+    settle: async () => {
+      await Promise.all(pending);
+      await new Promise((resolve) => setImmediate(resolve));
+    },
+  };
 }
 
 test("saving an Instagram app continues its OAuth flow even when cached readiness is blocked", async () => {
@@ -784,4 +856,264 @@ test("WhatsApp counts its connected numbers and shows each one's phone number ID
   const id = page.find((n) => n.type?.name === "CopyRow" && n.props.label === "Phone number ID");
   assert.equal(id.props.value, "109876543210");
   assert.ok(page.some((n) => n.type === "Button" && text(n) === "Add a number manually"));
+});
+
+// ── Review of PR #11: what the problem panel says after a refused sign-in ─────
+const CLIENT_ID_MISSING = {
+  code: "CLIENT_ID_MISSING",
+  title: "App client ID is missing",
+  userMessage: "Add the app's client ID.",
+  severity: "BLOCKING",
+  owner: "FLAS_ADMIN",
+};
+const CLIENT_SECRET_MISSING = {
+  code: "CLIENT_SECRET_MISSING",
+  title: "App client secret is missing",
+  userMessage: "Add the app's client secret.",
+  severity: "BLOCKING",
+  owner: "FLAS_ADMIN",
+};
+const STORAGE_MISSING = {
+  code: "STORAGE",
+  title: "OAuth database schema is missing",
+  userMessage: "Run the pending database migrations.",
+  severity: "BLOCKING",
+  owner: "FLAS_ADMIN",
+};
+// Array.from: the screen runs in its own realm, and an empty array made there
+// is not deep-equal to one made here.
+const listed = (h) => Array.from(h.find(h.render(), "Problem").props.blockers, (b) => b.code);
+
+/** The admin types in the app details, saves, and the server still refuses to start. */
+async function saveAppDetailsAndGetRefused(h) {
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("instagram");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.settle();
+}
+
+test("after a refused sign-in the panel lists what still blocks, not what was just saved", async () => {
+  // The cached readiness is from before the save: it says the client ID and
+  // secret are missing. The server now has them; something else is wrong.
+  for (const background of ["slow", "fails", "instant"]) {
+    const h = harness({
+      result: { ready: false },
+      blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+      background,
+    });
+    h.server.setBlockers([STORAGE_MISSING]);
+    await saveAppDetailsAndGetRefused(h);
+    assert.deepEqual(listed(h), ["STORAGE"], `background refetch: ${background}`);
+    assert.deepEqual(h.redirects, []);
+  }
+});
+
+test("a sign-in that could not start at all is explained from what the server says now", async () => {
+  const h = harness({
+    result: new Error("network down"),
+    blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+    background: "slow",
+  });
+  h.server.setBlockers([STORAGE_MISSING]);
+  await saveAppDetailsAndGetRefused(h);
+  const problem = h.find(h.render(), "Problem");
+  assert.match(problem.props.message, /could not start/);
+  assert.deepEqual(listed(h), ["STORAGE"]);
+});
+
+test("when what still blocks cannot be re-read, no out-of-date list is shown", async () => {
+  // Better a panel that says only that setup is unfinished than one that names
+  // details the admin has just saved.
+  const h = harness({
+    result: { ready: false },
+    blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+    background: "fails",
+    recheck: "fails",
+  });
+  await saveAppDetailsAndGetRefused(h);
+  assert.deepEqual(listed(h), []);
+  assert.match(h.find(h.render(), "Problem").props.message, /administrator setup/);
+});
+
+test("nothing is listed when the server says nothing is left that could be fixed", async () => {
+  const h = harness({ result: { ready: false }, blockers: [CLIENT_ID_MISSING] });
+  h.server.setBlockers([]);
+  await saveAppDetailsAndGetRefused(h);
+  assert.deepEqual(listed(h), []);
+});
+
+// ── The answer to "what still blocks this?" goes only where it belongs ───────
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
+
+test("the real query client hands a second reader the read already in flight", async () => {
+  // What the harness's fetchQuery copies. If a later query-core stopped joining,
+  // this fails and the tests below would be describing the wrong thing.
+  const { QueryClient } = await import("@tanstack/query-core");
+  const client = new QueryClient();
+  const releases = [];
+  const options = {
+    queryKey: ["integration-readiness", "https://flas.example"],
+    queryFn: () => new Promise((resolve) => releases.push(resolve)),
+    staleTime: 0,
+  };
+  const first = client.fetchQuery(options);
+  const second = client.fetchQuery(options);
+  await nextTurn();
+  assert.equal(releases.length, 1, "one read was started, not two");
+  releases[0]({ rows: ["the one answer"] });
+  assert.deepEqual(await first, await second);
+});
+
+test("the panel does not list the rows on screen while the re-read is on its way", async () => {
+  // The rows on screen are from before the admin saved the details. Until the
+  // server answers, the panel says only that setup is unfinished.
+  const h = harness({
+    result: { ready: false },
+    blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+    background: "slow",
+  });
+  const answers = [];
+  h.server.holdReads((release) => answers.push(release));
+  await saveAppDetailsAndGetRefused(h);
+  assert.equal(answers.length, 1, "the server was asked what still blocks");
+  assert.deepEqual(listed(h), [], "nothing out of date is named before the answer");
+  assert.match(h.find(h.render(), "Problem").props.message, /administrator setup/);
+
+  answers[0]({ rows: [{ id: "instagram", blockers: [STORAGE_MISSING] }] });
+  await h.settle();
+  assert.deepEqual(listed(h), ["STORAGE"], "and the answer replaces it");
+});
+
+test("the same goes for a sign-in that could not start", async () => {
+  const h = harness({
+    result: new Error("network down"),
+    blockers: [CLIENT_ID_MISSING, CLIENT_SECRET_MISSING],
+    background: "slow",
+  });
+  const answers = [];
+  h.server.holdReads((release) => answers.push(release));
+  await saveAppDetailsAndGetRefused(h);
+  assert.deepEqual(listed(h), []);
+  answers[0]({ rows: [{ id: "instagram", blockers: [STORAGE_MISSING] }] });
+  await h.settle();
+  assert.deepEqual(listed(h), ["STORAGE"]);
+});
+
+test("two refusals while the first answer is out share one read, and each panel gets its own rows", async () => {
+  const h = harness({
+    result: { ready: false },
+    blockers: [CLIENT_ID_MISSING],
+    connectors: [FACEBOOK, INSTAGRAM],
+  });
+  const answers = [];
+  h.server.holdReads((release) => answers.push(release));
+  h.find(h.render(), "ProviderReadiness").props.onConnect("instagram");
+  await Promise.all([h.flush(), nextTurn()]);
+  h.find(h.render(), "ProviderReadiness").props.onConnect("facebook");
+  await Promise.all([h.flush(), nextTurn()]);
+  assert.equal(answers.length, 1, "the second refusal joined the read already out");
+  assert.equal(h.server.reads(), 1);
+  assert.deepEqual(listed(h), [], "and nothing is named until it answers");
+
+  answers[0]({
+    rows: [
+      { id: "instagram", blockers: [STORAGE_MISSING] },
+      { id: "facebook", blockers: [CLIENT_SECRET_MISSING] },
+    ],
+  });
+  await h.settle();
+  assert.deepEqual(listed(h), ["CLIENT_SECRET_MISSING"], "the panel on screen is Facebook's");
+});
+
+test("an answer that arrives after the panel was closed does not bring it back", async () => {
+  const h = harness({
+    result: { ready: false },
+    blockers: [CLIENT_ID_MISSING],
+    background: "slow",
+  });
+  const answers = [];
+  h.server.holdReads((release) => answers.push(release));
+  h.find(h.render(), "ProviderReadiness").props.onConnect("instagram");
+  await Promise.all([h.flush(), nextTurn()]);
+  assert.ok(h.find(h.render(), "Problem"), "the refusal put a panel on screen");
+
+  // The admin moves on: opening the list of integrations clears the panel.
+  const add = nodes(h.render()).find((n) => n.type === "Button" && /Add Integration/.test(text(n)));
+  add.props.onClick();
+  assert.equal(h.find(h.render(), "Problem"), undefined, "the panel is closed");
+
+  answers[0]({ rows: [{ id: "instagram", blockers: [STORAGE_MISSING] }] });
+  await h.settle();
+  assert.equal(h.find(h.render(), "Problem"), undefined, "the late answer did not reopen it");
+});
+
+test("Open provider setup after a refusal keeps the product the admin chose", async () => {
+  // The admin tries Instagram. The server refuses (its configuration changed
+  // since the page loaded). They open setup from the problem panel and repair
+  // the shared Meta app from the Facebook row. Saving must connect Instagram.
+  const h = harness({
+    status: "READY",
+    setupOwner: null,
+    connectors: [FACEBOOK, INSTAGRAM],
+    result: { ready: false },
+  });
+  const card = nodes(h.render()).find(
+    (n) => n.type?.name === "MarketplaceCard" && n.props.connector.id === "instagram",
+  );
+  card.props.onConnect();
+  h.find(h.render(), "ConnectConsent").props.onContinue();
+  await h.settle();
+  assert.deepEqual(
+    h.requests.map((r) => r.data.platform),
+    ["instagram"],
+  );
+
+  h.find(h.render(), "Problem").props.onAdmin();
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.settle();
+  assert.deepEqual(
+    h.requests.map((r) => r.data.platform),
+    ["instagram", "instagram"],
+    "the second attempt is for Instagram, the product that was chosen",
+  );
+});
+
+test("Open provider setup from the problem panel in the integration list keeps the product too", async () => {
+  // The list has its own copy of the panel. A workspace admin chooses Instagram
+  // and is told it needs one more step; FLAS staff are then signed in (the
+  // account finishes loading) and open setup from that panel.
+  const auth = { isAdmin: true, isSuperAdmin: false };
+  const h = harness({
+    status: "ADMIN_SETUP_REQUIRED",
+    setupOwner: "workspace",
+    connectors: [FACEBOOK, INSTAGRAM],
+    auth,
+  });
+  const add = nodes(h.render()).find((n) => n.type === "Button" && /Add Integration/.test(text(n)));
+  add.props.onClick();
+  const card = nodes(h.render()).find(
+    (n) => n.type?.name === "MarketplaceCard" && n.props.connector.id === "instagram",
+  );
+  card.props.onConnect();
+  assert.ok(h.find(h.render(), "Problem"), "the list shows why Instagram cannot be connected yet");
+
+  auth.isSuperAdmin = true;
+  h.find(h.render(), "Problem").props.onAdmin();
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.settle();
+  assert.deepEqual(
+    h.requests.map((r) => r.data.platform),
+    ["instagram"],
+    "saving the shared app continues with Instagram, the product that was chosen",
+  );
+});
+
+test("Open provider setup from the general button chooses no product", async () => {
+  // Nothing was chosen, so saving the Facebook row connects Facebook.
+  const h = harness({ connectors: [FACEBOOK, INSTAGRAM] });
+  h.find(h.render(), "ProviderReadiness").props.onConfigure("facebook");
+  h.find(h.render(), "CredentialsStep").props.onSaved();
+  await h.settle();
+  assert.equal(h.requests[0].data.platform, "facebook");
 });
