@@ -128,6 +128,33 @@ export async function ingestLead(options: IngestLeadOptions) {
       name: name || "there",
       sourceUrl: sourceUrl || "",
     });
+
+    try {
+      const { enrollLeadInDripSequence } = await import("./drip-automation.server.ts");
+      await enrollLeadInDripSequence({
+        tenantId,
+        leadId: savedLead?.id,
+        email: cleanEmail,
+        name: name || "there",
+      });
+    } catch (dripErr) {
+      console.error("[drip] Lead drip enrollment failed:", dripErr);
+    }
+  }
+
+  // Instant Sales Alert to sales reps
+  try {
+    const { dispatchSalesLeadAlert } = await import("./lead-alerts.server.ts");
+    await dispatchSalesLeadAlert({
+      tenantId,
+      leadId: savedLead?.id,
+      email: cleanEmail,
+      name: name || null,
+      phone: phone || null,
+      sourceUrl: sourceUrl || null,
+    });
+  } catch (alertErr) {
+    console.error("[lead-alerts] Error dispatching sales alert:", alertErr);
   }
 
   return savedLead;

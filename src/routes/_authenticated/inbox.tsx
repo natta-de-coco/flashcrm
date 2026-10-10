@@ -124,6 +124,7 @@ function InboxPage() {
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
+  const [assignmentFilter, setAssignmentFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [tagDraft, setTagDraft] = useState("");
   const [reminderNote, setReminderNote] = useState("");
   const [reminderDue, setReminderDue] = useState("");
@@ -279,15 +280,19 @@ function InboxPage() {
     const all = conversations.data ?? [];
     return all.filter((c) => {
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+      const matchesAssignment =
+        assignmentFilter === "all" ||
+        (assignmentFilter === "mine" && c.assigned_to === user?.id) ||
+        (assignmentFilter === "unassigned" && !c.assigned_to);
       const q = search.trim().toLowerCase();
       const matchesSearch =
         !q ||
         c.contacts?.name?.toLowerCase().includes(q) ||
         c.contacts?.phone?.includes(q) ||
         c.last_message_preview?.toLowerCase().includes(q);
-      return matchesStatus && Boolean(matchesSearch);
+      return matchesStatus && matchesAssignment && Boolean(matchesSearch);
     });
-  }, [conversations.data, statusFilter, search]);
+  }, [conversations.data, statusFilter, assignmentFilter, user?.id, search]);
 
   const active = list.find((c) => c.id === activeId) ?? null;
 
@@ -582,7 +587,7 @@ function InboxPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {(["all", "open", "pending", "closed"] as const).map((s) => (
               <button
                 key={s}
@@ -595,6 +600,27 @@ function InboxPage() {
                 )}
               >
                 {s}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 pt-0.5">
+            <span className="text-[11px] font-medium text-muted-foreground mr-1">Assign:</span>
+            {[
+              { id: "all", label: "All" },
+              { id: "mine", label: "Mine" },
+              { id: "unassigned", label: "Unassigned" },
+            ].map((af) => (
+              <button
+                key={af.id}
+                onClick={() => setAssignmentFilter(af.id as any)}
+                className={cn(
+                  "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  assignmentFilter === af.id
+                    ? "bg-secondary text-foreground font-semibold shadow-xs"
+                    : "text-muted-foreground hover:bg-muted/80",
+                )}
+              >
+                {af.label}
               </button>
             ))}
           </div>

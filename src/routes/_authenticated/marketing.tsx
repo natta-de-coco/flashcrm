@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
 import { CampaignBoard, type CampaignItem } from "@/components/marketing/CampaignBoard";
+import { DripSequenceBuilder } from "@/components/marketing/DripSequenceBuilder";
 import { getTenantSmtpConfig } from "@/lib/tenant-smtp.functions";
 
 
@@ -845,7 +846,9 @@ function MarketingPage() {
           </CardContent>
         </Card>
 
-                <CampaignBoard
+        <DripSequenceBuilder />
+
+        <CampaignBoard
           campaigns={((campaigns.data ?? []) as unknown) as CampaignItem[]}
           isSmtpVerified={isSmtpVerified}
           audienceCount={(leads.data ?? []).filter((l) => l.subscribed).length}

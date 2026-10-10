@@ -41,6 +41,9 @@ const processUnsubscribeFn = createServerFn({ method: "POST" })
         })
         .eq("tenant_id", res.tenantId)
         .eq("email", res.email.toLowerCase().trim());
+
+      const { cancelDripEnrollmentsForEmail } = await import("@/lib/drip-automation.server");
+      await cancelDripEnrollmentsForEmail(res.tenantId, res.email);
     }
 
     return {

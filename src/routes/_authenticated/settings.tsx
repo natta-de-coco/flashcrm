@@ -6,6 +6,7 @@ import { DataPrivacyCard } from "@/components/settings/DataPrivacyCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
 import { TeamCard } from "@/components/settings/TeamCard";
 import { EmailMarketingCard } from "@/components/settings/EmailMarketingCard";
+import { LeadAlertsSettingsCard } from "@/components/settings/LeadAlertsSettingsCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -57,6 +58,8 @@ function SettingsPage() {
         {isAdmin && <AuditLogCard />}
 
         {isAdmin && <EmailMarketingCard />}
+
+        <LeadAlertsSettingsCard />
 
         <SecurityCard />
 

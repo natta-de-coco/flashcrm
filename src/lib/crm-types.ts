@@ -40,6 +40,10 @@ export type Conversation = {
   last_message_at: string;
   last_message_preview: string | null;
   wa_number_id?: string | null;
+  assigned_at?: string | null;
+  first_response_at?: string | null;
+  sla_minutes?: number | null;
+  sla_breached?: boolean | null;
   contacts?: Pick<Contact, "id" | "name" | "phone" | "company" | "stage"> | null;
   wa_numbers?: { label: string; display_phone: string | null } | null;
 };
