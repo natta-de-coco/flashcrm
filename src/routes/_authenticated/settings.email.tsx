@@ -21,6 +21,7 @@ import {
   setTenantSmtpApiKey,
   testTenantSmtp,
 } from "@/lib/tenant-smtp.functions";
+import { isValidationDump } from "@/lib/validation-message";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
@@ -122,6 +123,15 @@ function EmailSettingsPage() {
     );
   }
 
+  // The server checks every field before it acts, and says no with a list of
+  // issues in JSON. That is not for a person: say it in a sentence instead.
+  const shown = (e: unknown, fallback: string) =>
+    e instanceof Error
+      ? isValidationDump(e.message)
+        ? t("settingsEmail.invalidInput")
+        : e.message
+      : fallback;
+
   async function onSave() {
     // Save is off for a provider that cannot send; this is the same rule again
     // for anything that reaches here another way.
@@ -141,7 +151,7 @@ function EmailSettingsPage() {
       setSavedProvider(config!.provider);
       toast.success(t("settingsEmail.settingsSavedRotateYourApi"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("settingsEmail.saveFailed"));
+      toast.error(shown(e, t("settingsEmail.saveFailed")));
     } finally {
       setBusy(false);
     }
@@ -158,7 +168,7 @@ function EmailSettingsPage() {
       setApiKey("");
       toast.success(t("settingsEmail.apiKeyStoredAndEncrypted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("settingsEmail.couldNotStoreKey"));
+      toast.error(shown(e, t("settingsEmail.couldNotStoreKey")));
     } finally {
       setBusy(false);
     }
@@ -179,7 +189,7 @@ function EmailSettingsPage() {
         toast.success(t("settingsEmail.testEmailSentVia", { provider: config!.provider }));
       else toast.error(res.error ?? t("settingsEmail.testFailed"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("settingsEmail.testFailed"));
+      toast.error(shown(e, t("settingsEmail.testFailed")));
     } finally {
       setBusy(false);
     }

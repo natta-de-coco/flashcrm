@@ -51,6 +51,8 @@ export default screen({
     "settingsEmail.chooseAProvider": "Choose a provider",
     "settingsEmail.providerDoesNotSend":
       "{provider} is not supported, so no email from your company is being sent through it. Choose Resend, Postmark, Mailgun or SendGrid above and save. To use the built-in mailer instead, choose Platform default.",
+    "settingsEmail.invalidInput":
+      "That could not be saved because something in it is too long or not valid. Check it and try again.",
   },
   ar: {
     "settingsEmail.emailSettingsCouldNotBe": "تعذّر تحميل إعدادات البريد الإلكتروني.",
@@ -99,6 +101,8 @@ export default screen({
     "settingsEmail.chooseAProvider": "اختر مزوّدًا",
     "settingsEmail.providerDoesNotSend":
       "{provider} غير مدعوم، لذا لا يُرسَل عبره أي بريد إلكتروني من شركتك. اختر Resend أو Postmark أو Mailgun أو SendGrid أعلاه ثم احفظ. ولاستخدام مُرسِل البريد المدمج بدلًا من ذلك، اختر «افتراضي المنصة».",
+    "settingsEmail.invalidInput":
+      "تعذّر حفظ ذلك لأن شيئًا فيه طويل جدًا أو غير صالح. راجعه ثم حاول مرة أخرى.",
   },
   ms: {
     "settingsEmail.emailSettingsCouldNotBe": "Tetapan e-mel tidak dapat dimuatkan.",
@@ -147,6 +151,8 @@ export default screen({
     "settingsEmail.chooseAProvider": "Pilih pembekal",
     "settingsEmail.providerDoesNotSend":
       "{provider} tidak disokong, jadi tiada e-mel daripada syarikat anda dihantar melaluinya. Pilih Resend, Postmark, Mailgun atau SendGrid di atas, kemudian simpan. Untuk menggunakan penghantar e-mel terbina dalam sebaliknya, pilih Lalai platform.",
+    "settingsEmail.invalidInput":
+      "Itu tidak dapat disimpan kerana ada bahagian yang terlalu panjang atau tidak sah. Semaknya dan cuba lagi.",
   },
   fil: {
     "settingsEmail.emailSettingsCouldNotBe": "Hindi ma-load ang mga setting ng email.",
@@ -195,6 +201,8 @@ export default screen({
     "settingsEmail.chooseAProvider": "Pumili ng provider",
     "settingsEmail.providerDoesNotSend":
       "Hindi sinusuportahan ang {provider}, kaya walang email ng kumpanya mo ang naipapadala rito. Pumili ng Resend, Postmark, Mailgun o SendGrid sa itaas, saka i-save. Para gamitin na lang ang built-in na mailer, piliin ang Default ng platform.",
+    "settingsEmail.invalidInput":
+      "Hindi ito na-save dahil may bahagi nito na masyadong mahaba o hindi balido. Suriin ito at subukan ulit.",
   },
   sw: {
     "settingsEmail.emailSettingsCouldNotBe": "Mipangilio ya barua pepe haikuweza kupakiwa.",
@@ -244,5 +252,7 @@ export default screen({
     "settingsEmail.chooseAProvider": "Chagua mtoa huduma",
     "settingsEmail.providerDoesNotSend":
       "{provider} haitumiki, kwa hiyo barua pepe za kampuni yako hazitumwi kupitia huduma hiyo. Chagua Resend, Postmark, Mailgun au SendGrid hapo juu, kisha hifadhi. Ili kutumia mfumo wa barua pepe uliojengewa ndani badala yake, chagua Chaguo-msingi la jukwaa.",
+    "settingsEmail.invalidInput":
+      "Hii haikuweza kuhifadhiwa kwa sababu kuna kitu ndani yake ambacho ni kirefu mno au si halali. Kikague kisha ujaribu tena.",
   },
 });

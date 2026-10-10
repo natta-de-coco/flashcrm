@@ -47,12 +47,14 @@ import {
   formatStageMoney,
   hasUnsavedNotes,
   inboxConversationHref,
+  NOTES_MAX_LENGTH,
   notesFieldValue,
   reachLines,
   type NotesDraft,
 } from "@/lib/contacts-view";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage } from "@/lib/i18n";
+import { isValidationDump } from "@/lib/validation-message";
 import { openContactWhatsApp } from "@/lib/whatsapp-conversations.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -128,7 +130,10 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     void qc.invalidateQueries({ queryKey: ["contact-detail", contactId] });
     void qc.invalidateQueries({ queryKey: ["contacts"] });
   };
-  const fail = (e: Error) => toast.error(e.message);
+  // The server checks what it is sent before it does anything with it, and a
+  // refusal arrives as a list of issues in JSON. That is not for a person.
+  const fail = (e: Error) =>
+    toast.error(isValidationDump(e.message) ? t("contactCard.invalidInput") : e.message);
 
   const identityMutation = useMutation({
     mutationFn: () =>
@@ -505,6 +510,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
               <Textarea
                 id="contact-notes"
                 rows={4}
+                maxLength={NOTES_MAX_LENGTH}
                 placeholder={t("contactCard.notesPlaceholder")}
                 value={notes}
                 disabled={!notesAvailable}

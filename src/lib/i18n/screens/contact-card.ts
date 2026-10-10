@@ -63,6 +63,8 @@ export default screen({
     "contactCard.onRecord": "On the contact record",
     "contactCard.notesNotLoaded":
       "The saved note could not be loaded, so it is not shown and cannot be changed here. Close this card and open it again.",
+    "contactCard.invalidInput":
+      "That could not be saved because something in it is too long or not valid. Check it and try again.",
   },
   ar: {
     "contactCard.description":
@@ -121,6 +123,8 @@ export default screen({
     "contactCard.onRecord": "من سجل جهة الاتصال",
     "contactCard.notesNotLoaded":
       "تعذّر تحميل الملاحظة المحفوظة، لذلك لا تظهر ولا يمكن تعديلها هنا. أغلق هذه البطاقة ثم افتحها من جديد.",
+    "contactCard.invalidInput":
+      "تعذّر حفظ ذلك لأن شيئًا فيه طويل جدًا أو غير صالح. راجعه ثم حاول مرة أخرى.",
   },
   ms: {
     "contactCard.description":
@@ -181,6 +185,8 @@ export default screen({
     "contactCard.onRecord": "Pada rekod kenalan",
     "contactCard.notesNotLoaded":
       "Nota yang disimpan tidak dapat dimuatkan, jadi ia tidak dipaparkan dan tidak boleh diubah di sini. Tutup kad ini dan buka semula.",
+    "contactCard.invalidInput":
+      "Itu tidak dapat disimpan kerana ada bahagian yang terlalu panjang atau tidak sah. Semaknya dan cuba lagi.",
   },
   fil: {
     "contactCard.description":
@@ -241,6 +247,8 @@ export default screen({
     "contactCard.onRecord": "Nasa record ng contact",
     "contactCard.notesNotLoaded":
       "Hindi ma-load ang naka-save na tala, kaya hindi ito ipinapakita at hindi mababago rito. Isara ang card na ito at buksan ulit.",
+    "contactCard.invalidInput":
+      "Hindi ito na-save dahil may bahagi nito na masyadong mahaba o hindi balido. Suriin ito at subukan ulit.",
   },
   sw: {
     "contactCard.description":
@@ -301,5 +309,7 @@ export default screen({
     "contactCard.onRecord": "Kwenye rekodi ya anwani",
     "contactCard.notesNotLoaded":
       "Maelezo yaliyohifadhiwa hayakuweza kupakiwa, kwa hiyo hayaonyeshwi na hayawezi kubadilishwa hapa. Funga kadi hii kisha uifungue tena.",
+    "contactCard.invalidInput":
+      "Hii haikuweza kuhifadhiwa kwa sababu kuna kitu ndani yake ambacho ni kirefu mno au si halali. Kikague kisha ujaribu tena.",
   },
 });

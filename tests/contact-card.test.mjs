@@ -37,6 +37,7 @@ const compiled = compileComponent(
 );
 // The list and the notes rules are the real ones, not stand-ins.
 const contactsView = loadLib(new URL("../src/lib/contacts-view.ts", import.meta.url));
+const validationMessage = loadLib(new URL("../src/lib/validation-message.ts", import.meta.url));
 
 const SARA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OMAR = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -85,6 +86,7 @@ function card() {
   const failed = new Set(); // contact ids whose detail could not be loaded
   const saves = []; // one per "Save notes" request: what was sent, and its answer
   const primaries = []; // every "Make primary" request
+  const toasts = []; // everything the person was told: { kind, message }
   const runtime = hookRuntime();
   const mutation = mutationDouble();
   let shown = null;
@@ -113,6 +115,7 @@ function card() {
     ...i18nModules,
     "@/hooks/useTenant": { useTenant: () => ({ tenant: { currency: "AED" } }) },
     "@/lib/contacts-view": contactsView,
+    "@/lib/validation-message": validationMessage,
     "@/lib/contact-identities.functions": {
       getContactDetail: async () => {
         throw new Error("the cache answers for the server in this harness");
@@ -134,7 +137,12 @@ function card() {
     "@/lib/whatsapp-conversations.functions": {
       openContactWhatsApp: async () => ({ conversationId: "c1" }),
     },
-    sonner: { toast: { success() {}, error() {} } },
+    sonner: {
+      toast: {
+        success: (message) => toasts.push({ kind: "success", message }),
+        error: (message) => toasts.push({ kind: "error", message }),
+      },
+    },
   };
   const exports = {};
   runInNewContext(compiled, {
@@ -151,6 +159,7 @@ function card() {
   return {
     saves,
     primaries,
+    toasts,
     screen,
     settle: mutation.settle,
     /** Opens a contact's card, or closes the card with null. */
@@ -316,6 +325,104 @@ describe("typing while a note is being saved", () => {
     assert.equal(h.saveButton().props.disabled, false);
     h.open(SARA);
     assert.equal(h.notesBox().props.value, "Sara, updated", "Sara's saved note is hers");
+  });
+});
+
+describe("what a person is told when a note is refused", () => {
+  const tooLong = () => "x".repeat(contactsView.NOTES_MAX_LENGTH + 1);
+
+  /** What the server really throws for input it refuses: zod's list of issues. */
+  async function realRefusal() {
+    db.reset({ contacts: [{ id: SARA, notes: "old" }] });
+    const refusal = await saveContactNotes({
+      data: { contactId: SARA, notes: tooLong() },
+      context,
+    }).then(
+      () => null,
+      (error) => error,
+    );
+    assert.ok(refusal, "the server refuses a note over the limit");
+    return refusal;
+  }
+
+  it("cannot type more than the server will accept", () => {
+    const h = card();
+    h.loaded(SARA, { notes: null });
+    h.open(SARA);
+    assert.equal(typeof contactsView.NOTES_MAX_LENGTH, "number");
+    assert.equal(h.notesBox().props.maxLength, contactsView.NOTES_MAX_LENGTH);
+  });
+
+  it("agrees with the server about the limit", async () => {
+    db.reset({ contacts: [{ id: SARA, notes: "old" }] });
+    const atLimit = "x".repeat(contactsView.NOTES_MAX_LENGTH);
+    const out = await saveContactNotes({ data: { contactId: SARA, notes: atLimit }, context });
+    assert.equal(out.notes === atLimit, true, "exactly at the limit is saved");
+    await assert.rejects(
+      saveContactNotes({ data: { contactId: SARA, notes: tooLong() }, context }),
+    );
+    assert.equal(
+      db.table("contacts")[0].notes === atLimit,
+      true,
+      "one more is refused and changes nothing",
+    );
+  });
+
+  it("shows one plain sentence, not the server's list of issues", async () => {
+    const refusal = await realRefusal();
+    assert.match(refusal.message, /too_big/, "this is the text that used to reach the screen");
+
+    const h = card();
+    h.loaded(SARA, { notes: "old" });
+    h.open(SARA);
+    h.type(tooLong());
+    h.saveButton().props.onClick();
+    h.saves[0].answer.reject(refusal);
+    await h.settle();
+
+    const shown = h.toasts.filter((toast) => toast.kind === "error");
+    assert.equal(shown.length, 1);
+    assert.match(shown[0].message, /too long or not valid/);
+    assert.doesNotMatch(shown[0].message, /too_big|"code"|"path"|[[{]/);
+    assert.equal(h.notesBox().props.value, tooLong(), "and what was typed is still there");
+  });
+
+  it("still shows a sentence the server wrote for a person, word for word", async () => {
+    const h = card();
+    h.loaded(SARA, { notes: "old" });
+    h.open(SARA);
+    h.type("new");
+    h.saveButton().props.onClick();
+    h.saves[0].answer.reject(
+      new Error("This contact could not be found, so the note was not saved."),
+    );
+    await h.settle();
+    assert.deepEqual(h.toasts.at(-1), {
+      kind: "error",
+      message: "This contact could not be found, so the note was not saved.",
+    });
+  });
+
+  it("tells a list of issues from a sentence", async () => {
+    const { isValidationDump } = validationMessage;
+    assert.equal(isValidationDump((await realRefusal()).message), true);
+    assert.equal(
+      isValidationDump('[{"code":"invalid_enum_value","path":["provider"],"message":"Invalid"}]'),
+      true,
+    );
+    for (const words of [
+      "offline",
+      "This contact could not be found, so the note was not saved.",
+      "[not json",
+      "[]",
+      '[{"a":1}]',
+      '[{"code":"x"}]',
+      "",
+      null,
+      undefined,
+      42,
+    ])
+      assert.equal(isValidationDump(words), false, String(words));
   });
 });
 

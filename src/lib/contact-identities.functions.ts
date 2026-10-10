@@ -6,6 +6,7 @@
 // if an id is guessed. tenant_id is read from the caller's profile and never
 // taken from the request body.
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { NOTES_MAX_LENGTH } from "@/lib/contacts-view";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
@@ -93,7 +94,9 @@ export const getContactDetail = createServerFn({ method: "GET" })
 export const saveContactNotes = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ contactId: z.string().uuid(), notes: z.string().max(4000) }).parse(input),
+    z
+      .object({ contactId: z.string().uuid(), notes: z.string().max(NOTES_MAX_LENGTH) })
+      .parse(input),
   )
   .handler(async ({ data, context }) => {
     // Blank clears the field rather than storing an empty string, so the

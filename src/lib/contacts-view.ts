@@ -137,6 +137,12 @@ export function reachSummary(lines: ReachLine[]): string {
 }
 
 /**
+ * The longest note a contact may have. The notes box stops at this and the
+ * server refuses more, from this one number, so they cannot disagree.
+ */
+export const NOTES_MAX_LENGTH = 4000;
+
+/**
  * What someone has typed into a contact's notes box and not yet saved.
  *
  * It carries the contact it was typed for. The card stays mounted while the

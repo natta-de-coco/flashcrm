@@ -24,13 +24,20 @@ import {
 import { createDb } from "./support/db-double.mjs";
 import { i18nModules } from "./support/i18n-double.mjs";
 
-const { dispatchEmail, getTenantSmtpConfig, saveTenantSmtpConfig, sendTenantEmail } =
-  await import("../node_modules/.cache/flas-email.mjs");
+const {
+  dispatchEmail,
+  getTenantSmtpConfig,
+  saveTenantSmtpConfig,
+  sendTenantEmail,
+  setTenantSmtpApiKey,
+  testTenantSmtp,
+} = await import("../node_modules/.cache/flas-email.mjs");
 
 const compiled = compileComponent(
   new URL("../src/routes/_authenticated/settings.email.tsx", import.meta.url),
 );
 const emailProviders = loadLib(new URL("../src/lib/email-providers.ts", import.meta.url));
+const validationMessage = loadLib(new URL("../src/lib/validation-message.ts", import.meta.url));
 
 /** Everything that was ever on offer, plus things that never were. */
 const EVER_OFFERED = ["platform", "resend", "postmark", "mailgun", "sendgrid", "ses", "smtp_relay"];
@@ -50,10 +57,15 @@ const settings = (over = {}) => ({
   ...over,
 });
 
-/** The Email delivery screen, with the server functions in the test's hands. */
-function page(saved = settings()) {
+/**
+ * The Email delivery screen, with the server functions in the test's hands.
+ * `server` replaces any of the four functions the screen calls, to let a test
+ * put the real one behind it.
+ */
+function page(saved = settings(), server = {}) {
   const runtime = hookRuntime();
   const saves = [];
+  const toasts = []; // everything the person was told: { kind, message }
   let stored = saved;
   const modules = {
     "react/jsx-runtime": jsxRuntime,
@@ -62,30 +74,46 @@ function page(saved = settings()) {
     "@tanstack/react-start": { useServerFn: (fn) => fn },
     ...i18nModules,
     "@/lib/email-providers": emailProviders,
+    "@/lib/validation-message": validationMessage,
     "@/lib/tenant-smtp.functions": {
       getTenantSmtpConfig: async () => ({ ...stored }),
-      saveTenantSmtpConfig: async ({ data }) => {
-        saves.push({ ...data });
-        stored = { ...stored, provider: data.provider };
-        return { ok: true };
-      },
-      setTenantSmtpApiKey: async () => ({ ok: true }),
-      testTenantSmtp: async () => ({ ok: true }),
+      saveTenantSmtpConfig:
+        server.save ??
+        (async ({ data }) => {
+          saves.push({ ...data });
+          stored = { ...stored, provider: data.provider };
+          return { ok: true };
+        }),
+      setTenantSmtpApiKey: server.setKey ?? (async () => ({ ok: true })),
+      testTenantSmtp: server.test ?? (async () => ({ ok: true })),
     },
-    sonner: { toast: { success() {}, error() {} } },
+    sonner: {
+      toast: {
+        success: (message) => toasts.push({ kind: "success", message }),
+        error: (message) => toasts.push({ kind: "error", message }),
+      },
+    },
   };
   const exports = {};
   runInNewContext(compiled, {
     exports,
+    // The screen asks `e instanceof Error`; an error made out here is not one
+    // of the new context's own Errors unless it is given the same class.
+    Error,
     require: (name) => modules[name] ?? new Proxy({}, { get: (_, key) => String(key) }),
   });
   const screen = () => nodes(runtime.render(exports.Route.component, {}));
   const settle = () => new Promise((resolve) => setImmediate(resolve));
   const providerSelect = () => screen().find(named("Select"));
+  const input = (placeholder) =>
+    screen().find((n) => named("Input")(n) && n.props.placeholder === placeholder);
   return {
     saves,
+    toasts,
     screen,
     settle,
+    /** Types into a text box, found by its placeholder. */
+    type: (placeholder, value) => input(placeholder).props.onChange({ target: { value } }),
     /** Opens the page and waits for the saved settings to load. */
     async open() {
       screen();
@@ -462,5 +490,95 @@ describe("a database error does not send a company's email through the platform 
     assert.match(sent[0].url, /api\.sendgrid\.com/, "their own provider, not the platform's");
     assert.match(sent[0].auth, /their-own-key/);
     assert.doesNotMatch(sent[0].auth, /platform-secret-key/);
+  });
+});
+
+// ── A refusal of what was typed reaches the person as a sentence ──────────────
+// The server checks every field before it does anything, and says no with a
+// list of issues in JSON. The three buttons on this screen put the error's
+// message straight into a toast, so a From address that is not an address, a key
+// that is too short or a test address with a typo showed that list word for word.
+// The real server functions stand behind the screen here, so the text that
+// arrives is the text the server really sends.
+describe("a refusal of what was typed is a sentence, not a list of issues", () => {
+  const real = {
+    save: (args) => saveTenantSmtpConfig({ ...args, context }),
+    setKey: (args) => setTenantSmtpApiKey({ ...args, context }),
+    test: (args) => testTenantSmtp({ ...args, context }),
+  };
+  const lastError = (h) => h.toasts.filter((toast) => toast.kind === "error").at(-1)?.message;
+  const assertPlain = (message) => {
+    assert.match(message, /too long or not valid/);
+    assert.doesNotMatch(message, /"code"|"path"|invalid_string|too_small|[[{]/);
+  };
+
+  it("starts from the real thing: the server sends a list of issues", async () => {
+    for (const refusal of [
+      saveTenantSmtpConfig({ data: { provider: "resend", fromEmail: "nope" }, context }),
+      setTenantSmtpApiKey({ data: { apiKey: "abc" }, context }),
+      testTenantSmtp({ data: { toEmail: "nope" }, context }),
+      saveTenantSmtpConfig({ data: { provider: "ses" }, context }),
+    ]) {
+      const error = await refusal.then(
+        () => null,
+        (e) => e,
+      );
+      assert.equal(validationMessage.isValidationDump(error?.message), true);
+    }
+  });
+
+  it("says so when the From address is not an address", async () => {
+    const h = page(settings({ provider: "resend" }), real);
+    await h.open();
+    h.type("no-reply@yourdomain.com", "not-an-address");
+    await h.button("Save settings").props.onClick();
+    assertPlain(lastError(h));
+    assert.equal(
+      h.toasts.some((toast) => toast.kind === "success"),
+      false,
+    );
+  });
+
+  it("says so when the key is too short", async () => {
+    const h = page(settings({ provider: "resend" }), real);
+    await h.open();
+    h.type("Paste your API key", "abc");
+    await h.button("Save API key").props.onClick();
+    assertPlain(lastError(h));
+  });
+
+  it("says so when the test address has a typo", async () => {
+    const h = page(settings({ provider: "resend" }), real);
+    await h.open();
+    h.type("you@yourdomain.com", "me@");
+    await h.button("Send test").props.onClick();
+    assertPlain(lastError(h));
+  });
+
+  it("still shows a sentence the server wrote for a person, word for word", async () => {
+    const words = "Only company admins can change email settings";
+    const h = page(settings({ provider: "resend" }), {
+      save: async () => {
+        throw new Error(words);
+      },
+    });
+    await h.open();
+    await h.button("Save settings").props.onClick();
+    assert.equal(lastError(h), words);
+  });
+});
+
+// ── An old tab cannot save what the server no longer accepts ──────────────────
+// A tab opened before this change still offers AWS SES. What the server says to
+// it is the same list of issues; this is what that tab would be sent.
+describe("the server's answer to a tab that still offers AWS SES", () => {
+  it("is refused with nothing saved, and the refusal is recognisable as such", async () => {
+    const error = await saveTenantSmtpConfig({ data: { provider: "ses" }, context }).then(
+      () => null,
+      (e) => e,
+    );
+    assert.ok(error);
+    assert.equal(validationMessage.isValidationDump(error.message), true);
+    assert.equal(savedRow(), undefined);
   });
 });
