@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, it } from "node:test";
+import { describe, it, beforeEach, afterEach } from "node:test";
 
 import {
   WhatsAppNumberSchema,
@@ -24,6 +24,20 @@ const INPUT = {
   accessToken: TOKEN,
   appSecret: APP_SECRET,
 };
+
+const originalFetch = globalThis.fetch;
+beforeEach(() => {
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        id: INPUT.phoneNumberId,
+        display_phone_number: "+971500000000",
+      }),
+    );
+});
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
 
 function withKeys(fn) {
   const before = process.env.TOKEN_ENCRYPTION_KEYS;
@@ -116,6 +130,60 @@ function database(rows = [], { failInsertOnce = null } = {}) {
 }
 
 describe("adding a WhatsApp number", () => {
+  it("checks Meta with a bearer header and saves the provider's phone identity", () =>
+    withKeys(async () => {
+      const { inserted } = database();
+      globalThis.fetch = async (url, init) => {
+        assert.ok(!String(url).includes(TOKEN));
+        assert.equal(init.headers.Authorization, `Bearer ${TOKEN}`);
+        assert.equal(init.redirect, "error");
+        assert.ok(init.signal);
+        return new Response(
+          JSON.stringify({ id: INPUT.phoneNumberId, display_phone_number: "+971501234567" }),
+        );
+      };
+      await addWhatsAppNumber({ data: INPUT, context: context() });
+      assert.equal(inserted[0].display_phone, "+971501234567");
+    }));
+
+  for (const scenario of ["denied", "rate-limited", "malformed", "wrong-number", "network"]) {
+    it(`does not save credentials when Meta returns ${scenario}`, () =>
+      withKeys(async () => {
+        const { inserted } = database();
+        globalThis.fetch = async () => {
+          if (scenario === "network") throw new Error(TOKEN);
+          if (scenario === "denied")
+            return new Response(JSON.stringify({ error: { message: TOKEN } }), { status: 403 });
+          if (scenario === "rate-limited") return new Response(TOKEN, { status: 429 });
+          if (scenario === "malformed") return new Response("not json");
+          return new Response(
+            JSON.stringify({ id: "999999", display_phone_number: "+971500000000" }),
+          );
+        };
+        await assert.rejects(addWhatsAppNumber({ data: INPUT, context: context() }), (error) => {
+          assert.ok(!error.message.includes(TOKEN));
+          assert.match(error.message, /Nothing was saved/);
+          return true;
+        });
+        assert.equal(inserted.length, 0);
+      }));
+  }
+
+  it("lets a second company connect its own number as its own default", () =>
+    withKeys(async () => {
+      const { inserted } = database([
+        {
+          id: "other",
+          tenant_id: "tenant-a",
+          phone_number_id: "999999",
+          active: true,
+          is_default: true,
+        },
+      ]);
+      await addWhatsAppNumber({ data: INPUT, context: context("company_admin", "tenant-b") });
+      assert.equal(inserted[0].tenant_id, "tenant-b");
+      assert.equal(inserted[0].is_default, true);
+    }));
   it("stores the token and app secret encrypted, never as typed", () =>
     withKeys(async () => {
       const { inserted } = database();

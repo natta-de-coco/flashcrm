@@ -61,6 +61,9 @@ export const addWhatsAppNumber = createServerFn({ method: "POST" })
       );
     }
 
+    const { verifyWhatsAppNumber } = await import("@/lib/wa-onboarding.server");
+    const verified = await verifyWhatsAppNumber(data.phoneNumberId, data.accessToken);
+
     const { count, error: countError } = await supabaseAdmin
       .from("wa_numbers")
       .select("id", { count: "exact", head: true })
@@ -70,7 +73,8 @@ export const addWhatsAppNumber = createServerFn({ method: "POST" })
     const numberRow = {
       tenant_id: tenantId,
       label: data.label,
-      display_phone: data.displayPhone || null,
+      // Use Meta's identity, never a browser-supplied display number.
+      display_phone: verified.displayPhone,
       phone_number_id: data.phoneNumberId,
       access_token: accessToken,
       ...(appSecret ? { app_secret: appSecret } : {}),

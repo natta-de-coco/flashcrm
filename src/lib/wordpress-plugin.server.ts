@@ -1,7 +1,10 @@
+import { clampGreeting, phpSingleQuoted, safeOrigin, safeSiteKey } from "./plugin-encoding";
 import { buildZip } from "./plugin-zip.server";
 
 const VERSION = "1.0.0";
 
+// Everything below that is pasted into the PHP has already been through
+// phpSingleQuoted, so none of it can end the string it sits in.
 function php(origin: string, siteKey: string, greeting: string): string {
   return `<?php
 /**
@@ -22,7 +25,7 @@ define('FLAS_CRM_VERSION', '${VERSION}');
 function flas_crm_defaults() {
   return array(
     'site_key' => '${siteKey}',
-    'greeting' => '${greeting.replace(/'/g, "\\'")}',
+    'greeting' => '${greeting}',
     'title'    => 'Chat with us',
     'accent'   => '#25D366',
     'brand'    => '#075E54',
@@ -188,8 +191,18 @@ export function buildWordPressPlugin(input: {
   siteKey: string;
   greeting: string;
 }): Uint8Array {
+  // A key or address that cannot be written safely stops the build here.
+  const origin = safeOrigin(input.origin);
+  const siteKey = safeSiteKey(input.siteKey);
   return buildZip([
-    { path: "flas-crm/flas-crm.php", content: php(input.origin, input.siteKey, input.greeting) },
-    { path: "flas-crm/readme.txt", content: readme(input.origin) },
+    {
+      path: "flas-crm/flas-crm.php",
+      content: php(
+        phpSingleQuoted(origin),
+        phpSingleQuoted(siteKey),
+        phpSingleQuoted(clampGreeting(input.greeting)),
+      ),
+    },
+    { path: "flas-crm/readme.txt", content: readme(origin) },
   ]);
 }

@@ -53,18 +53,19 @@ export function IntegrationSettings() {
   });
 
   const numbers = useQuery({
-    queryKey: ["wa_numbers"],
+    queryKey: ["wa_numbers", tenant?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("wa_numbers")
         .select(
           "id, label, display_phone, phone_number_id, is_default, active, created_at, alerts_enabled, deliverability_min, read_rate_min",
         )
+        .eq("tenant_id", tenant!.id)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data ?? [];
     },
-    enabled: isAdmin,
+    enabled: isAdmin && !!tenant?.id,
   });
 
   const planThresholds = useQuery({
@@ -134,13 +135,23 @@ export function IntegrationSettings() {
       read_rate_min?: number | null;
     },
   ) {
-    const { error } = await supabase.from("wa_numbers").update(patch).eq("id", id);
+    if (!tenant?.id) return;
+    const { error } = await supabase
+      .from("wa_numbers")
+      .update(patch)
+      .eq("id", id)
+      .eq("tenant_id", tenant.id);
     if (error) toast.error(error.message);
     else void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
   }
 
   async function removeNumber(id: string) {
-    const { error } = await supabase.from("wa_numbers").delete().eq("id", id);
+    if (!tenant?.id) return;
+    const { error } = await supabase
+      .from("wa_numbers")
+      .delete()
+      .eq("id", id)
+      .eq("tenant_id", tenant.id);
     if (error) toast.error(error.message);
     else {
       toast.success(i18n.t("integrationSettings.numberRemoved"));
@@ -149,11 +160,13 @@ export function IntegrationSettings() {
   }
 
   const templates = useQuery({
-    queryKey: ["wa_templates"],
+    queryKey: ["wa_templates", tenant?.id],
+    enabled: !!tenant?.id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("wa_templates")
         .select("id, name, language, category, body, status")
+        .eq("tenant_id", tenant!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
