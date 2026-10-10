@@ -179,6 +179,14 @@ export const listTeam = createServerFn({ method: "GET" })
     return { members: members ?? [], invites: invites ?? [], myId: context.userId };
   });
 
+/** Said when the person named is not in the caller's workspace (or does not exist). */
+const NOT_A_MEMBER = "That person is not a member of this workspace.";
+const LEGACY_ROLE_NOT_UPDATED =
+  "The change was saved, but the older admin record could not be updated. Do it again to finish it.";
+
+const LEGACY_ROLE_NOT_REMOVED =
+  "This person's older admin record could not be removed, so they were not removed. Try again.";
+
 const RoleChangeSchema = z.object({
   userId: z.string().uuid(),
   staffRole: z.enum(["company_admin", "marketing_manager", "staff", "seo_editor"]),
@@ -230,28 +238,38 @@ export const setStaffRole = createServerFn({ method: "POST" })
     // change a role is decided above, in code; the write itself is the
     // server's. See 20260926090000_profiles_privilege_columns_are_server_only.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
+    const { data: changed, error } = await supabaseAdmin
       .from("profiles")
       .update({ staff_role: data.staffRole })
       .eq("id", data.userId)
-      .eq("tenant_id", me.tenant_id);
+      .eq("tenant_id", me.tenant_id)
+      .select("id");
     if (error) throw error;
+    // That update is limited to this workspace, so for anyone outside it it
+    // changes nothing -- and reports no error. What follows is NOT limited: the
+    // legacy role table has no tenant column. Without this check a company
+    // admin could give a user of another workspace the legacy admin role there,
+    // or take it away, just by knowing their id -- including their own second
+    // account, sitting as ordinary staff in a company they wanted to take over.
+    if (!changed || changed.length !== 1) throw new Error(NOT_A_MEMBER);
 
     // This app carries two role systems, and is_tenant_admin() accepts either.
     // A demotion that rewrote only staff_role left the legacy user_roles.admin
     // row in place -- which has no tenant column, so the person kept admin
     // rights here and carried them into the next workspace they joined.
-    if (data.staffRole === "company_admin") {
-      await supabaseAdmin
-        .from("user_roles")
-        .upsert({ user_id: data.userId, role: "admin" }, { onConflict: "user_id,role" });
-    } else {
-      await supabaseAdmin
-        .from("user_roles")
-        .delete()
-        .eq("user_id", data.userId)
-        .eq("role", "admin");
-    }
+    const legacy =
+      data.staffRole === "company_admin"
+        ? await supabaseAdmin
+            .from("user_roles")
+            .upsert({ user_id: data.userId, role: "admin" }, { onConflict: "user_id,role" })
+        : await supabaseAdmin
+            .from("user_roles")
+            .delete()
+            .eq("user_id", data.userId)
+            .eq("role", "admin");
+    // A demotion whose second half failed would leave the admin row behind --
+    // the very thing this half exists to prevent -- so it is not passed over.
+    if (legacy.error) throw new Error(LEGACY_ROLE_NOT_UPDATED);
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -299,17 +317,43 @@ export const removeStaff = createServerFn({ method: "POST" })
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
+    // As in setStaffRole: only a member of THIS workspace is touched. Checked
+    // first, because of the order below.
+    const { data: member, error: memberError } = await supabaseAdmin
       .from("profiles")
-      .update({ tenant_id: null, staff_role: "staff" })
+      .select("id")
       .eq("id", data.userId)
-      .eq("tenant_id", me.tenant_id);
-    if (error) throw error;
+      .eq("tenant_id", me.tenant_id)
+      .maybeSingle();
+    if (memberError) throw memberError;
+    if (!member) throw new Error(NOT_A_MEMBER);
 
     // Removing someone has to revoke both role systems. The legacy
     // user_roles.admin row is global -- it survived removal and made them an
     // admin of whichever workspace they joined next.
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId).eq("role", "admin");
+    //
+    // It goes FIRST. The two writes cannot share a transaction here, so the
+    // order decides what a failure leaves behind. Taking the person out of the
+    // workspace first meant a failed delete left them removed but still
+    // holding the global admin row -- and "try again" could never fix it,
+    // because they were no longer a member to remove. This way a failure
+    // leaves them a member with less, never an ex-member with more, and doing
+    // it again finishes the job.
+    const legacy = await supabaseAdmin
+      .from("user_roles")
+      .delete()
+      .eq("user_id", data.userId)
+      .eq("role", "admin");
+    if (legacy.error) throw new Error(LEGACY_ROLE_NOT_REMOVED);
+
+    const { data: removed, error } = await supabaseAdmin
+      .from("profiles")
+      .update({ tenant_id: null, staff_role: "staff" })
+      .eq("id", data.userId)
+      .eq("tenant_id", me.tenant_id)
+      .select("id");
+    if (error) throw error;
+    if (!removed || removed.length !== 1) throw new Error(NOT_A_MEMBER);
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
