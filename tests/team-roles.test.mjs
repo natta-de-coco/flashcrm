@@ -197,10 +197,27 @@ describe("a role change never reaches into another workspace", () => {
       setStaffRole({ data: { userId: "admin-2", staffRole: "staff" }, context: context() }),
       /older admin record could not be updated/,
     );
+  });
+
+  it("leaves a person removable when the legacy admin record could not be deleted", async () => {
+    // The profile used to be cleared first. A failed delete then left the
+    // person out of the workspace but still holding the global admin row, and
+    // a retry stopped at "not a member" without ever reaching it.
+    faults["user_roles:delete"] = { code: "57014", message: "statement timeout" };
     await assert.rejects(
       removeStaff({ data: { userId: "admin-2" }, context: context() }),
-      /older admin record could not be updated|not a member/,
+      /could not be removed, so they were not removed/,
     );
+    assert.equal(rows.profiles.find((p) => p.id === "admin-2").tenant_id, TENANT, "removed anyway");
+    assert.equal(legacyAdmin("admin-2"), true);
+
+    faults = {};
+    await removeStaff({ data: { userId: "admin-2" }, context: context() });
+    assert.equal(rows.profiles.find((p) => p.id === "admin-2").tenant_id, null);
+    assert.equal(legacyAdmin("admin-2"), false, "the admin row outlived the removal");
+  });
+
+  it("does not report a promotion as done when its legacy half failed", async () => {
     faults["user_roles:upsert"] = { code: "57014", message: "statement timeout" };
     await assert.rejects(
       setStaffRole({ data: { userId: "agent-1", staffRole: "company_admin" }, context: context() }),
