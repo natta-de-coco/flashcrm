@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, User } from "lucide-react";
+import { Bot, Building2, User } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -38,6 +40,11 @@ export function OnboardingModal() {
   const [companyName, setCompanyName] = useState("");
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [botGreeting, setBotGreeting] = useState("");
+  const [botDetails, setBotDetails] = useState("");
+  const [botEnabled, setBotEnabled] = useState(false);
+  const botTouched = botGreeting.trim().length > 0 || botDetails.trim().length > 0;
+  const botReady = botGreeting.trim().length > 0 && botDetails.trim().length >= 20;
 
   // Whatever sign-up already knows about this person.
   const knownName =
@@ -59,6 +66,10 @@ export function OnboardingModal() {
       toast.error(t("onboardingModal.pleaseEnterYourFullName"));
       return;
     }
+    if (botTouched && !botReady) {
+      toast.error(t("onboardingModal.chatbotDetailsShort"));
+      return;
+    }
     setBusy(true);
     try {
       // The server function requires a bearer token. If the local session has
@@ -77,7 +88,14 @@ export function OnboardingModal() {
         window.location.href = "/auth";
         return;
       }
-      await runOnboarding({ data: { companyName: companyName.trim(), fullName: fullName.trim() } });
+      await runOnboarding({ data: {
+          companyName: companyName.trim(),
+          fullName: fullName.trim(),
+          botGreeting: botGreeting.trim(),
+          botDetails: botDetails.trim(),
+          botEnabled: botReady && botEnabled,
+        },
+      });
       toast.success(t("onboardingModal.welcomeToFlasYour1", { trim: fullName.trim() }));
       await refresh();
     } catch (e) {
@@ -88,7 +106,7 @@ export function OnboardingModal() {
 
   return (
     <Dialog open>
-      <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader className="items-center text-center">
           <FlashLogoBadge className="mb-2 size-12" />
           <DialogTitle>{t("onboardingModal.nameYourCompany")}</DialogTitle>
@@ -126,6 +144,37 @@ export function OnboardingModal() {
               />
             </div>
           )}
+          <div className="space-y-3 rounded-md border p-3">
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <Bot className="h-3.5 w-3.5" /> {t("onboardingModal.chatbotSection")}
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="ob-greeting">{t("onboardingModal.chatbotGreeting")}</Label>
+              <Input
+                id="ob-greeting"
+                maxLength={500}
+                placeholder={t("onboardingModal.chatbotGreetingPh")}
+                value={botGreeting}
+                onChange={(e) => setBotGreeting(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ob-details">{t("onboardingModal.chatbotDetails")}</Label>
+              <Textarea
+                id="ob-details"
+                rows={3}
+                maxLength={4000}
+                placeholder={t("onboardingModal.chatbotDetailsPh")}
+                value={botDetails}
+                onChange={(e) => setBotDetails(e.target.value)}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={botReady && botEnabled} disabled={!botReady} onCheckedChange={setBotEnabled} />
+              {t("onboardingModal.chatbotTurnOn")}
+            </label>
+            <p className="text-xs text-muted-foreground">{t("onboardingModal.chatbotHint")}</p>
+          </div>
           <Button className="w-full" onClick={submit} disabled={busy}>
             {busy
               ? t("onboardingModal.creatingYourWorkspace")
