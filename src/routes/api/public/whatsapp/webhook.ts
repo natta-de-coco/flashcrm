@@ -18,6 +18,28 @@ async function verifySignature(raw: string, body: WaWebhookBody, header: string 
   return { ok: await verifyWaSignature(raw, ids, header), enforced: true };
 }
 
+/**
+ * The one company every number in a delivery belongs to, or null.
+ *
+ * One delivery can carry several numbers. When they are not all one company's
+ * -- or one of them is nobody's -- a failure in it is not shown to any single
+ * company as theirs: it stays with the platform.
+ */
+async function companyOf(body: WaWebhookBody): Promise<string | null> {
+  const { findWaNumberByPhoneId } = await import("@/lib/wa.server");
+  const phoneNumberIds = new Set(
+    (body.entry ?? []).flatMap((entry) =>
+      (entry.changes ?? []).map((change) => change.value?.metadata?.phone_number_id ?? null),
+    ),
+  );
+  const companies = new Set<string | null>();
+  for (const id of phoneNumberIds) {
+    companies.add((await findWaNumberByPhoneId(id))?.tenantId ?? null);
+  }
+  const [only = null] = companies;
+  return companies.size === 1 ? only : null;
+}
+
 export const Route = createFileRoute("/api/public/whatsapp/webhook")({
   server: {
     handlers: {
@@ -128,10 +150,13 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
             error: detail,
             durationMs: Date.now() - startedAt,
           });
+          // Past the signature check, so the numbers in it are really the
+          // sender's: the company they belong to is told, where it is one.
           await raiseAlert({
             title: "WhatsApp webhook event failed",
             message: detail,
             severity: "critical",
+            tenantId: await companyOf(body),
           });
         }
 

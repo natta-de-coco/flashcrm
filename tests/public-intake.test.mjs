@@ -338,8 +338,13 @@ describe("a WhatsApp message has an honest, durable CRM record", () => {
   it("marks the bot's already-stored reply failed when the send is refused", () => {
     const monitoring = read("src/lib/monitoring.server.ts");
     assert.match(monitoring, /await completeOutboundDelivery\(\s*replyMessageId,/);
-    // The notice under it gives Meta's actual reason, not a guess.
-    assert.match(monitoring, /`\(Not delivered: \$\{outcome\.message\}\)`/);
+    // The notice under it gives Meta's actual reason, not a guess. It is built
+    // by the one function the delivery health check also uses to recognise it.
+    assert.match(monitoring, /notDeliveredNote\(outcome\.message\)/);
+    assert.match(
+      read("src/lib/wa-delivery.ts"),
+      /return `\$\{NOT_DELIVERED_NOTE_PREFIX\}\$\{reason\}\)`;/,
+    );
     assert.ok(!monitoring.includes("check WhatsApp credentials"));
   });
 

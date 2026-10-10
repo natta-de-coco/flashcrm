@@ -6,12 +6,16 @@
 // timeout shown as "failed", a late receipt turning "read" back into "sent",
 // one workspace reaching another's number.
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
 import { createDb, secondsAgo } from "./support/db-double.mjs";
 
+import { Route as webhookRoute } from "../node_modules/.cache/flas-whatsapp-webhook.mjs";
 import {
+  checkNumberHealth,
+  raiseAlert,
   describeSendContext,
   evidenceOfReceipt,
   evidenceOfSend,
@@ -21,6 +25,9 @@ import {
   failureReasonForCode,
   generateBotReply,
   ingestInboundMessage,
+  isNotDeliveredNote,
+  notDeliveredNote,
+  WA_FAILURE_TEXT,
   newChatAutomation,
   mayAdvance,
   processWaPayload,
@@ -2072,5 +2079,433 @@ describe("nothing reaches a customer around the pipeline", () => {
     assert.match(crm, /sendConversationMessage\(\{/);
     assert.match(crm, /sendTemplate\(\{/);
     assert.match(crm, /describeSendContext\(tenantId, data\.conversationId\)/);
+  });
+});
+
+// ── What Monitoring is told, and who is told it ─────────────────────────────
+
+/** Switches the assistant on for A's conversation, so a customer's message gets a reply. */
+function assistantAnswers() {
+  rows.tenant_bot_settings.push({
+    tenant_id: A,
+    enabled: true,
+    bot_name: "Flas",
+    greeting: "Hello!",
+    instructions: "We sell CCTV kits in Dubai and install on Saturdays.",
+    model: "default",
+    handoff_keywords: [],
+  });
+  rows.conversations[0].bot_enabled = true;
+  db.state.rpcResults["resolve_contact_by_identity"] = [{ contact_id: "c-a", branch_id: null }];
+}
+const wantsAPerson = (id = "wamid.IN-ALERT") => ({
+  id,
+  from: "971501234567",
+  type: "text",
+  text: { body: "I want to talk to a human" },
+});
+const alertsTitled = (title) => rows.system_alerts.filter((a) => a.title === title);
+/** An outbound message of A's, on its WhatsApp line, inside the last day. */
+function outboundOfA(id, status, extra = {}) {
+  const row = {
+    id,
+    tenant_id: A,
+    conversation_id: "conv-a",
+    direction: "outbound",
+    sender: "agent",
+    body: "Hello",
+    status,
+    wa_message_id: `wamid.${id}`,
+    created_at: secondsAgo(600),
+    ...extra,
+  };
+  rows.messages.push(row);
+  return row;
+}
+const manyOfA = (count, status, prefix = status) => {
+  for (let i = 0; i < count; i += 1) outboundOfA(`${prefix}-${i}`, status);
+};
+
+describe("an alert belongs to the company it is about", () => {
+  const FAILED = "WhatsApp message delivery failed";
+
+  it("files a failed delivery under the company whose message it was", async () => {
+    outboundOfA("out-t", "sent", { wa_message_id: "wamid.OUT-T" });
+    await processWaPayload(
+      statusPayload("pn-a", { id: "wamid.OUT-T", status: "failed", errors: [{ code: 131026 }] }),
+    );
+    const [alert] = alertsTitled(FAILED);
+    assert.ok(alert);
+    // It had no company at all, so only the platform owner could ever see it.
+    assert.equal(alert.tenant_id, A);
+  });
+
+  it("files a failure FLAS holds no message for under the company whose number reported it", async () => {
+    await processWaPayload(statusPayload("pn-b", { id: "wamid.ELSEWHERE", status: "failed" }));
+    assert.equal(alertsTitled(FAILED)[0].tenant_id, B);
+  });
+
+  it("files a refused assistant reply under the company it was for", async () => {
+    assistantAnswers();
+    provider.next.push(refused(131047));
+    await processWaPayload(inboundPayload("pn-a", wantsAPerson()));
+    const [alert] = alertsTitled("WhatsApp reply could not be delivered");
+    assert.ok(alert);
+    assert.equal(alert.tenant_id, A);
+  });
+
+  it("files an unconfirmed assistant reply under the company it was for", async () => {
+    assistantAnswers();
+    provider.fail = new Error("timeout");
+    await processWaPayload(inboundPayload("pn-a", wantsAPerson()));
+    const [alert] = alertsTitled("WhatsApp did not confirm a reply");
+    assert.ok(alert);
+    assert.equal(alert.tenant_id, A);
+  });
+
+  it("files low delivery and read rates under the company that owns the number", async () => {
+    rows.wa_numbers[0].alerts_enabled = true;
+    manyOfA(10, "delivered");
+    manyOfA(10, "failed");
+    await checkNumberHealth("num-a");
+    const [delivery] = alertsTitled("Low deliverability on Sales line");
+    const [read] = alertsTitled("Low read rate on Sales line");
+    assert.ok(delivery && read);
+    assert.equal(delivery.tenant_id, A);
+    assert.equal(read.tenant_id, A);
+  });
+
+  it("leaves a webhook for a number nobody has connected with the platform", async () => {
+    await processWaPayload(statusPayload("pn-unknown", { id: "wamid.X", status: "read" }));
+    const [alert] = alertsTitled("WhatsApp webhook for an unrecognized number");
+    assert.ok(alert);
+    assert.equal(alert.tenant_id ?? null, null, "there is no company to file it under");
+  });
+
+  /** An alert that is already open, as the table holds it. */
+  const openAlert = (id, tenantId) =>
+    rows.system_alerts.push({
+      id,
+      title: FAILED,
+      tenant_id: tenantId,
+      resolved: false,
+      created_at: secondsAgo(60),
+    });
+
+  it("does not let one company's open alert hide the same alert from another", async () => {
+    openAlert("open-a", A);
+    // The check for a repeat matched on the title alone, so the second company
+    // was never told.
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: B }), true);
+    assert.deepEqual(
+      alertsTitled(FAILED).map((a) => a.tenant_id),
+      [A, B],
+    );
+    // A itself is still told only once.
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+  });
+
+  it("does not let a platform alert hide a company's alert of the same name", async () => {
+    openAlert("open-platform", null);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), true);
+    assert.equal(await raiseAlert({ title: FAILED }), false, "the platform's own is a repeat");
+    assert.deepEqual(
+      alertsTitled(FAILED).map((a) => a.tenant_id),
+      [null, A],
+    );
+  });
+
+  it("does not let a company's alert hide the platform's alert of the same name", async () => {
+    openAlert("open-a", A);
+    assert.equal(await raiseAlert({ title: FAILED }), true);
+    assert.equal(alertsTitled(FAILED).at(-1).tenant_id ?? null, null);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+  });
+
+  it("still says a thing once per company while it is open, and again once it is resolved", async () => {
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), true);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+    assert.equal(alertsTitled(FAILED).length, 1);
+    alertsTitled(FAILED)[0].resolved = true;
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), true);
+  });
+
+  it("is not repeated for ever once two copies of it are open", async () => {
+    // A single-row read of two rows is an error, and the error read as "no
+    // such alert": from then on every call added one more.
+    for (const id of ["dup-1", "dup-2"]) {
+      rows.system_alerts.push({
+        id,
+        title: FAILED,
+        tenant_id: A,
+        resolved: false,
+        created_at: secondsAgo(60),
+      });
+    }
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+    assert.equal(alertsTitled(FAILED).length, 2);
+  });
+
+  it("says it was not raised when the database refused it", async () => {
+    db.fail("system_alerts:insert", STATEMENT_TIMEOUT);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), false);
+    assert.equal(alertsTitled(FAILED).length, 0);
+  });
+
+  it("is still raised when it cannot tell whether it is a repeat", async () => {
+    // Told twice is better than not told.
+    db.fail("system_alerts:read", STATEMENT_TIMEOUT);
+    assert.equal(await raiseAlert({ title: FAILED, tenantId: A }), true);
+    assert.equal(alertsTitled(FAILED)[0].tenant_id, A);
+  });
+});
+
+// ── One refused reply is one failure ────────────────────────────────────────
+//
+// When Meta refuses the assistant's reply, the reply's own row is marked
+// failed, and FLAS writes a line under it saying why. That line is a failed
+// outbound row too. The health check counted every failed outbound row, so each
+// refusal counted twice and the deliverability alert came early.
+describe("a note under a refused reply is not a second failure", () => {
+  const LOW = "Low deliverability on Sales line";
+  beforeEach(() => {
+    rows.wa_numbers[0].alerts_enabled = true;
+  });
+  /** A refused assistant reply and the line FLAS wrote under it, as the database holds them. */
+  function refusedReplyWithNote(n, { reason = "Messaging window closed" } = {}) {
+    outboundOfA(`reply-${n}`, "failed", {
+      sender: "bot",
+      body: "We open at nine.",
+      wa_message_id: null,
+    });
+    return outboundOfA(`note-${n}`, "failed", {
+      sender: "bot",
+      body: `(Not delivered: ${reason})`,
+      wa_message_id: null,
+    });
+  }
+
+  it("counts a reply Meta refused once, however the thread shows it", async () => {
+    // The real thing: Meta refuses the assistant's reply, and FLAS stores the
+    // reply as failed and a line under it saying why.
+    assistantAnswers();
+    provider.next.push(refused(131047));
+    await processWaPayload(inboundPayload("pn-a", wantsAPerson()));
+    const [reply, note] = rows.messages.filter((m) => m.sender === "bot");
+    assert.equal(reply.status, "failed");
+    assert.match(note.body, /^\(Not delivered: /);
+    // The note still says "not delivered" in the Inbox. It is not made to look
+    // like a message the customer received in order to keep it out of the count.
+    assert.equal(note.status, "failed");
+
+    // 18 delivered and that one refusal are 19 messages: too few to judge.
+    // Counting the note made it 20, at 90%, and raised the alarm early.
+    manyOfA(18, "delivered");
+    await checkNumberHealth("num-a");
+    assert.equal(alertsTitled(LOW).length, 0, "the note under the reply was counted as a failure");
+
+    // One more real failure does reach 20, and says two failed, not three.
+    outboundOfA("really-failed", "failed");
+    await checkNumberHealth("num-a");
+    const [alert] = alertsTitled(LOW);
+    assert.ok(alert, "a real failure is still counted");
+    assert.match(alert.message, /^90\.0% of 20 messages delivered/);
+    assert.match(alert.message, /\b2 failed\b/);
+  });
+
+  it("does not need to know whether the database keeps an origin for each message", async () => {
+    // The rows as a database holds them before origins are kept: nothing but
+    // the columns every message has. (The test database returns whole rows, so
+    // a row with no origin is exactly that.)
+    manyOfA(17, "delivered");
+    for (const n of [1, 2, 3]) refusedReplyWithNote(n);
+    assert.ok(rows.messages.every((m) => !("origin" in m)));
+    await checkNumberHealth("num-a");
+    const [alert] = alertsTitled(LOW);
+    assert.ok(alert);
+    // 17 delivered and 3 refused replies: 20 messages, three failures.
+    assert.match(alert.message, /^85\.0% of 20 messages delivered/);
+    assert.match(alert.message, /\b3 failed\b/);
+  });
+
+  it("gives the same answer when every message does carry an origin", async () => {
+    manyOfA(17, "delivered");
+    for (const n of [1, 2, 3]) {
+      const note = refusedReplyWithNote(n);
+      rows.messages.find((m) => m.id === `reply-${n}`).origin = "assistant";
+      note.origin = "system";
+    }
+    await checkNumberHealth("num-a");
+    const [alert] = alertsTitled(LOW);
+    assert.ok(alert);
+    assert.match(alert.message, /^85\.0% of 20 messages delivered/);
+    assert.match(alert.message, /\b3 failed\b/);
+  });
+
+  it("still counts every message a person sent, whatever it says", async () => {
+    manyOfA(17, "delivered");
+    // A colleague who types text that looks like the note, and a bot message
+    // Meta reported failed afterwards (so it has a provider id), are real
+    // messages that failed.
+    outboundOfA("typed", "failed", { body: "(Not delivered: see you Monday)" });
+    outboundOfA("late-failure", "failed", {
+      sender: "bot",
+      body: "(Not delivered: we are closed)",
+      wa_message_id: "wamid.LATE",
+    });
+    outboundOfA("plain", "failed", {
+      sender: "bot",
+      body: "We open at nine.",
+      wa_message_id: null,
+    });
+    await checkNumberHealth("num-a");
+    const [alert] = alertsTitled(LOW);
+    assert.ok(alert);
+    assert.match(alert.message, /^85\.0% of 20 messages delivered/);
+    assert.match(alert.message, /\b3 failed\b/);
+  });
+
+  it("counts a reply whose send was never confirmed as neither delivered nor failed, note or not", async () => {
+    assistantAnswers();
+    provider.fail = new Error("timeout");
+    await processWaPayload(inboundPayload("pn-a", wantsAPerson()));
+    const unsent = rows.messages.filter((m) => m.sender === "bot");
+    assert.deepEqual(
+      unsent.map((m) => m.status),
+      ["unconfirmed", "unconfirmed"],
+    );
+    manyOfA(20, "delivered");
+    await checkNumberHealth("num-a");
+    assert.equal(alertsTitled(LOW).length, 0);
+  });
+
+  it("recognises, for every reason Meta gives, the line the webhook writes", () => {
+    for (const text of Object.values(WA_FAILURE_TEXT)) {
+      const note = { sender: "bot", wa_message_id: null, body: notDeliveredNote(text) };
+      assert.equal(isNotDeliveredNote(note), true, text);
+      // A person typed it, or Meta gave it an id: a real message.
+      assert.equal(isNotDeliveredNote({ ...note, sender: "agent" }), false);
+      assert.equal(isNotDeliveredNote({ ...note, wa_message_id: "wamid.X" }), false);
+    }
+    assert.equal(
+      isNotDeliveredNote({ sender: "bot", wa_message_id: null, body: "We open at nine." }),
+      false,
+    );
+    assert.equal(isNotDeliveredNote({ sender: "bot", wa_message_id: null, body: null }), false);
+    assert.equal(isNotDeliveredNote({}), false);
+  });
+
+  it("raises no rate alert on a count it could not make", async () => {
+    manyOfA(17, "delivered");
+    for (const n of [1, 2, 3]) refusedReplyWithNote(n);
+    // Only the read that looks for the notes -- the one with more filters than
+    // the plain count of the day's messages -- is refused.
+    db.fail("messages:read", (query) => (query.filters.length > 3 ? STATEMENT_TIMEOUT : undefined));
+    await checkNumberHealth("num-a");
+    assert.equal(alertsTitled(LOW).length, 0, "an alert was raised on a count that was not made");
+  });
+});
+
+describe("the webhook endpoint", () => {
+  const { GET: handshake, POST: deliver } = webhookRoute.options.server.handlers;
+  const ENDPOINT = "https://flas.example/api/public/whatsapp/webhook";
+  const APP_SECRET = "meta-app-secret-for-tests";
+  const signed = (payload, secret = APP_SECRET) => {
+    const raw = JSON.stringify(payload);
+    const signature = createHmac("sha256", secret).update(raw, "utf8").digest("hex");
+    return new Request(ENDPOINT, {
+      method: "POST",
+      headers: { "x-hub-signature-256": `sha256=${signature}` },
+      body: raw,
+    });
+  };
+  const FAILED_EVENT = "WhatsApp webhook event failed";
+  let verifyToken;
+  beforeEach(() => {
+    for (const number of rows.wa_numbers) number.app_secret = APP_SECRET;
+    verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
+    process.env.WHATSAPP_VERIFY_TOKEN = "handshake-token-for-tests";
+  });
+  afterEach(() => {
+    if (verifyToken === undefined) delete process.env.WHATSAPP_VERIFY_TOKEN;
+    else process.env.WHATSAPP_VERIFY_TOKEN = verifyToken;
+  });
+
+  it("tells a company when a delivery for its number could not be processed", async () => {
+    outboundOfA("out-w", "sent", { wa_message_id: "wamid.OUT-W" });
+    db.fail("messages:update", STATEMENT_TIMEOUT);
+    const response = await deliver({
+      request: signed(statusPayload("pn-a", { id: "wamid.OUT-W", status: "delivered" })),
+    });
+    assert.equal(response.status, 200);
+    const [alert] = alertsTitled(FAILED_EVENT);
+    assert.ok(alert);
+    assert.equal(alert.tenant_id, A);
+    // The event is filed under the same company, failed, for its Retry button.
+    assert.equal(rows.webhook_events.at(-1).tenant_id, A);
+    assert.equal(rows.webhook_events.at(-1).status, "failed");
+  });
+
+  it("does not pick a company for a failed delivery that carried two companies' numbers", async () => {
+    outboundOfA("out-w", "sent", { wa_message_id: "wamid.OUT-W" });
+    const both = statusPayload("pn-a", { id: "wamid.OUT-W", status: "delivered" });
+    both.entry.push(statusPayload("pn-b", { id: "wamid.OTHER", status: "delivered" }).entry[0]);
+    db.fail("messages:update", STATEMENT_TIMEOUT);
+    const response = await deliver({ request: signed(both) });
+    assert.equal(response.status, 200);
+    const [alert] = alertsTitled(FAILED_EVENT);
+    assert.ok(alert);
+    assert.equal(
+      alert.tenant_id ?? null,
+      null,
+      "one company was shown a failure that may be another's",
+    );
+  });
+
+  it("files nothing under a company on the word of a delivery it could not verify", async () => {
+    const forged = signed(
+      statusPayload("pn-a", { id: "wamid.X", status: "failed" }),
+      "not-the-app-secret",
+    );
+    const response = await deliver({ request: forged });
+    assert.equal(response.status, 401);
+    assert.equal(rows.messages.filter((m) => m.direction === "outbound").length, 0);
+    for (const alert of rows.system_alerts) assert.equal(alert.tenant_id ?? null, null);
+    assert.equal(alertsTitled("Rejected a WhatsApp webhook with an invalid signature").length, 1);
+  });
+
+  // Meta's handshake is one GET to one address shared by every company, with
+  // one token shared by every company. Nothing in it says whose setup it is.
+  it("answers Meta's handshake without calling any company verified", async () => {
+    rows.tenant_wa_config = [
+      { tenant_id: A, webhook_verified: false },
+      { tenant_id: B, webhook_verified: false },
+    ];
+    const response = await handshake({
+      request: new Request(
+        `${ENDPOINT}?hub.mode=subscribe&hub.verify_token=handshake-token-for-tests&hub.challenge=4242`,
+      ),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "4242");
+    assert.deepEqual(
+      rows.tenant_wa_config.map((c) => c.webhook_verified),
+      [false, false],
+      "a company was marked verified on a handshake that does not name it",
+    );
+    assert.equal(db.state.rpcCalls.filter((c) => c.name === "mark_wa_webhook_verified").length, 0);
+  });
+
+  it("refuses a handshake with the wrong token, or with none configured", async () => {
+    const ask = (token) =>
+      handshake({
+        request: new Request(
+          `${ENDPOINT}?hub.mode=subscribe&hub.verify_token=${token}&hub.challenge=4242`,
+        ),
+      });
+    assert.equal((await ask("something-else")).status, 403);
+    delete process.env.WHATSAPP_VERIFY_TOKEN;
+    assert.equal((await ask("")).status, 403);
+    assert.equal((await ask("handshake-token-for-tests")).status, 403);
   });
 });

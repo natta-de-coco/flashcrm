@@ -128,36 +128,12 @@ export const setDefaultWhatsAppNumber = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     const tenantId = await requireCompanyAdmin(context);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // The number has to be this workspace's own, whatever id the browser sent.
-    const { data: number } = await supabaseAdmin
-      .from("wa_numbers")
-      .select("id")
-      .eq("id", data.id)
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-    if (!number) throw new Error("That number is not connected to this workspace.");
-
-    const { error: clearError } = await supabaseAdmin
-      .from("wa_numbers")
-      .update({ is_default: false })
-      .eq("tenant_id", tenantId)
-      .eq("is_default", true);
-    if (clearError) throw new Error("Could not change the default number. Try again.");
-
-    const { error } = await supabaseAdmin
-      .from("wa_numbers")
-      .update({ is_default: true })
-      .eq("id", number.id)
-      .eq("tenant_id", tenantId);
-    if (error) {
-      throw new Error(
-        error.code === "23505"
-          ? "The default WhatsApp number setting needs a database update from your Flas administrator before it can be changed."
-          : "Could not set that number as the default. Try again.",
-      );
-    }
+    // The number has to be this workspace's own, whatever id the browser sent,
+    // and the old default is cleared and the new one set together or not at
+    // all: see wa-default-number.server.ts.
+    const { switchDefaultWhatsAppNumber } = await import("@/lib/wa-default-number.server");
+    const number = await switchDefaultWhatsAppNumber(tenantId, data.id);
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
