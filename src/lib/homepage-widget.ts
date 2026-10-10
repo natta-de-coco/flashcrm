@@ -2,6 +2,7 @@
  * Pure helpers for the chat widget on Flas's own marketing pages. Kept apart
  * from the server function so they can be tested without a database.
  */
+import { hostMatchesPin } from "./domain-pin";
 
 /**
  * Whether a registered site domain covers this host. The same rule as
@@ -10,10 +11,7 @@
  */
 export function domainCoversHost(domain: string | null, host: string): boolean {
   if (!domain) return false;
-  const wanted = domain.toLowerCase().trim();
-  const h = host.toLowerCase().trim();
-  if (!wanted || !h) return false;
-  return h === wanted || h.endsWith("." + wanted);
+  return hostMatchesPin(host, domain);
 }
 
 export type OwnerSite = {
