@@ -15,6 +15,7 @@ import {
   CreditCard,
   Download,
   FileText,
+  History,
   Send,
   User,
 } from "lucide-react";
@@ -25,6 +26,7 @@ type BoardActions = {
   onConvertQuotation: (id: string) => void;
   onRecordPayment: (doc: DocRow) => void;
   onDownloadPdf: (id: string) => void;
+  onViewHistory?: (id: string) => void;
 };
 
 function StageColumn({
@@ -142,12 +144,24 @@ function StageColumn({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 flex-1 px-2 text-xs"
+                      className="h-7 px-2 text-xs"
                       onClick={() => actions.onOpenExisting(doc.id)}
                     >
                       <FileText className="me-1 h-3 w-3" />
                       Edit
                     </Button>
+
+                    {actions.onViewHistory && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => actions.onViewHistory?.(doc.id)}
+                        title="View PDF Backups & Activity Logs"
+                      >
+                        <History className="h-3 w-3" />
+                      </Button>
+                    )}
 
                     {stage.id === "draft" && (
                       <Button

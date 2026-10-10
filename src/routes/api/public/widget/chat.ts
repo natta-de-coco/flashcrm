@@ -101,6 +101,23 @@ export const Route = createFileRoute("/api/public/widget/chat")({
           // matched or created. Done here rather than inside ingestInboundMessage
           // because that function is also the WhatsApp webhook's path, where
           // there is no web form and no consent to record.
+          if (parsed.email) {
+            try {
+              const { ingestLead } = await import("@/lib/lead-automation.server");
+              await ingestLead({
+                tenantId: site.tenant_id,
+                email: parsed.email,
+                name: parsed.name ?? null,
+                phone: parsed.phone ?? null,
+                source: "website_widget",
+                sourceUrl: request.headers.get("referer") || site.domain || null,
+                consentGiven: Boolean(parsed.marketingConsent),
+              });
+            } catch (error) {
+              console.error("[widget] could not record lead", error);
+            }
+          }
+
           if (parsed.phone && (parsed.email || parsed.marketingConsent)) {
             try {
               const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

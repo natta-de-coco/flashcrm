@@ -2724,6 +2724,83 @@ export type Database = {
           },
         ]
       }
+      platform_email_config: {
+        Row: {
+          created_at: string
+          from_email: string
+          from_name: string
+          id: string
+          imap_host: string | null
+          imap_pass_enc: string | null
+          imap_port: number | null
+          imap_secure: boolean
+          imap_user: string | null
+          last_test_at: string | null
+          last_test_error: string | null
+          last_test_ok: boolean | null
+          smtp_host: string | null
+          smtp_pass_enc: string | null
+          smtp_port: number
+          smtp_secure: boolean
+          smtp_user: string | null
+          updated_at: string
+          updated_by: string | null
+          verified: boolean
+        }
+        Insert: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          id?: string
+          imap_host?: string | null
+          imap_pass_enc?: string | null
+          imap_port?: number | null
+          imap_secure?: boolean
+          imap_user?: string | null
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_ok?: boolean | null
+          smtp_host?: string | null
+          smtp_pass_enc?: string | null
+          smtp_port?: number
+          smtp_secure?: boolean
+          smtp_user?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verified?: boolean
+        }
+        Update: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          id?: string
+          imap_host?: string | null
+          imap_pass_enc?: string | null
+          imap_port?: number | null
+          imap_secure?: boolean
+          imap_user?: string | null
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_ok?: boolean | null
+          smtp_host?: string | null
+          smtp_pass_enc?: string | null
+          smtp_port?: number
+          smtp_secure?: boolean
+          smtp_user?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_email_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_super_admins: {
         Row: {
           created_at: string

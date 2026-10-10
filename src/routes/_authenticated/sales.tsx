@@ -28,8 +28,10 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowRight, Download, FileText, KanbanSquare, LayoutList, Plus, Receipt, Send } from "lucide-react";
+import { ArrowRight, Download, FileText, History, KanbanSquare, LayoutList, Plus, Receipt, Send, ShieldCheck } from "lucide-react";
 import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
+import { DocumentHistoryDialog } from "@/components/sales/DocumentHistoryDialog";
+import { CompanyBillingProfileCard } from "@/components/settings/CompanyBillingProfileCard";
 import { isSubscriptionReceipt } from "@/lib/sales-pipeline";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -140,6 +142,8 @@ function SalesPage() {
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
   const [sendFor, setSendFor] = useState<DocRow | null>(null);
   const [sendNote, setSendNote] = useState("");
+  const [historyDocId, setHistoryDocId] = useState<string | null>(null);
+  const [showCompanyProfile, setShowCompanyProfile] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["sales-workspace"],
@@ -342,6 +346,15 @@ function SalesPage() {
               <Button variant="ghost" onClick={() => setBuilder(null)}>
                 Back
               </Button>
+              {builder.id && (
+                <Button
+                  variant="outline"
+                  onClick={() => setHistoryDocId(builder.id)}
+                  className="gap-1.5"
+                >
+                  <History className="h-4 w-4" /> Backups &amp; Logs
+                </Button>
+              )}
               <Button
                 variant="outline"
                 disabled={save.isPending}
@@ -382,6 +395,13 @@ function SalesPage() {
         description="Quote a customer, turn it into an invoice, send the PDF on WhatsApp and let Flas deliver the stamped PAID copy the moment payment lands."
         actions={
           <>
+            <Button
+              variant="outline"
+              onClick={() => setShowCompanyProfile(true)}
+              className="gap-1.5"
+            >
+              <Receipt className="h-4 w-4 text-primary" /> Tax &amp; TRN Profile
+            </Button>
             <Button variant="outline" onClick={() => startNew("quotation")}>
               <Plus className="mr-1 h-4 w-4" /> Quotation
             </Button>
@@ -461,6 +481,7 @@ function SalesPage() {
               });
             }}
             onDownloadPdf={(id) => download.mutate(id)}
+            onViewHistory={(id) => setHistoryDocId(id)}
           />
         )
       ) : visible.length === 0 ? (
@@ -509,6 +530,14 @@ function SalesPage() {
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => openExisting.mutate(doc.id)}>
                     Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setHistoryDocId(doc.id)}
+                    title="View PDF Backups & Audit Trail"
+                  >
+                    <History className="mr-1 h-4 w-4" /> Backups
                   </Button>
                   <Button
                     size="sm"
@@ -602,6 +631,18 @@ function SalesPage() {
               {pay.isPending ? "Saving…" : "Save payment"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <DocumentHistoryDialog
+        documentId={historyDocId}
+        open={Boolean(historyDocId)}
+        onOpenChange={(open) => !open && setHistoryDocId(null)}
+      />
+
+      <Dialog open={showCompanyProfile} onOpenChange={setShowCompanyProfile}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <CompanyBillingProfileCard />
         </DialogContent>
       </Dialog>
     </div>

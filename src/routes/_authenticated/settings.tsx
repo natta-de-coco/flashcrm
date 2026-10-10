@@ -1,9 +1,11 @@
 import { BillingCard } from "@/components/settings/BillingCard";
 import { RegionCard } from "@/components/settings/RegionCard";
+import { CompanyBillingProfileCard } from "@/components/settings/CompanyBillingProfileCard";
 import { AuditLogCard } from "@/components/settings/AuditLogCard";
 import { DataPrivacyCard } from "@/components/settings/DataPrivacyCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
 import { TeamCard } from "@/components/settings/TeamCard";
+import { EmailMarketingCard } from "@/components/settings/EmailMarketingCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -48,9 +50,13 @@ function SettingsPage() {
       <div className="grid max-w-3xl gap-4">
         <RegionCard />
 
+        <CompanyBillingProfileCard />
+
         <BillingCard />
 
         {isAdmin && <AuditLogCard />}
+
+        {isAdmin && <EmailMarketingCard />}
 
         <SecurityCard />
 

@@ -204,6 +204,40 @@ export const inviteStaff = createServerFn({ method: "POST" })
       entityId: data.email,
       details: { staffRole: data.staffRole },
     });
+
+    // Trigger platform invite transactional email from flas@mobidigisol.com
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const origin = process.env["SITE_URL"] ?? "https://flas.mobidigisol.com";
+    try {
+      await supabaseAdmin.auth.admin.inviteUserByEmail(data.email.toLowerCase(), {
+        redirectTo: `${origin}/auth`,
+        data: {
+          invited_to_tenant: me.tenant_id,
+          assigned_role: data.staffRole,
+        },
+      });
+    } catch (inviteErr) {
+      console.warn("inviteUserByEmail notice:", inviteErr);
+    }
+
+    try {
+      await supabaseAdmin.rpc("log_email_delivery", {
+        _tenant_id: me.tenant_id,
+        _user_id: context.userId,
+        _recipient: data.email.toLowerCase(),
+        _from_address: "flas@mobidigisol.com",
+        _subject: "You've been invited to Flas CRM",
+        _template: "invite",
+        _provider: "platform",
+        _provider_msg_id: null,
+        _status: "sent",
+        _error: null,
+        _meta: { staff_role: data.staffRole },
+      } as never);
+    } catch {
+      // Best-effort delivery audit
+    }
+
     return { ok: true };
   });
 

@@ -194,6 +194,13 @@ export const MANAGER_SECTION: NavSection = {
       keywords: "tenants workspaces clients organizations",
     },
     {
+      to: "/companies/email-settings",
+      label: "Platform Email",
+      desc: "SMTP/IMAP system mail config",
+      icon: Mail,
+      keywords: "email smtp imap system platform flas mobidigisol transactional",
+    },
+    {
       to: "/companies/errors",
       label: "Errors & issues",
       desc: "What customers are hitting",

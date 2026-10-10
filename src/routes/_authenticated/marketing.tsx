@@ -16,6 +16,8 @@ import { Copy, Download, Loader2, Mail, Plus, Send, Sparkles, Trash2 } from "luc
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
+import { CampaignBoard, type CampaignItem } from "@/components/marketing/CampaignBoard";
+import { getTenantSmtpConfig } from "@/lib/tenant-smtp.functions";
 
 
 export const Route = createFileRoute("/_authenticated/marketing")({
@@ -119,6 +121,18 @@ function MarketingPage() {
   });
   const [aiDraft, setAiDraft] = useState("");
   const draftWithFlashAi = useServerFn(draftCampaignMessage);
+  const getSmtpConfigFn = useServerFn(getTenantSmtpConfig);
+  const smtpConfigQuery = useQuery({
+    queryKey: ["tenant-smtp-config-marketing"],
+    queryFn: async () => {
+      try {
+        return await getSmtpConfigFn();
+      } catch {
+        return null;
+      }
+    },
+  });
+  const isSmtpVerified = Boolean(smtpConfigQuery.data?.verified);
 
   useEffect(() => setOrigin(window.location.origin), []);
 
@@ -831,94 +845,11 @@ function MarketingPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Marketing campaigns</CardTitle>
-            <CardDescription>
-              Write a campaign for your subscribed leads. Campaigns only ever go to leads who ticked
-              the consent box — that keeps you out of spam folders and on the right side of WhatsApp
-              and email regulations. Sending activates once your email domain is verified.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="c_name">Campaign name</Label>
-                <Input
-                  id="c_name"
-                  value={campaignForm.name}
-                  onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="c_subject">Email subject</Label>
-                <Input
-                  id="c_subject"
-                  value={campaignForm.subject}
-                  onChange={(e) => setCampaignForm({ ...campaignForm, subject: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="c_body">Message</Label>
-              <Textarea
-                id="c_body"
-                rows={5}
-                value={campaignForm.body}
-                onChange={(e) => setCampaignForm({ ...campaignForm, body: e.target.value })}
-              />
-            </div>
-            <div>
-              <Button
-                disabled={!campaignForm.name.trim() || createCampaign.isPending}
-                onClick={() => createCampaign.mutate()}
-              >
-                <Plus className="size-4" /> Save campaign
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              {!campaigns.isPending && (campaigns.data ?? []).length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg border-dashed bg-muted/20">
-                  <Mail className="mx-auto mb-4 size-12 text-muted-foreground" />
-                  <h2 className="mb-2 text-xl font-bold">No campaigns yet</h2>
-                  <p className="mb-4 max-w-sm text-sm text-muted-foreground">
-                    Write a campaign for your subscribed leads to keep them engaged.
-                  </p>
-                  <Button onClick={() => document.getElementById("c_name")?.focus()}>
-                    <Plus className="mr-2 size-4" /> New campaign
-                  </Button>
-                </div>
-              ) : (campaigns.data ?? []).map((campaign) => (
-                <div
-                  key={campaign.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{campaign.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {campaign.subject || "No subject"} · {campaign.recipients_count} recipients
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="secondary" className="capitalize">
-                      {campaign.status}
-                    </Badge>
-                    {campaign.status === "draft" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void queueCampaign(campaign.id)}
-                      >
-                        <Send className="size-4" /> Queue
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                <CampaignBoard
+          campaigns={((campaigns.data ?? []) as unknown) as CampaignItem[]}
+          isSmtpVerified={isSmtpVerified}
+          audienceCount={(leads.data ?? []).filter((l) => l.subscribed).length}
+        />
       </div>
     </main>
   );

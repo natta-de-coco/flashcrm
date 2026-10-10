@@ -288,14 +288,23 @@ export function SocialInbox() {
               .map((i) => (
                 <div
                   key={i.id}
-                  className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-primary p-3 text-sm text-primary-foreground"
+                  className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-primary p-3 text-sm text-primary-foreground shadow-sm"
                 >
-                  {i.body}
+                  <p className="whitespace-pre-wrap">{i.body}</p>
+                  <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] opacity-80">
+                    <span>
+                      {new Date(i.created_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <span className="rounded bg-black/20 px-1 py-0.5">Recorded in thread</span>
+                  </div>
                 </div>
               ))}
             {active.status === "replied" ? (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Check className="size-3.5" /> Replied
+                <Check className="size-3.5 text-emerald-500" /> Replied to thread
               </p>
             ) : null}
           </div>

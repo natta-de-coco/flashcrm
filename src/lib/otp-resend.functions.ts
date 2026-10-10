@@ -132,7 +132,7 @@ export const resendVerification = createServerFn({ method: "POST" })
         _tenant_id: tenantIdRow?.tenant_id ?? null,
         _user_id: null,
         _recipient: email,
-        _from_address: null,
+        _from_address: "flas@mobidigisol.com",
         _subject: null,
         _template:
           data.kind === "signup_verify"

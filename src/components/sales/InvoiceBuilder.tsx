@@ -139,6 +139,8 @@ type Contact = {
   phone: string | null;
   email: string | null;
   company: string | null;
+  address?: string | null;
+  vat_number?: string | null;
 };
 type Product = {
   id: string;
@@ -177,6 +179,8 @@ export function InvoiceBuilder({
         company: contact.company ?? "",
         email: contact.email ?? "",
         phone: contact.phone ?? "",
+        address: contact.address || state.customer.address,
+        vat_number: contact.vat_number || state.customer.vat_number,
       },
     });
   };

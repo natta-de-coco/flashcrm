@@ -22,9 +22,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  AlertCircle,
   Bell,
   Bot,
   Check,
+  CheckCheck,
+  Clock,
   Download,
   Globe,
   Languages,
@@ -54,6 +57,49 @@ export const Route = createFileRoute("/_authenticated/inbox")({
   }),
   component: InboxPage,
 });
+
+function MessageDeliveryStatus({ status }: { status?: string | null }) {
+  const normalized = (status || "").toLowerCase();
+  switch (normalized) {
+    case "pending":
+    case "sending":
+      return (
+        <span title="Sending...">
+          <Clock className="size-3 animate-pulse text-muted-foreground" />
+        </span>
+      );
+    case "sent":
+      return (
+        <span title="Sent to server / provider">
+          <Check className="size-3.5 text-muted-foreground opacity-80" />
+        </span>
+      );
+    case "delivered":
+      return (
+        <span title="Delivered to recipient">
+          <CheckCheck className="size-3.5 text-muted-foreground opacity-80" />
+        </span>
+      );
+    case "read":
+      return (
+        <span title="Read by recipient">
+          <CheckCheck className="size-3.5 text-sky-400" />
+        </span>
+      );
+    case "failed":
+      return (
+        <span title="Delivery failed">
+          <AlertCircle className="size-3.5 text-destructive" />
+        </span>
+      );
+    default:
+      return (
+        <span title="Sent">
+          <Check className="size-3.5 text-muted-foreground opacity-70" />
+        </span>
+      );
+  }
+}
 
 function InboxPage() {
   const { user } = useAuth();
@@ -928,11 +974,14 @@ function InboxPage() {
                               ? "Show translation"
                               : "Translate"}
                         </button>
-                        <span className="text-[10px] opacity-60">
+                        <span className="inline-flex items-center gap-1 text-[10px] opacity-60">
                           {new Date(m.created_at).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
+                          {m.direction === "outbound" && (
+                            <MessageDeliveryStatus status={m.status} />
+                          )}
                         </span>
                       </div>
                     </div>

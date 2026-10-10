@@ -80,10 +80,29 @@ export const getSalesWorkspace = createServerFn({ method: "GET" })
     ]);
     if (docs.error) throw docs.error;
 
+    const contactMeta = new Map<string, { vat_number?: string | undefined; address?: string | undefined }>();
+    for (const doc of docs.data ?? []) {
+      if (doc.contact_id && doc.customer_snapshot) {
+        const snap = doc.customer_snapshot as { vat_number?: string; address?: string };
+        const existing = contactMeta.get(doc.contact_id);
+        const entry: { vat_number?: string | undefined; address?: string | undefined } = {
+          vat_number: existing?.vat_number ?? (snap.vat_number || undefined),
+          address: existing?.address ?? (snap.address || undefined),
+        };
+        contactMeta.set(doc.contact_id, entry);
+      }
+    }
+
+    const enrichedContacts = (contacts.data ?? []).map((c) => ({
+      ...c,
+      vat_number: contactMeta.get(c.id)?.vat_number ?? null,
+      address: contactMeta.get(c.id)?.address ?? null,
+    }));
+
     return {
       settings,
       documents: docs.data ?? [],
-      contacts: contacts.data ?? [],
+      contacts: enrichedContacts,
       products: products.data ?? [],
       banks: banks.data ?? [],
     };
@@ -401,18 +420,33 @@ export const convertQuotationToInvoice = createServerFn({ method: "POST" })
     return result;
   });
 
-/** Company details, payment link and defaults used on every document. */
+/** Fetches company billing & tax profile for settings and invoice headers. */
+export const getBillingProfile = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { ensureBillingSettings, requireTenantId } = await import("@/lib/billing.server");
+    const tenantId = await requireTenantId(context.supabase);
+    const settings = await ensureBillingSettings(context.supabase, tenantId);
+    return settings;
+  });
+
+/** Company details, TRN/tax numbers, payment link and defaults used on every document. */
 export const saveBillingProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
     z
       .object({
         legal_name: z.string().trim().max(200).nullable().optional(),
+        trade_name: z.string().trim().max(200).nullable().optional(),
         address: z.string().trim().max(500).nullable().optional(),
         phone: z.string().trim().max(60).nullable().optional(),
         email: z.string().trim().max(200).nullable().optional(),
         website: z.string().trim().max(200).nullable().optional(),
         vat_number: z.string().trim().max(80).nullable().optional(),
+        tax_registration_number: z.string().trim().max(80).nullable().optional(),
+        registration_number: z.string().trim().max(80).nullable().optional(),
+        tax_label: z.string().trim().max(30).optional(),
+        tax_enabled: z.boolean().optional(),
         default_currency: z.string().trim().min(2).max(6).optional(),
         default_tax_rate: z.number().min(0).max(100).optional(),
         default_payment_terms: z.string().trim().max(300).nullable().optional(),
@@ -425,14 +459,50 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     const { ensureBillingSettings, requireTenantId } = await import("@/lib/billing.server");
     const tenantId = await requireTenantId(context.supabase);
     await ensureBillingSettings(context.supabase, tenantId);
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) patch[key] = value;
-    }
+
+    const trn = data.tax_registration_number ?? data.vat_number ?? undefined;
+    const patch: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (data.legal_name !== undefined) patch["legal_name"] = data.legal_name;
+    if (data.trade_name !== undefined) patch["trade_name"] = data.trade_name;
+    if (data.address !== undefined) patch["address"] = data.address;
+    if (data.phone !== undefined) patch["phone"] = data.phone;
+    if (data.email !== undefined) patch["email"] = data.email;
+    if (data.website !== undefined) patch["website"] = data.website;
+    if (trn !== undefined) patch["vat_number"] = trn;
+    if (data.registration_number !== undefined) patch["registration_number"] = data.registration_number;
+    if (data.tax_label !== undefined) patch["tax_label"] = data.tax_label;
+    if (data.tax_enabled !== undefined) patch["tax_enabled"] = data.tax_enabled;
+    if (data.default_currency !== undefined) patch["default_currency"] = data.default_currency;
+    if (data.default_tax_rate !== undefined) patch["default_tax_rate"] = data.default_tax_rate;
+    if (data.default_payment_terms !== undefined) patch["default_payment_terms"] = data.default_payment_terms;
+    if (data.default_terms !== undefined) patch["default_terms"] = data.default_terms;
+    if (data.online_payment_url !== undefined) patch["online_payment_url"] = data.online_payment_url;
+
     const { error } = await context.supabase
       .from("billing_settings")
       .update(patch as never)
       .eq("tenant_id", tenantId);
     if (error) throw error;
+
+    // Keep business_profiles tax_registration_number synchronized if present in DB
+    if (trn !== undefined) {
+      await (context.supabase as any)
+        .from("business_profiles")
+        .update({ tax_registration_number: trn })
+        .eq("tenant_id", tenantId);
+    }
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "billing.profile_updated",
+      actorId: context.userId,
+      tenantId,
+      entityType: "billing_settings",
+      details: { trn, legal_name: data.legal_name, trade_name: data.trade_name },
+    });
+
     return { ok: true };
   });
