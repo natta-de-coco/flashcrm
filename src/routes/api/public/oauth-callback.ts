@@ -263,7 +263,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
               return back(origin, {
                 connect_blocked: platform,
                 connect_reason: customerReason,
-                connect_detail: diagnostic,
+                // Detailed discovery evidence stays in the tenant audit log.
               });
             }
             {
