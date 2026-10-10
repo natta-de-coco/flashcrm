@@ -16,6 +16,8 @@ import {
 import { friendlyError } from "@/lib/friendly-error";
 import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { dispatchCampaignNow } from "@/lib/marketing.functions";
 import {
   AlertCircle,
   Clock,
@@ -67,6 +69,21 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
   const qc = useQueryClient();
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<CampaignItem | null>(null);
+
+  const dispatchNowFn = useServerFn(dispatchCampaignNow);
+  const dispatchNowMutation = useMutation({
+    mutationFn: async (campaignId: string) => {
+      if (!isSmtpVerified) {
+        throw new Error("Cannot send broadcast without verified tenant SMTP credentials");
+      }
+      return await dispatchNowFn({ data: { campaignId } });
+    },
+    onSuccess: (res) => {
+      toast.success(`Broadcast sent to ${res.recipientsCount} subscribers!`);
+      void qc.invalidateQueries({ queryKey: ["campaigns"] });
+    },
+    onError: (e: Error) => toast.error(friendlyError(e)),
+  });
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: CampaignStatus }) => {
@@ -271,16 +288,54 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                             )}
 
                             {camp.status === "scheduled" && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-6 w-6 text-purple-600"
-                                onClick={() =>
-                                  updateStatusMutation.mutate({ id: camp.id, status: "paused" })
-                                }
-                              >
-                                <Pause className="h-3 w-3" />
-                              </Button>
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
+                                      disabled={dispatchNowMutation.isPending}
+                                      onClick={() => dispatchNowMutation.mutate(camp.id)}
+                                    >
+                                      <Send className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Send broadcast now</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 text-purple-600"
+                                      onClick={() =>
+                                        updateStatusMutation.mutate({ id: camp.id, status: "paused" })
+                                      }
+                                    >
+                                      <Pause className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Pause campaign</TooltipContent>
+                                </Tooltip>
+                              </>
+                            )}
+
+                            {camp.status === "in_progress" && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
+                                    disabled={dispatchNowMutation.isPending}
+                                    onClick={() => dispatchNowMutation.mutate(camp.id)}
+                                  >
+                                    <Send className="h-3 w-3" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Complete & mark sent</TooltipContent>
+                              </Tooltip>
                             )}
 
                             {camp.status === "paused" && (
