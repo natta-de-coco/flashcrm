@@ -131,13 +131,14 @@ export function readInstagramIdentity(input: {
   const username = typeof profile["username"] === "string" ? profile["username"] : null;
   // `media_count` exists only on an Instagram user node. Its absence from a
   // successful reply is not proof of the wrong account (Meta can drop a field),
-  // so it downgrades to "unconfirmed" and no number is written.
+  // so it downgrades to "unconfirmed" and the sync stops: no number, post or
+  // comment is written under an id that is not confirmed.
   if (typeof mediaCount !== "number") {
     return {
       kind: "unconfirmed",
       message:
         "Meta answered without media_count, so Flas could not confirm this id is an Instagram " +
-        "account and did not update the follower count.",
+        "account, so nothing was synced from it.",
     };
   }
   return {

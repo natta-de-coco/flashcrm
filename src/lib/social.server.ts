@@ -295,9 +295,26 @@ async function syncMeta(account: SocialAccountSecret, firstSync = false): Promis
     if (identity.kind === "instagram" && identity.followers !== null) {
       stats = { followers: identity.followers };
     } else if (identity.kind === "unconfirmed") {
-      // No number is stored when Meta would not confirm the account — the old
-      // stat stays as it was and the reason is reported.
+      // Meta would not confirm that this id is an Instagram account, so nothing
+      // is read or stored under it — not the follower count, and not the posts
+      // and comments either. This used to record the reason and then carry on
+      // to `/media`, which filed whatever the id returned under the Instagram
+      // label: the very thing the check above exists to prevent.
+      //
+      // The reason goes back as a skipped section, like every other part a sync
+      // could not read, and in the same words as the error, because a sync
+      // that read nothing is not a success. The account is not stamped as
+      // synced either: stamping it would show "Synced just now" for nothing,
+      // and would make the next, real sync file the account's whole history as
+      // new work instead of as history.
       note("Instagram profile", new Error(identity.message));
+      return {
+        ok: false,
+        posts: 0,
+        interactions: 0,
+        error: skipped.map((s) => `${s.what}: ${s.reason}`).join(" "),
+        skipped,
+      };
     }
 
     const media = await graphGet(
