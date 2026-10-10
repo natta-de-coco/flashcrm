@@ -9,7 +9,7 @@
 // implemented here. The two are no longer offered or accepted, and a company
 // that already saved one is told that it does not send and what to pick.
 import assert from "node:assert/strict";
-import { beforeEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { runInNewContext } from "node:vm";
 
 import {
@@ -337,5 +337,130 @@ describe("the sender is honest about a provider it has no code for", () => {
     const logged = db.state.rpcCalls.find((call) => call.name === "log_email_delivery");
     assert.equal(logged.args._status, "failed", "the delivery log says it failed");
     assert.match(logged.args._error, /AWS SES is not supported/);
+  });
+});
+
+// ── A database error is not "this company has no settings" ────────────────────
+// The sender reads the company's row, then its key. Both used to ignore `error`,
+// so a read that failed looked like "no settings saved" and the email went out
+// through the platform's own mailer, from the platform's address, with `ok: true`.
+describe("a database error does not send a company's email through the platform mailer", () => {
+  const mail = { to: "someone@example.test", subject: "Activate acme.test", text: "link" };
+  const COMPANY_ROW = {
+    tenant_id: TENANT,
+    provider: "sendgrid",
+    from_email: "no-reply@acme.test",
+  };
+  const envBefore = {};
+  const quietLog = console.error;
+  let logged;
+  let keyFault;
+  let sent;
+
+  /** What the platform's mailer or the company's provider is asked to do. */
+  function mailerRecords() {
+    sent = [];
+    globalThis.fetch = async (url, init) => {
+      sent.push({
+        url: String(url),
+        auth: String(init?.headers?.Authorization ?? ""),
+        body: String(init?.body ?? ""),
+      });
+      return new Response(JSON.stringify({ id: "msg-1" }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-message-id": "msg-1" },
+      });
+    };
+  }
+
+  beforeEach(() => {
+    for (const k of ["PLATFORM_EMAIL_PROVIDER", "PLATFORM_EMAIL_API_KEY", "PLATFORM_EMAIL_FROM"])
+      envBefore[k] = process.env[k];
+    process.env.PLATFORM_EMAIL_PROVIDER = "resend";
+    process.env.PLATFORM_EMAIL_API_KEY = "platform-secret-key";
+    process.env.PLATFORM_EMAIL_FROM = "no-reply@flas.test";
+    logged = [];
+    console.error = (...args) =>
+      logged.push(args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+    // The double's rpc never fails; this one can, for the key lookup only.
+    keyFault = null;
+    globalThis.emailDb = {
+      ...db.client,
+      rpc: async (name, args) => {
+        if (name === "get_tenant_smtp_api_key" && keyFault) {
+          db.state.rpcCalls.push({ name, args });
+          return { data: null, error: keyFault };
+        }
+        return db.client.rpc(name, args);
+      },
+    };
+    db.table("tenant_smtp_config").push({ ...COMPANY_ROW });
+    db.state.rpcResults.get_tenant_smtp_api_key = "their-own-key";
+    mailerRecords();
+  });
+
+  afterEach(() => {
+    console.error = quietLog;
+    for (const [k, v] of Object.entries(envBefore)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  const deliveryLog = () => db.state.rpcCalls.find((call) => call.name === "log_email_delivery");
+
+  it("sends nothing when the company's settings cannot be read", async () => {
+    db.fail("tenant_smtp_config:read", { message: "statement timeout" });
+    const out = await sendTenantEmail(TENANT, mail);
+    assert.equal(out.ok, false);
+    assert.deepEqual(sent, [], "no request went anywhere, least of all to the platform mailer");
+    assert.match(out.error, /could not be read/);
+    assert.match(out.error, /not sent/);
+    assert.doesNotMatch(out.error, /statement timeout/, "the technical reason is for the log");
+    assert.ok(
+      logged.some((line) => /statement timeout/.test(line)),
+      "the technical reason is logged",
+    );
+    assert.equal(deliveryLog().args._status, "failed", "the delivery log says it failed");
+    assert.doesNotMatch(deliveryLog().args._error, /statement timeout/);
+  });
+
+  it("sends nothing when the company's key cannot be read", async () => {
+    keyFault = { message: "permission denied for function get_tenant_smtp_api_key" };
+    const out = await sendTenantEmail(TENANT, mail);
+    assert.equal(out.ok, false);
+    assert.deepEqual(sent, [], "the platform mailer is not used in its place");
+    assert.match(out.error, /could not be read/);
+    assert.match(out.error, /not sent/);
+    assert.doesNotMatch(out.error, /permission denied|get_tenant_smtp_api_key/);
+    assert.ok(logged.some((line) => /permission denied/.test(line)));
+    assert.equal(deliveryLog().args._status, "failed");
+    assert.doesNotMatch(deliveryLog().args._error, /permission denied/);
+  });
+
+  it("still uses the platform mailer for a company that has saved nothing", async () => {
+    db.table("tenant_smtp_config").length = 0;
+    const out = await sendTenantEmail(TENANT, mail);
+    assert.equal(out.ok, true);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].url, /api\.resend\.com/);
+    assert.match(sent[0].auth, /platform-secret-key/);
+  });
+
+  it("sends through the company's own provider once the database recovers", async () => {
+    db.fail("tenant_smtp_config:read", { message: "statement timeout" });
+    assert.equal((await sendTenantEmail(TENANT, mail)).ok, false);
+    db.recover("tenant_smtp_config:read");
+    keyFault = { message: "connection reset" };
+    assert.equal((await sendTenantEmail(TENANT, mail)).ok, false);
+    keyFault = null;
+    assert.deepEqual(sent, [], "neither failure sent anything");
+
+    const out = await sendTenantEmail(TENANT, mail);
+    assert.equal(out.ok, true);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0].url, /api\.sendgrid\.com/, "their own provider, not the platform's");
+    assert.match(sent[0].auth, /their-own-key/);
+    assert.doesNotMatch(sent[0].auth, /platform-secret-key/);
   });
 });
