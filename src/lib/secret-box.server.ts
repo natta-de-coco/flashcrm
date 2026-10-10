@@ -195,7 +195,13 @@ export async function sealTenantSecrets(
   const configured = await encryptionConfigured();
   const report: SealReport = { configured, plaintext: 0, alreadySealed: 0, sealedNow: 0 };
 
-  const [{ data: accounts }, { data: apps }, { data: numbers }] = await Promise.all([
+  const [
+    { data: accounts },
+    { data: apps },
+    { data: numbers },
+    { data: aiKeys },
+    { data: wpSites },
+  ] = await Promise.all([
     supabaseAdmin
       .from("social_accounts")
       .select("id, access_token, refresh_token")
@@ -207,6 +213,8 @@ export async function sealTenantSecrets(
       .from("wa_numbers")
       .select("id, access_token, app_secret")
       .eq("tenant_id", tenantId),
+    supabaseAdmin.from("ai_provider_keys").select("id, api_key").eq("tenant_id", tenantId),
+    supabaseAdmin.from("wordpress_sites").select("id, app_password").eq("tenant_id", tenantId),
   ]);
 
   const seal = async (value: string | null): Promise<string | null> => {
@@ -268,6 +276,33 @@ export async function sealTenantSecrets(
         .eq("tenant_id", tenantId);
       if (error) throw new Error(`Could not store a sealed WhatsApp credential: ${error.message}`);
       report.sealedNow += (access ? 1 : 0) + (secret ? 1 : 0);
+    }
+  }
+
+  for (const row of aiKeys ?? []) {
+    const key = await seal(row.api_key);
+    if (key) {
+      const { error } = await supabaseAdmin
+        .from("ai_provider_keys")
+        .update({ api_key: key })
+        .eq("id", row.id)
+        .eq("tenant_id", tenantId);
+      if (error) throw new Error(`Could not store a sealed AI provider key: ${error.message}`);
+      report.sealedNow++;
+    }
+  }
+
+  for (const row of wpSites ?? []) {
+    const pass = await seal(row.app_password);
+    if (pass) {
+      const { error } = await supabaseAdmin
+        .from("wordpress_sites")
+        .update({ app_password: pass })
+        .eq("id", row.id)
+        .eq("tenant_id", tenantId);
+      if (error)
+        throw new Error(`Could not store a sealed WordPress app password: ${error.message}`);
+      report.sealedNow++;
     }
   }
 

@@ -43,6 +43,27 @@ async function syncOrganization(sync: OrgSync) {
   const tenantId = sync.tenantId;
   if (!tenantId) return;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  // If the company switched to Stripe and is actively paying on Stripe, do not let an old Paddle event suspend it
+  if (sync.status === "canceled") {
+    const { data: currentOrg } = await supabaseAdmin
+      .from("organizations")
+      .select("billing_provider, stripe_subscription_id, subscription_status")
+      .eq("id", tenantId)
+      .maybeSingle();
+
+    if (
+      currentOrg?.billing_provider === "stripe" &&
+      currentOrg?.stripe_subscription_id &&
+      currentOrg?.subscription_status === "active"
+    ) {
+      console.warn(
+        `Ignoring Paddle cancellation for company ${tenantId} which is active on Stripe.`,
+      );
+      return;
+    }
+  }
+
   const patch: {
     paddle_customer_id?: string;
     paddle_subscription_id?: string;
@@ -245,6 +266,11 @@ export const Route = createFileRoute("/api/public/payments/webhook")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        if (request.headers.get("stripe-signature")) {
+          const { handleStripeWebhook } = await import("@/lib/stripe.server");
+          return await handleStripeWebhook(request);
+        }
+
         // Anchor env to a server-side env var, never the URL. A query string
         // is attacker-controlled — hitting `?env=sandbox` on the prod URL
         // used to force verification against the sandbox secret, and if that

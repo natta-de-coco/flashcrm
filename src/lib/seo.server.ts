@@ -4,6 +4,7 @@
 // been verified through their RLS-scoped client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "@/lib/flash-ai.server";
+import { openSecret } from "@/lib/secret-box.server";
 
 const VISION_MODEL = "google/gemini-3.7-flash";
 const AI_GATEWAY = "https://ai.gateway.lovable.dev";
@@ -240,11 +241,19 @@ export async function humanizeHtml(
 
 export type WpCreds = { siteUrl: string; username: string; appPassword: string };
 
+export { isSafeWordPressUrl } from "./seo-url";
+import { isSafeWordPressUrl } from "./seo-url";
+
 function wpAuth(c: WpCreds): string {
   return `Basic ${Buffer.from(`${c.username}:${c.appPassword}`).toString("base64")}`;
 }
 
 async function wpFetch(c: WpCreds, path: string, init?: RequestInit): Promise<Response> {
+  if (!isSafeWordPressUrl(c.siteUrl)) {
+    throw new Error(
+      "WordPress site URL rejected: cannot point to internal, private, loopback, or cloud metadata network addresses.",
+    );
+  }
   const url = `${c.siteUrl.replace(/\/+$/, "")}/wp-json/wp/v2${path}`;
   return fetch(url, {
     ...init,
@@ -257,7 +266,9 @@ export async function testWpConnection(c: WpCreds): Promise<{
   categories: Array<{ id: number; name: string }>;
   tags: Array<{ id: number; name: string }>;
 }> {
-  const me = await wpFetch(c, "/users/me");
+  const plainPassword = (await openSecret(c.appPassword)) ?? c.appPassword;
+  const creds = { ...c, appPassword: plainPassword };
+  const me = await wpFetch(creds, "/users/me");
   if (!me.ok) {
     const body = await me.text();
     throw new Error(
@@ -357,7 +368,7 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
   const creds: WpCreds = {
     siteUrl: siteSafe.site_url,
     username: siteSafe.username,
-    appPassword: siteSafe.app_password,
+    appPassword: (await openSecret(siteSafe.app_password)) ?? siteSafe.app_password,
   };
 
   let featured: { id: number; url: string } | null = null;

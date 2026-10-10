@@ -88,7 +88,12 @@ export const testWpConnectionFn = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const { testWpConnection } = await import("@/lib/seo.server");
+    const { testWpConnection, isSafeWordPressUrl } = await import("@/lib/seo.server");
+    if (!isSafeWordPressUrl(data.siteUrl)) {
+      throw new Error(
+        "WordPress site URL rejected: cannot point to internal, private, loopback, or cloud metadata network addresses.",
+      );
+    }
     return testWpConnection({
       siteUrl: data.siteUrl,
       username: data.username,
@@ -174,4 +179,93 @@ export const publishArticleFn = createServerFn({ method: "POST" })
     });
 
     return result;
+  });
+
+/** Connects a WordPress site, sealing the application password with AES-256-GCM. */
+export const saveWordPressSiteFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        label: z.string().trim().max(100).optional(),
+        siteUrl: z.string().trim().url(),
+        username: z.string().trim().min(1).max(100),
+        appPassword: z.string().trim().min(4).max(200),
+        defaultAuthor: z.string().trim().max(100).optional().nullable(),
+        seoPlugin: z.enum(["yoast", "rankmath", "seopress", "none"]).default("yoast"),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile?.tenant_id) throw new Error("Workspace not loaded yet.");
+    if (!["company_admin", "super_admin"].includes(profile.staff_role ?? "")) {
+      throw new Error("Only company admins can connect WordPress sites.");
+    }
+    const tenantId = profile.tenant_id;
+
+    const { isSafeWordPressUrl } = await import("@/lib/seo.server");
+    if (!isSafeWordPressUrl(data.siteUrl)) {
+      throw new Error(
+        "WordPress site URL rejected: cannot point to internal, private, loopback, or cloud metadata network addresses.",
+      );
+    }
+
+    const { sealSecret } = await import("@/lib/secret-box.server");
+    const sealedPassword = await sealSecret(data.appPassword.replace(/\s+/g, ""));
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: row, error } = await supabaseAdmin
+      .from("wordpress_sites")
+      .insert({
+        tenant_id: tenantId,
+        label: data.label || data.siteUrl,
+        site_url: data.siteUrl.replace(/\/+$/, ""),
+        username: data.username,
+        app_password: sealedPassword ?? data.appPassword.replace(/\s+/g, ""),
+        default_author: data.defaultAuthor || null,
+        seo_plugin: data.seoPlugin,
+        created_by: context.userId,
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "seo.wordpress_site_saved",
+      tenantId,
+      actorId: context.userId,
+      entityType: "wordpress_sites",
+      entityId: row.id,
+    });
+    return { id: row.id };
+  });
+
+/** Removes a WordPress site belonging to the caller's workspace. */
+export const deleteWordPressSiteFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile?.tenant_id) throw new Error("Workspace not loaded yet.");
+    if (!["company_admin", "super_admin"].includes(profile.staff_role ?? "")) {
+      throw new Error("Only company admins can remove WordPress sites.");
+    }
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("wordpress_sites")
+      .delete()
+      .eq("id", data.id)
+      .eq("tenant_id", profile.tenant_id);
+    if (error) throw error;
+    return { ok: true };
   });

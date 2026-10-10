@@ -10,6 +10,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeDocumentTotals, round2 } from "./billing-math";
 import { todayInTimeZone } from "./locale";
 import { buildDocumentPdf, type InvoicePdfInput, type PdfItem } from "./invoice-pdf.server";
+import { getInvoiceTemplate } from "./invoice-templates";
 
 export type DocKind = "invoice" | "quotation" | "credit_note" | "proforma";
 
@@ -171,11 +172,20 @@ export async function saveDraftDocument(
   const customerSnapshot =
     payload.customer_snapshot ?? (await buildCustomerSnapshot(supabase, payload.contact_id));
 
+  const isUuid = (val?: string | null) =>
+    Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
+  const validTemplateUuid = isUuid(payload.template_id) ? payload.template_id : null;
+  const customFields = {
+    ...(payload.custom_fields ?? {}),
+    ...(payload.template_id ? { template_id: payload.template_id } : {}),
+  };
+
   const row = {
     tenant_id: tenantId,
     kind: payload.kind,
     contact_id: payload.contact_id ?? null,
-    template_id: payload.template_id ?? null,
+    template_id: validTemplateUuid,
     bank_account_id: payload.bank_account_id ?? null,
     salesperson_id: payload.salesperson_id ?? userId,
     quotation_id: payload.quotation_id ?? null,
@@ -203,7 +213,7 @@ export async function saveDraftDocument(
     terms: payload.terms ?? null,
     customer_snapshot: customerSnapshot,
     company_snapshot: companySnapshot(settings),
-    custom_fields: payload.custom_fields ?? {},
+    custom_fields: customFields,
     created_by: userId,
   };
 
@@ -451,13 +461,19 @@ function toPdfInput(
     verification_url: verificationUrl,
     custom_fields: (doc.custom_fields ?? {}) as Record<string, string>,
     branding: settings?.show_flash_branding !== false,
-    template: {
-      ...(template?.primary_color ? { primary_color: template.primary_color } : {}),
-      ...(template?.accent_color ? { accent_color: template.accent_color } : {}),
-      watermark_enabled: settings?.watermark_enabled !== false,
-      watermark_opacity: Number(settings?.watermark_opacity ?? 0.06),
-      watermark_scale: Number(settings?.watermark_scale ?? 0.55),
-    },
+    template: (() => {
+      const templateKey =
+        (doc.template_id as string) ||
+        ((doc.custom_fields as Record<string, string>)?.["template_id"] as string);
+      const tmpl = template ?? getInvoiceTemplate(templateKey);
+      return {
+        ...(tmpl?.primary_color ? { primary_color: tmpl.primary_color } : {}),
+        ...(tmpl?.accent_color ? { accent_color: tmpl.accent_color } : {}),
+        watermark_enabled: settings?.watermark_enabled !== false,
+        watermark_opacity: Number(settings?.watermark_opacity ?? 0.06),
+        watermark_scale: Number(settings?.watermark_scale ?? 0.55),
+      };
+    })(),
   };
 }
 
@@ -468,6 +484,12 @@ export async function renderDocumentPdf(
 ) {
   const { doc, items } = await loadDocumentBundle(supabase, documentId);
   const settings = await ensureBillingSettings(supabase, doc.tenant_id);
+  const templateKey =
+    (doc.template_id as string) ||
+    ((doc.custom_fields as Record<string, string>)?.["template_id"] as string);
+  const isUuid = (val?: string | null) =>
+    Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
   const [{ data: bank }, { data: template }] = await Promise.all([
     doc.bank_account_id
       ? supabase.from("bank_accounts").select("*").eq("id", doc.bank_account_id).maybeSingle()
@@ -477,8 +499,13 @@ export async function renderDocumentPdf(
           .eq("tenant_id", doc.tenant_id)
           .eq("is_default", true)
           .maybeSingle(),
-    doc.template_id
-      ? supabase.from("invoice_templates").select("*").eq("id", doc.template_id).maybeSingle()
+    isUuid(templateKey)
+      ? supabase
+          .from("invoice_templates")
+          .select("*")
+          .eq("id", templateKey)
+          .eq("tenant_id", doc.tenant_id)
+          .maybeSingle()
       : supabase
           .from("invoice_templates")
           .select("*")

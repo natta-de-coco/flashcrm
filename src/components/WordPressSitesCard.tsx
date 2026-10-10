@@ -13,7 +13,11 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
 import { supabase } from "@/integrations/supabase/client";
-import { testWpConnectionFn } from "@/lib/seo.functions";
+import {
+  deleteWordPressSiteFn,
+  saveWordPressSiteFn,
+  testWpConnectionFn,
+} from "@/lib/seo.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Globe, Trash2 } from "lucide-react";
@@ -37,6 +41,8 @@ export function WordPressSitesCard() {
   const { tenant } = useTenant();
   const qc = useQueryClient();
   const testConnection = useServerFn(testWpConnectionFn);
+  const saveSite = useServerFn(saveWordPressSiteFn);
+  const deleteSite = useServerFn(deleteWordPressSiteFn);
 
   const [form, setForm] = useState({
     label: "",
@@ -62,18 +68,16 @@ export function WordPressSitesCard() {
 
   const addSite = useMutation({
     mutationFn: async () => {
-      if (!tenant?.id) throw new Error("Workspace not loaded yet.");
-      const { error } = await supabase.from("wordpress_sites").insert({
-        tenant_id: tenant.id,
-        label: form.label || form.site_url,
-        site_url: form.site_url.replace(/\/+$/, ""),
-        username: form.username,
-        app_password: form.app_password.replace(/\s+/g, ""),
-        default_author: form.default_author || null,
-        seo_plugin: form.seo_plugin,
-        created_by: user?.id ?? null,
+      await saveSite({
+        data: {
+          label: form.label || form.site_url,
+          siteUrl: form.site_url.replace(/\/+$/, ""),
+          username: form.username,
+          appPassword: form.app_password.replace(/\s+/g, ""),
+          defaultAuthor: form.default_author || null,
+          seoPlugin: (form.seo_plugin as "yoast" | "rankmath" | "seopress" | "none") || "yoast",
+        },
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       toast.success(t("wordPressSitesCard.wordpressSiteConnected"));
@@ -94,8 +98,7 @@ export function WordPressSitesCard() {
 
   const removeSite = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("wordpress_sites").delete().eq("id", id);
-      if (error) throw error;
+      await deleteSite({ data: { id } });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wordpress_sites"] }),
     onError: (e) =>

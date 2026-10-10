@@ -66,23 +66,40 @@ export async function raiseAlert(args: {
   severity?: "info" | "warning" | "critical";
   source?: string;
   dedupeMinutes?: number;
+  tenantId?: string | null;
 }): Promise<boolean> {
+  const tenantId = args.tenantId ?? null;
   const since = new Date(Date.now() - (args.dedupeMinutes ?? 10) * 60 * 1000).toISOString();
-  const { data: existing } = await supabaseAdmin
+  const open = supabaseAdmin
     .from("system_alerts")
     .select("id")
     .eq("title", args.title)
     .eq("resolved", false)
-    .gte("created_at", since)
-    .maybeSingle();
-  if (existing) return false;
+    .gte("created_at", since);
 
-  await supabaseAdmin.from("system_alerts").insert({
+  const { data: existing, error: lookupError } = await (
+    tenantId ? open.eq("tenant_id", tenantId) : open.is("tenant_id", null)
+  ).limit(1);
+
+  if (lookupError) {
+    console.error("[alerts] could not check for an open alert", lookupError.code ?? "");
+  } else if ((existing ?? []).length > 0) {
+    return false;
+  }
+
+  const { error } = await supabaseAdmin.from("system_alerts").insert({
     title: args.title,
     message: args.message ?? null,
     severity: args.severity ?? "warning",
     source: args.source ?? "webhook",
+    tenant_id: tenantId,
+    resolved: false,
   });
+
+  if (error) {
+    console.error("[alerts] could not raise an alert", error.code ?? "");
+    return false;
+  }
   return true;
 }
 

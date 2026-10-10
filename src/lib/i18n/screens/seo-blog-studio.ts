@@ -81,6 +81,10 @@ export default screen({
     "seoBlogStudio.secondaryKeywords": "Secondary keywords",
     "seoBlogStudio.humanToneRewrite": "Human-tone rewrite",
     "seoBlogStudio.faqSchemaReady": "FAQ (schema-ready)",
+    "seoBlogStudio.blogTemplate": "Blog template",
+    "seoBlogStudio.quickStartOutlines": "Quick-start outlines & FAQ",
+    "seoBlogStudio.chooseTemplate": "Choose a blog template…",
+    "seoBlogStudio.templateApplied": "Template applied: {name}",
   },
   ar: {
     "seoBlogStudio.couldNotBeRead": "تعذّرت قراءة {name}",
@@ -159,6 +163,10 @@ export default screen({
     "seoBlogStudio.secondaryKeywords": "الكلمات المفتاحية الثانوية",
     "seoBlogStudio.humanToneRewrite": "إعادة كتابة بنبرة بشرية",
     "seoBlogStudio.faqSchemaReady": "الأسئلة الشائعة (جاهزة للـ schema)",
+    "seoBlogStudio.blogTemplate": "قالب المقال",
+    "seoBlogStudio.quickStartOutlines": "مخططات سريعة وأسئلة شائعة",
+    "seoBlogStudio.chooseTemplate": "اختر قالب مقال…",
+    "seoBlogStudio.templateApplied": "تم تطبيق القالب: {name}",
   },
   ms: {
     "seoBlogStudio.couldNotBeRead": "{name} tidak dapat dibaca",
@@ -237,6 +245,10 @@ export default screen({
     "seoBlogStudio.secondaryKeywords": "Kata kunci sekunder",
     "seoBlogStudio.humanToneRewrite": "Tulis semula nada manusia",
     "seoBlogStudio.faqSchemaReady": "Soalan lazim (sedia skema)",
+    "seoBlogStudio.blogTemplate": "Templat blog",
+    "seoBlogStudio.quickStartOutlines": "Rangka kerja pantas & FAQ",
+    "seoBlogStudio.chooseTemplate": "Pilih templat blog…",
+    "seoBlogStudio.templateApplied": "Templat digunakan: {name}",
   },
   fil: {
     "seoBlogStudio.couldNotBeRead": "Hindi mabasa ang {name}",
@@ -315,6 +327,10 @@ export default screen({
     "seoBlogStudio.secondaryKeywords": "Mga pangalawang keyword",
     "seoBlogStudio.humanToneRewrite": "Muling pagsulat sa tonong pantao",
     "seoBlogStudio.faqSchemaReady": "FAQ (handa sa schema)",
+    "seoBlogStudio.blogTemplate": "Template ng blog",
+    "seoBlogStudio.quickStartOutlines": "Mabilisang balangkas at FAQ",
+    "seoBlogStudio.chooseTemplate": "Pumili ng template ng blog…",
+    "seoBlogStudio.templateApplied": "Nailapat ang template: {name}",
   },
   sw: {
     "seoBlogStudio.couldNotBeRead": "{name} haikuweza kusomwa",
@@ -394,5 +410,9 @@ export default screen({
     "seoBlogStudio.secondaryKeywords": "Maneno muhimu ya ziada",
     "seoBlogStudio.humanToneRewrite": "Kuandika upya kwa mtindo wa kibinadamu",
     "seoBlogStudio.faqSchemaReady": "Maswali ya mara kwa mara (tayari kwa schema)",
+    "seoBlogStudio.blogTemplate": "Kiolezo cha blogu",
+    "seoBlogStudio.quickStartOutlines": "Muhtasari wa haraka na Maswali Yanayoulizwa Mara kwa Mara",
+    "seoBlogStudio.chooseTemplate": "Chagua kiolezo cha blogu…",
+    "seoBlogStudio.templateApplied": "Kiolezo kimetumika: {name}",
   },
 });

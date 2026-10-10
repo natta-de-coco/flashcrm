@@ -36,12 +36,28 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertTriangle, ArrowRight, Download, FileText, Plus, Receipt, Send } from "lucide-react";
-import { useRef, useState } from "react";
+
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, type MessageKey } from "@/lib/i18n";
+import { AccountingExportDialog } from "@/components/sales/AccountingExportDialog";
+import { type SyncInvoiceDoc, type SyncInvoiceItem } from "@/lib/accounting-sync";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Download,
+  FileText,
+  Plus,
+  Receipt,
+  Send,
+  Share2,
+  LayoutGrid,
+  List,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import { referenceFor, type SendReference } from "@/lib/send-reference";
+import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
+import { isSubscriptionReceipt } from "@/lib/sales-pipeline";
 
 /**
  * Why a document cannot be finalised yet, or null when it can.
@@ -106,6 +122,8 @@ type DocRow = {
   paid_amount: number;
   balance: number;
   customer_snapshot: { name?: string; company?: string } | null;
+  template_id?: string | null;
+  custom_fields?: Record<string, string> | null;
   share_token: string | null;
   last_sent_at: string | null;
 };
@@ -150,11 +168,16 @@ function SalesPage() {
   const convertQuote = useServerFn(convertQuotationToInvoice);
 
   const [tab, setTab] = useState("all");
+  const [viewMode, setViewMode] = useState<"list" | "board">("board");
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [payFor, setPayFor] = useState<DocRow | null>(null);
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
   const [sendFor, setSendFor] = useState<DocRow | null>(null);
   const [sendNote, setSendNote] = useState("");
+  const [accountingTarget, setAccountingTarget] = useState<{
+    doc: SyncInvoiceDoc;
+    items: SyncInvoiceItem[];
+  } | null>(null);
   // Why the last WhatsApp send did not go, shown in the dialog with the PDF as
   // the way to send it by hand.
   const [sendBlocks, setSendBlocks] = useState<{ code: string; message: string }[]>([]);
@@ -167,7 +190,8 @@ function SalesPage() {
     queryFn: () => loadWorkspace(),
   });
 
-  const documents = (data?.documents ?? []) as unknown as DocRow[];
+  const rawDocs = (data?.documents ?? []) as unknown as DocRow[];
+  const documents = rawDocs.filter((doc) => !isSubscriptionReceipt(doc));
   const visible = documents.filter((doc) =>
     tab === "all"
       ? true
@@ -180,17 +204,76 @@ function SalesPage() {
 
   const startNew = (kind: "quotation" | "invoice") => {
     const settings = data?.settings as
-      | { default_currency?: string; default_tax_rate?: number; default_terms?: string | null }
+      | {
+          default_currency?: string;
+          default_tax_rate?: number;
+          default_terms?: string | null;
+          default_notes?: string | null;
+          default_payment_terms?: string | null;
+        }
       | undefined;
     const next = emptyDocument(
       settings?.default_currency ?? "AED",
       Number(settings?.default_tax_rate ?? 0),
       settings?.default_terms ?? "",
       tenant?.timezone ?? null,
+      settings?.default_notes ?? "",
+      settings?.default_payment_terms ?? "",
     );
     next.kind = kind;
     setBuilder(next);
   };
+
+  const openAccountingSync = useMutation({
+    mutationFn: (id: string) => loadDocument({ data: { id } }),
+    onSuccess: (bundle) => {
+      const doc = bundle.doc as unknown as Record<string, unknown>;
+      const items = (bundle.items as unknown as Record<string, unknown>[]).map((it) => ({
+        name: (it["name_snapshot"] as string) ?? "Item",
+        description: (it["description_snapshot"] as string) ?? null,
+        sku: (it["sku_snapshot"] as string) ?? null,
+        quantity: Number(it["quantity"] ?? 1),
+        unit: (it["unit"] as string) ?? null,
+        unit_price: Number(it["unit_price"] ?? 0),
+        discount_amount: Number(it["discount_amount"] ?? 0),
+        tax_rate: Number(it["tax_rate"] ?? 0),
+        tax_amount: Number(it["tax_amount"] ?? 0),
+        line_total: Number(it["line_total"] ?? 0),
+      }));
+      const snapshot = (doc["customer_snapshot"] ?? {}) as Record<string, string | undefined>;
+      setAccountingTarget({
+        doc: {
+          id: doc["id"] as string,
+          doc_number: (doc["doc_number"] as string) ?? "INV-DRAFT",
+          kind: (doc["kind"] as string) ?? "invoice",
+          issue_date: (doc["issue_date"] as string) ?? "",
+          due_date: (doc["due_date"] as string) ?? null,
+          currency: (doc["currency"] as string) ?? "AED",
+          tax_label: (doc["tax_label"] as string) ?? "VAT",
+          subtotal: Number(doc["subtotal"] ?? 0),
+          tax_total: Number(doc["tax_total"] ?? 0),
+          grand_total: Number(doc["grand_total"] ?? 0),
+          paid_amount: Number(doc["paid_amount"] ?? 0),
+          balance: Number(doc["balance"] ?? 0),
+          payment_terms: (doc["payment_terms"] as string) ?? null,
+          reference: (doc["reference"] as string) ?? null,
+          po_number: (doc["po_number"] as string) ?? null,
+          notes: (doc["notes"] as string) ?? null,
+          terms: (doc["terms"] as string) ?? null,
+          customer_snapshot: {
+            name: snapshot["name"] ?? null,
+            company: snapshot["company"] ?? null,
+            email: snapshot["email"] ?? null,
+            phone: snapshot["phone"] ?? null,
+            address: snapshot["address"] ?? null,
+            vat_number: snapshot["vat_number"] ?? null,
+          },
+        },
+        items,
+      });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const openExisting = useMutation({
     mutationFn: (id: string) => loadDocument({ data: { id } }),
@@ -201,6 +284,10 @@ function SalesPage() {
         id: doc["id"] as string,
         kind: (doc["kind"] as "invoice") ?? "invoice",
         contact_id: (doc["contact_id"] as string) ?? null,
+        template_id:
+          (doc["template_id"] as string) ??
+          ((doc["custom_fields"] as Record<string, string>)?.["template_id"] as string) ??
+          "modern-emerald",
         customer: {
           name: snapshot["name"] ?? "",
           company: snapshot["company"] ?? "",
@@ -243,6 +330,7 @@ function SalesPage() {
     id: state.id,
     kind: state.kind,
     contact_id: state.contact_id,
+    template_id: state.template_id || null,
     customer_snapshot: {
       name: state.customer.name || null,
       company: state.customer.company || null,
@@ -452,17 +540,58 @@ function SalesPage() {
         }
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="all">{t("sales.all")}</TabsTrigger>
-          <TabsTrigger value="quotations">{t("sales.quotations")}</TabsTrigger>
-          <TabsTrigger value="unpaid">{t("sales.unpaid")}</TabsTrigger>
-          <TabsTrigger value="paid">{t("sales.paid")}</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+          <Button
+            variant={viewMode === "board" ? "default" : "ghost"}
+            size="sm"
+            className="h-8 px-3 text-xs"
+            onClick={() => setViewMode("board")}
+          >
+            <LayoutGrid className="me-1.5 h-3.5 w-3.5" />
+            Deal Stages Board
+          </Button>
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            className="h-8 px-3 text-xs"
+            onClick={() => setViewMode("list")}
+          >
+            <List className="me-1.5 h-3.5 w-3.5" />
+            List View
+          </Button>
+        </div>
+
+        {viewMode === "list" && (
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="all">{t("sales.all")}</TabsTrigger>
+              <TabsTrigger value="quotations">{t("sales.quotations")}</TabsTrigger>
+              <TabsTrigger value="unpaid">{t("sales.unpaid")}</TabsTrigger>
+              <TabsTrigger value="paid">{t("sales.paid")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+      </div>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">{t("sales.loadingYourSalesDocuments")}</p>
+      ) : viewMode === "board" ? (
+        <SalesPipelineBoard
+          documents={documents}
+          onOpenExisting={(id) => openExisting.mutate(id)}
+          onSendWhatsApp={(doc) => setSendFor(doc)}
+          onRecordPayment={(doc) => {
+            setPayFor(doc);
+            setPayForm({
+              amount: String(doc.balance > 0 ? doc.balance : doc.grand_total),
+              reference: "",
+              method: "bank_transfer",
+            });
+          }}
+          onConvertQuotation={(id) => convert.mutate(id)}
+          onDownloadPdf={(id) => download.mutate(id)}
+        />
       ) : visible.length === 0 ? (
         <Card>
           <CardHeader>
@@ -524,6 +653,15 @@ function SalesPage() {
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => setSendFor(doc)}>
                     <Send className="me-1 h-4 w-4" /> WhatsApp
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={openAccountingSync.isPending}
+                    onClick={() => openAccountingSync.mutate(doc.id)}
+                    title={t("sales.accountingSyncTitle")}
+                  >
+                    <Share2 className="me-1 h-4 w-4" /> {t("sales.syncAccounting")}
                   </Button>
                   {doc.kind === "quotation" ? (
                     <Button size="sm" onClick={() => convert.mutate(doc.id)}>
@@ -633,6 +771,14 @@ function SalesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AccountingExportDialog
+        open={!!accountingTarget}
+        onOpenChange={(open) => !open && setAccountingTarget(null)}
+        document={accountingTarget?.doc ?? null}
+        items={accountingTarget?.items ?? []}
+        companyName={tenant?.name}
+      />
     </div>
   );
 }

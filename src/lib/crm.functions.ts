@@ -222,7 +222,11 @@ export const translateMessage = createServerFn({ method: "POST" })
         feature: "translate",
         userId: context.userId,
       });
-      parsed = JSON.parse(raw) as typeof parsed;
+      const cleaned = raw
+        .replace(/^\s*```(?:json)?\s*/i, "")
+        .replace(/\s*```\s*$/i, "")
+        .trim();
+      parsed = JSON.parse(cleaned) as typeof parsed;
     } catch {
       throw new Error("Translation failed — the AI did not return valid JSON. Try again.");
     }
