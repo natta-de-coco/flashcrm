@@ -75,7 +75,7 @@ export const Route = createFileRoute("/api/public/leads/collect")({
           const limit = await leadIntakeAllowed({ tenantId: site.tenant_id, siteId: site.id });
           if (!limit.ok) {
             return new Response(JSON.stringify({ error: limit.error }), {
-              status: 429,
+              status: limit.status,
               headers: { ...corsHeaders, "retry-after": String(limit.retryAfterSeconds) },
             });
           }

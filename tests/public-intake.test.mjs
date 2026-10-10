@@ -281,6 +281,54 @@ describe("an active site's own settings are not the public endpoint's to change"
     assert.equal(rows.lead_sites[0].platform, "shopify");
     assert.equal(globalThis.publicIntake.emails.length, 1);
   });
+
+  const claim = () =>
+    requestSiteActivation({
+      siteId: "site-1",
+      origin: "https://flas.mobidigisol.com",
+      domain: "attacker.example",
+      adminEmail: "attacker@evil.example",
+      platform: "custom",
+    });
+
+  it("leaves an active site that has no domain unpinned, whatever domain the caller offers", async () => {
+    // A site that went live before it ever reported a domain accepts every
+    // origin, and that is a gap. But all this endpoint knows about its caller
+    // is the site key, which is printed in the website's own pages: taking the
+    // first domain offered would let anyone who read the key pin the site to a
+    // domain of theirs and lock the real website out. Until a signed-in admin
+    // can set it, the domain of an active site is not set from here at all.
+    rows.lead_sites.push({ ...activeSite(), domain: null });
+    const result = await claim();
+    assert.equal(result.status, "active");
+    assert.equal(rows.lead_sites[0].domain, null);
+    assert.equal(rows.lead_sites[0].platform, "wordpress");
+  });
+
+  it("does not let the caller register an admin address on an active site", async () => {
+    // The same claim, one field over: an active site with no address on file
+    // took the first one it was offered.
+    rows.lead_sites.push({ ...activeSite(), domain: null, admin_email: null });
+    const result = await claim();
+    assert.equal(result.status, "active");
+    assert.equal(rows.lead_sites[0].admin_email, null);
+    assert.equal(globalThis.publicIntake.emails.length, 0);
+  });
+
+  it("does not say an activation email was sent when the site's details could not be saved", async () => {
+    rows.lead_sites.push({ ...activeSite(), status: "pending", admin_email: null, domain: null });
+    db.fail("lead_sites:update", { message: "connection reset" });
+    await assert.rejects(claim(), /could not save/i);
+    assert.equal(globalThis.publicIntake.emails.length, 0);
+    assert.equal(rows.lead_sites[0].domain, null);
+  });
+
+  it("does not skip the hourly limit when the attempts cannot be counted", async () => {
+    rows.lead_sites.push({ ...activeSite(), status: "pending" });
+    db.fail("audit_log:read", { message: "statement timeout" });
+    await assert.rejects(claim(), /could not check/i);
+    assert.equal(globalThis.publicIntake.emails.length, 0);
+  });
 });
 
 describe("the activation page prints no markup that was typed into a site name", () => {

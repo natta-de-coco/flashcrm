@@ -3,9 +3,8 @@
 // plus the same X-Flas-Signature scheme used by the theme snippet.
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  acceptPlatformEvent,
-  ingestPlatformLead,
   json,
+  receivePlatformLead,
   resolveSite,
   siteLeadSchema,
   verifyHmac,
@@ -41,16 +40,9 @@ export const Route = createFileRoute("/api/public/webhooks/shopify")({
           return json({ error: "Invalid payload" }, 400);
         }
 
-        const gate = await acceptPlatformEvent({ site, platform: "shopify", rawBody, request });
-        if (!gate.ok) return gate.response;
-
-        try {
-          await ingestPlatformLead(site, "shopify", payload);
-          return json({ ok: true });
-        } catch (e) {
-          console.error("[webhook:shopify]", e);
-          return json({ error: "Could not process lead" }, 500);
-        }
+        // Claiming the delivery, the site's limit, saving the lead and giving the
+        // claim back if any of that fails all happen in one place.
+        return receivePlatformLead({ site, platform: "shopify", rawBody, payload });
       },
     },
   },
