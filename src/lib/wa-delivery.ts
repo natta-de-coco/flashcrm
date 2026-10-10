@@ -294,6 +294,46 @@ export function resolveRecipientNumber(
   return { ok: true, digits, international: `+${digits}` };
 }
 
+// ── The note FLAS writes under a refused reply ──────────────────────────────
+
+/** How the line FLAS writes under a refused reply begins. See notDeliveredNote. */
+export const NOT_DELIVERED_NOTE_PREFIX = "(Not delivered: ";
+
+/**
+ * The line FLAS stores under an assistant reply that Meta refused, saying why.
+ *
+ * It is stored as a "failed" outbound row so the Inbox shows it as not
+ * delivered, but it is a note for the team, not a second message: nothing was
+ * handed to Meta for it. The delivery health check has to leave it out of its
+ * counts (see isNotDeliveredNote), or every refusal counts twice.
+ */
+export function notDeliveredNote(reason: string): string {
+  return `${NOT_DELIVERED_NOTE_PREFIX}${reason})`;
+}
+
+/**
+ * Whether a message row is that note and not a message FLAS sent.
+ *
+ * Recognised by what the row is, so it works whether or not the database keeps
+ * an origin for each message yet: the assistant wrote it, nothing was sent for
+ * it (it never had a provider id), and it reads as the note. A message a person
+ * typed, or one Meta later reported failed (which has a provider id), is a real
+ * message even if it begins the same way.
+ */
+export function isNotDeliveredNote(row: {
+  sender?: string | null;
+  wa_message_id?: string | null;
+  body?: string | null;
+}): boolean {
+  return (
+    row.sender === "bot" &&
+    !row.wa_message_id &&
+    typeof row.body === "string" &&
+    row.body.startsWith(NOT_DELIVERED_NOTE_PREFIX) &&
+    row.body.endsWith(")")
+  );
+}
+
 // ── What is kept about a message beyond its status ─────────────────────────
 
 /** Where a message row came from. Matches the check on messages.origin. */

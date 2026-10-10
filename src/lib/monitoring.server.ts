@@ -4,7 +4,9 @@ import {
   evidenceOfReceipt,
   evidenceOfSend,
   failureReasonForCode,
+  isNotDeliveredNote,
   mediaOf,
+  notDeliveredNote,
   providerStatus,
   receiptTime,
   statusesThatMayBecome,
@@ -253,10 +255,36 @@ export async function checkNumberHealth(waNumberId: string | null) {
     .gte("created_at", since);
 
   const statuses = (msgs ?? []).map((m) => m.status);
-  const total = statuses.filter((s) => ["sent", "delivered", "read", "failed"].includes(s)).length;
+  const counted = statuses.filter((s) =>
+    ["sent", "delivered", "read", "failed"].includes(s),
+  ).length;
+
+  // The line FLAS writes under a reply Meta refused is a failed row as well,
+  // but nothing was sent for it: it is not a second message. Counting it made
+  // every refusal count twice, and the alert came early. It is told apart by
+  // what it is, not by an origin, so this does not depend on the database
+  // keeping one yet.
+  const { data: unsent, error: unsentError } = await supabaseAdmin
+    .from("messages")
+    .select("body, sender, wa_message_id")
+    .in("conversation_id", convIds)
+    .eq("direction", "outbound")
+    .eq("status", "failed")
+    .eq("sender", "bot")
+    .is("wa_message_id", null)
+    .gte("created_at", since);
+  if (unsentError) {
+    // Without this the figures would be wrong, and an alert on wrong figures
+    // is worse than none: the next status update checks again.
+    console.error("[health] could not count the day's messages", unsentError.code ?? "");
+    return;
+  }
+  const notes = (unsent ?? []).filter(isNotDeliveredNote).length;
+
+  const total = counted - notes;
   if (total < 20) return; // too little traffic to judge
 
-  const failed = statuses.filter((s) => s === "failed").length;
+  const failed = statuses.filter((s) => s === "failed").length - notes;
   const delivered = statuses.filter((s) => s === "delivered" || s === "read").length;
   const read = statuses.filter((s) => s === "read").length;
 
@@ -624,7 +652,7 @@ export async function processWaPayload(body: WaWebhookBody) {
               tenantId,
               conversationId,
               outcome.state === "rejected"
-                ? `(Not delivered: ${outcome.message})`
+                ? notDeliveredNote(outcome.message)
                 : `(${outcome.message})`,
               "bot",
               null,
