@@ -14,6 +14,10 @@ function slugify(name: string): string {
 const OnboardingSchema = z.object({
   companyName: z.string().trim().min(2).max(120),
   fullName: z.string().trim().min(2).max(120),
+  // Optional chatbot setup, written by the company itself at sign-up.
+  botGreeting: z.string().trim().max(500).optional().default(""),
+  botDetails: z.string().trim().max(4000).optional().default(""),
+  botEnabled: z.boolean().optional().default(false),
 });
 
 /**
@@ -96,6 +100,23 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       .from("user_roles")
       .upsert({ user_id: userId, role: "admin" }, { onConflict: "user_id,role" });
 
+    // Chatbot: only saved when the company gave both a greeting and real
+    // business details (same gate wa.server.ts uses before replying). It is
+    // switched on only if the admin explicitly chose to.
+    const botReady = data.botGreeting.length > 0 && data.botDetails.length >= 20;
+    if (botReady) {
+      await supabaseAdmin.from("tenant_bot_settings").upsert(
+        {
+          tenant_id: org.id,
+          enabled: data.botEnabled,
+          bot_name: data.companyName,
+          greeting: data.botGreeting,
+          instructions: data.botDetails,
+        },
+        { onConflict: "tenant_id" },
+      );
+    }
+
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
       action: "onboarding.company_created",
@@ -103,7 +124,7 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       actorId: userId,
       entityType: "organization",
       entityId: org.id,
-      details: { companyName: data.companyName, trialEnds: trialEnd },
+      details: { companyName: data.companyName, trialEnds: trialEnd, chatbotSaved: botReady, chatbotOn: botReady && data.botEnabled },
     });
 
     return { ok: true, alreadyDone: false };
