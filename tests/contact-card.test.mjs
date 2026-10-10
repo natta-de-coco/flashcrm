@@ -146,7 +146,8 @@ function card() {
     sonner: {
       toast: {
         success: (message) => toasts.push({ kind: "success", message }),
-        error: (message) => toasts.push({ kind: "error", message }),
+        error: (message, options) =>
+          toasts.push({ kind: "error", message, description: options?.description }),
       },
     },
   };
@@ -392,7 +393,8 @@ describe("what a person is told when a note is refused", () => {
 
     const shown = h.toasts.filter((toast) => toast.kind === "error");
     assert.equal(shown.length, 1);
-    assert.match(shown[0].message, /too long or not valid/);
+    assert.match(shown[0].description, /too long or not valid/);
+    assert.doesNotMatch(shown[0].description, /too_big|"code"|"path"|[[{]/);
     assert.doesNotMatch(shown[0].message, /too_big|"code"|"path"|[[{]/);
     assert.equal(h.notesBox().props.value, tooLong(), "and what was typed is still there");
   });
@@ -407,10 +409,11 @@ describe("what a person is told when a note is refused", () => {
       new Error("This contact could not be found, so the note was not saved."),
     );
     await h.settle();
-    assert.deepEqual(h.toasts.at(-1), {
-      kind: "error",
-      message: "This contact could not be found, so the note was not saved.",
-    });
+    assert.equal(h.toasts.at(-1).kind, "error");
+    assert.equal(
+      h.toasts.at(-1).description,
+      "This contact could not be found, so the note was not saved.",
+    );
   });
 
   it("tells a list of issues from a sentence", async () => {
@@ -433,6 +436,174 @@ describe("what a person is told when a note is refused", () => {
       42,
     ])
       assert.equal(isValidationDump(words), false, String(words));
+  });
+});
+
+describe("a note whose save fails while the card is closed", () => {
+  const NOTE = "Call before 10am. Ask for Sara.";
+
+  /** Sara's note is typed and sent, and the card is closed with the save still out. */
+  function sentThenClosed() {
+    const h = card();
+    h.loaded(SARA, { notes: "old" });
+    h.loaded(OMAR, { notes: "Omar's note" });
+    h.open(SARA);
+    h.type(NOTE);
+    h.saveButton().props.onClick();
+    h.open(null);
+    return h;
+  }
+  const errors = (h) => h.toasts.filter((toast) => toast.kind === "error");
+
+  it("is on screen again when the card is opened again, with Save on", async () => {
+    const h = sentThenClosed();
+    h.saves[0].answer.reject(new Error("offline"));
+    await h.settle();
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, NOTE);
+    assert.equal(h.saveButton().props.disabled, false, "it can be saved again at once");
+  });
+
+  it("is saved from the restored box exactly as it was typed", async () => {
+    const h = sentThenClosed();
+    h.saves[0].answer.reject(new Error("offline"));
+    await h.settle();
+    h.open(SARA);
+    h.saveButton().props.onClick();
+    assert.deepEqual(h.saves[1].data, { contactId: SARA, notes: NOTE });
+    h.saves[1].answer.resolve({ ok: true, notes: NOTE });
+    await h.settle();
+    h.open(null);
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, NOTE, "now it is the saved note");
+    assert.equal(h.saveButton().props.disabled, true, "and nothing is left to save");
+  });
+
+  it("names the contact in what the person is told, with the reason beneath", async () => {
+    const h = sentThenClosed();
+    h.saves[0].answer.reject(new Error("offline"));
+    await h.settle();
+    assert.equal(errors(h).length, 1);
+    assert.match(errors(h)[0].message, /Sara Khan/);
+    assert.match(errors(h)[0].message, /not saved/);
+    assert.equal(errors(h)[0].description, "offline");
+  });
+
+  it("names the contact that failed, not the one whose card is open now", async () => {
+    const h = sentThenClosed();
+    h.open(OMAR);
+    h.saves[0].answer.reject(new Error("offline"));
+    await h.settle();
+    assert.match(errors(h)[0].message, /Sara Khan/);
+    assert.doesNotMatch(errors(h)[0].message, /Omar/);
+  });
+
+  it("leaves another contact's box alone", async () => {
+    const h = sentThenClosed();
+    h.saves[0].answer.reject(new Error("offline"));
+    await h.settle();
+    h.open(OMAR);
+    assert.equal(h.notesBox().props.value, "Omar's note");
+    assert.equal(h.saveButton().props.disabled, true);
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, NOTE, "and Sara's is still waiting for her");
+  });
+
+  it("is not wiped when the contact is read again", async () => {
+    const h = sentThenClosed();
+    h.saves[0].answer.reject(new Error("offline"));
+    await h.settle();
+    h.open(SARA);
+    h.loaded(SARA, { notes: "old" }, [identity()]);
+    assert.equal(h.notesBox().props.value, NOTE);
+    h.loaded(SARA, { notes: "changed in another tab" });
+    assert.equal(h.notesBox().props.value, NOTE, "not even when the saved note has changed");
+    assert.equal(h.saveButton().props.disabled, false);
+  });
+
+  it("is not kept when the save works", async () => {
+    const h = sentThenClosed();
+    h.saves[0].answer.resolve({ ok: true, notes: NOTE });
+    await h.settle();
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, NOTE, "this is the saved note");
+    assert.equal(h.saveButton().props.disabled, true, "there is nothing unsaved");
+    // Later changes made elsewhere show through: nothing is held back.
+    h.loaded(SARA, { notes: "changed in another tab" });
+    assert.equal(h.notesBox().props.value, "changed in another tab");
+    assert.equal(errors(h).length, 0);
+  });
+
+  it("keeps the newest words when more were typed before the card was closed", async () => {
+    const h = card();
+    h.loaded(SARA, { notes: "old" });
+    h.open(SARA);
+    h.type("first thought");
+    h.saveButton().props.onClick();
+    h.type("first thought, and a second one");
+    h.open(null);
+    h.saves[0].answer.reject(new Error("offline"));
+    await h.settle();
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, "first thought, and a second one");
+  });
+
+  it("keeps the newest words even if the first save then works", async () => {
+    // The request carried only the first words; the rest were never saved.
+    const h = card();
+    h.loaded(SARA, { notes: "old" });
+    h.open(SARA);
+    h.type("first thought");
+    h.saveButton().props.onClick();
+    h.type("first thought, and a second one");
+    h.open(null);
+    h.saves[0].answer.resolve({ ok: true, notes: "first thought" });
+    await h.settle();
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, "first thought, and a second one");
+    assert.equal(h.saveButton().props.disabled, false);
+  });
+
+  it("follows what is typed after a failure with the card still open", async () => {
+    const h = card();
+    h.loaded(SARA, { notes: "old" });
+    h.open(SARA);
+    h.type("first thought");
+    h.saveButton().props.onClick();
+    h.saves[0].answer.reject(new Error("offline"));
+    await h.settle();
+    h.type("first thought, fixed");
+    h.open(null);
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, "first thought, fixed");
+  });
+
+  it("gives the person the plain sentence, not a list of issues", async () => {
+    const h = sentThenClosed();
+    const refusal = await saveContactNotes({
+      data: { contactId: SARA, notes: "x".repeat(contactsView.NOTES_MAX_LENGTH + 1) },
+      context,
+    }).then(
+      () => null,
+      (error) => error,
+    );
+    h.saves[0].answer.reject(refusal);
+    await h.settle();
+    assert.match(errors(h)[0].message, /Sara Khan/);
+    assert.match(errors(h)[0].description, /too long or not valid/);
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, NOTE, "and what was typed is still there");
+  });
+
+  it("still lets abandoned typing go, as before", () => {
+    // Nothing was sent, so nothing is held: moving on drops it.
+    const h = card();
+    h.loaded(SARA, { notes: "Sara's note" });
+    h.open(SARA);
+    h.type("half a sentence");
+    h.open(null);
+    h.open(SARA);
+    assert.equal(h.notesBox().props.value, "Sara's note");
   });
 });
 

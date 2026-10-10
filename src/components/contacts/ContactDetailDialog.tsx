@@ -44,12 +44,16 @@ import {
 } from "@/lib/contact-identities.functions";
 import {
   draftAfterSave,
+  followKeptNote,
+  forgetSavedNote,
   formatStageMoney,
   hasUnsavedNotes,
   inboxConversationHref,
+  keepNoteBeingSaved,
   NOTES_MAX_LENGTH,
   notesFieldValue,
   reachLines,
+  type KeptNotes,
   type NotesDraft,
 } from "@/lib/contacts-view";
 import { useI18n } from "@/hooks/useI18n";
@@ -62,6 +66,9 @@ import { useServerFn } from "@tanstack/react-start";
 import { Building2, Globe, Mail, MessageSquare, Phone, Star, Tag, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
+/** Notes being sent, with the name to give them if the save fails after the card moved on. */
+type SentNote = NotesDraft & { name: string };
 
 type Props = {
   contactId: string | null;
@@ -102,6 +109,10 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
   // copied in by effects: two effects that each wrote the box left it blank
   // when a contact that was already loaded was opened again.
   const [draft, setDraft] = useState<NotesDraft | null>(null);
+  // Words sent to be saved and not known to be saved, by contact. Unlike the
+  // draft this is not dropped when the card closes: if the save fails after the
+  // card was closed, opening that contact again shows the words again.
+  const [kept, setKept] = useState<KeptNotes>({});
 
   const detail = useQuery({
     queryKey: ["contact-detail", contactId],
@@ -119,8 +130,8 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     setDraft(null);
   }, [contactId]);
 
-  const notes = notesFieldValue(contactId, contact?.notes, draft);
-  const notesTouched = hasUnsavedNotes(contactId, draft);
+  const notes = notesFieldValue(contactId, contact?.notes, draft, kept);
+  const notesTouched = hasUnsavedNotes(contactId, draft, kept);
   // The box is only offered for editing once the saved note is on screen. After
   // a failed load it would be empty, looking like "no note yet", and saving
   // from it would replace a note nobody was shown.
@@ -132,8 +143,9 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
   };
   // The server checks what it is sent before it does anything with it, and a
   // refusal arrives as a list of issues in JSON. That is not for a person.
-  const fail = (e: Error) =>
-    toast.error(isValidationDump(e.message) ? t("contactCard.invalidInput") : e.message);
+  const reason = (e: Error) =>
+    isValidationDump(e.message) ? t("contactCard.invalidInput") : e.message;
+  const fail = (e: Error) => toast.error(reason(e));
 
   const identityMutation = useMutation({
     mutationFn: () =>
@@ -198,7 +210,7 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
     // What is sent is what the box held when Save was pressed, and the contact
     // it was typed for. The box stays editable while the request is out, so the
     // answer is judged against that, not against whatever is in the box by then.
-    mutationFn: (sent: NotesDraft) =>
+    mutationFn: (sent: SentNote) =>
       saveNotes({ data: { contactId: sent.contactId, notes: sent.text } }),
     onSuccess: (result, sent) => {
       // Show the note as stored right away, rather than the one from before
@@ -210,11 +222,19 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
       // as "saved" put the stored note back over it, losing it; it stays as
       // unsaved typing, with Save offered again.
       setDraft((current) => draftAfterSave(current, sent));
+      setKept((current) => forgetSavedNote(current, sent));
       toast.success(t("contactCard.notesSaved"));
       void qc.invalidateQueries({ queryKey: ["contact-detail", sent.contactId] });
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
-    onError: fail,
+    // The words stay where they are (in the box, and held for that contact): all
+    // that is left to do is to say which contact's note this was, because the
+    // card may be closed or showing someone else by now.
+    onError: (e: Error, sent) =>
+      toast.error(
+        t("contactCard.notesNotSaved", { name: sent.name || t("contactCard.thisContact") }),
+        { description: reason(e) },
+      ),
   });
 
   const identities = detail.data?.identities ?? [];
@@ -519,14 +539,27 @@ export function ContactDetailDialog({ contactId, contactName, onOpenChange }: Pr
                 placeholder={t("contactCard.notesPlaceholder")}
                 value={notes}
                 disabled={!notesAvailable}
-                onChange={(e) => setDraft({ contactId: contactId!, text: e.target.value })}
+                onChange={(e) => {
+                  const typed = { contactId: contactId!, text: e.target.value };
+                  setDraft(typed);
+                  setKept((current) => followKeptNote(current, typed));
+                }}
               />
               <Button
                 className="w-fit"
                 size="sm"
                 disabled={!notesAvailable || !notesTouched || notesMutation.isPending}
                 onClick={() => {
-                  if (contactId && draft) notesMutation.mutate(draft);
+                  if (!contactId || !notesTouched) return;
+                  // What the box shows is what is sent, whether it was typed just
+                  // now or is words held from a save that failed.
+                  const sent: SentNote = {
+                    contactId,
+                    text: notes,
+                    name: contact?.name || contactName,
+                  };
+                  setKept((current) => keepNoteBeingSaved(current, sent));
+                  notesMutation.mutate(sent);
                 }}
               >
                 {t("contactCard.saveNotes")}

@@ -65,6 +65,9 @@ export default screen({
       "The saved note could not be loaded, so it is not shown and cannot be changed here. Close this card and open it again.",
     "contactCard.invalidInput":
       "That could not be saved because something in it is too long or not valid. Check it and try again.",
+    "contactCard.notesNotSaved":
+      "The note for {name} was not saved. What you typed is kept: open {name} again to try again.",
+    "contactCard.thisContact": "this contact",
   },
   ar: {
     "contactCard.description":
@@ -125,6 +128,9 @@ export default screen({
       "تعذّر تحميل الملاحظة المحفوظة، لذلك لا تظهر ولا يمكن تعديلها هنا. أغلق هذه البطاقة ثم افتحها من جديد.",
     "contactCard.invalidInput":
       "تعذّر حفظ ذلك لأن شيئًا فيه طويل جدًا أو غير صالح. راجعه ثم حاول مرة أخرى.",
+    "contactCard.notesNotSaved":
+      "لم تُحفظ الملاحظة الخاصة بـ {name}. ما كتبته محفوظ مؤقتًا: افتح {name} مرة أخرى لتحاول من جديد.",
+    "contactCard.thisContact": "جهة الاتصال هذه",
   },
   ms: {
     "contactCard.description":
@@ -187,6 +193,9 @@ export default screen({
       "Nota yang disimpan tidak dapat dimuatkan, jadi ia tidak dipaparkan dan tidak boleh diubah di sini. Tutup kad ini dan buka semula.",
     "contactCard.invalidInput":
       "Itu tidak dapat disimpan kerana ada bahagian yang terlalu panjang atau tidak sah. Semaknya dan cuba lagi.",
+    "contactCard.notesNotSaved":
+      "Nota untuk {name} tidak disimpan. Apa yang anda taip dikekalkan: buka {name} semula untuk cuba lagi.",
+    "contactCard.thisContact": "kenalan ini",
   },
   fil: {
     "contactCard.description":
@@ -249,6 +258,9 @@ export default screen({
       "Hindi ma-load ang naka-save na tala, kaya hindi ito ipinapakita at hindi mababago rito. Isara ang card na ito at buksan ulit.",
     "contactCard.invalidInput":
       "Hindi ito na-save dahil may bahagi nito na masyadong mahaba o hindi balido. Suriin ito at subukan ulit.",
+    "contactCard.notesNotSaved":
+      "Hindi na-save ang tala para sa {name}. Nananatili ang tinype mo: buksan muli ang {name} para subukan ulit.",
+    "contactCard.thisContact": "contact na ito",
   },
   sw: {
     "contactCard.description":
@@ -311,5 +323,8 @@ export default screen({
       "Maelezo yaliyohifadhiwa hayakuweza kupakiwa, kwa hiyo hayaonyeshwi na hayawezi kubadilishwa hapa. Funga kadi hii kisha uifungue tena.",
     "contactCard.invalidInput":
       "Hii haikuweza kuhifadhiwa kwa sababu kuna kitu ndani yake ambacho ni kirefu mno au si halali. Kikague kisha ujaribu tena.",
+    "contactCard.notesNotSaved":
+      "Maelezo ya {name} hayakuhifadhiwa. Ulichoandika kimebaki: fungua {name} tena ujaribu tena.",
+    "contactCard.thisContact": "anwani hii",
   },
 });

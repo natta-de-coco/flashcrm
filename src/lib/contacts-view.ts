@@ -152,8 +152,52 @@ export const NOTES_MAX_LENGTH = 4000;
 export type NotesDraft = { contactId: string; text: string };
 
 /**
- * What the notes box shows: this contact's unsaved typing if there is any,
- * otherwise the saved note.
+ * Words that have been sent to be saved and are not saved yet, by contact id.
+ *
+ * A save takes a moment, and the card may be closed or moved to another contact
+ * while it is out. If it then fails, what was typed would be gone: the box is
+ * emptied whenever the card moves on. So the words are held here from the moment
+ * Save is pressed until they are known to be saved, and a failed save leaves
+ * them where they were, to be shown again when that contact is opened.
+ *
+ * Kept in memory by the card for as long as the contacts page is open. Nothing
+ * is held for typing that was never sent: leaving that behind is still how a
+ * half-written note is dropped.
+ */
+export type KeptNotes = Readonly<Record<string, string>>;
+
+const holds = (kept: KeptNotes, contactId: string | null | undefined): contactId is string =>
+  Boolean(contactId) && Object.prototype.hasOwnProperty.call(kept, contactId as string);
+
+/** Holds what is being sent for this contact, from the moment Save is pressed. */
+export function keepNoteBeingSaved(kept: KeptNotes, sent: NotesDraft): KeptNotes {
+  return { ...kept, [sent.contactId]: sent.text };
+}
+
+/**
+ * Keeps up with the typing once something is held for that contact, so that
+ * closing the card after a failed save does not bring back older words than
+ * the ones last typed. Typing for a contact with nothing held is not held.
+ */
+export function followKeptNote(kept: KeptNotes, draft: NotesDraft): KeptNotes {
+  return holds(kept, draft.contactId) ? { ...kept, [draft.contactId]: draft.text } : kept;
+}
+
+/**
+ * Lets go of the words once exactly those words have been saved. If more was
+ * typed after Save was pressed, what is held is the newer text and it was not
+ * in the request: it stays, as unsaved typing does in the box (draftAfterSave).
+ */
+export function forgetSavedNote(kept: KeptNotes, sent: NotesDraft): KeptNotes {
+  if (!holds(kept, sent.contactId) || kept[sent.contactId] !== sent.text) return kept;
+  const rest = { ...kept };
+  delete rest[sent.contactId];
+  return rest;
+}
+
+/**
+ * What the notes box shows: this contact's unsaved typing if there is any, then
+ * words held after a failed save, otherwise the saved note.
  *
  * The saved note used to be copied into the box by one effect and the box
  * emptied by another whenever the contact changed. Reopening a contact that
@@ -166,14 +210,20 @@ export function notesFieldValue(
   contactId: string | null,
   saved: string | null | undefined,
   draft: NotesDraft | null,
+  kept: KeptNotes = {},
 ): string {
   if (draft && contactId && draft.contactId === contactId) return draft.text;
+  if (holds(kept, contactId)) return kept[contactId] ?? "";
   return saved ?? "";
 }
 
 /** True when this contact has typing in the notes box that is not saved yet. */
-export function hasUnsavedNotes(contactId: string | null, draft: NotesDraft | null): boolean {
-  return Boolean(draft && contactId && draft.contactId === contactId);
+export function hasUnsavedNotes(
+  contactId: string | null,
+  draft: NotesDraft | null,
+  kept: KeptNotes = {},
+): boolean {
+  return Boolean((draft && contactId && draft.contactId === contactId) || holds(kept, contactId));
 }
 
 /**

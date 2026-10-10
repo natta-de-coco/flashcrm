@@ -12,9 +12,12 @@ import { describe, it } from "node:test";
 
 const {
   draftAfterSave,
+  followKeptNote,
+  forgetSavedNote,
   formatStageMoney,
   hasUnsavedNotes,
   inboxConversationHref,
+  keepNoteBeingSaved,
   normalizeIdentityValue,
   notesFieldValue,
   reachLines,
@@ -228,6 +231,87 @@ describe("what the notes box shows (review of PR #32)", () => {
     const draft = { contactId: OMAR, text: "first" };
     assert.deepEqual(draftAfterSave(draft, { contactId: SARA, text: "first" }), draft);
     assert.equal(draftAfterSave(null, { contactId: SARA, text: "first" }), null);
+  });
+});
+
+describe("a note that is being saved is kept for that contact until it is saved", () => {
+  const SARA = "contact-sara";
+  const OMAR = "contact-omar";
+  const none = {};
+
+  it("remembers what was sent for the contact it was sent for", () => {
+    const sent = { contactId: SARA, text: "Call before 10am" };
+    const kept = keepNoteBeingSaved(none, sent);
+    assert.deepEqual(kept, { [SARA]: "Call before 10am" });
+    assert.deepEqual(none, {}, "the map it was given is not changed");
+  });
+
+  it("keeps each contact's note apart", () => {
+    let kept = keepNoteBeingSaved(none, { contactId: SARA, text: "Sara's" });
+    kept = keepNoteBeingSaved(kept, { contactId: OMAR, text: "Omar's" });
+    assert.deepEqual(kept, { [SARA]: "Sara's", [OMAR]: "Omar's" });
+  });
+
+  it("is shown for that contact, instead of the saved note", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.equal(notesFieldValue(SARA, "saved", null, kept), "unsaved words");
+    assert.equal(hasUnsavedNotes(SARA, null, kept), true);
+  });
+
+  it("is never shown for another contact", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.equal(notesFieldValue(OMAR, "Omar's note", null, kept), "Omar's note");
+    assert.equal(hasUnsavedNotes(OMAR, null, kept), false);
+    assert.equal(notesFieldValue(null, undefined, null, kept), "");
+    assert.equal(hasUnsavedNotes(null, null, kept), false);
+  });
+
+  it("is not wiped by a refetch: the saved note changing does not change it", () => {
+    const kept = { [SARA]: "unsaved words" };
+    for (const saved of ["old", "changed elsewhere", null, undefined])
+      assert.equal(notesFieldValue(SARA, saved, null, kept), "unsaved words");
+  });
+
+  it("gives way to what is being typed now", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.equal(notesFieldValue(SARA, "saved", { contactId: SARA, text: "newer" }, kept), "newer");
+  });
+
+  it("follows the typing, so closing the card keeps the newest words", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.deepEqual(followKeptNote(kept, { contactId: SARA, text: "newer" }), {
+      [SARA]: "newer",
+    });
+  });
+
+  it("only follows typing for a contact that has something kept", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.equal(followKeptNote(kept, { contactId: OMAR, text: "typing" }), kept);
+    assert.equal(followKeptNote(none, { contactId: SARA, text: "typing" }), none);
+  });
+
+  it("is forgotten once exactly that text has been saved", () => {
+    const kept = { [SARA]: "unsaved words", [OMAR]: "Omar's" };
+    const after = forgetSavedNote(kept, { contactId: SARA, text: "unsaved words" });
+    assert.deepEqual(after, { [OMAR]: "Omar's" });
+    assert.equal(notesFieldValue(SARA, "stored", null, after), "stored");
+    assert.equal(hasUnsavedNotes(SARA, null, after), false);
+  });
+
+  it("keeps words typed after Save was pressed, as it keeps them in the box", () => {
+    const kept = { [SARA]: "unsaved words, and more" };
+    const after = forgetSavedNote(kept, { contactId: SARA, text: "unsaved words" });
+    assert.equal(after, kept, "those words were not in the request: they are still unsaved");
+  });
+
+  it("forgets nothing for a contact that has nothing kept", () => {
+    const kept = { [OMAR]: "Omar's" };
+    assert.equal(forgetSavedNote(kept, { contactId: SARA, text: "x" }), kept);
+  });
+
+  it("does not mistake a contact id for a built-in property name", () => {
+    assert.equal(hasUnsavedNotes("constructor", null, {}), false);
+    assert.equal(notesFieldValue("toString", "saved", null, {}), "saved");
   });
 });
 
