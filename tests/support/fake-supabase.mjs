@@ -192,7 +192,11 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
 
     if (name === "user") {
       const who = authenticate(request);
-      return who.refusal ?? json(200, userBody(who.user));
+      if (who.refusal) return who.refusal;
+      // asUser: the service vouches for the token but describes somebody else.
+      const body = userBody(fault?.asUser ? users.get(fault.asUser) : who.user);
+      // wrapped: some versions of the service answer { user: {...} }.
+      return json(200, fault?.wrapped ? { user: body } : body);
     }
 
     if (name === "token:password") {
@@ -319,6 +323,17 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
     /** What sign-out, or switching two-factor on elsewhere, does to a session. */
     revoke: (sessionId) => sessions.delete(sessionId),
 
+    /** A token the real key signed for exactly these claims (a token Auth would never issue, such as one with no sub). */
+    signed: (claims) =>
+      signWith(real, {
+        iss: `${url}/auth/v1`,
+        aud: "authenticated",
+        role: "authenticated",
+        iat: seconds(),
+        exp: seconds() + 3600,
+        ...claims,
+      }),
+
     /** A token for the same claims signed by somebody else's key. */
     forge: (claims) =>
       signWith(attacker, {
@@ -330,7 +345,7 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
         ...claims,
       }),
 
-    /** fail("user", { status: 500 } | { network: true } | { hang: true } | { garbled: true }) */
+    /** fail("user", { status: 500 } | { network: true } | { hang: true } | { garbled: true } | { asUser: id } | { wrapped: true }) */
     fail: (name, fault) => faults.set(name, fault),
     recover: (name) => faults.delete(name),
   };

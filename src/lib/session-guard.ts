@@ -7,9 +7,11 @@
 //
 // Server side: logs exactly why a call was accepted or rejected (authorization
 // header present? token shaped like a JWT? which user id?) so a missing token is
-// traceable in the server logs.
+// traceable in the server logs. It also refuses a session that has only given
+// its password when the account has two-factor (see lib/two-factor.server.ts).
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { isTwoFactorRequired, isTwoFactorUnchecked } from "@/lib/two-factor";
 
 const FRIENDLY = "Your session has expired. Please sign in again to continue.";
 
@@ -60,7 +62,7 @@ export const sessionGuard = createMiddleware({ type: "function" })
       throw error;
     }
   })
-  .server(async ({ next }) => {
+  .server(async ({ next, serverFnMeta }) => {
     const request = getRequest();
     const label = request?.url ? new URL(request.url).pathname : "serverFn";
     const authHeader = request?.headers?.get("authorization") ?? null;
@@ -73,10 +75,19 @@ export const sessionGuard = createMiddleware({ type: "function" })
     );
 
     try {
+      // Before the function's own middleware: a session that still owes its
+      // code never reaches requireSupabaseAuth, let alone a handler.
+      const { enforceSecondFactor } = await import("@/lib/two-factor.server");
+      await enforceSecondFactor({ request, serverFnMeta });
       const result = await next();
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (isTwoFactorRequired(error) || isTwoFactorUnchecked(error)) {
+        // An expected answer, not a failure: say so, and say whose call it was.
+        console.warn(`[serverFn] ${label} refused: ${message} (user=${subject})`);
+        throw error;
+      }
       if (isUnauthorized(error)) {
         console.warn(
           `[serverFn] ${label} rejected: ${message} (auth_header=${authHeader ? "present" : "absent"}, token=${shape}, user=${subject})`,
