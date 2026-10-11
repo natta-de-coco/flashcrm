@@ -3,8 +3,8 @@ import type { Post } from "../blog";
 export type ArticleDraft = Omit<Post, "published" | "readingMinutes">;
 
 /** First release date in a batch. Later articles are spaced out from here. */
-const FIRST_RELEASE = Date.UTC(2026, 8, 15); // 2026-09-15
-const DAYS_BETWEEN = 3;
+const FIRST_RELEASE = Date.UTC(2026, 4, 1); // 2026-05-01
+const DAYS_BETWEEN = 2;
 
 /**
  * Turns drafts into posts, assigning a release date and a reading estimate.
