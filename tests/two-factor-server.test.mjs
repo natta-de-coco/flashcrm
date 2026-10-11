@@ -542,3 +542,144 @@ describe("what the server writes in its log", () => {
     assert.ok(!everythingLogged().includes(session.token));
   });
 });
+
+describe("a lookup that never answers", () => {
+  test("is given up on after a few seconds, and the call is refused", async (t) => {
+    const user = account([VERIFIED]);
+    const session = await fake.session(user);
+    fake.fail("user", { hang: true });
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const target = serverFn("listInvoices");
+    const pending = call(target, session.token);
+    // Let the call reach the lookup, then let the clock run past any patience.
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(60_000);
+    refused(await pending, target, COULD_NOT_CHECK);
+  });
+
+  test("is not given up on before the limit", async (t) => {
+    const user = account();
+    const session = await fake.session(user);
+    fake.fail("user", { hang: true });
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const target = serverFn("listInvoices");
+    let settled = false;
+    const pending = call(target, session.token).then((result) => {
+      settled = true;
+      return result;
+    });
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(4_000);
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false, "gave up after 4 seconds");
+    t.mock.timers.tick(2_000);
+    refused(await pending, target, COULD_NOT_CHECK);
+  });
+
+  test("a lookup that answers in time leaves no timer behind", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const user = account();
+    const session = await fake.session(user);
+    const target = serverFn("listInvoices");
+    accepted(await call(target, session.token), target, user);
+    // Nothing waits to fire: running the clock forward changes nothing.
+    t.mock.timers.tick(60_000);
+  });
+});
+
+describe("how long an answer is remembered", () => {
+  test("once a minute for one signed-in person, however much they do", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    const user = account();
+    const session = await fake.session(user);
+    for (let i = 0; i < 5; i += 1) {
+      const target = serverFn("listInvoices");
+      accepted(await call(target, session.token), target, user);
+      t.mock.timers.tick(10_000);
+    }
+    assert.equal(fake.count("user"), 1, "five calls one after another, one lookup");
+    t.mock.timers.tick(30_000);
+    const later = serverFn("listInvoices");
+    accepted(await call(later, session.token), later, user);
+    assert.equal(fake.count("user"), 2, "the answer is asked for again after a minute");
+  });
+
+  test("is asked for again exactly when the answer is a minute old, not before", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    const user = account();
+    const session = await fake.session(user);
+    await call(serverFn("listInvoices"), session.token);
+    t.mock.timers.tick(59_999);
+    await call(serverFn("listInvoices"), session.token);
+    assert.equal(fake.count("user"), 1, "asked again too soon");
+    t.mock.timers.tick(1);
+    await call(serverFn("listInvoices"), session.token);
+    assert.equal(fake.count("user"), 2, "not asked again when the answer was a minute old");
+  });
+
+  test("calls made at the same moment each ask for themselves (a request never waits on another's lookup)", async () => {
+    const user = account();
+    const session = await fake.session(user);
+    const targets = Array.from({ length: 6 }, () => serverFn("listInvoices"));
+    const results = await Promise.all(targets.map((target) => call(target, session.token)));
+    results.forEach((result, i) => accepted(result, targets[i], user));
+    assert.equal(fake.count("user"), 6);
+  });
+
+  test("a failed lookup is not remembered, and the answer that follows it is", async () => {
+    const user = account();
+    const session = await fake.session(user);
+    fake.fail("user", { status: 500 });
+    const during = serverFn("listInvoices");
+    refused(await call(during, session.token), during, COULD_NOT_CHECK);
+    fake.recover("user");
+    for (let i = 0; i < 3; i += 1) {
+      const target = serverFn("listInvoices");
+      accepted(await call(target, session.token), target, user);
+    }
+    assert.equal(fake.count("user"), 2, "one failed lookup, then one that was remembered");
+  });
+
+  test("an answer about somebody else is not remembered for the caller", async () => {
+    const mine = account([VERIFIED]);
+    const other = account();
+    const session = await fake.session(mine);
+    fake.fail("user", { asUser: other });
+    const first = serverFn("listInvoices");
+    refused(await call(first, session.token), first, COULD_NOT_CHECK);
+    fake.recover("user");
+    const second = serverFn("listInvoices");
+    refused(await call(second, session.token), second, NEEDS_CODE);
+  });
+
+  test("two sessions of one person share the remembered answer, and it is the person's, not a token's", async () => {
+    const user = account();
+    const first = await fake.session(user);
+    const second = await fake.session(user);
+    await call(serverFn("listInvoices"), first.token);
+    await call(serverFn("listInvoices"), second.token);
+    assert.equal(fake.count("user"), 1);
+  });
+
+  test("only the most recent two thousand people are remembered; the oldest is forgotten first", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    const first = account();
+    const firstSession = await fake.session(first);
+    await call(serverFn("listInvoices"), firstSession.token);
+    t.mock.timers.tick(1);
+
+    let last;
+    for (let i = 0; i < 2000; i += 1) {
+      const user = account();
+      last = await fake.session(user);
+      await call(serverFn("listInvoices"), last.token);
+      t.mock.timers.tick(1);
+    }
+    assert.equal(fake.count("user"), 2001);
+
+    await call(serverFn("listInvoices"), last.token);
+    assert.equal(fake.count("user"), 2001, "the newest person was forgotten");
+    await call(serverFn("listInvoices"), firstSession.token);
+    assert.equal(fake.count("user"), 2002, "the oldest person was still remembered");
+  });
+});

@@ -73,6 +73,53 @@ function isOpen(meta: FunctionMeta): boolean {
   });
 }
 
+/** How long the lookup may take before it counts as "could not check". */
+const LOOKUP_LIMIT_MS = 5_000;
+
+/**
+ * The answer "this account has no verified second factor", remembered per user
+ * for a minute so that someone without two-factor (everyone who has not set it
+ * up) costs one lookup a minute, not one per click.
+ *
+ *  - Only that answer is remembered. A refusal never is, so a lost factor
+ *    removed by the owner works on the person's very next sign-in; neither is a
+ *    failure to check.
+ *  - It is keyed by the user id Auth itself returned, never by the id inside the
+ *    token alone.
+ *  - Nothing is shared between simultaneous calls: a request that reuses a
+ *    lookup another request started is something the Cloudflare Workers
+ *    runtime may refuse, so a busy first minute costs more lookups instead.
+ *  - It lives in this server instance's memory: per instance, best effort, and
+ *    losing it only costs one more lookup.
+ */
+const ANSWER_LIFE_MS = 60_000;
+const MOST_REMEMBERED = 2_000;
+const hasNoSecondFactor = new Map<string, number>(); // user id -> when Auth said so
+
+function isRemembered(userId: string, now: number): boolean {
+  const since = hasNoSecondFactor.get(userId);
+  if (since === undefined) return false;
+  const age = now - since;
+  return age >= 0 && age < ANSWER_LIFE_MS;
+}
+
+function remember(userId: string, now: number): void {
+  // Delete first so the map stays in the order the answers were given.
+  hasNoSecondFactor.delete(userId);
+  if (hasNoSecondFactor.size >= MOST_REMEMBERED) {
+    for (const [id, since] of hasNoSecondFactor) {
+      if (now - since >= 0 && now - since < ANSWER_LIFE_MS) break; // the rest are younger
+      hasNoSecondFactor.delete(id);
+    }
+    // Nobody had run out: make room by dropping the one remembered longest.
+    const oldest = hasNoSecondFactor.keys().next();
+    if (hasNoSecondFactor.size >= MOST_REMEMBERED && !oldest.done) {
+      hasNoSecondFactor.delete(oldest.value);
+    }
+  }
+  hasNoSecondFactor.set(userId, now);
+}
+
 type Lookup = { kind: "user"; id: unknown; factors: unknown } | { kind: "unknown"; reason: string };
 
 /** Asks Auth who this token belongs to, with the caller's own token. Throws only for a token Auth has dropped. */
@@ -81,31 +128,46 @@ async function lookUpUser(token: string): Promise<Lookup> {
   const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
   if (!base || !key) return { kind: "unknown", reason: "the project address or key is not set" };
 
-  let response: Response;
-  try {
-    response = await fetch(`${base.replace(/\/+$/, "")}/auth/v1/user`, {
-      headers: { apikey: key, Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { kind: "unknown", reason: "Auth could not be reached" };
-  }
-
-  // Signed out, session gone, or user deleted. requireSupabaseAuth checks the
-  // token's signature on this machine and would still accept it until it
-  // expires, so this must refuse here: otherwise "sign in with the password,
-  // sign out, keep the token" would dodge the check.
-  if (response.status === 401 || response.status === 403 || response.status === 404) {
-    throw new Error(SESSION_GONE);
-  }
-  if (response.status !== 200) {
-    return { kind: "unknown", reason: `Auth answered ${response.status}` };
-  }
-
+  // Patience for the whole exchange, answer included: a lookup that hangs must
+  // end in a refusal, not hold the request open.
+  const limit = new AbortController();
+  const timer = setTimeout(() => limit.abort(), LOOKUP_LIMIT_MS);
   let body: unknown;
   try {
-    body = await response.json();
-  } catch {
-    return { kind: "unknown", reason: "Auth's answer was not readable" };
+    let response: Response;
+    try {
+      response = await fetch(`${base.replace(/\/+$/, "")}/auth/v1/user`, {
+        headers: { apikey: key, Authorization: `Bearer ${token}` },
+        signal: limit.signal,
+      });
+    } catch {
+      return {
+        kind: "unknown",
+        reason: limit.signal.aborted ? "Auth took too long" : "Auth could not be reached",
+      };
+    }
+
+    // Signed out, session gone, or user deleted. requireSupabaseAuth checks the
+    // token's signature on this machine and would still accept it until it
+    // expires, so this must refuse here: otherwise "sign in with the password,
+    // sign out, keep the token" would dodge the check.
+    if (response.status === 401 || response.status === 403 || response.status === 404) {
+      throw new Error(SESSION_GONE);
+    }
+    if (response.status !== 200) {
+      return { kind: "unknown", reason: `Auth answered ${response.status}` };
+    }
+
+    try {
+      body = await response.json();
+    } catch {
+      return {
+        kind: "unknown",
+        reason: limit.signal.aborted ? "Auth took too long" : "Auth's answer was not readable",
+      };
+    }
+  } finally {
+    clearTimeout(timer);
   }
   const outer =
     body !== null && typeof body === "object" ? (body as Record<string, unknown>) : null;
@@ -160,10 +222,15 @@ export async function enforceSecondFactor({
   // 4. The code was entered. (The signature is still checked downstream.)
   if (claims["aal"] === "aal2") return;
 
-  // 5. Password only: does this account have a verified second factor?
+  // 5. Password only. Auth said a minute ago that this account has no second factor?
+  if (isRemembered(userId, Date.now())) return;
+
+  // 6. Ask: does this account have a verified second factor?
   const found = await lookUpUser(token);
   if (found.kind === "unknown") return theCheckFailed(found.reason, userId);
   // Auth must be describing this very user, or its answer says nothing about them.
+  // (Remembered under the id Auth returned, which is this one.)
   if (found.id !== userId) return theCheckFailed("Auth described another user", userId);
   if (hasVerifiedTotp(found.factors)) throw new Error(TWO_FACTOR_REQUIRED);
+  remember(found.id, Date.now());
 }
