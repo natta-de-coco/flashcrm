@@ -14,6 +14,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, navMessageKey, workspaceDefaultLanguage } from "@/lib/i18n";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
 import { canReach } from "@/lib/permissions";
+import { sessionOwesSecondFactor } from "@/lib/two-factor";
 import { MANAGER_SECTION, NAV_SECTIONS, type NavSection } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
@@ -140,19 +141,24 @@ function AuthenticatedLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // A session that has only given its password is not signed in to this part
+  // of the app: it belongs at the code prompt, however it got here.
+  const owed = sessionOwesSecondFactor(session);
 
   const sections = isSuperAdmin ? [...NAV_SECTIONS, MANAGER_SECTION] : NAV_SECTIONS;
 
   useEffect(() => {
-    if (!loading && !session) navigate({ to: "/auth" });
-  }, [loading, session, navigate]);
+    if (loading) return;
+    if (!session) navigate({ to: "/auth" });
+    else if (owed) navigate({ to: "/auth", search: { redirect: pathname } });
+  }, [loading, session, owed, pathname, navigate]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || owed) return;
     let cancelled = false;
     const beat = async () => {
       let { data } = await supabase.auth.getSession();
@@ -175,7 +181,7 @@ function AuthenticatedLayout() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [session]);
+  }, [session, owed]);
 
   useEffect(() => {
     const saved = Number(window.localStorage.getItem(SIDEBAR_KEY));
@@ -201,7 +207,7 @@ function AuthenticatedLayout() {
     window.addEventListener("pointerup", up);
   }
 
-  if (loading || !session) {
+  if (loading || !session || owed) {
     return (
       <div className="flex min-h-screen bg-background" data-app-shell>
         <aside

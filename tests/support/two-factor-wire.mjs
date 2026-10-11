@@ -44,7 +44,7 @@ async function arriveAtServer(fn, headers, data) {
   );
 }
 
-export function serverFunction(name, { open = false } = {}) {
+export function serverFunction(name, { open = false, file = "src/lib/example.functions.ts" } = {}) {
   const builder = createServerFn({ method: "POST" });
   const wire = Object.assign(
     async (payload) => {
@@ -56,7 +56,7 @@ export function serverFunction(name, { open = false } = {}) {
       if (outcome.error) throw new Error(outcome.error.message);
       return { result: outcome.result, error: undefined, context: outcome.context };
     },
-    { serverFnMeta: { id: `id-${name}`, name, filename: "src/lib/example.functions.ts" } },
+    { serverFnMeta: { id: `id-${name}`, name, filename: file } },
   );
   const fn = (open ? builder : builder.middleware([requireSupabaseAuth])).handler(
     wire,
@@ -65,7 +65,20 @@ export function serverFunction(name, { open = false } = {}) {
       return { ok: true };
     },
   );
-  return fn;
+  // The browser half of a server function reads the start options the browser
+  // build was given. Here there is no build, only Node, where the same lookup
+  // reads Start's context; so the call is made inside one holding those options.
+  const fromTheBrowser = async (options) =>
+    runWithStartContext(
+      {
+        startOptions: await startInstance.getOptions(),
+        request: undefined,
+        contextAfterGlobalMiddlewares: {},
+        executedRequestMiddlewares: new Set(),
+      },
+      () => fn(options),
+    );
+  return Object.assign(fromTheBrowser, { __executeServer: fn.__executeServer });
 }
 
 /** What the server alone says to this bearer token, with no browser reaction around it. */
@@ -74,4 +87,6 @@ export async function serverAnswer(fn, token) {
 }
 
 /** The heartbeat the signed-in layout sends: the one server call every signed-in screen makes. */
-export const touchPresence = serverFunction("touchPresence");
+export const touchPresence = serverFunction("touchPresence", {
+  file: "src/lib/presence.functions.ts",
+});

@@ -50,6 +50,8 @@ before(() => {
   mock.method(console, "warn", (...args) => {
     if (/RouterProvider/.test(String(args[0]))) return;
     if (/^\[serverFn\]/.test(String(args[0]))) return;
+    // The server half builds its own client per call, in the same "browser".
+    if (/Multiple GoTrueClient instances/.test(String(args[0]))) return;
     warn(...args);
   });
 });
@@ -431,5 +433,119 @@ describe("creating an account", () => {
     await settle(200);
     assert.deepEqual(watched.navigations, []);
     assert.match(doc.body.textContent, /later@example\.test/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("the signed-in layout, for a session that only gave the password", () => {
+  const SCREEN = "[data-testid='signed-in-screen']";
+
+  test("draws nothing, sends no heartbeat, and sends the person to the code prompt", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "password" });
+    keepWatching(SCREEN);
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0), "the layout let the session stay");
+    await settle(300);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox"]);
+    assert.equal(
+      everAppeared(SCREEN),
+      false,
+      "a signed-in screen was drawn for a session that owes a code",
+    );
+    assert.deepEqual(
+      watched.sent,
+      [],
+      "a server call left the browser for a session that owes a code",
+    );
+    assert.ok(codeField(), "the code prompt is not on screen");
+  });
+
+  test("remembers the page it was on, whichever page that was", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/contacts" });
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Fcontacts"]);
+  });
+
+  test("brings the person back to that page, and draws it, once the code is right", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen()), "never got back in");
+    await settle(300);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox", "/inbox"]);
+    assert.equal(codeField(), null);
+    assert.ok(
+      watched.served.some((call) => call.name === "touchPresence" && call.userId === me.id),
+      "the heartbeat did not start once the code was entered",
+    );
+  });
+
+  test("catches a session that becomes owed while the app is open (two-factor switched on elsewhere)", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "the account without two-factor was not let in");
+    assert.deepEqual(watched.navigations, []);
+
+    // Another device enrols and verifies a factor; this browser learns of it when its token refreshes.
+    fake.user(me.id).factors.push({ ...VERIFIED, type: "totp", code: RIGHT_CODE });
+    await act(async () => {
+      await supabase.auth.refreshSession();
+    });
+    assert.ok(
+      await until(() => watched.navigations.length > 0),
+      "the open page was never asked for the code",
+    );
+    await settle(300);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox"]);
+    assert.equal(signedInScreen(), null);
+    assert.ok(codeField());
+  });
+});
+
+describe("the signed-in layout, for everyone else", () => {
+  test("draws the screen for a session that has entered its code, and sends the heartbeat", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "an account that entered its code was kept out");
+    assert.ok(await until(() => watched.served.length > 0), "no heartbeat");
+    assert.deepEqual(watched.navigations, []);
+    assert.equal(watched.served[0].userId, me.id);
+  });
+
+  test("draws the screen for an account without two-factor", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()));
+    assert.ok(await until(() => watched.served.length > 0), "no heartbeat");
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("draws the screen for an account that only started setting two-factor up", async () => {
+    const me = person({ factors: [UNVERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()));
+    assert.ok(await until(() => watched.served.length > 0), "no heartbeat");
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("sends a visitor with no session to the sign-in page, as before", async () => {
+    keepWatching("[data-testid='signed-in-screen']");
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/auth"]);
+    assert.equal(everAppeared("[data-testid='signed-in-screen']"), false);
+    assert.deepEqual(watched.sent, []);
   });
 });
