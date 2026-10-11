@@ -5,6 +5,10 @@ import { screen } from "../define";
 
 export default screen({
   en: {
+    "integrationsAuditFixed.retryAvailability": "Try again",
+    "integrationsAuditFixed.availabilityRetryHint":
+      "We could not check availability. Try again without leaving this page. Your connected accounts are unchanged.",
+    "integrationsAuditFixed.availabilityFailed": "Could not check",
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "Disconnected. Existing FLAS history is kept.",
     "integrationsAuditFixed.setupIsManagedFromThis":
@@ -140,6 +144,10 @@ export default screen({
     "integrationsAuditFixed.state.notConnected": "Not connected",
   },
   ar: {
+    "integrationsAuditFixed.retryAvailability": "حاول مرة أخرى",
+    "integrationsAuditFixed.availabilityRetryHint":
+      "تعذّر التحقق من التوفر. حاول مرة أخرى دون مغادرة هذه الصفحة. لم تتغير حساباتك المتصلة.",
+    "integrationsAuditFixed.availabilityFailed": "تعذّر التحقق",
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "تم قطع الاتصال. سجل FLAS الحالي محفوظ.",
     "integrationsAuditFixed.setupIsManagedFromThis": "إعداد {name} يُدار من صفحة التكاملات هذه.",
@@ -272,6 +280,10 @@ export default screen({
     "integrationsAuditFixed.state.notConnected": "غير متصل",
   },
   ms: {
+    "integrationsAuditFixed.retryAvailability": "Cuba lagi",
+    "integrationsAuditFixed.availabilityRetryHint":
+      "Kami tidak dapat menyemak ketersediaan. Cuba lagi tanpa meninggalkan halaman ini. Akaun anda yang disambungkan tidak berubah.",
+    "integrationsAuditFixed.availabilityFailed": "Tidak dapat menyemak",
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "Diputuskan. Sejarah FLAS sedia ada dikekalkan.",
     "integrationsAuditFixed.setupIsManagedFromThis":
@@ -409,6 +421,10 @@ export default screen({
     "integrationsAuditFixed.state.notConnected": "Tidak disambungkan",
   },
   fil: {
+    "integrationsAuditFixed.retryAvailability": "Subukan muli",
+    "integrationsAuditFixed.availabilityRetryHint":
+      "Hindi namin masuri ang availability. Subukan muli nang hindi umaalis sa pahinang ito. Walang nabago sa mga nakakonektang account mo.",
+    "integrationsAuditFixed.availabilityFailed": "Hindi masuri",
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "Na-disconnect. Nananatili ang kasalukuyang history sa FLAS.",
     "integrationsAuditFixed.setupIsManagedFromThis":
@@ -546,6 +562,10 @@ export default screen({
     "integrationsAuditFixed.state.notConnected": "Hindi nakakonekta",
   },
   sw: {
+    "integrationsAuditFixed.retryAvailability": "Jaribu tena",
+    "integrationsAuditFixed.availabilityRetryHint":
+      "Hatukuweza kukagua upatikanaji. Jaribu tena bila kuondoka kwenye ukurasa huu. Akaunti zako zilizounganishwa hazijabadilika.",
+    "integrationsAuditFixed.availabilityFailed": "Imeshindwa kukagua",
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "Imetenganishwa. Historia iliyopo ya FLAS imehifadhiwa.",
     "integrationsAuditFixed.setupIsManagedFromThis":

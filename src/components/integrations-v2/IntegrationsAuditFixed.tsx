@@ -448,10 +448,9 @@ export function IntegrationsAuditFixed({
           />
         )}
         {readiness.isError && (
-          <Problem
-            title={t("integrationsAuditFixed.weCouldNotCheckWhich")}
-            message="Please refresh the page. If it keeps happening, tell your administrator."
-            onAdmin={undefined}
+          <AvailabilityFailure
+            retrying={readiness.isFetching}
+            onRetry={() => void readiness.refetch()}
           />
         )}
         {blocked && !marketplaceOpen && (
@@ -753,12 +752,19 @@ export function IntegrationsAuditFixed({
               onAdmin={isSuperAdmin ? () => openDiagnostics(null) : undefined}
             />
           )}
+          {readiness.isError && (
+            <AvailabilityFailure
+              retrying={readiness.isFetching}
+              onRetry={() => void readiness.refetch()}
+            />
+          )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {marketplaceItems.map((connector) => (
               <MarketplaceCard
                 key={connector.id}
                 connector={connector}
                 readiness={readinessMap.get(connector.id) ?? null}
+                availabilityFailed={readiness.isError && !readiness.isFetching}
                 connecting={connecting === connector.id}
                 isAdmin={isAdmin}
                 isSuperAdmin={isSuperAdmin}
@@ -886,6 +892,25 @@ export function IntegrationsAuditFixed({
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function AvailabilityFailure({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div role="status" className="rounded-xl border border-amber-300/60 p-4">
+      <p className="font-medium">{t("integrationsAuditFixed.weCouldNotCheckWhich")}</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {t("integrationsAuditFixed.availabilityRetryHint")}
+      </p>
+      <Button className="mt-3" size="sm" variant="outline" disabled={retrying} onClick={onRetry}>
+        {t(
+          retrying
+            ? "integrationsAuditFixed.checkingAvailability"
+            : "integrationsAuditFixed.retryAvailability",
+        )}
+      </Button>
     </div>
   );
 }
@@ -1198,6 +1223,7 @@ function StatusBadge({
 function MarketplaceCard({
   connector,
   readiness,
+  availabilityFailed = false,
   connecting,
   isAdmin,
   isSuperAdmin = false,
@@ -1205,6 +1231,7 @@ function MarketplaceCard({
 }: {
   connector: Connector;
   readiness: IntegrationReadinessRow | null;
+  availabilityFailed?: boolean;
   connecting: boolean;
   isAdmin: boolean;
   isSuperAdmin?: boolean;
@@ -1247,7 +1274,13 @@ function MarketplaceCard({
           {readiness ? (
             <StatusBadge row={readiness} forCompany={!isSuperAdmin} />
           ) : (
-            <Badge variant="secondary">{t("integrationsAuditFixed.checking")}</Badge>
+            <Badge variant="secondary">
+              {t(
+                availabilityFailed
+                  ? "integrationsAuditFixed.availabilityFailed"
+                  : "integrationsAuditFixed.checking",
+              )}
+            </Badge>
           )}
         </div>
         <CardTitle className="pt-2 text-base">{connector.name}</CardTitle>
@@ -1284,7 +1317,11 @@ function MarketplaceCard({
             disabled={disabled}
           >
             {!readiness
-              ? t("integrationsAuditFixed.checkingAvailability")
+              ? t(
+                  availabilityFailed
+                    ? "integrationsAuditFixed.availabilityFailed"
+                    : "integrationsAuditFixed.checkingAvailability",
+                )
               : connecting
                 ? t("integrationsAuditFixed.openingSecureSignIn")
                 : action}
