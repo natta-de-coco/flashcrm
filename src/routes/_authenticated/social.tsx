@@ -24,7 +24,7 @@ import { manualSocialFormError } from "@/lib/form-validation";
 import { connector } from "@/lib/connections-catalog";
 import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
 import { isUnfinishedConnection } from "@/lib/social-account-readiness";
-import { draftSaveRequest, type ComposerDraft } from "@/lib/social-drafts";
+import { draftSaveRequest, savedMessageKey, type ComposerDraft } from "@/lib/social-drafts";
 import { plannedPostNote, publishReality } from "@/lib/social-publishing";
 import {
   groupPostsByState,
@@ -953,18 +953,19 @@ function ComposerTab({
     mutationFn: async (plan: boolean) => {
       // What is sent is decided in social-drafts.ts, where it is tested.
       const request = draftSaveRequest(draft, plan);
-      return request.kind === "update"
+      if (request.kind === "unreadable-date") return request;
+      await (request.kind === "update"
         ? update({ data: request.data })
-        : save({ data: request.data });
+        : save({ data: request.data }));
+      return request;
     },
-    onSuccess: (_res, plan) => {
-      toast.success(
-        draft.id
-          ? i18n.t("social.draftUpdated")
-          : plan
-            ? i18n.t("social.savedWithAPlannedDate")
-            : i18n.t("social.draftSaved"),
-      );
+    onSuccess: (request) => {
+      if (request.kind === "unreadable-date") {
+        // Nothing was sent or saved; the form stays as it is so the date can be chosen again.
+        toast.error(i18n.t("social.plannedDateUnreadable"));
+        return;
+      }
+      toast.success(i18n.t(savedMessageKey(request)));
       resetDraft();
       onChanged();
     },
@@ -1140,6 +1141,7 @@ function ComposerTab({
               <Input
                 id="social-planned-at"
                 type="datetime-local"
+                max="9999-12-31T23:59"
                 className="w-56"
                 value={draft.plannedAt}
                 onChange={(e) => setDraft((d) => ({ ...d, plannedAt: e.target.value }))}

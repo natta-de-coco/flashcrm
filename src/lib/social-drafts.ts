@@ -15,9 +15,18 @@
 // what was not touched:
 //
 //   account   always sent — the id that was picked, or null for "No account".
-//   date      on an edit, sent only when the date field was changed: the new
-//             date, or null when the field was emptied on purpose. An untouched
-//             date is left out, and the server then leaves the plan alone.
+//   date      decided by the button that was pressed:
+//               "Save with a planned date" / "Save with this plan" always sends
+//               the date in the field, also when it is the one that was loaded;
+//               "Save as draft" on a new post sends none;
+//               "Save changes" on an edit sends only what the person did to the
+//               field: nothing when it is untouched (the server then leaves the
+//               plan alone), null when it was emptied on purpose, the new date
+//               when it was changed.
+//
+// A date that was asked for but cannot be read is never sent as "no date": a
+// new post would be saved as a plain draft under a message that says it was
+// planned. The request is refused instead, and nothing is saved.
 //
 // Pure functions with no imports: the logic is tested directly in
 // tests/social-hub.test.mjs, together with the handlers that receive it.
@@ -60,54 +69,71 @@ export type EditPostRequest = {
 export type DraftSaveRequest<P extends string = string> =
   { kind: "create"; data: NewPostRequest<P> } | { kind: "update"; data: EditPostRequest };
 
-/** A `datetime-local` value as an instant, or null when it is empty or unreadable. */
+/** The date was asked for and cannot be read: nothing is sent, nothing is saved. */
+export type UnreadableDate = { kind: "unreadable-date" };
+
+/** A four-digit-year instant, the only shape the server accepts for a date. */
+const FOUR_DIGIT_YEAR_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * A `datetime-local` value as an instant, or null when it is empty or cannot be
+ * stored: not a date at all, a five-digit year (typed into the year part, which
+ * `datetime-local` allows), or a year the database has no room for.
+ */
 function localInputToIso(value: string): string | null {
   if (!value) return null;
   const ms = new Date(value).getTime();
-  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+  if (!Number.isFinite(ms)) return null;
+  const iso = new Date(ms).toISOString();
+  // A year outside 0000–9999 comes out as "+012026-…", which the server refuses.
+  // Year 0000 passes that shape, but the database has no such year.
+  return FOUR_DIGIT_YEAR_INSTANT.test(iso) && !iso.startsWith("0000") ? iso : null;
 }
 
 /**
- * What an edit says about the planned date.
+ * What an edit says about the planned date, or null when the date it would send
+ * cannot be read.
  *
- * Nothing, when the field still holds what was loaded — whichever button was
- * pressed. That is what keeps a plan through a caption edit, and it also means
+ * `plan` (the plan button): always the date in the field. The button says "plan
+ * it", whatever the form held when the post was loaded — a list that is out of
+ * date may show a draft that is already planned, or the reverse.
+ *
+ * Otherwise ("Save changes"): nothing, when the field still holds what was
+ * loaded. That is what keeps a plan through a caption edit, and it also means
  * the stored time is never rewritten from its rounded, local-time display.
  */
-function plannedDateChange(draft: ComposerDraft): { scheduledAt?: string | null } {
+function editedDate(draft: ComposerDraft, plan: boolean): { scheduledAt?: string | null } | null {
+  if (plan) {
+    const iso = localInputToIso(draft.plannedAt);
+    return iso ? { scheduledAt: iso } : null;
+  }
   if (draft.plannedAt === draft.loadedPlannedAt) return {};
   // The person emptied the field: that is the deliberate way to remove a plan.
   if (draft.plannedAt === "") return { scheduledAt: null };
   const iso = localInputToIso(draft.plannedAt);
-  // A date that cannot be read changes nothing, rather than removing the plan.
-  return iso ? { scheduledAt: iso } : {};
+  return iso ? { scheduledAt: iso } : null;
 }
 
 /**
- * The request for saving the composer as it stands.
+ * The request for saving the composer as it stands, or `unreadable-date` when a
+ * date would have been sent and cannot be read.
  *
  * `plan` is which button was pressed: false for "Save as draft" / "Save
- * changes", true for "Save with a planned date" / "Save with this plan". For a
- * new post it decides whether the typed date is used. For an edit the form is
- * what is saved — see `plannedDateChange`.
+ * changes", true for "Save with a planned date" / "Save with this plan".
  */
 export function draftSaveRequest<P extends string>(
   draft: ComposerDraft<P>,
   plan: boolean,
-): DraftSaveRequest<P> {
+): DraftSaveRequest<P> | UnreadableDate {
   const caption = draft.caption.trim();
   if (draft.id) {
-    return {
-      kind: "update",
-      data: {
-        id: draft.id,
-        caption,
-        accountId: draft.accountId,
-        ...plannedDateChange(draft),
-      },
-    };
+    const date = editedDate(draft, plan);
+    if (!date) return { kind: "unreadable-date" };
+    return { kind: "update", data: { id: draft.id, caption, accountId: draft.accountId, ...date } };
   }
+  // "Save as draft" on a new post sends no date, even with one typed.
   const scheduledAt = plan ? localInputToIso(draft.plannedAt) : null;
+  if (plan && !scheduledAt) return { kind: "unreadable-date" };
   return {
     kind: "create",
     data: {
@@ -117,4 +143,16 @@ export function draftSaveRequest<P extends string>(
       ...(scheduledAt ? { scheduledAt } : {}),
     },
   };
+}
+
+/**
+ * Which message tells the person what was saved, decided from what was sent: a
+ * request that carried a date saved a planned post; an edit without one updated
+ * a post; a new post without one is a new draft.
+ */
+export function savedMessageKey(
+  request: DraftSaveRequest,
+): "social.savedWithAPlannedDate" | "social.draftUpdated" | "social.draftSaved" {
+  if (typeof request.data.scheduledAt === "string") return "social.savedWithAPlannedDate";
+  return request.kind === "update" ? "social.draftUpdated" : "social.draftSaved";
 }

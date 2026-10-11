@@ -127,6 +127,7 @@ export default screen({
     "social.postStatus.published": "Published",
     "social.postStatus.scheduled": "Planned",
     "social.postStatus.draft": "Draft",
+    "social.plannedDateUnreadable": "That date could not be read. Choose the date and time again.",
   },
   ar: {
     "social.socialHub": "مركز التواصل الاجتماعي",
@@ -251,6 +252,7 @@ export default screen({
     "social.postStatus.published": "منشور",
     "social.postStatus.scheduled": "مخطط",
     "social.postStatus.draft": "مسودة",
+    "social.plannedDateUnreadable": "تعذّرت قراءة هذا التاريخ. اختر التاريخ والوقت مرة أخرى.",
   },
   ms: {
     "social.socialHub": "Hab Sosial",
@@ -380,6 +382,7 @@ export default screen({
     "social.postStatus.published": "Diterbitkan",
     "social.postStatus.scheduled": "Dirancang",
     "social.postStatus.draft": "Draf",
+    "social.plannedDateUnreadable": "Tarikh itu tidak dapat dibaca. Pilih semula tarikh dan masa.",
   },
   fil: {
     "social.socialHub": "Social Hub",
@@ -509,6 +512,7 @@ export default screen({
     "social.postStatus.published": "Na-publish",
     "social.postStatus.scheduled": "Nakaplano",
     "social.postStatus.draft": "Draft",
+    "social.plannedDateUnreadable": "Hindi mabasa ang petsang iyon. Piliin muli ang petsa at oras.",
   },
   sw: {
     "social.socialHub": "Kitovu cha Mitandao",
@@ -636,5 +640,6 @@ export default screen({
     "social.postStatus.published": "Imechapishwa",
     "social.postStatus.scheduled": "Imepangwa",
     "social.postStatus.draft": "Rasimu",
+    "social.plannedDateUnreadable": "Tarehe hiyo haikuweza kusomwa. Chagua tarehe na saa tena.",
   },
 });

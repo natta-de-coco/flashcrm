@@ -13,6 +13,9 @@
 //   R2  "No account" on a draft was saved against the first account found.
 //   R3  "Save changes" on a planned post turned it back into a draft.
 //   R4  a TikTok account added with a token only could no longer be synced.
+//
+// Second review of PR #57, further down:
+//   R5  the button pressed decides the plan; a date that cannot be read refuses.
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
@@ -61,7 +64,7 @@ const { SOCIAL_HUB_CAN_PUBLISH, publishReality, plannedPostNote } = loadLib(
 const { CONNECTOR_DEFINITIONS, resolveCapability } = loadLib(
   "../src/lib/social-connector-definitions.ts",
 );
-const { draftSaveRequest } = loadLib("../src/lib/social-drafts.ts");
+const { draftSaveRequest, savedMessageKey } = loadLib("../src/lib/social-drafts.ts");
 const { isUnfinishedConnection } = loadLib("../src/lib/social-account-readiness.ts");
 const { syncSummary } = loadLib("../src/lib/sync-report.ts");
 
@@ -1042,5 +1045,128 @@ describe("R4: only a sign-in that still needs its account chosen is 'unfinished'
     );
     assert.ok(hub.length > 0);
     assert.match(hub, /"id, tenant_id, platform, label, external_id, connect_method, /);
+  });
+});
+
+/* ───────── Second review of PR #57: the button pressed decides (R5) ──────── */
+
+describe("R5: the button pressed decides the plan, and a date that cannot be read refuses", () => {
+  const LOADED = "2026-11-02T09:30";
+  const FIVE_DIGIT_YEAR = "12026-10-08T10:00";
+  const edit = (fields) => ({
+    id: SAVED_POST,
+    caption: "New caption",
+    platform: "instagram",
+    accountId: IG_ACCOUNT,
+    plannedAt: LOADED,
+    loadedPlannedAt: LOADED,
+    ...fields,
+  });
+
+  it("a five-digit year is not a date (the premise of the cases below)", () => {
+    assert.ok(Number.isNaN(new Date(FIVE_DIGIT_YEAR).getTime()));
+  });
+
+  it("'Save with a planned date' sends the date in the field", () => {
+    const request = draftSaveRequest(composing({ plannedAt: LOADED }), true);
+    assert.equal(request.kind, "create");
+    assert.equal(request.data.scheduledAt, new Date(LOADED).toISOString());
+  });
+
+  it("'Save as draft' on a new post sends no date, even with one typed", () => {
+    const request = draftSaveRequest(composing({ plannedAt: LOADED }), false);
+    assert.equal(request.kind, "create");
+    assert.equal(Object.hasOwn(request.data, "scheduledAt"), false);
+  });
+
+  it("'Save with this plan' always sends the date, also when it is the one that was loaded", () => {
+    // On a stale list the post may still be a draft in the database: the button
+    // the person pressed has to say "plan it", whatever the form held before.
+    const request = draftSaveRequest(edit(), true);
+    assert.equal(request.kind, "update");
+    assert.equal(request.data.scheduledAt, new Date(LOADED).toISOString());
+  });
+
+  it("'Save with this plan' on a stale draft really plans it", async () => {
+    startSuite({
+      social_posts: [
+        {
+          id: SAVED_POST,
+          tenant_id: TENANT,
+          account_id: IG_ACCOUNT,
+          caption: "Old caption",
+          status: "draft",
+          scheduled_at: null,
+        },
+      ],
+    });
+    await updateSocialPost(asUser(draftSaveRequest(edit(), true).data));
+    const [row] = db.table("social_posts");
+    assert.equal(row.status, "scheduled");
+    assert.equal(row.scheduled_at, new Date(LOADED).toISOString());
+  });
+
+  it("'Save changes' keeps its meaning: untouched says nothing, emptied removes, changed saves", () => {
+    const untouched = draftSaveRequest(edit(), false);
+    assert.equal(Object.hasOwn(untouched.data, "scheduledAt"), false);
+    assert.equal(draftSaveRequest(edit({ plannedAt: "" }), false).data.scheduledAt, null);
+    assert.equal(
+      draftSaveRequest(edit({ plannedAt: "2026-11-05T14:00" }), false).data.scheduledAt,
+      new Date("2026-11-05T14:00").toISOString(),
+    );
+  });
+
+  it("a date that cannot be read refuses on a new post instead of saving a plain draft", () => {
+    const request = draftSaveRequest(composing({ plannedAt: FIVE_DIGIT_YEAR }), true);
+    sameShape(request, { kind: "unreadable-date" });
+  });
+
+  it("an empty field cannot be planned either", () => {
+    sameShape(draftSaveRequest(composing({ plannedAt: "" }), true), { kind: "unreadable-date" });
+    sameShape(draftSaveRequest(edit({ plannedAt: "" }), true), { kind: "unreadable-date" });
+  });
+
+  it("a date that cannot be read refuses on an edit, whichever button is pressed", () => {
+    for (const plan of [true, false]) {
+      sameShape(draftSaveRequest(edit({ plannedAt: FIVE_DIGIT_YEAR }), plan), {
+        kind: "unreadable-date",
+      });
+    }
+  });
+
+  it("'Save as draft' on a new post does not care what the date field holds", () => {
+    // No date is sent, so there is nothing to refuse.
+    const request = draftSaveRequest(composing({ plannedAt: FIVE_DIGIT_YEAR }), false);
+    assert.equal(request.kind, "create");
+    assert.equal(Object.hasOwn(request.data, "scheduledAt"), false);
+  });
+
+  it("a date the server could not store is unreadable too", () => {
+    for (const plannedAt of ["0000-01-01T00:00", "275760-09-13T00:00", "not a date"]) {
+      sameShape(draftSaveRequest(composing({ plannedAt }), true), { kind: "unreadable-date" });
+    }
+  });
+
+  it("the toast says what was saved, decided from the request", () => {
+    const planned = new Date(LOADED).toISOString();
+    const key = (kind, data) => savedMessageKey({ kind, data });
+    assert.equal(key("create", { scheduledAt: planned }), "social.savedWithAPlannedDate");
+    assert.equal(key("update", { scheduledAt: planned }), "social.savedWithAPlannedDate");
+    assert.equal(key("update", { scheduledAt: null }), "social.draftUpdated");
+    assert.equal(key("update", {}), "social.draftUpdated");
+    assert.equal(key("create", {}), "social.draftSaved");
+  });
+
+  it("the field refuses a five-digit year, and the words for the refusal exist in five languages", () => {
+    const route = read("src/routes/_authenticated/social.tsx");
+    const field = route.slice(route.indexOf('id="social-planned-at"'));
+    assert.match(field.slice(0, 400), /max="9999-12-31T23:59"/);
+    assert.ok(route.includes('i18n.t("social.plannedDateUnreadable")'));
+    const words = read("src/lib/i18n/screens/social.ts");
+    assert.equal(words.split('"social.plannedDateUnreadable"').length - 1, 5);
+    assert.match(
+      words,
+      /"social\.plannedDateUnreadable": "That date could not be read\. Choose the date and time again\."/,
+    );
   });
 });
