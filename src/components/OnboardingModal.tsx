@@ -88,7 +88,8 @@ export function OnboardingModal() {
         window.location.href = "/auth";
         return;
       }
-      await runOnboarding({ data: {
+      await runOnboarding({
+        data: {
           companyName: companyName.trim(),
           fullName: fullName.trim(),
           botGreeting: botGreeting.trim(),
@@ -106,7 +107,10 @@ export function OnboardingModal() {
 
   return (
     <Dialog open>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-md"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader className="items-center text-center">
           <FlashLogoBadge className="mb-2 size-12" />
           <DialogTitle>{t("onboardingModal.nameYourCompany")}</DialogTitle>
@@ -170,7 +174,11 @@ export function OnboardingModal() {
               />
             </div>
             <label className="flex items-center gap-2 text-sm">
-              <Switch checked={botReady && botEnabled} disabled={!botReady} onCheckedChange={setBotEnabled} />
+              <Switch
+                checked={botReady && botEnabled}
+                disabled={!botReady}
+                onCheckedChange={setBotEnabled}
+              />
               {t("onboardingModal.chatbotTurnOn")}
             </label>
             <p className="text-xs text-muted-foreground">{t("onboardingModal.chatbotHint")}</p>

@@ -124,7 +124,12 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       actorId: userId,
       entityType: "organization",
       entityId: org.id,
-      details: { companyName: data.companyName, trialEnds: trialEnd, chatbotSaved: botReady, chatbotOn: botReady && data.botEnabled },
+      details: {
+        companyName: data.companyName,
+        trialEnds: trialEnd,
+        chatbotSaved: botReady,
+        chatbotOn: botReady && data.botEnabled,
+      },
     });
 
     return { ok: true, alreadyDone: false };
