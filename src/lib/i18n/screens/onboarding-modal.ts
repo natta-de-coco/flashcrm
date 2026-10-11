@@ -24,6 +24,14 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Start my free month",
     "onboardingModal.youLlBeTheCompany":
       "You'll be the company admin. You can invite your team later from Team & Staff.",
+    "onboardingModal.chatbotSection": "Your chatbot (optional)",
+    "onboardingModal.chatbotGreeting": "Greeting",
+    "onboardingModal.chatbotGreetingPh": "Hi! Welcome to Acme. How can we help today?",
+    "onboardingModal.chatbotDetails": "About your business",
+    "onboardingModal.chatbotDetailsPh": "What you sell, location, opening hours, delivery, prices customers often ask about…",
+    "onboardingModal.chatbotDetailsShort": "Add at least 20 characters about your business, or leave both chatbot fields empty.",
+    "onboardingModal.chatbotTurnOn": "Turn the chatbot on now",
+    "onboardingModal.chatbotHint": "The chatbot only answers from what you write here. You can change it any time in Chatbot.",
   },
   ar: {
     "onboardingModal.pleaseEnterYourCompanyName": "يُرجى إدخال اسم شركتك",
