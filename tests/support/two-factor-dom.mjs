@@ -79,6 +79,7 @@ export function installBrowser({ url = "https://app.test/auth" } = {}) {
   globalThis.__flasTestLocation = {
     pathname: place.pathname,
     search: place.search,
+    hash: place.hash,
     href: place.href,
     origin: place.origin,
     assigned: [],

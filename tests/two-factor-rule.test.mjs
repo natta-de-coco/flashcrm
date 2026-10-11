@@ -7,8 +7,9 @@
 // the same question and cannot disagree. It is read to decide to REFUSE; the
 // server still checks the token's signature before it lets anything through.
 //
-// MUTATION names one way of putting the bug back (see the list at the bottom
-// of the pull request). The suite MUST fail under each.
+// The pull request lists the ways this bug can come back (the rule ignoring the
+// assurance level, the server not asking, a failure letting a call through, and
+// so on). Each was put back by hand, one at a time, and this suite failed.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { buildRuleBundle } from "./support/two-factor-build.mjs";

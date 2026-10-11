@@ -13,10 +13,18 @@
 // fake-supabase.mjs). Only the handlers are made up, because what is under
 // test is what happens before a handler is reached.
 //
-// MUTATION names one way of putting the bug back (see the list at the bottom
-// of the pull request). The suite MUST fail under each.
+// If this suite stops starting after a dependency bump, look at
+// tests/support/two-factor-wire.mjs and two-factor-build.mjs first: they lean on
+// TanStack Start internals (__executeServer, runWithStartContext from
+// @tanstack/start-storage-context, a transitive package). That shows up as a
+// bundle or import error, never as a silent pass.
+//
+// The pull request lists the ways this bug can come back (the rule ignoring the
+// assurance level, the server not asking, a failure letting a call through, and
+// so on). Each was put back by hand, one at a time, and this suite failed.
 import { test, describe, before, after, beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 import { buildServerBundle } from "./support/two-factor-build.mjs";
 import { createFakeSupabase } from "./support/fake-supabase.mjs";
 
@@ -681,5 +689,66 @@ describe("how long an answer is remembered", () => {
     assert.equal(fake.count("user"), 2001, "the newest person was forgotten");
     await call(serverFn("listInvoices"), firstSession.token);
     assert.equal(fake.count("user"), 2002, "the oldest person was still remembered");
+  });
+});
+
+describe("nobody is locked out: sessions that did not come from the password form", () => {
+  for (const method of ["otp", "magiclink", "recovery", "oauth", "signup"]) {
+    test(`a ${method} session of an account without two-factor is accepted`, async () => {
+      const user = account();
+      const session = await fake.session(user, { aal: "aal1", method });
+      const target = serverFn("listInvoices");
+      accepted(await call(target, session.token), target, user);
+    });
+  }
+
+  test("a link session of an account with two-factor is accepted once the code has been entered", async () => {
+    const user = account([VERIFIED]);
+    const session = await fake.session(user, { aal: "aal2", method: "magiclink" });
+    const target = serverFn("listInvoices");
+    accepted(await call(target, session.token), target, user);
+  });
+});
+
+describe("the list of public server functions matches the source", () => {
+  // This backs up the behavioural tests above; it is not the proof. The proof
+  // is that the calls above are refused or let through. What this adds is that
+  // the day somebody writes a server function with no sign-in, or lists a
+  // protected one as public, this fails and says which.
+  const root = new URL("../src/", import.meta.url);
+
+  function sources(directory = root, found = []) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const child = new URL(entry.name + (entry.isDirectory() ? "/" : ""), directory);
+      if (entry.isDirectory()) sources(child, found);
+      else if (/\.tsx?$/.test(entry.name)) found.push(child);
+    }
+    return found;
+  }
+
+  test("is exactly the server functions that do not use requireSupabaseAuth", () => {
+    const withoutSignIn = [];
+    let chains = 0;
+    let named = 0;
+    for (const file of sources()) {
+      const text = readFileSync(file, "utf8").split("\r\n").join("\n");
+      const relative = "src/" + file.href.slice(root.href.length);
+      for (const start of text.matchAll(/createServerFn\s*\(/g)) {
+        chains += 1;
+        const before = text.slice(0, start.index);
+        const name = /(?:export\s+)?const\s+(\w+)\s*=\s*$/.exec(before)?.[1];
+        if (!name) continue;
+        named += 1;
+        const chain = text.slice(start.index, text.indexOf(".handler(", start.index));
+        if (!/requireSupabaseAuth/.test(chain)) withoutSignIn.push(`${relative}#${name}`);
+      }
+    }
+    assert.ok(chains > 100, `only found ${chains} server functions: the scan is broken`);
+    assert.equal(
+      named,
+      chains,
+      "a server function is not written as `const name = createServerFn(`",
+    );
+    assert.deepEqual(withoutSignIn.sort(), [...mod.OPEN_SERVER_FUNCTIONS].sort());
   });
 });

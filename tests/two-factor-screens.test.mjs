@@ -18,8 +18,9 @@
 // context, a transitive package). A change in either shows up as a bundle or
 // import error, not as a silent pass.
 //
-// MUTATION names one way of putting the bug back (see the list at the bottom
-// of the pull request). The suite MUST fail under each.
+// The pull request lists the ways this bug can come back (the rule ignoring the
+// assurance level, the server not asking, a failure letting a call through, and
+// so on). Each was put back by hand, one at a time, and this suite failed.
 import { test, describe, before, after, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { installBrowser } from "./support/two-factor-dom.mjs";
@@ -682,5 +683,136 @@ describe("when the server turns a call back", () => {
       watched.toasts.some((toast) => toast.message === error.message),
       "no message was shown",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nobody is locked out by the fix. Each way a person could be is a case here.
+
+describe("nobody is locked out: password reset", () => {
+  const NEW_PASSWORD = "a-brand-new-password";
+
+  async function resetPassword() {
+    assert.ok(
+      await until(() => doc.getElementById("new-password")),
+      "the reset form did not appear",
+    );
+    await type("new-password", NEW_PASSWORD);
+    await type("confirm-password", NEW_PASSWORD);
+    await submit("new-password");
+    assert.ok(await until(() => watched.navigations.length > 0), "never left the reset page");
+    await settle(200);
+  }
+
+  test("an account with two-factor reaches the reset form from its recovery link, and gets in afterwards with the new password and its code", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/reset-password" });
+    await resetPassword();
+    // The reset page signs the recovery session out and sends the person to sign in.
+    assert.deepEqual(watched.navigations, ["/auth"]);
+    assert.equal(fake.user(me.id).password, NEW_PASSWORD);
+    assert.equal((await supabase.auth.getSession()).data.session, null);
+
+    await signInWithPassword({ ...me, password: NEW_PASSWORD });
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen()), "never got in");
+    assert.deepEqual(watched.navigations, ["/auth", "/inbox"]);
+  });
+
+  test("an account without two-factor does the same and is never asked for a code", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/reset-password" });
+    keepWatching("#mfa");
+    await resetPassword();
+    assert.deepEqual(watched.navigations, ["/auth"]);
+    await signInWithPassword({ ...me, password: NEW_PASSWORD });
+    assert.ok(await until(() => signedInScreen()), "never got in");
+    assert.deepEqual(watched.navigations, ["/auth", "/inbox"]);
+    assert.equal(everAppeared("#mfa"), false);
+  });
+
+  test("the reset page is not sent to the code prompt by a session that owes its code", async () => {
+    // It lives outside the signed-in layout and makes no server call, so it is
+    // reachable exactly as before; what Auth itself allows is outside this test.
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/reset-password" });
+    assert.ok(await until(() => doc.getElementById("new-password")));
+    await settle(300);
+    assert.deepEqual(watched.navigations, []);
+    assert.equal(codeField(), null);
+    assert.deepEqual(watched.sent, []);
+  });
+});
+
+describe("nobody is locked out: e-mailed links", () => {
+  for (const method of ["magiclink", "otp", "recovery", "signup"]) {
+    test(`a ${method} session of an account without two-factor goes straight in from the sign-in page`, async () => {
+      const me = person();
+      await show();
+      keepWatching("#mfa");
+      await arriveWithSession(me, { aal: "aal1", method });
+      assert.ok(await until(() => watched.navigations.length > 0));
+      await settle(200);
+      assert.deepEqual(watched.navigations, ["/inbox"]);
+      assert.equal(everAppeared("#mfa"), false);
+    });
+
+    test(`a ${method} session of an account without two-factor is let into the app`, async () => {
+      const me = person();
+      await arriveWithSession(me, { aal: "aal1", method });
+      await show({ at: "/inbox" });
+      assert.ok(await until(() => signedInScreen()), "kept out of the app");
+      assert.ok(await until(() => watched.served.length > 0), "the heartbeat was refused");
+      assert.deepEqual(watched.navigations, []);
+    });
+  }
+
+  test("a link session of an account with two-factor is let in once the code is entered, at the page the link pointed to", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    await show({ at: "/auth?redirect=%2Fcontacts" });
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/contacts"]);
+  });
+});
+
+describe("nobody is locked out: finishing two-factor set-up", () => {
+  test("verifying the first code on the open page does not send the person to a code prompt", async () => {
+    // What the security card does: the factor is started (unverified), the code
+    // from the authenticator app is checked, and the same session becomes aal2.
+    const me = person({ factors: [UNVERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "the half-set-up account was kept out");
+
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: UNVERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    await settle(500);
+    assert.deepEqual(watched.navigations, [], "finishing set-up sent the person away");
+    assert.ok(signedInScreen());
+    assert.equal(codeField(), null);
+    assert.equal(fake.user(me.id).factors[0].status, "verified");
+  });
+
+  test("a person who has only started set-up can sign in with the password alone", async () => {
+    const me = person({ factors: [UNVERIFIED] });
+    await show();
+    keepWatching("#mfa");
+    await signInWithPassword(me);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+    assert.equal(everAppeared("#mfa"), false);
   });
 });

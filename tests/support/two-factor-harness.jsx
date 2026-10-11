@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { I18nProvider } from "@/hooks/useI18n";
 import { Route as ShellRoute } from "@/routes/_authenticated/route";
 import { Route as AuthRoute } from "@/routes/auth";
+import { Route as ResetRoute } from "@/routes/reset-password";
 import { RouterContext } from "./two-factor-router-double.jsx";
 import { watched } from "./two-factor-wire.mjs";
 
@@ -29,7 +30,14 @@ function addressOf({ to, search }) {
   return redirect ? `${to}?redirect=${encodeURIComponent(redirect)}` : to;
 }
 
-/** The app, as far as sign-in is concerned: /auth is the sign-in page, anything else is signed-in. */
+/** The page an address shows: /auth is sign-in, /reset-password is the reset page, anything else is signed-in. */
+function pageAt(pathname) {
+  if (pathname === "/auth") return AuthRoute.options.component;
+  if (pathname === "/reset-password") return ResetRoute.options.component;
+  return ShellRoute.options.component;
+}
+
+/** The app, as far as sign-in is concerned. */
 export function App({ startAt, language = "en" }) {
   const [location, setLocation] = useState(() => parse(startAt));
   const queryClient = useMemo(() => new QueryClient(), []);
@@ -40,8 +48,7 @@ export function App({ startAt, language = "en" }) {
     setLocation(parse(address));
   }, []);
   const router = useMemo(() => ({ ...location, navigate }), [location, navigate]);
-  const Page =
-    location.pathname === "/auth" ? AuthRoute.options.component : ShellRoute.options.component;
+  const Page = pageAt(location.pathname);
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

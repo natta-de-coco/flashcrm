@@ -159,6 +159,7 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
     let name = "unknown";
     if (pathname === "/auth/v1/.well-known/jwks.json") name = "jwks";
     else if (pathname === "/auth/v1/user" && method === "GET") name = "user";
+    else if (pathname === "/auth/v1/user" && method === "PUT") name = "user:update";
     else if (pathname === "/auth/v1/token") name = `token:${searchParams.get("grant_type")}`;
     else if (pathname === "/auth/v1/logout") name = "logout";
     else if (pathname === "/auth/v1/signup") name = "signup";
@@ -197,6 +198,17 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
       const body = userBody(fault?.asUser ? users.get(fault.asUser) : who.user);
       // wrapped: some versions of the service answer { user: {...} }.
       return json(200, fault?.wrapped ? { user: body } : body);
+    }
+
+    if (name === "user:update") {
+      const who = authenticate(request);
+      if (who.refusal) return who.refusal;
+      // This double lets any signed-in session change its password. Whether the
+      // real service asks an account with two-factor for its code first is not
+      // known from here (see the pull request).
+      const body = await request.json();
+      if (body.password) who.user.password = body.password;
+      return json(200, userBody(who.user));
     }
 
     if (name === "token:password") {

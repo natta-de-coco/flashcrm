@@ -79,6 +79,7 @@ export async function buildServerBundle() {
         export { requireSupabaseAuth } from "./src/integrations/supabase/auth-middleware";
         export { createServerFn } from "@tanstack/react-start";
         export { runWithStartContext } from "@tanstack/start-storage-context";
+        export { OPEN_SERVER_FUNCTIONS } from "./src/lib/two-factor.server";
       `,
       resolveDir: process.cwd(),
     },
