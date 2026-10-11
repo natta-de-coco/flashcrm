@@ -307,6 +307,14 @@ async function syncMeta(account: SocialAccountSecret, firstSync = false): Promis
       // synced either: stamping it would show "Synced just now" for nothing,
       // and would make the next, real sync file the account's whole history as
       // new work instead of as history.
+      if (identity.advice) {
+        // Meta answered, but not with an Instagram profile. What the person
+        // reads is the advice; the technical reason is for the log.
+        console.error(`[social] instagram profile not confirmed: ${identity.message}`);
+        skipped.push({ what: "Instagram profile", reason: identity.advice });
+        return { ok: false, posts: 0, interactions: 0, error: identity.advice, skipped };
+      }
+      // Meta refused the question: say which permission or token it points at.
       note("Instagram profile", new Error(identity.message));
       return {
         ok: false,

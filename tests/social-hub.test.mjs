@@ -18,6 +18,7 @@
 //   R5  the button pressed decides the plan; a date that cannot be read refuses.
 //   R6  what the composer loads and sends is decided in tested functions, not on the screen.
 //   R7  a "No account" draft has nowhere to keep its platform, and the screen says so.
+//   R8  the Instagram stop message tells the person what to do, in plain words.
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
@@ -555,6 +556,11 @@ const accountRow = (fields) => ({
   ...fields,
 });
 
+/** What the person reads when Meta did not confirm the id; "Integrations" is the nav label of /connect. */
+const UNCONFIRMED_SENTENCE =
+  "Meta did not confirm that this is an Instagram account, so nothing was synced. " +
+  "Reconnect Instagram in Integrations and choose the Instagram account again.";
+
 describe("R1: an Instagram account Meta will not confirm is not synced", () => {
   let realFetch;
   let realConsoleError;
@@ -601,14 +607,13 @@ describe("R1: an Instagram account Meta will not confirm is not synced", () => {
     // Reported the way every other section that could not be read is.
     assert.equal(result.skipped?.length, 1);
     assert.equal(result.skipped[0].what, "Instagram profile");
-    assert.match(result.skipped[0].reason, /could not confirm this id is an Instagram account/);
-    // And the words no longer say only the follower count was left alone.
-    assert.match(result.skipped[0].reason, /nothing was synced from it/);
+    assert.equal(result.skipped[0].reason, UNCONFIRMED_SENTENCE);
     // And it is not a success: nothing was synced, and the person is told why.
     assert.equal(result.ok, false);
+    assert.equal(result.error, UNCONFIRMED_SENTENCE);
     const told = syncSummary(result);
     assert.equal(told.tone, "error");
-    assert.equal(told.text, `Instagram profile: ${result.skipped[0].reason}`);
+    assert.equal(told.text, UNCONFIRMED_SENTENCE);
   });
 
   it("stores nothing when Meta refuses the profile for a missing permission", async () => {
@@ -1495,5 +1500,104 @@ describe("R7: the screen does not say a platform is saved when the post cannot k
       words,
       /"social\.platformNotSavedWithoutAccount":\s*"With no account chosen, the platform is only used while you write\. It is not saved with the draft\."/,
     );
+  });
+});
+
+/* ───────── The Instagram stop message reads like a person wrote it (R8) ──── */
+
+describe("R8: when Meta does not confirm an Instagram id, the person is told what to do", () => {
+  let realFetch;
+  let realConsoleError;
+  let logged;
+  beforeEach(() => {
+    startSuite({ social_accounts: [accountRow()] });
+    realFetch = globalThis.fetch;
+    realConsoleError = console.error;
+    logged = [];
+    console.error = (...args) => logged.push(args.join(" "));
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    console.error = realConsoleError;
+  });
+
+  /** Words that belong in a log, not on a person's screen. */
+  const TECHNICAL = [/media_count/, /Meta refused it/, /Flas could not/, /\bid\b/, /\(#\d+\)/];
+
+  it("the whole message is the sentence, with the navigation label of the connect screen", async () => {
+    installProvider(instagramGraph({ id: IG_ID, username: "the.bakery", followers_count: 3405 }));
+    const result = await syncSocialAccount(instagramAccount, true);
+
+    assert.equal(result.error, UNCONFIRMED_SENTENCE);
+    assert.equal(result.skipped.length, 1);
+    assert.equal(result.skipped[0].reason, UNCONFIRMED_SENTENCE);
+    for (const word of TECHNICAL) {
+      assert.doesNotMatch(result.error, word, "no technical wording reaches the person");
+    }
+  });
+
+  it("the label is the one the navigation shows for the connect screen", () => {
+    const navigation = read("src/lib/navigation.ts");
+    const entry = navigation.slice(navigation.indexOf('to: "/connect"'));
+    assert.match(entry.slice(0, 120), /label: "Integrations"/);
+    assert.ok(UNCONFIRMED_SENTENCE.includes("in Integrations and"));
+  });
+
+  it("the technical reason goes to the server log instead", async () => {
+    installProvider(instagramGraph({ id: IG_ID, username: "the.bakery", followers_count: 3405 }));
+    await syncSocialAccount(instagramAccount, true);
+    assert.ok(
+      logged.some((line) => line.includes("media_count")),
+      "the log keeps Meta's detail",
+    );
+    assert.ok(!logged.join(" ").includes("a-test-token"), "and never the token");
+  });
+
+  it("an answer with nothing in it reads the same way", async () => {
+    installProvider((host, path) => {
+      if (host !== "graph.facebook.com") return null;
+      if (path === "/me") return { id: "102938475610293", name: "The Bakery" };
+      if (path === `/${IG_ID}`) return {};
+      return null;
+    });
+    const result = await syncSocialAccount(instagramAccount, true);
+    assert.equal(result.ok, false);
+    assert.equal(result.error, UNCONFIRMED_SENTENCE);
+    assert.equal(db.table("social_posts").length, 0);
+  });
+
+  it("the identity check gives the sentence only when Meta refused nothing", () => {
+    const noCount = readInstagramIdentity({
+      storedId: IG_ID,
+      profile: { id: IG_ID, followers_count: 3405 },
+    });
+    assert.equal(noCount.kind, "unconfirmed");
+    assert.equal(noCount.advice, UNCONFIRMED_SENTENCE);
+    assert.match(noCount.message, /media_count/, "the detail is kept for the log");
+
+    const noProfile = readInstagramIdentity({ storedId: IG_ID, profile: null });
+    assert.equal(noProfile.advice, UNCONFIRMED_SENTENCE);
+
+    // When Meta did refuse, its own error is explained by the permission or token it names.
+    const refused = readInstagramIdentity({
+      storedId: IG_ID,
+      errorMessage: "(#200) Requires instagram_basic permission",
+    });
+    assert.equal(refused.kind, "unconfirmed");
+    assert.equal(refused.advice, undefined);
+  });
+
+  it("a missing permission or an expired token is still explained as before", async () => {
+    installProvider(
+      instagramGraph({ error: { message: "(#200) Requires instagram_basic permission" } }),
+    );
+    const missing = await syncSocialAccount(instagramAccount, true);
+    assert.match(missing.error, /Instagram profile: .*instagram_basic/);
+
+    installProvider(
+      instagramGraph({ error: { message: "Error validating access token: Session has expired" } }),
+    );
+    const expired = await syncSocialAccount(instagramAccount, true);
+    assert.match(expired.error, /Reconnect this account/);
   });
 });
