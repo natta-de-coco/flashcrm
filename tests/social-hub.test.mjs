@@ -16,6 +16,7 @@
 //
 // Second review of PR #57, further down:
 //   R5  the button pressed decides the plan; a date that cannot be read refuses.
+//   R6  what the composer loads and sends is decided in tested functions, not on the screen.
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
@@ -64,7 +65,14 @@ const { SOCIAL_HUB_CAN_PUBLISH, publishReality, plannedPostNote } = loadLib(
 const { CONNECTOR_DEFINITIONS, resolveCapability } = loadLib(
   "../src/lib/social-connector-definitions.ts",
 );
-const { draftSaveRequest, savedMessageKey } = loadLib("../src/lib/social-drafts.ts");
+const {
+  draftSaveRequest,
+  savedMessageKey,
+  submitDraft,
+  draftFromPost,
+  toLocalInputValue,
+  emptyDraft,
+} = loadLib("../src/lib/social-drafts.ts");
 const { isUnfinishedConnection } = loadLib("../src/lib/social-account-readiness.ts");
 const { syncSummary } = loadLib("../src/lib/sync-report.ts");
 
@@ -376,8 +384,8 @@ describe("the composer only offers what Flas can actually do", () => {
   it("offers an account to write for, which the save already accepted", () => {
     const route = read("src/routes/_authenticated/social.tsx");
     assert.ok(route.includes("writableAccounts"));
-    // What is sent is built in social-drafts.ts and tested below (R2, R3).
-    assert.ok(route.includes("draftSaveRequest(draft, plan)"));
+    // What is sent is built in social-drafts.ts and tested below (R2, R3, R5, R6).
+    assert.ok(route.includes("submitDraft(draft, plan, { save, update })"));
     assert.ok(read("src/lib/social.functions.ts").includes("accountId: z.string().uuid()"));
   });
 });
@@ -1147,6 +1155,16 @@ describe("R5: the button pressed decides the plan, and a date that cannot be rea
     }
   });
 
+  it("a moment that falls in year 0 is unreadable, because the database has no such year", () => {
+    // Midnight on 1 January of year 1 is still year 0 in any zone ahead of UTC;
+    // in UTC and behind it, it is a year the database has.
+    const value = "0001-01-01T00:00";
+    const iso = new Date(value).toISOString();
+    const request = draftSaveRequest(composing({ plannedAt: value }), true);
+    if (iso.startsWith("0000")) sameShape(request, { kind: "unreadable-date" });
+    else assert.equal(request.data.scheduledAt, iso);
+  });
+
   it("the toast says what was saved, decided from the request", () => {
     const planned = new Date(LOADED).toISOString();
     const key = (kind, data) => savedMessageKey({ kind, data });
@@ -1168,5 +1186,233 @@ describe("R5: the button pressed decides the plan, and a date that cannot be rea
       words,
       /"social\.plannedDateUnreadable": "That date could not be read\. Choose the date and time again\."/,
     );
+  });
+});
+
+/* ───────── The screen holds no logic of its own (R6) ─────────────────────── */
+
+describe("R6: what the composer loads and what it sends are tested, not read off the screen", () => {
+  const ACCOUNTS = [
+    { id: IG_ACCOUNT, platform: "instagram" },
+    { id: FB_ACCOUNT, platform: "facebook" },
+  ];
+  const PLANNED_AT = "2026-11-02T09:30:00.000Z";
+  const saved = (fields) => ({
+    id: SAVED_POST,
+    caption: "A saved caption",
+    account_id: IG_ACCOUNT,
+    scheduled_at: PLANNED_AT,
+    ...fields,
+  });
+  const load = (fields, accounts = ACCOUNTS, current = "youtube") =>
+    draftFromPost(saved(fields), accounts, current);
+
+  it("a planned post loads with its date, and remembers it as the one it came with", () => {
+    const draft = load({});
+    const shown = toLocalInputValue(PLANNED_AT);
+    assert.equal(draft.id, SAVED_POST);
+    assert.equal(draft.caption, "A saved caption");
+    assert.equal(draft.accountId, IG_ACCOUNT);
+    assert.equal(draft.platform, "instagram");
+    assert.notEqual(draft.plannedAt, "");
+    assert.equal(draft.plannedAt, shown);
+    assert.equal(draft.loadedPlannedAt, shown, "what an untouched date is compared with");
+  });
+
+  it("the date is shown in local time to the minute", () => {
+    const shown = toLocalInputValue(PLANNED_AT);
+    assert.match(shown, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    assert.equal(new Date(shown).toISOString(), PLANNED_AT);
+    assert.equal(toLocalInputValue(null), "");
+    assert.equal(toLocalInputValue("garbage"), "");
+  });
+
+  it("a draft loads with no date, and an untouched form then says nothing about one", () => {
+    const draft = load({ scheduled_at: null });
+    assert.equal(draft.plannedAt, "");
+    assert.equal(draft.loadedPlannedAt, "");
+    const request = draftSaveRequest(draft, false);
+    assert.equal(Object.hasOwn(request.data, "scheduledAt"), false);
+  });
+
+  it("a loaded post, saved without touching the date, keeps its plan (the whole path)", async () => {
+    startSuite({
+      social_posts: [
+        {
+          id: SAVED_POST,
+          tenant_id: TENANT,
+          account_id: IG_ACCOUNT,
+          caption: "Old caption",
+          status: "scheduled",
+          scheduled_at: PLANNED_AT,
+        },
+      ],
+    });
+    const draft = { ...load({}), caption: "Rewritten" };
+    await submitDraft(draft, false, {
+      save: (args) => saveSocialPost(asUser(args.data)),
+      update: (args) => updateSocialPost(asUser(args.data)),
+    });
+    const [row] = db.table("social_posts");
+    assert.equal(row.caption, "Rewritten");
+    assert.equal(row.status, "scheduled");
+    assert.equal(row.scheduled_at, PLANNED_AT);
+  });
+
+  it("a post with no account loads as 'No account' and keeps the composer's platform", () => {
+    const draft = load({ account_id: null }, ACCOUNTS, "youtube");
+    assert.equal(draft.accountId, null);
+    assert.equal(draft.platform, "youtube");
+  });
+
+  it("an account that is not in the list loads as 'No account', not as a choice that cannot be shown", () => {
+    const draft = load({ account_id: "0b6f4c1e-0000-4000-8000-0000000000ff" });
+    assert.equal(draft.accountId, null);
+  });
+
+  it("an empty composer has no post, no account and no date", () => {
+    sameShape(emptyDraft("facebook"), {
+      id: null,
+      caption: "",
+      platform: "facebook",
+      accountId: null,
+      plannedAt: "",
+      loadedPlannedAt: "",
+    });
+  });
+
+  describe("what is sent is handed to the server function untouched", () => {
+    const recorder = () => {
+      const calls = [];
+      return {
+        calls,
+        save: async (args) => {
+          calls.push({ to: "save", args });
+          return { ok: true };
+        },
+        update: async (args) => {
+          calls.push({ to: "update", args });
+          return { ok: true };
+        },
+      };
+    };
+
+    it("a new post goes to save, once, with exactly the request's data", async () => {
+      const { calls, save, update } = recorder();
+      const outcome = await submitDraft(composing(), false, { save, update });
+      assert.equal(outcome.kind, "saved");
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].to, "save");
+      assert.equal(calls[0].args.data, outcome.request.data, "the very object that was built");
+      assert.deepEqual(Object.keys(calls[0].args), ["data"]);
+      assert.equal(calls[0].args.data.accountId, null, "'No account' is sent as null");
+      assert.equal(Object.hasOwn(calls[0].args.data, "scheduledAt"), false);
+      assert.equal(outcome.messageKey, "social.draftSaved");
+    });
+
+    it("an edit goes to update, once, with exactly the request's data", async () => {
+      const { calls, save, update } = recorder();
+      const draft = composing({
+        id: SAVED_POST,
+        accountId: null,
+        plannedAt: "",
+        loadedPlannedAt: "2026-11-02T09:30",
+      });
+      const outcome = await submitDraft(draft, false, { save, update });
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].to, "update");
+      assert.equal(calls[0].args.data, outcome.request.data);
+      assert.equal(calls[0].args.data.accountId, null);
+      assert.equal(calls[0].args.data.scheduledAt, null, "the plan was emptied on purpose");
+      assert.equal(outcome.messageKey, "social.draftUpdated");
+    });
+
+    it("an edit with an untouched date sends no date at all", async () => {
+      const { calls, save, update } = recorder();
+      const draft = composing({
+        id: SAVED_POST,
+        accountId: IG_ACCOUNT,
+        plannedAt: "2026-11-02T09:30",
+        loadedPlannedAt: "2026-11-02T09:30",
+      });
+      await submitDraft(draft, false, { save, update });
+      assert.equal(Object.hasOwn(calls[0].args.data, "scheduledAt"), false);
+    });
+
+    it("a plan button says so in the message, on a new post and on an edit", async () => {
+      const { save, update } = recorder();
+      const create = await submitDraft(composing({ plannedAt: "2026-11-02T09:30" }), true, {
+        save,
+        update,
+      });
+      assert.equal(create.messageKey, "social.savedWithAPlannedDate");
+      const edit = await submitDraft(
+        composing({
+          id: SAVED_POST,
+          plannedAt: "2026-11-02T09:30",
+          loadedPlannedAt: "2026-11-02T09:30",
+        }),
+        true,
+        { save, update },
+      );
+      assert.equal(edit.messageKey, "social.savedWithAPlannedDate");
+    });
+
+    it("an unreadable date sends nowhere: nothing is saved and nothing is called", async () => {
+      startSuite({ social_posts: [] });
+      const calls = [];
+      const outcome = await submitDraft(composing({ plannedAt: "12026-10-08T10:00" }), true, {
+        save: async (args) => calls.push(["save", args]),
+        update: async (args) => calls.push(["update", args]),
+      });
+      sameShape(outcome, { kind: "unreadable-date" });
+      assert.equal(calls.length, 0);
+      assert.equal(db.table("social_posts").length, 0);
+    });
+
+    it("what the server function throws reaches the caller", async () => {
+      await assert.rejects(
+        submitDraft(composing(), false, {
+          save: async () => {
+            throw new Error("connection reset");
+          },
+          update: async () => ({}),
+        }),
+        /connection reset/,
+      );
+    });
+
+    it("a refused save through the real handlers is not reported as saved", async () => {
+      startSuite({ social_posts: [] });
+      db.fail("social_posts:insert", { message: "connection reset" });
+      await assert.rejects(
+        submitDraft(composing(), false, {
+          save: (args) => saveSocialPost(asUser(args.data)),
+          update: (args) => updateSocialPost(asUser(args.data)),
+        }),
+        refusedWith("connection reset"),
+      );
+      assert.equal(db.table("social_posts").length, 0);
+    });
+  });
+
+  it("the screen has one line for each and no room to alter either", () => {
+    const route = read("src/routes/_authenticated/social.tsx");
+    const composer = route.slice(
+      route.indexOf("function ComposerTab("),
+      route.indexOf("function PostRow("),
+    );
+    assert.ok(composer.includes("submitDraft(draft, plan, { save, update })"));
+    assert.ok(composer.includes("draftFromPost(editing, writableAccounts, d.platform)"));
+    // The logic that used to sit here is gone from the screen.
+    for (const gone of [
+      "draftSaveRequest",
+      "savedMessageKey",
+      "toLocalInputValue",
+      "loadedPlannedAt",
+      "scheduledAt",
+    ]) {
+      assert.equal(composer.includes(gone), false, `${gone} is decided in social-drafts.ts`);
+    }
   });
 });

@@ -24,7 +24,7 @@ import { manualSocialFormError } from "@/lib/form-validation";
 import { connector } from "@/lib/connections-catalog";
 import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
 import { isUnfinishedConnection } from "@/lib/social-account-readiness";
-import { draftSaveRequest, savedMessageKey, type ComposerDraft } from "@/lib/social-drafts";
+import { draftFromPost, emptyDraft, submitDraft, type ComposerDraft } from "@/lib/social-drafts";
 import { plannedPostNote, publishReality } from "@/lib/social-publishing";
 import {
   groupPostsByState,
@@ -327,18 +327,6 @@ function PlatformBadge({ platform, label }: { platform: string | null; label?: s
       <PlatformIcon platform={platform} />
       {label ?? platformDisplayName(platform)}
     </Badge>
-  );
-}
-
-/** ISO instant → the value a `datetime-local` input expects, in local time. */
-function toLocalInputValue(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
   );
 }
 
@@ -889,14 +877,7 @@ function ComposerTab({
   });
   // One piece of work in the composer: a new caption, or the draft being
   // rewritten. `id` is what tells the two apart on save.
-  const [draft, setDraft] = useState<ComposerDraft<PlatformId>>({
-    id: null,
-    caption: "",
-    platform: "instagram",
-    accountId: null,
-    plannedAt: "",
-    loadedPlannedAt: "",
-  });
+  const [draft, setDraft] = useState<ComposerDraft<PlatformId>>(() => emptyDraft("instagram"));
 
   // Accounts a post can be written for. The composer's own platform list is
   // what the server accepts (ComposeSchema / SavePostSchema), so an analytics or
@@ -907,17 +888,8 @@ function ComposerTab({
 
   useEffect(() => {
     if (!editing) return;
-    setDraft((d) => ({
-      id: editing.id,
-      caption: editing.caption,
-      accountId: editing.account_id,
-      platform:
-        ((writableAccounts.find((a) => a.id === editing.account_id)?.platform as PlatformId) ??
-          d.platform) ||
-        "instagram",
-      plannedAt: toLocalInputValue(editing.scheduled_at),
-      loadedPlannedAt: toLocalInputValue(editing.scheduled_at),
-    }));
+    // What the composer holds for a saved post is decided in social-drafts.ts.
+    setDraft((d) => draftFromPost(editing, writableAccounts, d.platform));
     // Only the identity of the post being edited should reload the form —
     // re-running on every account refetch would throw away typing in progress.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -928,14 +900,7 @@ function ComposerTab({
   const saved = [...groups.planned, ...groups.drafts];
 
   const resetDraft = () => {
-    setDraft({
-      id: null,
-      caption: "",
-      platform: draft.platform,
-      accountId: null,
-      plannedAt: "",
-      loadedPlannedAt: "",
-    });
+    setDraft(emptyDraft(draft.platform));
     onEdit(null);
   };
 
@@ -950,22 +915,16 @@ function ComposerTab({
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (plan: boolean) => {
-      // What is sent is decided in social-drafts.ts, where it is tested.
-      const request = draftSaveRequest(draft, plan);
-      if (request.kind === "unreadable-date") return request;
-      await (request.kind === "update"
-        ? update({ data: request.data })
-        : save({ data: request.data }));
-      return request;
-    },
-    onSuccess: (request) => {
-      if (request.kind === "unreadable-date") {
+    // What is sent, and what is said about it, is decided in social-drafts.ts,
+    // where it is tested.
+    mutationFn: (plan: boolean) => submitDraft(draft, plan, { save, update }),
+    onSuccess: (outcome) => {
+      if (outcome.kind === "unreadable-date") {
         // Nothing was sent or saved; the form stays as it is so the date can be chosen again.
         toast.error(i18n.t("social.plannedDateUnreadable"));
         return;
       }
-      toast.success(i18n.t(savedMessageKey(request)));
+      toast.success(i18n.t(outcome.messageKey));
       resetDraft();
       onChanged();
     },

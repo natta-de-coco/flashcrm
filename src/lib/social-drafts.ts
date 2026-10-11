@@ -156,3 +156,105 @@ export function savedMessageKey(
   if (typeof request.data.scheduledAt === "string") return "social.savedWithAPlannedDate";
   return request.kind === "update" ? "social.draftUpdated" : "social.draftSaved";
 }
+
+/** The functions that put a request on the wire: the server functions, or fakes in a test. */
+export type DraftSenders<P extends string = string> = {
+  save: (args: { data: NewPostRequest<P> }) => Promise<unknown>;
+  update: (args: { data: EditPostRequest }) => Promise<unknown>;
+};
+
+export type SubmitOutcome<P extends string = string> =
+  | UnreadableDate
+  | {
+      kind: "saved";
+      /** What was sent. */
+      request: DraftSaveRequest<P>;
+      /** The message that says what was saved. */
+      messageKey: ReturnType<typeof savedMessageKey>;
+    };
+
+/**
+ * Saves the composer: builds the request, and hands it to exactly one of the
+ * two senders, unchanged. Nothing is sent when the date cannot be read.
+ *
+ * The screen calls this and nothing else, so what reaches the server is what
+ * `draftSaveRequest` decided — the screen has no room to add a default of its
+ * own (the way `accountId ?? undefined` once would have, which JSON drops and
+ * the server then reads as "pick an account for me").
+ *
+ * A sender that throws is not caught: the failure reaches the caller, and the
+ * draft is not reported as saved.
+ */
+export async function submitDraft<P extends string>(
+  draft: ComposerDraft<P>,
+  plan: boolean,
+  send: DraftSenders<P>,
+): Promise<SubmitOutcome<P>> {
+  const request = draftSaveRequest(draft, plan);
+  if (request.kind === "unreadable-date") return request;
+  if (request.kind === "update") await send.update({ data: request.data });
+  else await send.save({ data: request.data });
+  return { kind: "saved", request, messageKey: savedMessageKey(request) };
+}
+
+/** ISO instant → the value a `datetime-local` input expects, in local time. "" when there is none. */
+export function toLocalInputValue(iso: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  );
+}
+
+/** The parts of a saved post the composer loads back. */
+export type SavedPost = {
+  id: string;
+  caption: string;
+  account_id: string | null;
+  scheduled_at: string | null;
+};
+
+/**
+ * What the composer holds after a saved post is chosen for editing.
+ *
+ * The date field shows the plan in local time, and `loadedPlannedAt` remembers
+ * exactly what was shown: it is what an untouched date is told from a changed
+ * one by, so a caption edit does not rewrite (or drop) the plan. A draft loads
+ * with an empty date, which is also its `loadedPlannedAt`.
+ *
+ * The account is the post's own when that account is in the list the composer
+ * offers; a post whose account is no longer there loads as "No account", which
+ * is what the database holds once an account is deleted. The platform is the
+ * account's, and otherwise stays what the composer already had.
+ */
+export function draftFromPost<P extends string>(
+  post: SavedPost,
+  accounts: readonly { id: string; platform: string }[],
+  currentPlatform: P,
+): ComposerDraft<P> {
+  const account = accounts.find((a) => a.id === post.account_id);
+  const planned = toLocalInputValue(post.scheduled_at);
+  return {
+    id: post.id,
+    caption: post.caption,
+    accountId: account ? account.id : null,
+    platform: account ? (account.platform as P) : currentPlatform,
+    plannedAt: planned,
+    loadedPlannedAt: planned,
+  };
+}
+
+/** The composer with nothing in it, for a new post on this platform. */
+export function emptyDraft<P extends string>(platform: P): ComposerDraft<P> {
+  return {
+    id: null,
+    caption: "",
+    platform,
+    accountId: null,
+    plannedAt: "",
+    loadedPlannedAt: "",
+  };
+}
