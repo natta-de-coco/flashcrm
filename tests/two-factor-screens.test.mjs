@@ -816,3 +816,78 @@ describe("nobody is locked out: finishing two-factor set-up", () => {
     assert.equal(everAppeared("#mfa"), false);
   });
 });
+
+// ---------------------------------------------------------------------------
+
+describe("while the router is still making a move", () => {
+  // The router stand-in normally finishes a move at once and the asking page
+  // disappears. A real one takes a moment, and what the page does in that moment
+  // is where a stray second move or a half-drawn screen would show.
+  beforeEach(() => {
+    watched.holdNavigation = true;
+  });
+
+  test("a session that owes its code gets no screen and no server call, only the one move to the prompt", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0), "never asked to move");
+    await settle(500);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox"]);
+    assert.equal(
+      signedInScreen(),
+      null,
+      "a signed-in screen is on screen for a session that owes a code",
+    );
+    assert.ok(doc.querySelector("[data-app-shell]"), "the loading placeholder is not showing");
+    assert.deepEqual(
+      watched.sent,
+      [],
+      "a server call left the browser for a session that owes a code",
+    );
+  });
+
+  test("a session that has entered its code is drawn and sends its heartbeat", async () => {
+    // The same placeholder rule must not catch people it is not meant for.
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()));
+    assert.ok(await until(() => watched.served.length > 0));
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("the right code asks the router for exactly one move", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    assert.deepEqual(watched.navigations, [], "moved before the code was entered");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(500);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+
+  test("a password for an account without two-factor asks for exactly one move", async () => {
+    const me = person();
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(500);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+
+  test("a new account that gets a session at once asks for exactly one move", async () => {
+    await show();
+    await pressTab(doc.querySelector("[role='tab'][id$='trigger-signup']"));
+    assert.ok(await until(() => doc.getElementById("email2")));
+    await type("name", "New Person");
+    await type("email2", "held@example.test");
+    await type("password2", "a-long-enough-password");
+    await submit("email2");
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(500);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+});

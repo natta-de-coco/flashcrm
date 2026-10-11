@@ -22,7 +22,14 @@ export const watched = {
   sent: [],
   /** Every toast the pages showed: { kind, message }. */
   toasts: [],
+  /**
+   * A real router takes a moment to finish a move, and until it does the page
+   * that asked is still on screen. With this on, a move is recorded but the page
+   * stays where it is, which is how a test sees what the page does meanwhile.
+   */
+  holdNavigation: false,
   reset() {
+    this.holdNavigation = false;
     this.navigations.length = 0;
     this.served.length = 0;
     this.sent.length = 0;

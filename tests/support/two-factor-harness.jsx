@@ -44,7 +44,7 @@ export function App({ startAt, language = "en" }) {
   const navigate = useCallback((target) => {
     const address = addressOf(target);
     watched.navigations.push(address);
-    if (watched.navigations.length > TOO_MANY_MOVES) return;
+    if (watched.navigations.length > TOO_MANY_MOVES || watched.holdNavigation) return;
     setLocation(parse(address));
   }, []);
   const router = useMemo(() => ({ ...location, navigate }), [location, navigate]);

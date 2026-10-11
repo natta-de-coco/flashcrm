@@ -752,3 +752,59 @@ describe("the list of public server functions matches the source", () => {
     assert.deepEqual(withoutSignIn.sort(), [...mod.OPEN_SERVER_FUNCTIONS].sort());
   });
 });
+
+describe("a refusal is final until the account changes", () => {
+  test("an account with two-factor is refused on every call, not only the first", async () => {
+    // If the first refusal were remembered like an acceptance is, the second
+    // call would walk straight in.
+    const user = account([VERIFIED]);
+    const session = await fake.session(user);
+    for (let i = 0; i < 3; i += 1) {
+      const target = serverFn("listInvoices");
+      refused(await call(target, session.token), target, NEEDS_CODE);
+    }
+    assert.equal(fake.count("user"), 3, "a refusal was answered from memory");
+  });
+
+  test("and is let in the moment the factor is removed, with no wait", async () => {
+    const user = account([VERIFIED]);
+    const session = await fake.session(user);
+    const before = serverFn("listInvoices");
+    refused(await call(before, session.token), before, NEEDS_CODE);
+    fake.user(user).factors.length = 0;
+    const after = serverFn("listInvoices");
+    accepted(await call(after, session.token), after, user);
+  });
+});
+
+describe("a token the generated middleware reads differently from the gate", () => {
+  // The gate only acts on `Bearer a.b.c` with no spaces. A token with a space
+  // inside it must still be refused by requireSupabaseAuth, or a password-only
+  // token could be written so the gate ignores it. This holds because
+  // supabase-js insists each part of a token is plain base64url; if a library
+  // update ever relaxes that, this fails.
+  for (const [what, insert] of [
+    ["a space", " "],
+    ["a tab", "\t"],
+  ]) {
+    test(`is refused when ${what} is put inside the signature`, async () => {
+      const user = account([VERIFIED]);
+      const session = await fake.session(user);
+      const [head, body, signature] = session.token.split(".");
+      const spaced = `${head}.${body}.${signature.slice(0, 8)}${insert}${signature.slice(8)}`;
+      const target = serverFn("listInvoices");
+      refused(await call(target, undefined, { header: `Bearer ${spaced}` }), target, SIGN_IN_AGAIN);
+    });
+  }
+
+  test("is refused when padding is added to the signature", async () => {
+    const user = account([VERIFIED]);
+    const session = await fake.session(user);
+    const target = serverFn("listInvoices");
+    refused(
+      await call(target, undefined, { header: `Bearer ${session.token}==` }),
+      target,
+      SIGN_IN_AGAIN,
+    );
+  });
+});
