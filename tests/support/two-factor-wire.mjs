@@ -44,7 +44,10 @@ async function arriveAtServer(fn, headers, data) {
   );
 }
 
-export function serverFunction(name, { open = false, file = "src/lib/example.functions.ts" } = {}) {
+export function serverFunction(
+  name,
+  { open = false, file = "src/lib/example.functions.ts", throws = null } = {},
+) {
   const builder = createServerFn({ method: "POST" });
   const wire = Object.assign(
     async (payload) => {
@@ -61,6 +64,8 @@ export function serverFunction(name, { open = false, file = "src/lib/example.fun
   const fn = (open ? builder : builder.middleware([requireSupabaseAuth])).handler(
     wire,
     async ({ context }) => {
+      // A handler that fails for its own reasons, nothing to do with signing in.
+      if (throws) throw new Error(throws);
       watched.served.push({ name, userId: context.userId ?? null });
       return { ok: true };
     },

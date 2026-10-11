@@ -3,7 +3,8 @@
 // Client side: makes sure a live Supabase session exists (refreshing it when the
 // access token has lapsed) before any RPC leaves the browser, and turns every
 // "Unauthorized" answer into a friendly message plus a redirect to /auth —
-// instead of the blank screen a thrown runtime error used to produce.
+// instead of the blank screen a thrown runtime error used to produce. It also
+// turns the server's two-factor refusals into sentences in the person's language.
 //
 // Server side: logs exactly why a call was accepted or rejected (authorization
 // header present? token shaped like a JWT? which user id?) so a missing token is
@@ -11,13 +12,23 @@
 // its password when the account has two-factor (see lib/two-factor.server.ts).
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-import { isTwoFactorRequired, isTwoFactorUnchecked } from "@/lib/two-factor";
+import { languageFromCookieHeader, translate, type MessageKey } from "@/lib/i18n";
+import {
+  isTwoFactorRequired,
+  isTwoFactorUnchecked,
+  sessionOwesSecondFactor,
+} from "@/lib/two-factor";
 
 const FRIENDLY = "Your session has expired. Please sign in again to continue.";
 
 function isUnauthorized(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /unauthorized|jwt|invalid token|no authorization header/i.test(message);
+}
+
+/** A sentence in the language the person chose (the language cookie), outside React. */
+function inTheirLanguage(key: MessageKey): string {
+  return translate(languageFromCookieHeader(document.cookie), key);
 }
 
 /** Best-effort `sub` claim for logging only — never used for authorization. */
@@ -46,6 +57,25 @@ export const sessionGuard = createMiddleware({ type: "function" })
     try {
       return await next();
     } catch (error) {
+      if (typeof window !== "undefined" && isTwoFactorRequired(error)) {
+        // The server knows the account has two-factor and this session has not
+        // given its code. Usually this browser knows too and the screens have
+        // already sent the person to the prompt. When it does not (the factor
+        // was switched on from another device and this browser's copy of the
+        // user predates it), a refresh brings the current list of factors,
+        // which sends the open page to the prompt. If it already knows, do not
+        // refresh again: there is nothing new to learn.
+        const { supabase } = await import("@/integrations/supabase/client");
+        const { data } = await supabase.auth.getSession();
+        if (!sessionOwesSecondFactor(data.session)) {
+          await supabase.auth.refreshSession().catch(() => undefined);
+        }
+        throw new Error(inTheirLanguage("auth.mfaIntro"));
+      }
+      if (typeof window !== "undefined" && isTwoFactorUnchecked(error)) {
+        // Nothing is wrong with the session; the check just could not be made.
+        throw new Error(inTheirLanguage("auth.mfaUnchecked"));
+      }
       if (typeof window !== "undefined" && isUnauthorized(error)) {
         const { supabase } = await import("@/integrations/supabase/client");
         const { data } = await supabase.auth.getSession();

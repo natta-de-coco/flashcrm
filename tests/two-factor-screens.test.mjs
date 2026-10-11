@@ -54,6 +54,12 @@ before(() => {
     if (/Multiple GoTrueClient instances/.test(String(args[0]))) return;
     warn(...args);
   });
+  // A handler that fails for its own reasons is logged by the guard as an error.
+  const error = console.error;
+  mock.method(console, "error", (...args) => {
+    if (/^\[serverFn\]/.test(String(args[0]))) return;
+    error(...args);
+  });
 });
 after(() => {
   mock.restoreAll();
@@ -189,6 +195,8 @@ const RIGHT_CODE = "123456";
 beforeEach(() => {
   watched.reset();
   browser.location.assigned.length = 0;
+  browser.location.pathname = "/auth";
+  browser.location.search = "";
   fake.clearCalls();
   fake.confirmEmailOnSignUp(false);
   for (const name of ["user", "jwks", "rpc:access_state"]) fake.recover(name);
@@ -547,5 +555,132 @@ describe("the signed-in layout, for everyone else", () => {
     assert.deepEqual(watched.navigations, ["/auth"]);
     assert.equal(everAppeared("[data-testid='signed-in-screen']"), false);
     assert.deepEqual(watched.sent, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("when the server turns a call back", () => {
+  // These calls go through the app's own browser middleware (src/lib/session-guard.ts,
+  // src/start.ts) and then its own server middleware, as the heartbeat does.
+  const UNCHECKED =
+    "We could not check your sign-in security just now. Please try again in a moment.";
+  const INTRO_AR = "حسابك محميّ بتسجيل الدخول بالتحقق الثنائي. أدخل رمزك للمتابعة.";
+  const UNCHECKED_AR =
+    "لم نتمكن من التحقق من أمان تسجيل دخولك الآن. يُرجى المحاولة مرة أخرى بعد قليل.";
+  const refreshes = () => fake.count("token:refresh_token");
+
+  /** Make a call from the browser; return what it threw, or null. */
+  async function callFromTheBrowser(fn = app.serverFunction("probe")) {
+    try {
+      await fn({ data: undefined });
+      return null;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  /** A browser that holds a password-only session from before the account switched two-factor on. */
+  async function staleBrowser() {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.user(me.id).factors.push({ ...VERIFIED, type: "totp", code: RIGHT_CODE });
+    fake.clearCalls();
+    return me;
+  }
+
+  test("two-factor switched on elsewhere: refreshes the session once and says to enter the code", async () => {
+    await staleBrowser();
+    const error = await callFromTheBrowser();
+    assert.ok(error, "the call was let through");
+    assert.equal(error.message, INTRO);
+    assert.equal(refreshes(), 1, "the session was not refreshed exactly once");
+    const stored = (await supabase.auth.getSession()).data.session;
+    assert.ok(
+      stored.user.factors?.some((factor) => factor.status === "verified"),
+      "the refreshed session does not know about the factor",
+    );
+  });
+
+  test("says it in the person's language", async () => {
+    await staleBrowser();
+    doc.cookie = "flas_lang=ar; path=/";
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, INTRO_AR);
+  });
+
+  test("an open page is then moved to the code prompt, once, and does not loop", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.user(me.id).factors.push({ ...VERIFIED, type: "totp", code: RIGHT_CODE });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0), "never sent to the code prompt");
+    await settle(400);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox"]);
+    assert.equal(refreshes(), 1);
+    assert.ok(codeField());
+  });
+
+  test("when the browser already knows the code is owed, there is no refresh", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.clearCalls();
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, INTRO);
+    assert.equal(refreshes(), 0, "refreshed a session that already knew");
+  });
+
+  test("a check that could not be made says to try again, and neither refreshes nor redirects", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.fail("user", { status: 500 });
+    fake.clearCalls();
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, UNCHECKED);
+    assert.equal(refreshes(), 0);
+    assert.deepEqual(browser.location.assigned, []);
+    assert.deepEqual(watched.navigations, []);
+    assert.notEqual(error.message, INTRO, "told to enter a code that was never asked for");
+  });
+
+  test("a check that could not be made is said in the person's language too", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.fail("user", { network: true });
+    doc.cookie = "flas_lang=ar; path=/";
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, UNCHECKED_AR);
+  });
+
+  test("a session that entered its code is not affected by any of this", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    fake.fail("user", { status: 500 });
+    fake.clearCalls();
+    assert.equal(await callFromTheBrowser(), null);
+    assert.equal(refreshes(), 0);
+  });
+
+  test("an error that has nothing to do with signing in passes through untouched", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    fake.clearCalls();
+    const error = await callFromTheBrowser(
+      app.serverFunction("boom", { throws: "The invoice could not be saved." }),
+    );
+    assert.equal(error.message, "The invoice could not be saved.");
+    assert.equal(refreshes(), 0);
+    assert.deepEqual(browser.location.assigned, []);
+  });
+
+  test("signed out entirely: still told the session has expired, and sent to sign in", async () => {
+    browser.location.pathname = "/inbox";
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, "Your session has expired. Please sign in again to continue.");
+    assert.deepEqual(browser.location.assigned, ["/auth?redirect=%2Finbox"]);
+    assert.ok(
+      watched.toasts.some((toast) => toast.message === error.message),
+      "no message was shown",
+    );
   });
 });
