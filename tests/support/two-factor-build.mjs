@@ -127,6 +127,23 @@ export async function buildScreensBundle() {
             }
           `,
         },
+        // Toasts have no screen here; the suite reads them from what was shown.
+        sonner: {
+          contents: `
+            import { watched } from "./tests/support/two-factor-wire.mjs";
+            const say = (kind) => (message) => {
+              watched.toasts.push({ kind, message: String(message) });
+              return String(message);
+            };
+            export const toast = Object.assign(say("message"), {
+              error: say("error"),
+              success: say("success"),
+              info: say("info"),
+              warning: say("warning"),
+            });
+            export function Toaster() { return null; }
+          `,
+        },
         "components/OnboardingModal": { contents: nothing("OnboardingModal") },
         "components/CommandPalette": { contents: nothing("CommandPalette") },
         "components/QuickCreate": { contents: nothing("QuickCreate") },
