@@ -1,4 +1,6 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { ConnectSchema, PLATFORMS } from "@/lib/social-schema";
 import { z } from "zod";
@@ -30,6 +32,33 @@ const SavePostSchema = z.object({
   accountId: z.string().uuid().nullable().optional(),
   scheduledAt: z.string().datetime().optional(),
 });
+
+/**
+ * An account id a request names has to be one the caller can see. The lookup
+ * goes through the caller's own client, so row-level security decides: another
+ * workspace's account comes back as "no row", not as an account. Without this a
+ * post could be filed against any account id the database accepts (the foreign
+ * key does not look at who is asking). A new post must also be on the platform
+ * of the account it names; an edit has no platform to compare.
+ */
+async function requireVisibleAccount(
+  supabase: SupabaseClient<Database>,
+  accountId: string,
+  platform?: string,
+) {
+  const { data: account, error } = await supabase
+    .from("social_accounts")
+    .select("id, platform")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!account) throw new Error("That account could not be found. Choose the account again.");
+  if (platform !== undefined && account.platform !== platform) {
+    throw new Error(
+      "That account is on a different platform from this post. Choose the account again.",
+    );
+  }
+}
 
 /** Everything the Social Hub page needs in one round trip. */
 export const getSocialHub = createServerFn({ method: "GET" })
@@ -322,6 +351,9 @@ export const saveSocialPost = createServerFn({ method: "POST" })
     // platform's first active one — and if that account cannot be looked up,
     // the draft is not saved against a guess of "none".
     let accountId: string | null = data.accountId ?? null;
+    if (typeof data.accountId === "string") {
+      await requireVisibleAccount(context.supabase, data.accountId, data.platform);
+    }
     if (data.accountId === undefined) {
       const { data: account, error: lookupError } = await context.supabase
         .from("social_accounts")
@@ -385,6 +417,9 @@ export const updateSocialPost = createServerFn({ method: "POST" })
       scheduled_at?: string | null;
       status?: string;
     } = { caption: data.caption };
+    if (typeof data.accountId === "string") {
+      await requireVisibleAccount(context.supabase, data.accountId);
+    }
     if (data.accountId !== undefined) changes.account_id = data.accountId;
     if (data.scheduledAt !== undefined) {
       changes.scheduled_at = data.scheduledAt;

@@ -19,6 +19,7 @@
 //   R6  what the composer loads and sends is decided in tested functions, not on the screen.
 //   R7  a "No account" draft has nowhere to keep its platform, and the screen says so.
 //   R8  the Instagram stop message tells the person what to do, in plain words.
+//   R9  a post is filed only against an account the caller can see, on its platform.
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
@@ -561,6 +562,12 @@ const UNCONFIRMED_SENTENCE =
   "Meta did not confirm that this is an Instagram account, so nothing was synced. " +
   "Reconnect Instagram in Integrations and choose the Instagram account again.";
 
+/** The two accounts the signed-in person can see (what row-level security lets the lookup return). */
+const visibleAccounts = () => [
+  accountRow(),
+  accountRow({ id: FB_ACCOUNT, platform: "facebook", label: "Bakery Page" }),
+];
+
 describe("R1: an Instagram account Meta will not confirm is not synced", () => {
   let realFetch;
   let realConsoleError;
@@ -810,7 +817,9 @@ describe("R3: saving an edit keeps the plan the post already had", () => {
   });
   const savedPost = () => db.table("social_posts")[0];
 
-  beforeEach(() => startSuite({ social_posts: [plannedRow()] }));
+  beforeEach(() =>
+    startSuite({ social_accounts: visibleAccounts(), social_posts: [plannedRow()] }),
+  );
 
   it("'Save changes' on a planned post says nothing about a date it did not touch", () => {
     const request = draftSaveRequest(editing(), false);
@@ -851,7 +860,7 @@ describe("R3: saving an edit keeps the plan the post already had", () => {
   it("a new date is saved whichever button is pressed", async () => {
     const moved = new Date("2026-11-05T14:00").toISOString();
     for (const plan of [false, true]) {
-      startSuite({ social_posts: [plannedRow()] });
+      startSuite({ social_accounts: visibleAccounts(), social_posts: [plannedRow()] });
       const request = draftSaveRequest(editing({ plannedAt: "2026-11-05T14:00" }), plan);
       assert.equal(request.data.scheduledAt, moved, `plan=${plan}`);
       await updateSocialPost(asUser(request.data));
@@ -861,7 +870,10 @@ describe("R3: saving an edit keeps the plan the post already had", () => {
   });
 
   it("a draft that is edited stays a draft", async () => {
-    startSuite({ social_posts: [plannedRow({ status: "draft", scheduled_at: null })] });
+    startSuite({
+      social_accounts: visibleAccounts(),
+      social_posts: [plannedRow({ status: "draft", scheduled_at: null })],
+    });
     const request = draftSaveRequest(editing({ plannedAt: "", loadedPlannedAt: "" }), false);
     assert.equal(Object.hasOwn(request.data, "scheduledAt"), false);
     await updateSocialPost(asUser(request.data));
@@ -872,7 +884,10 @@ describe("R3: saving an edit keeps the plan the post already had", () => {
   });
 
   it("a draft given a date becomes a planned post", async () => {
-    startSuite({ social_posts: [plannedRow({ status: "draft", scheduled_at: null })] });
+    startSuite({
+      social_accounts: visibleAccounts(),
+      social_posts: [plannedRow({ status: "draft", scheduled_at: null })],
+    });
     const request = draftSaveRequest(editing({ loadedPlannedAt: "" }), true);
     await updateSocialPost(asUser(request.data));
 
@@ -900,7 +915,10 @@ describe("R3: saving an edit keeps the plan the post already had", () => {
   });
 
   it("a published post is still refused, and left as it was", async () => {
-    startSuite({ social_posts: [plannedRow({ status: "published", scheduled_at: null })] });
+    startSuite({
+      social_accounts: visibleAccounts(),
+      social_posts: [plannedRow({ status: "published", scheduled_at: null })],
+    });
     await assert.rejects(
       updateSocialPost(asUser(draftSaveRequest(editing(), false).data)),
       /cannot be changed here/,
@@ -1104,6 +1122,7 @@ describe("R5: the button pressed decides the plan, and a date that cannot be rea
 
   it("'Save with this plan' on a stale draft really plans it", async () => {
     startSuite({
+      social_accounts: visibleAccounts(),
       social_posts: [
         {
           id: SAVED_POST,
@@ -1244,6 +1263,7 @@ describe("R6: what the composer loads and what it sends are tested, not read off
 
   it("a loaded post, saved without touching the date, keeps its plan (the whole path)", async () => {
     startSuite({
+      social_accounts: visibleAccounts(),
       social_posts: [
         {
           id: SAVED_POST,
@@ -1599,5 +1619,114 @@ describe("R8: when Meta does not confirm an Instagram id, the person is told wha
     );
     const expired = await syncSocialAccount(instagramAccount, true);
     assert.match(expired.error, /Reconnect this account/);
+  });
+});
+
+/* ───────── An account id has to be one the caller can see (R9) ───────────── */
+
+describe("R9: a post is filed only against an account the caller can see, on the post's platform", () => {
+  const OTHER_WORKSPACE_ACCOUNT = "0b6f4c1e-0000-4000-8000-0000000000e1";
+  const savedPost = () => db.table("social_posts")[0];
+  const draftPost = {
+    id: SAVED_POST,
+    tenant_id: TENANT,
+    account_id: IG_ACCOUNT,
+    caption: "Old caption",
+    status: "draft",
+    scheduled_at: null,
+  };
+
+  beforeEach(() => startSuite({ social_accounts: visibleAccounts(), social_posts: [draftPost] }));
+
+  it("a new post for an account the caller cannot see is refused, and nothing is saved", async () => {
+    startSuite({ social_accounts: visibleAccounts() });
+    await assert.rejects(
+      saveSocialPost(
+        asUser({ caption: "Hi", platform: "instagram", accountId: OTHER_WORKSPACE_ACCOUNT }),
+      ),
+      /That account could not be found/,
+    );
+    assert.equal(db.table("social_posts").length, 0);
+    assert.equal(globalThis.socialSuite.audits.length, 0);
+  });
+
+  it("the account is looked up through the caller's own client, not the service one", async () => {
+    // The service client can see this account; the caller's cannot. Only the
+    // caller's answer counts.
+    const callers = createDb();
+    callers.reset({ social_accounts: [] });
+    startSuite({ social_accounts: visibleAccounts() });
+    await assert.rejects(
+      saveSocialPost({
+        data: { caption: "Hi", platform: "instagram", accountId: IG_ACCOUNT },
+        context: { supabase: callers.client, userId: "user-1" },
+      }),
+      /That account could not be found/,
+    );
+    assert.equal(callers.table("social_posts").length, 0);
+    assert.equal(db.table("social_posts").length, 0);
+  });
+
+  it("a new post whose account is on another platform is refused, and nothing is saved", async () => {
+    startSuite({ social_accounts: visibleAccounts() });
+    await assert.rejects(
+      saveSocialPost(asUser({ caption: "Hi", platform: "instagram", accountId: FB_ACCOUNT })),
+      /different platform/,
+    );
+    assert.equal(db.table("social_posts").length, 0);
+  });
+
+  it("a new post whose account is on its platform is saved against that account", async () => {
+    startSuite({ social_accounts: visibleAccounts() });
+    await saveSocialPost(asUser({ caption: "Hi", platform: "facebook", accountId: FB_ACCOUNT }));
+    assert.equal(savedPost().account_id, FB_ACCOUNT);
+  });
+
+  it("an account that cannot be looked up is not 'no account': the new post is not saved", async () => {
+    startSuite({ social_accounts: visibleAccounts() });
+    db.fail("social_accounts:read", { message: "connection reset" });
+    await assert.rejects(
+      saveSocialPost(asUser({ caption: "Hi", platform: "instagram", accountId: IG_ACCOUNT })),
+      refusedWith("connection reset"),
+    );
+    assert.equal(db.table("social_posts").length, 0);
+  });
+
+  it("an edit that names an account the caller cannot see is refused, and the post is untouched", async () => {
+    await assert.rejects(
+      updateSocialPost(
+        asUser({ id: SAVED_POST, caption: "New caption", accountId: OTHER_WORKSPACE_ACCOUNT }),
+      ),
+      /That account could not be found/,
+    );
+    assert.equal(savedPost().caption, "Old caption");
+    assert.equal(savedPost().account_id, IG_ACCOUNT);
+  });
+
+  it("an edit that cannot look the account up is not saved", async () => {
+    db.fail("social_accounts:read", { message: "connection reset" });
+    await assert.rejects(
+      updateSocialPost(asUser({ id: SAVED_POST, caption: "New caption", accountId: FB_ACCOUNT })),
+      refusedWith("connection reset"),
+    );
+    assert.equal(savedPost().caption, "Old caption");
+  });
+
+  it("an edit may move the post to any account the caller can see", async () => {
+    await updateSocialPost(
+      asUser({ id: SAVED_POST, caption: "New caption", accountId: FB_ACCOUNT }),
+    );
+    assert.equal(savedPost().account_id, FB_ACCOUNT);
+    assert.equal(savedPost().caption, "New caption");
+  });
+
+  it("'No account' and 'say nothing about the account' look nothing up", async () => {
+    db.fail("social_accounts:read", { message: "connection reset" });
+    await updateSocialPost(asUser({ id: SAVED_POST, caption: "Words only" }));
+    await updateSocialPost(asUser({ id: SAVED_POST, caption: "Detached", accountId: null }));
+    assert.equal(savedPost().caption, "Detached");
+    assert.equal(savedPost().account_id, null);
+    await saveSocialPost(asUser({ caption: "Hi", platform: "instagram", accountId: null }));
+    assert.equal(db.table("social_posts").length, 2);
   });
 });
