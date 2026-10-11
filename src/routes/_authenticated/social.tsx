@@ -24,7 +24,13 @@ import { manualSocialFormError } from "@/lib/form-validation";
 import { connector } from "@/lib/connections-catalog";
 import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
 import { isUnfinishedConnection } from "@/lib/social-account-readiness";
-import { draftFromPost, emptyDraft, submitDraft, type ComposerDraft } from "@/lib/social-drafts";
+import {
+  draftFromPost,
+  emptyDraft,
+  platformIsKept,
+  submitDraft,
+  type ComposerDraft,
+} from "@/lib/social-drafts";
 import { plannedPostNote, publishReality } from "@/lib/social-publishing";
 import {
   groupPostsByState,
@@ -1035,13 +1041,18 @@ function ComposerTab({
                   ))}
                 </SelectContent>
               </Select>
-              {draft.accountId !== null ? (
+              {platformIsKept(draft) ? (
                 <p className="text-xs text-muted-foreground">
                   {i18n.tr("social.setByTheAccountYou", {
                     platformDisplayName: platformDisplayName(draft.platform),
                   })}
                 </p>
-              ) : null}
+              ) : (
+                // A draft with no account has nowhere to keep the platform.
+                <p className="text-xs text-muted-foreground">
+                  {i18n.t("social.platformNotSavedWithoutAccount")}
+                </p>
+              )}
             </div>
           </div>
 

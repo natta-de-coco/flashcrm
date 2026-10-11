@@ -258,3 +258,16 @@ export function emptyDraft<P extends string>(platform: P): ComposerDraft<P> {
     loadedPlannedAt: "",
   };
 }
+
+/**
+ * Whether the platform chosen in the composer is kept with the saved post.
+ *
+ * `social_posts` has an account but no platform column. With an account, the
+ * platform is that account's, and is read from it. With "No account" nothing
+ * else records it: the request carries the platform, the server uses it for the
+ * caption and the audit log, and the row that is stored does not. The composer
+ * says so, instead of letting a chosen platform look as if it were saved.
+ */
+export function platformIsKept(draft: { accountId: string | null }): boolean {
+  return draft.accountId !== null;
+}

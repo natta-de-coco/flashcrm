@@ -128,6 +128,8 @@ export default screen({
     "social.postStatus.scheduled": "Planned",
     "social.postStatus.draft": "Draft",
     "social.plannedDateUnreadable": "That date could not be read. Choose the date and time again.",
+    "social.platformNotSavedWithoutAccount":
+      "With no account chosen, the platform is only used while you write. It is not saved with the draft.",
   },
   ar: {
     "social.socialHub": "مركز التواصل الاجتماعي",
@@ -253,6 +255,8 @@ export default screen({
     "social.postStatus.scheduled": "مخطط",
     "social.postStatus.draft": "مسودة",
     "social.plannedDateUnreadable": "تعذّرت قراءة هذا التاريخ. اختر التاريخ والوقت مرة أخرى.",
+    "social.platformNotSavedWithoutAccount":
+      "عند عدم اختيار حساب، تُستخدم المنصة أثناء الكتابة فقط ولا تُحفظ مع المسودة.",
   },
   ms: {
     "social.socialHub": "Hab Sosial",
@@ -383,6 +387,8 @@ export default screen({
     "social.postStatus.scheduled": "Dirancang",
     "social.postStatus.draft": "Draf",
     "social.plannedDateUnreadable": "Tarikh itu tidak dapat dibaca. Pilih semula tarikh dan masa.",
+    "social.platformNotSavedWithoutAccount":
+      "Apabila tiada akaun dipilih, platform hanya digunakan semasa anda menulis. Ia tidak disimpan bersama draf.",
   },
   fil: {
     "social.socialHub": "Social Hub",
@@ -513,6 +519,8 @@ export default screen({
     "social.postStatus.scheduled": "Nakaplano",
     "social.postStatus.draft": "Draft",
     "social.plannedDateUnreadable": "Hindi mabasa ang petsang iyon. Piliin muli ang petsa at oras.",
+    "social.platformNotSavedWithoutAccount":
+      "Kapag walang napiling account, ginagamit lang ang platform habang nagsusulat ka. Hindi ito nase-save kasama ng draft.",
   },
   sw: {
     "social.socialHub": "Kitovu cha Mitandao",
@@ -641,5 +649,7 @@ export default screen({
     "social.postStatus.scheduled": "Imepangwa",
     "social.postStatus.draft": "Rasimu",
     "social.plannedDateUnreadable": "Tarehe hiyo haikuweza kusomwa. Chagua tarehe na saa tena.",
+    "social.platformNotSavedWithoutAccount":
+      "Usipochagua akaunti, jukwaa linatumika tu unapoandika. Halihifadhiwi pamoja na rasimu.",
   },
 });

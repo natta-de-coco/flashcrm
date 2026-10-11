@@ -17,6 +17,7 @@
 // Second review of PR #57, further down:
 //   R5  the button pressed decides the plan; a date that cannot be read refuses.
 //   R6  what the composer loads and sends is decided in tested functions, not on the screen.
+//   R7  a "No account" draft has nowhere to keep its platform, and the screen says so.
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
@@ -72,6 +73,7 @@ const {
   draftFromPost,
   toLocalInputValue,
   emptyDraft,
+  platformIsKept,
 } = loadLib("../src/lib/social-drafts.ts");
 const { isUnfinishedConnection } = loadLib("../src/lib/social-account-readiness.ts");
 const { syncSummary } = loadLib("../src/lib/sync-report.ts");
@@ -1414,5 +1416,84 @@ describe("R6: what the composer loads and what it sends are tested, not read off
     ]) {
       assert.equal(composer.includes(gone), false, `${gone} is decided in social-drafts.ts`);
     }
+  });
+});
+
+/* ───────── A "No account" draft has nowhere to keep its platform (R7) ────── */
+
+describe("R7: the screen does not say a platform is saved when the post cannot keep it", () => {
+  beforeEach(() => {
+    startSuite({
+      social_accounts: [
+        accountRow(),
+        accountRow({ id: FB_ACCOUNT, platform: "facebook", label: "Bakery Page" }),
+      ],
+    });
+  });
+
+  it("a draft saved for Facebook with 'No account' stores nothing that says Facebook", async () => {
+    const request = draftSaveRequest(composing({ platform: "facebook", accountId: null }), false);
+    assert.equal(request.data.platform, "facebook", "the screen did send the platform");
+    await saveSocialPost(asUser(request.data));
+
+    const [row] = db.table("social_posts");
+    assert.equal(row.account_id, null);
+    assert.equal(Object.hasOwn(row, "platform"), false, "social_posts has no platform column");
+    assert.ok(!JSON.stringify(row).includes("facebook"), "and nothing else in the row names it");
+    // The one place it is recorded is the audit log, which the screen does not read back.
+    assert.equal(globalThis.socialSuite.audits[0].details.platform, "facebook");
+  });
+
+  it("so after a reload that draft shows no platform of its own", async () => {
+    await saveSocialPost(
+      asUser(draftSaveRequest(composing({ platform: "facebook", accountId: null }), false).data),
+    );
+    const [row] = db.table("social_posts");
+    const accounts = db.table("social_accounts");
+    const shown = postAttribution(row, accounts);
+    assert.equal(shown.platform, null);
+    assert.equal(shown.label, "No account");
+    // And the editor starts from the platform the composer already had, not
+    // from anything the draft remembered.
+    const editor = draftFromPost(row, accounts, "instagram");
+    assert.equal(editor.platform, "instagram");
+  });
+
+  it("with an account, the platform is the account's and survives the reload", async () => {
+    await saveSocialPost(
+      asUser(
+        draftSaveRequest(composing({ platform: "facebook", accountId: FB_ACCOUNT }), false).data,
+      ),
+    );
+    const [row] = db.table("social_posts");
+    const accounts = db.table("social_accounts");
+    assert.equal(postAttribution(row, accounts).platform, "facebook");
+    assert.equal(draftFromPost(row, accounts, "instagram").platform, "facebook");
+  });
+
+  it("the composer says the platform is kept only when an account is chosen", () => {
+    assert.equal(platformIsKept({ accountId: FB_ACCOUNT }), true);
+    assert.equal(platformIsKept({ accountId: null }), false);
+  });
+
+  it("the screen shows the note exactly when the platform is not kept, in five languages", () => {
+    const route = read("src/routes/_authenticated/social.tsx");
+    const composer = route.slice(
+      route.indexOf("function ComposerTab("),
+      route.indexOf("function PostRow("),
+    );
+    const note = composer.indexOf('i18n.t("social.platformNotSavedWithoutAccount")');
+    const kept = composer.indexOf("platformIsKept(draft) ? (");
+    const setByAccount = composer.indexOf('i18n.tr("social.setByTheAccountYou"');
+    assert.ok(
+      kept > 0 && setByAccount > kept && note > setByAccount,
+      "the note is the other branch",
+    );
+    const words = read("src/lib/i18n/screens/social.ts");
+    assert.equal(words.split('"social.platformNotSavedWithoutAccount"').length - 1, 5);
+    assert.match(
+      words,
+      /"social\.platformNotSavedWithoutAccount":\s*"With no account chosen, the platform is only used while you write\. It is not saved with the draft\."/,
+    );
   });
 });
