@@ -52,6 +52,9 @@ export const OPEN_SERVER_FUNCTIONS: readonly string[] = [
   "src/lib/public-billing.functions.ts#claimDocumentPayment",
   "src/lib/public-billing.functions.ts#verifyDocument",
   "src/lib/telemetry.functions.ts#reportErrorEvent",
+  // The link in a marketing email: the reader is usually not signed in, and
+  // must still be able to unsubscribe when they happen to be.
+  "src/routes/unsubscribe.tsx#processUnsubscribeFn",
   "src/utils/payments.functions.ts#resolvePaddlePrice",
 ];
 
