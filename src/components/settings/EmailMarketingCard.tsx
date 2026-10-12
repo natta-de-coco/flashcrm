@@ -201,14 +201,18 @@ export function EmailMarketingCard() {
                   Verified
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                <Badge
+                  variant="secondary"
+                  className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                >
                   <AlertCircle className="mr-1 h-3 w-3" />
                   Unverified
                 </Badge>
               )}
             </div>
             <CardDescription>
-              Connect your company&apos;s own SMTP server to send marketing campaigns and automated welcome discounts.
+              Connect your company&apos;s own SMTP server to send marketing campaigns and automated
+              welcome discounts.
             </CardDescription>
           </div>
 
@@ -241,11 +245,16 @@ export function EmailMarketingCard() {
       <CardContent>
         {!isVerified && (
           <div className="mb-4 rounded-lg border border-amber-300/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
-            <strong>Action required:</strong> You must configure and test your custom SMTP server before campaigns can be scheduled or dispatched.
+            <strong>Action required:</strong> You must configure and test your custom SMTP server
+            before campaigns can be scheduled or dispatched.
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "smtp" | "imap" | "welcome" | "dns")}
+          className="w-full"
+        >
           <TabsList className="grid grid-cols-4 mb-4">
             <TabsTrigger value="smtp">Outbound SMTP</TabsTrigger>
             <TabsTrigger value="imap">Inbound IMAP</TabsTrigger>
@@ -343,7 +352,9 @@ export function EmailMarketingCard() {
                   checked={form.smtpSecure !== false}
                   onCheckedChange={(checked) => setForm({ ...form, smtpSecure: checked })}
                 />
-                <Label htmlFor="smtpSecure">Use SSL/TLS (Port 465). Turn off for STARTTLS (Port 587).</Label>
+                <Label htmlFor="smtpSecure">
+                  Use SSL/TLS (Port 465). Turn off for STARTTLS (Port 587).
+                </Label>
               </div>
             </div>
           </TabsContent>
@@ -352,9 +363,12 @@ export function EmailMarketingCard() {
           <TabsContent value="imap" className="space-y-4">
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div className="space-y-0.5">
-                <Label htmlFor="imapEnabled" className="text-base font-medium">Inbound Email Reply Sync</Label>
+                <Label htmlFor="imapEnabled" className="text-base font-medium">
+                  Inbound Email Reply Sync
+                </Label>
                 <p className="text-xs text-muted-foreground">
-                  Ingest customer replies directly into Flas CRM shared inbox alongside WhatsApp messages.
+                  Ingest customer replies directly into Flas CRM shared inbox alongside WhatsApp
+                  messages.
                 </p>
               </div>
               <Switch
@@ -423,7 +437,9 @@ export function EmailMarketingCard() {
                     onClick={() => testImapMutation.mutate()}
                     disabled={testImapMutation.isPending || !form.imapHost}
                   >
-                    {testImapMutation.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                    {testImapMutation.isPending && (
+                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                    )}
                     Test IMAP Handshake
                   </Button>
                 </div>
@@ -435,9 +451,12 @@ export function EmailMarketingCard() {
           <TabsContent value="welcome" className="space-y-4">
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div className="space-y-0.5">
-                <Label htmlFor="welcomeEmailEnabled" className="text-base font-medium">Automated Welcome Offer</Label>
+                <Label htmlFor="welcomeEmailEnabled" className="text-base font-medium">
+                  Automated Welcome Offer
+                </Label>
                 <p className="text-xs text-muted-foreground">
-                  Instantly dispatch an email with your promotional discount when a visitor subscribes with consent.
+                  Instantly dispatch an email with your promotional discount when a visitor
+                  subscribes with consent.
                 </p>
               </div>
               <Switch
@@ -454,7 +473,9 @@ export function EmailMarketingCard() {
                   id="welcomeDiscountCode"
                   placeholder="e.g. WELCOME20 or SPECIAL10"
                   value={form.welcomeDiscountCode || "WELCOME20"}
-                  onChange={(e) => setForm({ ...form, welcomeDiscountCode: e.target.value.toUpperCase() })}
+                  onChange={(e) =>
+                    setForm({ ...form, welcomeDiscountCode: e.target.value.toUpperCase() })
+                  }
                 />
               </div>
 
@@ -465,7 +486,9 @@ export function EmailMarketingCard() {
                   type="number"
                   placeholder="20"
                   value={form.welcomeDiscountPercent || 20}
-                  onChange={(e) => setForm({ ...form, welcomeDiscountPercent: Number(e.target.value) || 20 })}
+                  onChange={(e) =>
+                    setForm({ ...form, welcomeDiscountPercent: Number(e.target.value) || 20 })
+                  }
                 />
               </div>
 
@@ -489,7 +512,8 @@ export function EmailMarketingCard() {
                   onChange={(e) => setForm({ ...form, welcomeBodyHtml: e.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Merge tags supported: {"{{name}}"}, {"{{company}}"}, {"{{discount_code}}"}, {"{{unsubscribe_url}}"}.
+                  Merge tags supported: {"{{name}}"}, {"{{company}}"}, {"{{discount_code}}"},{" "}
+                  {"{{unsubscribe_url}}"}.
                 </p>
               </div>
             </div>
@@ -520,7 +544,8 @@ export function EmailMarketingCard() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              To maximize inbox deliverability and prevent emails from landing in spam, add these DNS TXT records to your domain provider (e.g. Cloudflare, GoDaddy, Namecheap):
+              To maximize inbox deliverability and prevent emails from landing in spam, add these
+              DNS TXT records to your domain provider (e.g. Cloudflare, GoDaddy, Namecheap):
             </p>
 
             <div className="space-y-3">
@@ -534,7 +559,12 @@ export function EmailMarketingCard() {
                 </div>
                 <div className="flex items-center justify-between rounded bg-background p-2 font-mono text-xs border">
                   <span>v=spf1 include:_spf.flas.app ~all</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText("v=spf1 include:_spf.flas.app ~all")}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => copyText("v=spf1 include:_spf.flas.app ~all")}
+                  >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
@@ -543,14 +573,21 @@ export function EmailMarketingCard() {
               {/* DKIM Record */}
               <div className="rounded-lg border p-3 bg-muted/30">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold">2. DKIM (DomainKeys Identified Mail)</span>
+                  <span className="text-sm font-semibold">
+                    2. DKIM (DomainKeys Identified Mail)
+                  </span>
                   <Badge variant={dnsReport?.dkim.status === "verified" ? "default" : "secondary"}>
                     {dnsReport?.dkim.status === "verified" ? "Valid" : "Pending Check"}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between rounded bg-background p-2 font-mono text-xs border">
                   <span>Host: flas._domainkey | Type: TXT</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText("flas._domainkey")}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => copyText("flas._domainkey")}
+                  >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
@@ -559,14 +596,21 @@ export function EmailMarketingCard() {
               {/* DMARC Record */}
               <div className="rounded-lg border p-3 bg-muted/30">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold">3. DMARC (Email Authentication Policy)</span>
+                  <span className="text-sm font-semibold">
+                    3. DMARC (Email Authentication Policy)
+                  </span>
                   <Badge variant={dnsReport?.dmarc.status === "verified" ? "default" : "secondary"}>
                     {dnsReport?.dmarc.status === "verified" ? "Valid" : "Recommended"}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between rounded bg-background p-2 font-mono text-xs border">
                   <span>Host: _dmarc | Value: v=DMARC1; p=none;</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyText("v=DMARC1; p=none;")}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => copyText("v=DMARC1; p=none;")}
+                  >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>

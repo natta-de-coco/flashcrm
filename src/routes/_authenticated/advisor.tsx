@@ -135,7 +135,26 @@ function AdvisorPage() {
   const latest = useQuery({ queryKey: ["advisor_latest"], queryFn: () => loadLatest({}) });
 
   useEffect(() => {
-    const p = context.data?.profile;
+    interface ExtendedProfile {
+      business_name?: string | null;
+      industry?: string | null;
+      niche?: string | null;
+      city?: string | null;
+      country?: string | null;
+      currency?: string | null;
+      business_stage?: string | null;
+      monthly_revenue_target?: string | number | null;
+      main_goal?: string | null;
+      competitors?: string | null;
+      description?: string | null;
+      website_url?: string | null;
+      mobile_phone?: string | null;
+      landline_phone?: string | null;
+      whatsapp_number?: string | null;
+      tax_registration_number?: string | null;
+      language?: string | null;
+    }
+    const p = context.data?.profile as unknown as ExtendedProfile | undefined;
     if (!p) return;
     setBrief({
       business_name: p.business_name ?? "",
@@ -151,15 +170,10 @@ function AdvisorPage() {
       competitors: p.competitors ?? "",
       description: p.description ?? "",
       website_url: p.website_url ?? "",
-      // @ts-ignore - Supabase type might not be updated
       mobile_phone: p.mobile_phone ?? "",
-      // @ts-ignore
       landline_phone: p.landline_phone ?? "",
-      // @ts-ignore
       whatsapp_number: p.whatsapp_number ?? "",
-      // @ts-ignore
       tax_registration_number: p.tax_registration_number ?? "",
-      // @ts-ignore
       language: p.language ?? "",
     });
   }, [context.data]);
@@ -566,7 +580,6 @@ function AdvisorPage() {
                     />
                   </div>
                   <div className="grid gap-1.5">
-
                     <Label htmlFor="country">{i18n.t("advisor.country")}</Label>
                     <Input
                       id="country"
@@ -636,9 +649,13 @@ function AdvisorPage() {
                       id="tax_registration_number"
                       placeholder="100123456700003"
                       value={brief.tax_registration_number}
-                      onChange={(e) => setBrief({ ...brief, tax_registration_number: e.target.value })}
+                      onChange={(e) =>
+                        setBrief({ ...brief, tax_registration_number: e.target.value })
+                      }
                     />
-                    <p className="text-xs text-muted-foreground">This will appear on all your invoices and quotations.</p>
+                    <p className="text-xs text-muted-foreground">
+                      This will appear on all your invoices and quotations.
+                    </p>
                   </div>
                 </div>
 
