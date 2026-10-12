@@ -82,18 +82,15 @@ await build({
   ],
 });
 
-
 await build({
   entryPoints: ["src/lib/locale.ts"],
   outfile: "node_modules/.cache/flas-locale.mjs",
-
   format: "esm",
   platform: "node",
   bundle: true,
   logLevel: "error",
   alias: { "@": "./src" },
 });
-
 
 await build({
   entryPoints: ["src/lib/navigation.ts"],
@@ -138,7 +135,6 @@ await build({
 await build({
   entryPoints: ["src/lib/connections.server.ts"],
   outfile: "node_modules/.cache/flas-connections-server.mjs",
-
   format: "esm",
   platform: "node",
   bundle: true,
@@ -147,26 +143,13 @@ await build({
   plugins: [stubSupabase],
 });
 
-// Batch 1 / Phase 6: token encryption. No imports, so no stubs needed.
-await build({
-  entryPoints: ["src/lib/social-secrets.server.ts"],
-  outfile: "node_modules/.cache/flas-secrets.mjs",
-  format: "esm",
-  platform: "node",
-  bundle: true,
-  logLevel: "error",
-});
-
-
 await build({
   entryPoints: ["src/lib/social.server.ts"],
   outfile: "node_modules/.cache/flas-social-server.mjs",
-
   format: "esm",
   platform: "node",
   bundle: true,
   logLevel: "error",
-
   alias: { "@": "./src" },
   plugins: [stubSupabase],
 });
@@ -211,5 +194,4 @@ await build({
   bundle: true,
   logLevel: "error",
   alias: { "@": "./src" },
-
 });

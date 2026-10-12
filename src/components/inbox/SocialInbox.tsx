@@ -328,7 +328,6 @@ export function SocialInbox() {
           </header>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-
             {/* The whole conversation, oldest first, both sides. It used to show
                 one customer message plus whatever replies a marker matched, so a
                 thread with history read as a single unanswered question. */}
@@ -342,7 +341,6 @@ export function SocialInbox() {
                     {i.author_name ?? i18n.t("socialInbox.you2")} ·{" "}
                     {new Date(i.created_at).toLocaleString()}
                   </p>
-
                 </div>
               ) : (
                 <div key={i.id} className="max-w-[75%] space-y-1">
@@ -384,7 +382,7 @@ export function SocialInbox() {
               : null}
             {threadStatus(active) === "replied" ? (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-<Check className="size-3.5 text-emerald-500" /> {i18n.t("socialInbox.replied") || "Replied to thread"}
+                <Check className="size-3.5" /> {i18n.t("socialInbox.replied")}
               </p>
             ) : null}
           </div>
