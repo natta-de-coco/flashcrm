@@ -426,21 +426,6 @@ function InboxPage() {
     }
   }, [activeId, autoTranslate, thread, qc, translate]);
 
-  if (team.isLoading || templates.isLoading || products.isLoading || conversations.isLoading)
-    return (
-      <div className="space-y-3 p-6">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
-            <Skeleton className="h-10 w-10 rounded-full" />
-            <div className="flex-1 space-y-2">
-              <Skeleton className="h-4 w-1/3" />
-              <Skeleton className="h-3 w-2/3" />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
     const matching = loadedConversations.filter((c) => {
@@ -722,6 +707,21 @@ function InboxPage() {
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
+
+  if (team.isLoading || templates.isLoading || products.isLoading || conversations.isLoading)
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
 
   async function toggleReminderDone(id: string, done: boolean) {
     const { error } = await supabase.from("reminders").update({ done }).eq("id", id);
