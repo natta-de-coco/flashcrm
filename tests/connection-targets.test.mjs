@@ -248,3 +248,217 @@ describe("complete asset discovery", () => {
     assert.deepEqual(result.targets, []);
   });
 });
+
+describe("YouTube: account discovery and error diagnosis", () => {
+  it("omits bare and encoded secrets and private URLs rather than guessing their format", async () => {
+    const sensitive =
+      "ya29.unlabelled-token private@example.test https://private.test/?code%3Dsecret";
+    const { result } = await withFetch(
+      () =>
+        json(403, {
+          error: {
+            code: sensitive,
+            message: sensitive,
+            errors: [{ reason: sensitive, domain: sensitive }],
+          },
+        }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.doesNotMatch(JSON.stringify(result), /ya29|private@example|private.test|code%3Dsecret/);
+    assert.match(result.diagnostic, /reason=unknown/);
+  });
+
+  it("uses structured Google ErrorInfo even when it is not the first detail", async () => {
+    const { result } = await withFetch(
+      () => json(403, { error: { details: [{ metadata: {} }, { reason: "SERVICE_DISABLED" }] } }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.match(result.reason, /not enabled/);
+    assert.match(result.diagnostic, /SERVICE_DISABLED/);
+  });
+
+  it("keeps the real 429 status in quota diagnostics", async () => {
+    const { result } = await withFetch(
+      () => json(429, { error: { errors: [{ reason: "rateLimitExceeded" }] } }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.match(result.diagnostic, /HTTP 429/);
+    assert.doesNotMatch(result.diagnostic, /HTTP 403/);
+  });
+
+  it("handles a non-JSON refusal without exposing the provider response", async () => {
+    const { result } = await withFetch(
+      () => new Response("<html>private-token</html>", { status: 403 }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.doesNotMatch(JSON.stringify(result), /private-token|html/);
+  });
+  it("diagnoses YouTube Data API v3 disabled in Google Cloud Console (accessNotConfigured)", async () => {
+    const { result } = await withFetch(
+      () =>
+        json(403, {
+          error: {
+            code: 403,
+            message:
+              "YouTube Data API v3 has not been used in project 123456 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/youtube.googleapis.com/overview?project=123456 then retry.",
+            errors: [
+              {
+                message: "YouTube Data API v3 has not been used in project 123456 before...",
+                domain: "usageLimits",
+                reason: "accessNotConfigured",
+              },
+            ],
+            status: "PERMISSION_DENIED",
+          },
+        }),
+      () => listConnectionTargets("youtube", "token-abc-123"),
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.targets, []);
+    assert.match(result.reason, /YouTube Data API v3 is not enabled in the Google Cloud project/);
+    assert.match(result.diagnostic, /accessNotConfigured/);
+    assert.match(result.diagnostic, /HTTP 403/);
+    // Credential safety: no token in reason or diagnostic
+    assert.equal(result.reason.includes("token-abc-123"), false);
+    assert.equal(result.diagnostic.includes("token-abc-123"), false);
+  });
+
+  it("diagnoses quota exhaustion (quotaExceeded)", async () => {
+    const { result } = await withFetch(
+      () =>
+        json(403, {
+          error: {
+            code: 403,
+            message: "The request cannot be completed because you have exceeded your quota.",
+            errors: [
+              {
+                message: "The request cannot be completed because you have exceeded your quota.",
+                domain: "youtube.quota",
+                reason: "quotaExceeded",
+              },
+            ],
+          },
+        }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.targets, []);
+    assert.match(result.reason, /YouTube API quota has been exceeded/);
+    assert.match(result.diagnostic, /quotaExceeded/);
+  });
+
+  it("diagnoses insufficient permissions when scope was declined", async () => {
+    const { result } = await withFetch(
+      () =>
+        json(403, {
+          error: {
+            code: 403,
+            message: "The caller does not have permission",
+            errors: [
+              {
+                message: "The caller does not have permission",
+                domain: "global",
+                reason: "insufficientPermissions",
+              },
+            ],
+            status: "PERMISSION_DENIED",
+          },
+        }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.targets, []);
+    assert.match(result.reason, /did not grant channel access permissions/);
+    assert.match(result.diagnostic, /insufficientPermissions/);
+  });
+
+  it("diagnoses YouTube signup required / no channel attached", async () => {
+    const { result } = await withFetch(
+      () =>
+        json(403, {
+          error: {
+            code: 403,
+            message: "The user has not completed the YouTube sign-up process.",
+            errors: [
+              {
+                message: "The user has not completed the YouTube sign-up process.",
+                domain: "youtube.header",
+                reason: "youtubeSignupRequired",
+              },
+            ],
+          },
+        }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.targets, []);
+    assert.match(result.reason, /No active YouTube channel was found/);
+    assert.match(result.diagnostic, /youtubeSignupRequired/);
+  });
+
+  it("handles generic 403 refusal with actionable recovery guidance", async () => {
+    const { result } = await withFetch(
+      () => json(403, { error: { code: 403, message: "Forbidden" } }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.targets, []);
+    assert.match(result.reason, /refused access to your YouTube channels/);
+    assert.match(result.diagnostic, /HTTP 403/);
+  });
+
+  it("provides helpful recovery guidance when user has zero channels on login (empty items)", async () => {
+    const { result } = await withFetch(
+      () => json(200, { items: [] }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.targets, []);
+    const reason = noTargetReason("youtube");
+    assert.match(reason, /Brand Account/);
+    assert.match(reason, /No YouTube channel was returned/);
+  });
+
+  it("discovers active channels with custom vanity handles and links", async () => {
+    const { result } = await withFetch(
+      () =>
+        json(200, {
+          items: [
+            {
+              id: "UC_channel_123",
+              snippet: { title: "Acme Corp TV", customUrl: "@acmecorp" },
+            },
+          ],
+        }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.targets.length, 1);
+    assert.equal(result.targets[0].id, "UC_channel_123");
+    assert.equal(result.targets[0].name, "Acme Corp TV");
+    assert.equal(result.targets[0].detail, "@acmecorp");
+    assert.equal(result.targets[0].profileUrl, "https://www.youtube.com/channel/UC_channel_123");
+  });
+
+  it("scrubs any token material from error diagnostics", async () => {
+    const { result } = await withFetch(
+      () =>
+        json(403, {
+          error: {
+            code: 403,
+            message:
+              "Failed request with access_token=secret_tok_99999 and client_secret=very_secret",
+            errors: [{ reason: "accessNotConfigured" }],
+          },
+        }),
+      () => listConnectionTargets("youtube", "token"),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.diagnostic.includes("secret_tok_99999"), false);
+    assert.equal(result.diagnostic.includes("very_secret"), false);
+    assert.match(result.diagnostic, /accessNotConfigured/);
+    assert.ok(!result.diagnostic.includes("Failed request"));
+  });
+});

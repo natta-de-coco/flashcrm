@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -2429,12 +2429,20 @@ export type Database = {
           body: string
           conversation_id: string
           created_at: string
+          delivered_at: string | null
           detected_language: string | null
           direction: Database["public"]["Enums"]["msg_direction"]
+          failed_at: string | null
+          failure_code: number | null
+          failure_reason: string | null
           id: string
+          media: Json | null
           media_url: string | null
+          origin: string | null
+          read_at: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id: string | null
+          sent_at: string | null
           status: string
           tenant_id: string
           translated_body: string | null
@@ -2444,12 +2452,20 @@ export type Database = {
           body?: string
           conversation_id: string
           created_at?: string
+          delivered_at?: string | null
           detected_language?: string | null
           direction: Database["public"]["Enums"]["msg_direction"]
+          failed_at?: string | null
+          failure_code?: number | null
+          failure_reason?: string | null
           id?: string
+          media?: Json | null
           media_url?: string | null
+          origin?: string | null
+          read_at?: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
+          sent_at?: string | null
           status?: string
           tenant_id?: string
           translated_body?: string | null
@@ -2459,12 +2475,20 @@ export type Database = {
           body?: string
           conversation_id?: string
           created_at?: string
+          delivered_at?: string | null
           detected_language?: string | null
           direction?: Database["public"]["Enums"]["msg_direction"]
+          failed_at?: string | null
+          failure_code?: number | null
+          failure_reason?: string | null
           id?: string
+          media?: Json | null
           media_url?: string | null
+          origin?: string | null
+          read_at?: string | null
           sender?: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
+          sent_at?: string | null
           status?: string
           tenant_id?: string
           translated_body?: string | null
@@ -4320,6 +4344,9 @@ export type Database = {
       }
       tenant_bot_settings: {
         Row: {
+          auto_enroll_new_chats: boolean
+          automation_changed_at: string | null
+          automation_changed_by: string | null
           bot_name: string
           business_hours_only: boolean
           enabled: boolean
@@ -4331,6 +4358,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_enroll_new_chats?: boolean
+          automation_changed_at?: string | null
+          automation_changed_by?: string | null
           bot_name?: string
           business_hours_only?: boolean
           enabled?: boolean
@@ -4342,6 +4372,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_enroll_new_chats?: boolean
+          automation_changed_at?: string | null
+          automation_changed_by?: string | null
           bot_name?: string
           business_hours_only?: boolean
           enabled?: boolean
