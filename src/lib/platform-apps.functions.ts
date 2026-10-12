@@ -9,7 +9,7 @@ const ProviderSchema = z.enum(["meta", "google", "linkedin", "tiktok", "twitter"
 
 /** Platform OAuth app credentials are workspace-wide secrets — only admins
  *  should be able to write or delete them, not every staff member. */
-async function requireCompanyAdmin(context: {
+export async function requireCompanyAdmin(context: {
   supabase: import("@supabase/supabase-js").SupabaseClient;
   userId: string;
 }) {
@@ -80,12 +80,14 @@ export const savePlatformApp = createServerFn({ method: "POST" })
     // profile rather than from anything the client sent, so the service role
     // cannot be steered at another company's row.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    // Sealed before storage; resolveCredentials() opens it server-side.
+    const { sealSecret } = await import("@/lib/secret-box.server");
     const { error } = await supabaseAdmin.from("platform_apps").upsert(
       {
         tenant_id: tenantId,
         provider: data.provider,
         client_id: data.clientId,
-        client_secret: data.clientSecret,
+        client_secret: (await sealSecret(data.clientSecret)) ?? data.clientSecret,
         label: data.label ?? null,
         updated_at: new Date().toISOString(),
       },

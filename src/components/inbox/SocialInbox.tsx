@@ -11,6 +11,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { repliesFor, replyDelivery } from "@/lib/social-thread";
+import { groupThreads, threadMatches, threadStatus } from "@/lib/social-threads";
 import {
   Archive,
   AtSign,
@@ -23,6 +25,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 type Interaction = {
   id: string;
@@ -35,6 +38,8 @@ type Interaction = {
   status: "open" | "replied" | "archived";
   ai_suggestion: string | null;
   created_at: string;
+  external_id?: string | null;
+  replied_at?: string | null;
 };
 
 type Account = { id: string; platform: string; label: string };
@@ -44,6 +49,7 @@ const STATUS_FILTERS = ["open", "replied", "archived", "all"] as const;
 
 /** Social DMs and comments handled inside the unified inbox. */
 export function SocialInbox() {
+  const i18n = useI18n();
   const qc = useQueryClient();
   const load = useServerFn(getSocialHub);
   const suggest = useServerFn(suggestSocialReply);
@@ -66,25 +72,24 @@ export function SocialInbox() {
   const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const all = (hub.data?.interactions ?? []) as Interaction[];
 
+  // One row per conversation. Listing every message separately showed a single
+  // customer four times over and a thread view with one bubble in it.
   const threads = useMemo(
     () =>
-      all
-        .filter((i) => i.direction === "in")
-        .filter((i) => (kind === "all" ? true : i.kind === kind))
-        .filter((i) => (status === "all" ? true : i.status === status))
-        .filter((i) => {
-          if (!search.trim()) return true;
-          const q = search.toLowerCase();
-          return (
-            i.body.toLowerCase().includes(q) ||
-            (i.author_name ?? "").toLowerCase().includes(q) ||
-            (i.author_handle ?? "").toLowerCase().includes(q)
-          );
-        }),
+      groupThreads(all)
+        .filter((t) => (kind === "all" ? true : t.latest.kind === kind))
+        .filter((t) => (status === "all" ? true : threadStatus(t) === status))
+        .filter((t) => threadMatches(t, search)),
     [all, kind, status, search],
   );
 
-  const active = threads.find((t) => t.id === activeId) ?? null;
+  const active = threads.find((t) => t.key === activeId) ?? null;
+  /**
+   * The customer message a reply answers — never one of our own. Falling back
+   * to the newest message of either side meant a thread holding only our own
+   * messages offered to reply to, draft an answer to, and archive our own words.
+   */
+  const activeInbound = active?.latestInbound ?? null;
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["social_hub_inbox"] });
     void qc.invalidateQueries({ queryKey: ["social_hub"] });
@@ -94,7 +99,7 @@ export function SocialInbox() {
     mutationFn: (id: string) => suggest({ data: { id } }),
     onSuccess: (res) => {
       setReply(res.suggestion);
-      toast.success("Flas AI drafted a reply");
+      toast.success(i18n.t("socialInbox.flasAiDraftedAReply"));
       refresh();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -102,13 +107,17 @@ export function SocialInbox() {
 
   const submit = useMutation({
     mutationFn: () => {
-      if (!active) throw new Error("Pick a message first");
+      if (!activeInbound) throw new Error("Pick a message first");
       if (!reply.trim()) throw new Error("Write a reply first");
-      return send({ data: { id: active.id, reply: reply.trim() } });
+      return send({ data: { id: activeInbound.id, reply: reply.trim() } });
     },
     onSuccess: (res) => {
       setReply("");
-      toast.success(res.metaDelivered ? "Reply published" : "Reply saved to the thread");
+      toast.success(
+        res.metaDelivered
+          ? i18n.t("socialInbox.replyPublished")
+          : i18n.t("socialInbox.savedInFlasButNot"),
+      );
       refresh();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -127,16 +136,16 @@ export function SocialInbox() {
     <div className="flex min-h-0 flex-1">
       <div
         className={cn(
-          "w-full shrink-0 flex-col border-r bg-card lg:flex lg:max-w-sm",
+          "w-full shrink-0 flex-col border-e bg-card lg:flex lg:max-w-sm",
           active ? "hidden" : "flex",
         )}
       >
         <div className="space-y-3 border-b p-4">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              className="pl-9"
-              placeholder="Search DMs and comments"
+              className="ps-9"
+              placeholder={i18n.t("socialInbox.searchDmsAndComments")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -153,7 +162,11 @@ export function SocialInbox() {
                     : "bg-muted text-muted-foreground hover:bg-secondary",
                 )}
               >
-                {k === "all" ? "All" : k === "dm" ? "DMs" : "Comments"}
+                {k === "all"
+                  ? i18n.t("socialInbox.all")
+                  : k === "dm"
+                    ? i18n.t("socialInbox.dms")
+                    : i18n.t("socialInbox.comments")}
               </button>
             ))}
           </div>
@@ -177,58 +190,77 @@ export function SocialInbox() {
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {hub.isLoading ? (
-            <p className="p-4 text-sm text-muted-foreground">Loading social messages…</p>
+            <p className="p-4 text-sm text-muted-foreground">
+              {i18n.t("socialInbox.loadingSocialMessages")}
+            </p>
           ) : accounts.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">
-              Connect a social account in the Social Hub to see DMs and comments here.
+              {i18n.t("socialInbox.connectASocialAccountIn")}
             </p>
           ) : threads.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">
-              Nothing here — try another filter or sync your accounts.
+              {i18n.t("socialInbox.nothingHereTryAnotherFilter")}
             </p>
           ) : (
             threads.map((t) => {
-              const acc = accountById.get(t.account_id);
+              const head = t.latestInbound ?? t.latest;
+              const acc = accountById.get(t.latest.account_id);
+              const state = threadStatus(t);
               return (
                 <button
-                  key={t.id}
+                  key={t.key}
                   onClick={() => {
-                    setActiveId(t.id);
-                    setReply(t.ai_suggestion ?? "");
+                    setActiveId(t.key);
+                    setReply(head.ai_suggestion ?? "");
                   }}
                   className={cn(
-                    "flex w-full flex-col gap-0.5 border-b p-4 text-left transition-colors hover:bg-muted/60",
-                    activeId === t.id && "bg-muted",
+                    "flex w-full flex-col gap-0.5 border-b p-4 text-start transition-colors hover:bg-muted/60",
+                    activeId === t.key && "bg-muted",
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold">
-                      {t.author_name ?? t.author_handle ?? "Unknown"}
+                      {head.author_name ?? head.author_handle ?? i18n.t("socialInbox.unknown")}
                     </span>
                     <span className="shrink-0 text-[11px] text-muted-foreground">
-                      {new Date(t.created_at).toLocaleDateString()}
+                      {new Date(t.latest.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  <span className="line-clamp-2 text-xs text-muted-foreground">{t.body}</span>
+                  <span className="line-clamp-2 text-xs text-muted-foreground">
+                    {/* Whose line this is matters: the last word in a thread is
+                        often ours, and reading it as the customer's is what made
+                        answered conversations look unanswered. */}
+                    {t.latest.direction === "out" ? i18n.t("socialInbox.you") : ""}
+                    {t.latest.body}
+                  </span>
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <Badge variant="secondary" className="gap-1 text-[10px] capitalize">
-                      {t.kind === "dm" ? (
+                      {t.latest.kind === "dm" ? (
                         <MessageSquare className="size-3" />
                       ) : (
                         <AtSign className="size-3" />
                       )}
-                      {t.kind === "dm" ? "DM" : "Comment"}
+                      {t.latest.kind === "dm"
+                        ? i18n.t("socialInbox.dm")
+                        : i18n.t("socialInbox.comment")}
                     </Badge>
                     {acc ? (
                       <Badge variant="outline" className="text-[10px] capitalize">
                         {acc.platform}
                       </Badge>
                     ) : null}
-                    {t.status === "open" ? (
-                      <Badge className="bg-brand text-brand-foreground text-[10px]">Waiting</Badge>
+                    {t.items.length > 1 ? (
+                      <Badge variant="outline" className="text-[10px]">
+                        {i18n.tr("socialInbox.messages", { length: t.items.length })}
+                      </Badge>
+                    ) : null}
+                    {state === "open" ? (
+                      <Badge className="bg-brand text-brand-foreground text-[10px]">
+                        {i18n.t("socialInbox.waiting")}
+                      </Badge>
                     ) : (
                       <Badge variant="outline" className="text-[10px] capitalize">
-                        {t.status}
+                        {state}
                       </Badge>
                     )}
                   </div>
@@ -241,102 +273,162 @@ export function SocialInbox() {
 
       {!active ? (
         <div className="hidden flex-1 place-items-center text-sm text-muted-foreground lg:grid">
-          Select a DM or comment to reply
+          {i18n.t("socialInbox.selectADmOrComment")}
         </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-3">
             <div className="min-w-0">
               <h2 className="truncate font-semibold">
-                {active.author_name ?? active.author_handle ?? "Unknown"}
+                {activeInbound?.author_name ??
+                  activeInbound?.author_handle ??
+                  active.latest.author_name ??
+                  active.latest.author_handle ??
+                  i18n.t("socialInbox.unknown")}
               </h2>
               <p className="truncate text-xs text-muted-foreground">
-                {accountById.get(active.account_id)?.platform ?? "social"} ·{" "}
-                {active.kind === "dm" ? "Direct message" : "Comment"} ·{" "}
-                {new Date(active.created_at).toLocaleString()}
+                {active.items.length === 1
+                  ? i18n.tr("socialInbox.message", {
+                      value:
+                        accountById.get(active.latest.account_id)?.platform ??
+                        i18n.t("socialInbox.social"),
+                      value2:
+                        active.latest.kind === "dm"
+                          ? i18n.t("socialInbox.directMessage")
+                          : i18n.t("socialInbox.comment"),
+                      length: active.items.length,
+                      toLocaleString: new Date(active.latest.created_at).toLocaleString(),
+                    })
+                  : i18n.tr("socialInbox.messages2", {
+                      value:
+                        accountById.get(active.latest.account_id)?.platform ??
+                        i18n.t("socialInbox.social"),
+                      value2:
+                        active.latest.kind === "dm"
+                          ? i18n.t("socialInbox.directMessage")
+                          : i18n.t("socialInbox.comment"),
+                      length: active.items.length,
+                      toLocaleString: new Date(active.latest.created_at).toLocaleString(),
+                    })}
               </p>
             </div>
             <div className="flex gap-2">
               <Button variant="ghost" size="sm" onClick={() => setActiveId(null)}>
-                Back
+                {i18n.t("socialInbox.back")}
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => archive.mutate(active.id)}
-                disabled={archive.isPending}
+                onClick={() => activeInbound && archive.mutate(activeInbound.id)}
+                disabled={archive.isPending || !activeInbound}
               >
-                <Archive className="size-4" /> Archive
+                <Archive className="size-4" /> {i18n.t("socialInbox.archive")}
               </Button>
             </div>
           </header>
 
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-            <div className="max-w-[85%] rounded-2xl rounded-tl-sm border bg-card p-3 text-sm">
-              {active.body}
-            </div>
-            {all
-              .filter(
-                (i) =>
-                  i.direction === "out" &&
-                  i.account_id === active.account_id &&
-                  i.kind === active.kind &&
-                  new Date(i.created_at) >= new Date(active.created_at),
-              )
-              .slice(0, 5)
-              .reverse()
-              .map((i) => (
-                <div
-                  key={i.id}
-                  className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-primary p-3 text-sm text-primary-foreground shadow-sm"
-                >
-                  <p className="whitespace-pre-wrap">{i.body}</p>
-                  <div className="mt-1 flex items-center justify-end gap-1.5 text-[10px] opacity-80">
-                    <span>
-                      {new Date(i.created_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    <span className="rounded bg-black/20 px-1 py-0.5">Recorded in thread</span>
+
+            {/* The whole conversation, oldest first, both sides. It used to show
+                one customer message plus whatever replies a marker matched, so a
+                thread with history read as a single unanswered question. */}
+            {active.items.map((i) =>
+              i.direction === "out" ? (
+                <div key={i.id} className="ms-auto max-w-[75%] space-y-1">
+                  <div className="rounded-2xl rounded-se-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
+                    {i.body}
                   </div>
+                  <p className="px-1 text-end text-[11px] text-muted-foreground">
+                    {i.author_name ?? i18n.t("socialInbox.you2")} ·{" "}
+                    {new Date(i.created_at).toLocaleString()}
+                  </p>
+
                 </div>
-              ))}
-            {active.status === "replied" ? (
+              ) : (
+                <div key={i.id} className="max-w-[75%] space-y-1">
+                  <div className="rounded-2xl rounded-ss-sm border bg-card p-3 text-sm leading-relaxed">
+                    {i.body}
+                  </div>
+                  <p className="px-1 text-[11px] text-muted-foreground">
+                    {i.author_name ?? i18n.t("socialInbox.customer")} ·{" "}
+                    {new Date(i.created_at).toLocaleString()}
+                  </p>
+                </div>
+              ),
+            )}
+            {/* A reply this app sent is matched by its marker: it carries no
+                provider conversation id until the platform echoes it back. */}
+            {activeInbound
+              ? repliesFor(activeInbound, all)
+                  .filter((r) => !active.items.some((i) => i.id === r.id))
+                  .map((i) => {
+                    const delivery = replyDelivery(i);
+                    return (
+                      <div key={i.id} className="ms-auto max-w-[75%] space-y-1">
+                        <div className="rounded-2xl rounded-se-sm border border-primary/15 bg-primary/10 p-3 text-sm leading-relaxed">
+                          {i.body}
+                        </div>
+                        <p className="px-1 text-end text-[11px] text-muted-foreground">
+                          {i18n.tr("socialInbox.you3", {
+                            toLocaleString: new Date(i.created_at).toLocaleString(),
+                            value: delivery === "sent" ? i18n.t("socialInbox.sent") : "",
+                            value2:
+                              delivery === "not_sent"
+                                ? i18n.t("socialInbox.savedInFlasNotSent")
+                                : "",
+                          })}
+                        </p>
+                      </div>
+                    );
+                  })
+              : null}
+            {threadStatus(active) === "replied" ? (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Check className="size-3.5 text-emerald-500" /> Replied to thread
+<Check className="size-3.5 text-emerald-500" /> {i18n.t("socialInbox.replied") || "Replied to thread"}
               </p>
             ) : null}
           </div>
 
           <div className="space-y-2 border-t bg-card p-4">
+            {/* Nothing to answer: every message here is one of ours. Replying
+                would name our own message as the one being answered. */}
+            {!activeInbound ? (
+              <p className="text-xs text-muted-foreground">
+                {i18n.t("socialInbox.nothingToReplyToThis")}
+              </p>
+            ) : null}
             <Textarea
               rows={3}
-              placeholder="Write your reply…"
+              placeholder={i18n.t("socialInbox.writeYourReply")}
               value={reply}
               onChange={(e) => setReply(e.target.value)}
+              disabled={!activeInbound}
             />
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => draft.mutate(active.id)}
-                disabled={draft.isPending}
+                onClick={() => activeInbound && draft.mutate(activeInbound.id)}
+                disabled={draft.isPending || !activeInbound}
               >
                 {draft.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <Sparkles className="size-4" />
                 )}
-                Flas AI reply
+                {i18n.t("socialInbox.flasAiReply")}
               </Button>
-              <Button size="sm" onClick={() => submit.mutate()} disabled={submit.isPending}>
+              <Button
+                size="sm"
+                onClick={() => submit.mutate()}
+                disabled={submit.isPending || !activeInbound}
+              >
                 {submit.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
                   <Send className="size-4" />
                 )}
-                Send reply
+                {i18n.t("socialInbox.sendReply")}
               </Button>
             </div>
           </div>

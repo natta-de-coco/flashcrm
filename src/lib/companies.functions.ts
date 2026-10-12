@@ -3,6 +3,16 @@ import type { Database } from "@/integrations/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import {
+  billedBy,
+  describeChanges,
+  describeHistory,
+  isDay,
+  paidUntilDay,
+  paidUntilTimestamp,
+  type HistoryDetails,
+  type SubscriptionStatus,
+} from "@/lib/subscription-admin";
 
 type Client = SupabaseClient<Database>;
 type OrgUpdate = Database["public"]["Tables"]["organizations"]["Update"];
@@ -31,51 +41,64 @@ export const isSuperAdmin = createServerFn({ method: "GET" })
     return { superAdmin: data?.staff_role === "super_admin" };
   });
 
-/** Manager portal: every company on the platform with usage stats. */
-export const listCompanies = createServerFn({ method: "GET" })
+/**
+ * Manager portal: every company with its subscription, access and usage.
+ *
+ * Reads list_subscribers() (20260904010000), which refuses anyone who is not a
+ * super admin, in one query. The page used to run five count queries per
+ * company, and showed billing from a second call it had to line up by hand.
+ */
+export const listSubscriptions = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await requireSuperAdmin(context.supabase, context.userId);
+    const { data, error } = await context.supabase.rpc("list_subscribers");
+    if (error) throw new Error(`Could not load companies: ${error.message}`);
+
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: extra } = await supabaseAdmin
+      .from("company_billing_overview")
+      .select("id, members_suspended, last_active");
+    const byId = new Map((extra ?? []).map((r) => [r.id, r]));
 
-    const { data: orgs, error } = await supabaseAdmin
-      .from("organizations")
-      .select(
-        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, created_at",
-      )
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-
-    const companies = await Promise.all(
-      (orgs ?? []).map(async (org) => {
-        const count = async (table: string) => {
-          const q = supabaseAdmin
-            .from(table as never)
-            .select("id", { count: "exact", head: true })
-            .eq("tenant_id", org.id);
-          return (await q).count ?? 0;
-        };
-        const [users, contacts, leads, conversations, numbers] = await Promise.all([
-          count("profiles"),
-          count("contacts"),
-          count("leads"),
-          count("conversations"),
-          // Was missing the tenant filter, so every company row reported the
-          // same platform-wide total instead of its own numbers.
-          count("wa_numbers"),
-        ]);
-        return { ...org, users, contacts, leads, conversations, numbers };
-      }),
-    );
-    return companies;
+    return (data ?? []).flatMap((r) => {
+      if (!r.tenant_id) return [];
+      const more = byId.get(r.tenant_id);
+      return [
+        {
+          id: r.tenant_id,
+          name: r.company_name ?? "Unnamed company",
+          slug: r.slug ?? "",
+          plan: r.plan,
+          subscription_status: r.subscription_status ?? "trial",
+          subscription_renews_at: r.subscription_renews_at,
+          suspended: Boolean(r.suspended),
+          paddle_customer_id: r.paddle_customer_id,
+          paddle_subscription_id: r.paddle_subscription_id,
+          country: r.country,
+          created_at: r.company_created_at,
+          staff: Number(r.staff_count ?? 0),
+          members_suspended: Number(more?.members_suspended ?? 0),
+          wa_numbers: Number(r.active_wa_numbers ?? 0),
+          social_accounts: Number(r.active_social_accounts ?? 0),
+          contacts: Number(r.contacts_count ?? 0),
+          messages: Number(r.messages_count ?? 0),
+          last_active: more?.last_active ?? r.last_message_at ?? null,
+        },
+      ];
+    });
   });
 
-const StatusSchema = z.object({
+const SubscriptionSchema = z.object({
   organizationId: z.string().uuid(),
+  plan: z
+    .string()
+    .regex(/^[a-z0-9_]{1,40}$/, "Unknown plan")
+    .optional(),
   subscriptionStatus: z.enum(["trial", "active", "past_due", "canceled"]).optional(),
   suspended: z.boolean().optional(),
   /**
-   * The date this company has paid up to, as YYYY-MM-DD.
+   * The day this company has paid up to, as YYYY-MM-DD.
    *
    * Activating used to hardcode 30 days from now, so a customer who paid for
    * a year was recorded as lapsing in a month, and one who paid in cash on the
@@ -85,41 +108,77 @@ const StatusSchema = z.object({
   paidUntil: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date")
+    .refine(isDay, "That date does not exist")
     .optional(),
+  /** Why, for the history: "Cash AED 240 received for one year". */
+  note: z.string().trim().max(280).optional(),
 });
 
-/** Manager portal: activate, suspend or cancel a company's subscription. */
+/**
+ * Manager portal: change a company's plan, status, paid-until date or
+ * suspension. Only what differs is written, and the history records each
+ * change as a sentence alongside the before and after values.
+ */
 export const updateCompanyStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => StatusSchema.parse(input))
+  .inputValidator((input: unknown) => SubscriptionSchema.parse(input))
   .handler(async ({ data, context }) => {
     await requireSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { logAudit } = await import("@/lib/audit.server");
 
+    const { data: before, error: readError } = await supabaseAdmin
+      .from("organizations")
+      .select(
+        "plan, subscription_status, subscription_renews_at, suspended, paddle_subscription_id",
+      )
+      .eq("id", data.organizationId)
+      .maybeSingle();
+    if (readError) throw new Error(readError.message);
+    if (!before) throw new Error("Company not found.");
+
     const patch: OrgUpdate = {};
-    if (data.subscriptionStatus) {
+    if (data.plan !== undefined && data.plan !== before.plan) patch["plan"] = data.plan;
+    if (data.subscriptionStatus && data.subscriptionStatus !== before.subscription_status) {
       patch["subscription_status"] = data.subscriptionStatus;
-      // Only fall back to a month when the manager did not say otherwise.
-      if (data.subscriptionStatus === "active" && !data.paidUntil) {
-        patch["subscription_renews_at"] = new Date(
-          Date.now() + 30 * 24 * 60 * 60 * 1000,
-        ).toISOString();
-      }
     }
-    if (data.paidUntil) {
+    if (data.paidUntil && data.paidUntil !== paidUntilDay(before.subscription_renews_at)) {
       // End of the paid day, not its first second -- a customer paid up to the
       // 31st keeps the 31st.
-      patch["subscription_renews_at"] = new Date(`${data.paidUntil}T23:59:59Z`).toISOString();
+      patch["subscription_renews_at"] = paidUntilTimestamp(data.paidUntil);
     }
-    if (typeof data.suspended === "boolean") patch["suspended"] = data.suspended;
-    if (Object.keys(patch).length === 0) throw new Error("Nothing to update");
+    if (typeof data.suspended === "boolean" && data.suspended !== before.suspended) {
+      patch["suspended"] = data.suspended;
+    }
+    if (Object.keys(patch).length === 0) throw new Error("Nothing changed.");
+
+    // A paid company needs a real date rather than an invented one.
+    const renewsAfter = patch["subscription_renews_at"] ?? before.subscription_renews_at;
+    if (patch["subscription_status"] === "active" && !renewsAfter) {
+      throw new Error("Set the date this company has paid until.");
+    }
 
     const { error } = await supabaseAdmin
       .from("organizations")
       .update(patch)
       .eq("id", data.organizationId);
-    if (error) throw error;
+    // The guard trigger's own words, e.g. refusing to suspend the platform
+    // owner's company, are the most useful thing to show.
+    if (error) throw new Error(error.message);
+
+    const changes = describeChanges(
+      before,
+      {
+        plan: patch["plan"] ?? before.plan ?? "",
+        status: (patch["subscription_status"] ?? before.subscription_status) as SubscriptionStatus,
+        paidUntil: paidUntilDay(renewsAfter),
+      },
+      new Date(),
+    );
+    if (patch["suspended"] === true) {
+      changes.push("Suspended: everyone at this company loses access now.");
+    }
+    if (patch["suspended"] === false) changes.push("Suspension lifted.");
 
     await logAudit({
       action: "company.subscription_update",
@@ -127,9 +186,20 @@ export const updateCompanyStatus = createServerFn({ method: "POST" })
       actorId: context.userId,
       entityType: "organization",
       entityId: data.organizationId,
-      details: patch,
+      details: {
+        changes,
+        note: data.note ?? null,
+        billing: billedBy(before),
+        before: {
+          plan: before.plan,
+          subscription_status: before.subscription_status,
+          subscription_renews_at: before.subscription_renews_at,
+          suspended: before.suspended,
+        },
+        after: patch,
+      },
     });
-    return { ok: true };
+    return { ok: true, changes };
   });
 
 /**
@@ -157,7 +227,7 @@ export const getCompanyWorkspace = createServerFn({ method: "GET" })
     const { data: org, error } = await supabaseAdmin
       .from("organizations")
       .select(
-        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, created_at",
+        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, paddle_subscription_id, created_at",
       )
       .eq("id", orgId)
       .maybeSingle();
@@ -199,7 +269,9 @@ export const getCompanyWorkspace = createServerFn({ method: "GET" })
         .order("created_at", { ascending: true }),
       supabaseAdmin
         .from("auth_email_attempts")
-        .select("id, recipient_email, action_type, status, attempt_number, provider_error, requested_at, accepted_at")
+        .select(
+          "id, recipient_email, action_type, status, attempt_number, provider_error, requested_at, accepted_at",
+        )
         .eq("tenant_id", orgId)
         .order("requested_at", { ascending: false })
         .limit(20),
@@ -270,24 +342,50 @@ export const updatePlanThresholds = createServerFn({ method: "POST" })
   });
 
 /**
- * Manager portal: one row per company with the billing facts the platform
- * owner actually asks for — has this company paid, until when, how many days
- * are left, and how many of its people are cut off.
- *
- * Reads company_billing_overview (20260907230000), which computes the state
- * rather than leaving the caller to derive "expired" from a timestamp.
+ * Manager portal: who changed this company's subscription and when, and what
+ * Paddle reported, newest first.
  */
-export const listCompanyBilling = createServerFn({ method: "GET" })
+export const getSubscriptionHistory = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((input: unknown) => z.object({ organizationId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
     await requireSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
-      .from("company_billing_overview")
-      .select("*")
-      .order("subscription_renews_at", { ascending: true, nullsFirst: false });
-    if (error) throw error;
-    return data ?? [];
+    const { data: rows, error } = await supabaseAdmin
+      .from("audit_log")
+      .select("id, action, actor_id, actor_label, details, created_at")
+      .eq("tenant_id", data.organizationId)
+      .in("action", ["company.subscription_update", "billing.subscription_sync"])
+      .order("created_at", { ascending: false })
+      .limit(25);
+    if (error) throw new Error(error.message);
+
+    const actorIds = [
+      ...new Set((rows ?? []).map((r) => r.actor_id).filter((id): id is string => Boolean(id))),
+    ];
+    const names = new Map<string, string>();
+    if (actorIds.length > 0) {
+      const { data: actors } = await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, email")
+        .in("id", actorIds);
+      for (const a of actors ?? []) names.set(a.id, a.full_name || a.email || "A manager");
+    }
+
+    return (rows ?? []).map((r) => {
+      const details = (r.details ?? {}) as HistoryDetails;
+      const who =
+        r.actor_label === "payments-webhook"
+          ? "Paddle"
+          : ((r.actor_id ? names.get(r.actor_id) : undefined) ?? r.actor_label ?? "System");
+      return {
+        id: r.id,
+        at: r.created_at,
+        who,
+        text: describeHistory(r.action, details),
+        note: typeof details.note === "string" ? details.note : null,
+      };
+    });
   });
 
 /** Everyone inside one company, with their access state. */
@@ -299,7 +397,9 @@ export const listCompanyMembers = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: rows, error } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, email, staff_role, suspended, suspended_at, suspended_reason, last_seen_at")
+      .select(
+        "id, full_name, email, staff_role, suspended, suspended_at, suspended_reason, last_seen_at",
+      )
       .eq("tenant_id", data.orgId)
       .order("email");
     if (error) throw error;

@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useTenant } from "@/hooks/useTenant";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage } from "@/lib/i18n";
 import {
   INVITE_TTL_DAYS,
   inviteStaff,
@@ -40,7 +42,14 @@ const ASSIGNABLE = Object.keys(ROLE_LABELS) as AssignableRole[];
  */
 export function TeamCard() {
   const { staffRole } = useTenant();
+  const { t } = useI18n();
   const qc = useQueryClient();
+  // Role names and what each grants, in the reader's language; an unknown
+  // role falls back to the English label, then to its id.
+  const roleText = (r: string, part: "label" | "hint") => {
+    const key = `role.${r}.${part}`;
+    return hasMessage(key) ? t(key) : (ROLE_LABELS[r as AssignableRole]?.[part] ?? r);
+  };
   const canManage = isCompanyManager(staffRole);
 
   const load = useServerFn(listTeam);
@@ -59,7 +68,7 @@ export function TeamCard() {
   const sendInvite = useMutation({
     mutationFn: () => invite({ data: { email: email.trim(), staffRole: role } }),
     onSuccess: () => {
-      toast.success(`Invite created for ${email.trim()}`);
+      toast.success(t("settings.team.invited", { email: email.trim() }));
       setEmail("");
       refresh();
     },
@@ -69,7 +78,7 @@ export function TeamCard() {
   const updateRole = useMutation({
     mutationFn: (v: { userId: string; staffRole: AssignableRole }) => changeRole({ data: v }),
     onSuccess: () => {
-      toast.success("Role updated");
+      toast.success(t("settings.team.roleUpdated"));
       refresh();
     },
     onError: fail,
@@ -78,7 +87,7 @@ export function TeamCard() {
   const removeMember = useMutation({
     mutationFn: (userId: string) => remove({ data: { userId } }),
     onSuccess: () => {
-      toast.success("Removed from the workspace");
+      toast.success(t("settings.team.removed"));
       refresh();
     },
     onError: fail,
@@ -92,13 +101,11 @@ export function TeamCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          Team and access
+          {t("settings.team.title")}
           <Badge variant="secondary">{members.length}</Badge>
         </CardTitle>
         <CardDescription>
-          {canManage
-            ? "Invite teammates and choose what each of them can reach. Roles take effect immediately."
-            : "The people in this workspace. Only a company admin can change roles."}
+          {canManage ? t("settings.team.descManage") : t("settings.team.descView")}
         </CardDescription>
       </CardHeader>
 
@@ -107,7 +114,7 @@ export function TeamCard() {
           <div className="grid gap-3 rounded-lg border border-dashed p-3">
             <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
               <div className="grid gap-1.5">
-                <Label htmlFor="invite_email">Invite by email</Label>
+                <Label htmlFor="invite_email">{t("settings.team.inviteEmail")}</Label>
                 <Input
                   id="invite_email"
                   type="email"
@@ -117,7 +124,7 @@ export function TeamCard() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="invite_role">Role</Label>
+                <Label htmlFor="invite_role">{t("settings.team.role")}</Label>
                 <Select value={role} onValueChange={(v) => setRole(v as AssignableRole)}>
                   <SelectTrigger id="invite_role" className="w-full sm:w-52">
                     <SelectValue />
@@ -125,7 +132,7 @@ export function TeamCard() {
                   <SelectContent>
                     {ASSIGNABLE.map((r) => (
                       <SelectItem key={r} value={r}>
-                        {ROLE_LABELS[r].label}
+                        {roleText(r, "label")}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -136,15 +143,15 @@ export function TeamCard() {
                 onClick={() => sendInvite.mutate()}
                 className="gap-1.5"
               >
-                <Mail className="size-3.5" /> Send invite
+                <Mail className="size-3.5" /> {t("settings.team.sendInvite")}
               </Button>
             </div>
             {/* What the chosen role actually grants, said before it is granted. */}
             <p className="text-xs text-muted-foreground">
-              <ShieldCheck className="mr-1 inline size-3.5 align-[-2px]" />
-              {ROLE_LABELS[role].hint}{" "}
+              <ShieldCheck className="me-1 inline size-3.5 align-[-2px]" />
+              {roleText(role, "hint")}{" "}
               <span className="text-muted-foreground/70">
-                Sees {routesFor(role).length} of 15 sections.
+                {t("settings.team.sees", { count: routesFor(role).length, total: 15 })}
               </span>
             </p>
           </div>
@@ -161,7 +168,7 @@ export function TeamCard() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">
                   {m.full_name || m.email}
-                  {isMe ? " (you)" : ""}
+                  {isMe ? ` ${t("settings.team.you")}` : ""}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">{m.email}</p>
               </div>
@@ -174,13 +181,16 @@ export function TeamCard() {
                       updateRole.mutate({ userId: m.id, staffRole: v as AssignableRole })
                     }
                   >
-                    <SelectTrigger className="w-44" aria-label={`Role for ${m.email}`}>
+                    <SelectTrigger
+                      className="w-44"
+                      aria-label={t("settings.team.roleFor", { email: m.email ?? "" })}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {ASSIGNABLE.map((r) => (
                         <SelectItem key={r} value={r}>
-                          {ROLE_LABELS[r].label}
+                          {roleText(r, "label")}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -188,7 +198,7 @@ export function TeamCard() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={`Remove ${m.email} from the workspace`}
+                    aria-label={t("settings.team.remove", { email: m.email ?? "" })}
                     disabled={removeMember.isPending}
                     onClick={() => removeMember.mutate(m.id)}
                   >
@@ -196,9 +206,7 @@ export function TeamCard() {
                   </Button>
                 </div>
               ) : (
-                <Badge variant="secondary">
-                  {ROLE_LABELS[m.staff_role as AssignableRole]?.label ?? m.staff_role}
-                </Badge>
+                <Badge variant="secondary">{roleText(m.staff_role, "label")}</Badge>
               )}
             </div>
           );
@@ -207,11 +215,10 @@ export function TeamCard() {
         {invites.length > 0 && (
           <div className="grid gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Pending invites
+              {t("settings.team.pending")}
             </p>
             <p className="-mt-1 text-xs text-muted-foreground">
-              An invitation is claimable for {INVITE_TTL_DAYS} days, and only by someone who has
-              confirmed that email address. Expired ones stop appearing here — send a new one.
+              {t("settings.team.pendingHelp", { days: INVITE_TTL_DAYS })}
             </p>
             {invites.map((i) => (
               <div
@@ -220,12 +227,14 @@ export function TeamCard() {
               >
                 <p className="truncate text-sm">{i.email}</p>
                 <Badge variant="outline">
-                  {ROLE_LABELS[i.staff_role as AssignableRole]?.label ?? i.staff_role} ·{" "}
+                  {roleText(i.staff_role, "label")} ·{" "}
                   {(() => {
                     const left =
                       INVITE_TTL_DAYS -
                       Math.floor((Date.now() - new Date(i.created_at).getTime()) / 86_400_000);
-                    return left <= 1 ? "expires today" : `${left} days left`;
+                    return left <= 1
+                      ? t("settings.team.expiresToday")
+                      : t("settings.team.daysLeft", { count: left });
                   })()}
                 </Badge>
               </div>

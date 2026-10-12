@@ -1,0 +1,75 @@
+name: FLAS CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      - name: Audit punch-list regressions
+        run: npm run test:audit-punchlist
+
+      - name: Full unit/integration test suite
+        run: npm run test
+
+      - name: WhatsApp recipient and template safety
+        run: node --experimental-strip-types --test tests/whatsapp-recipient-binding.test.mjs tests/wa-template-parameters.test.mjs
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install disposable database harness
+        run: npm install --no-save --package-lock=false --no-audit --no-fund embedded-postgres@17.10.0-beta.17 pg@8.23.0
+      - name: Migration and readiness guards
+        run: node supabase/verify/verify-migrations.mjs
+      - name: OAuth state and refresh leases
+        run: node supabase/verify/verify-oauth-security.mjs
+      - name: Social tenant isolation
+        run: node supabase/verify/verify-social-tenant-isolation.mjs
+
+      - name: WhatsApp conversation isolation and concurrent opening
+        run: node supabase/verify/verify-whatsapp-conversations.mjs
+
+      - name: Profile privilege trigger and identity resolver permissions
+        run: node supabase/verify/verify-sql-security-guards.mjs
+      - name: Broadcast evidence and opt-out list permissions
+        run: node supabase/verify/verify-broadcast-recipients.mjs
+      - name: Message delivery evidence columns and tenant isolation
+        run: node supabase/verify/verify-message-evidence.mjs
+      - name: Assistant opt-in defaults, carry-over and audit trigger
+        run: node supabase/verify/verify-assistant-opt-in.mjs

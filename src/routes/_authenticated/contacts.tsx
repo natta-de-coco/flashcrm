@@ -1,4 +1,7 @@
 import { Skeleton } from "@/components/ui/skeleton";
+
+import { ContactDetailDialog } from "@/components/contacts/ContactDetailDialog";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,8 +26,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { recordAuditEvent } from "@/lib/audit.functions";
 import { parseContactImport, validRows } from "@/lib/contact-import";
+import { formatStageMoney, stageTotal } from "@/lib/contacts-view";
 import { STAGES, type Contact, type LeadStage } from "@/lib/crm-types";
 import { useTenant } from "@/hooks/useTenant";
+import { useI18n } from "@/hooks/useI18n";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -60,25 +65,25 @@ const EMPTY = {
   company: "",
   value: "0",
   notes: "",
-  // Without this, a manually-added contact can never be messaged: a normal
-  // send needs an inbound message in the last 24h (there is none), and a
-  // template send needs recorded consent. Contacts added here had no way to
-  // get either, so they were permanently unreachable.
   consent: false,
 };
 
+const E164 = /^\+[1-9][0-9]{7,14}$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function ContactsPage() {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const { tenant } = useTenant();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
+  const [detailFor, setDetailFor] = useState<{ id: string; name: string } | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importConsent, setImportConsent] = useState(false);
   const auditEvent = useServerFn(recordAuditEvent);
 
-  // Live validation: every parsed row carries its own error list.
   const previewRows = useMemo(
     () => (importText.trim() ? parseContactImport(importText) : []),
     [importText],
@@ -97,20 +102,17 @@ function ContactsPage() {
     },
   });
 
-  // Save used to be enabled with every field empty, storing a row called
-  // "Unnamed contact" with no phone and no email -- a record nobody can act on
-  // and nobody can find again. A contact needs a name and at least one way to
-  // reach them.
   const contactProblem: string | null = (() => {
-    if (form.name.trim().length < 2) return "Enter a name.";
-    const digits = form.phone.replace(/[^0-9]/g, "");
-    const hasPhone = digits.length >= 6;
-    const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
-    if (!hasPhone && !hasEmail) return "Add a WhatsApp number or an email.";
-    if (form.phone.trim() && !hasPhone) return "That number looks too short.";
-    if (form.email.trim() && !hasEmail) return "That email does not look right.";
+    if (form.name.trim().length < 2) return t("contacts.problem.name");
+    const phone = form.phone.trim();
+    const email = form.email.trim();
+    if (!phone && !email) return t("contacts.problem.reach");
+    if (phone && !E164.test(phone)) {
+      return t("contacts.problem.phone");
+    }
+    if (email && !EMAIL.test(email)) return t("contacts.problem.email");
     if (form.value.trim() && !(Number(form.value) >= 0)) {
-      return "Deal value must be a positive number.";
+      return t("contacts.problem.value");
     }
     return null;
   })();
@@ -132,7 +134,7 @@ function ContactsPage() {
     onSuccess: () => {
       setForm(EMPTY);
       setOpen(false);
-      toast.success("Contact added");
+      toast.success(t("contacts.added"));
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
@@ -147,10 +149,6 @@ function ContactsPage() {
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
-  /** Records opt-in for a contact that has none, which is what unblocks
-   *  messaging them. Confirmed first: this is a compliance record, not a
-   *  cosmetic flag, and ticking it for someone who never agreed is exactly
-   *  what consent rules exist to prevent. */
   const grantConsent = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -163,7 +161,7 @@ function ContactsPage() {
       }).catch(() => undefined);
     },
     onSuccess: () => {
-      toast.success("Consent recorded — you can message this contact now.");
+      toast.success(t("contacts.consentRecorded"));
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
@@ -200,7 +198,7 @@ function ContactsPage() {
     void auditEvent({
       data: { action: "contacts.export", entityType: "contact", details: { rows: rows.length } },
     }).catch(() => {});
-    toast.success("Contacts CSV downloaded");
+    toast.success(t("contacts.exported"));
   }
 
   const bulkImport = useMutation({
@@ -210,7 +208,7 @@ function ContactsPage() {
         phone: r.phone,
         email: r.email,
       }));
-      if (rows.length === 0) throw new Error("No valid rows to import — fix the errors below");
+      if (rows.length === 0) throw new Error(t("contacts.import.none"));
 
       const phones = rows.map((r) => r.phone).filter(Boolean) as string[];
       const { data: existing } = phones.length
@@ -225,9 +223,6 @@ function ContactsPage() {
         fresh.map((r) => ({
           ...r,
           tags: ["imported"],
-          // Imported contacts are unmessageable without this, so the
-          // importer asks once for the whole batch rather than leaving the
-          // user to discover it one failed send at a time.
           consent_given: importConsent,
           consent_at: consentAt,
         })),
@@ -250,8 +245,10 @@ function ContactsPage() {
       setImportText("");
       setImportOpen(false);
       toast.success(
-        `Imported ${result.added} contact${result.added === 1 ? "" : "s"}` +
-          (result.skipped ? ` · ${result.skipped} already existed` : ""),
+        (result.added === 1
+          ? t("contacts.import.doneOne")
+          : t("contacts.import.doneMany", { count: result.added })) +
+          (result.skipped ? t("contacts.import.skipped", { count: result.skipped }) : ""),
       );
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
@@ -287,15 +284,19 @@ function ContactsPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Contacts & leads</h1>
-          <p className="text-sm text-muted-foreground">
-            Every WhatsApp and website contact, organised by pipeline stage.
-          </p>
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+            {t("contacts.title")}
+          </h1>
+          <p className="text-sm text-muted-foreground">{t("contacts.subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 rtl:right-3 rtl:left-auto top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input aria-label="Search contacts" className="w-56 pl-9 rtl:pr-9 rtl:pl-3" placeholder="Search contacts"
+
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="w-56 ps-9"
+              placeholder={t("contacts.search")}
+
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -305,27 +306,26 @@ function ContactsPage() {
             onClick={exportContacts}
             disabled={(contacts.data ?? []).length === 0}
           >
-            <Download className="size-4" /> Export CSV
+            <Download className="size-4" /> {t("contacts.export")}
           </Button>
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">
-                <Upload className="size-4" /> Import numbers
+                <Upload className="size-4" /> {t("contacts.import.button")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Import leads & numbers</DialogTitle>
+                <DialogTitle>{t("contacts.import.title")}</DialogTitle>
               </DialogHeader>
               <p className="text-sm text-muted-foreground">
-                Paste one contact per line — a phone number alone, or{" "}
-                <code className="rounded bg-muted px-1">name, phone, email</code>. Duplicates are
-                skipped automatically and every import is tagged{" "}
-                <code className="rounded bg-muted px-1">imported</code> so you can filter the
-                records later.
+                {tr("contacts.import.help", {
+                  format: <code className="rounded bg-muted px-1">name, phone, email</code>,
+                  tag: <code className="rounded bg-muted px-1">imported</code>,
+                })}
               </p>
               <div className="grid gap-1.5">
-                <Label htmlFor="csv_file">…or upload a CSV file</Label>
+                <Label htmlFor="csv_file">{t("contacts.import.csv")}</Label>
                 <Input
                   id="csv_file"
                   type="file"
@@ -344,10 +344,12 @@ function ContactsPage() {
               {previewRows.length > 0 && (
                 <div className="rounded-lg border">
                   <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2 text-xs font-medium">
-                    <span>Preview — check rows before importing</span>
+                    <span>{t("contacts.import.preview")}</span>
                     <span>
-                      {importableRows.length} valid · {previewRows.length - importableRows.length}{" "}
-                      with errors
+                      {t("contacts.import.counts", {
+                        valid: importableRows.length,
+                        invalid: previewRows.length - importableRows.length,
+                      })}
                     </span>
                   </div>
                   <div className="max-h-56 overflow-y-auto">
@@ -388,10 +390,9 @@ function ContactsPage() {
                   onChange={(e) => setImportConsent(e.target.checked)}
                 />
                 <span className="text-sm">
-                  <span className="font-medium">Everyone in this list agreed to be contacted.</span>
+                  <span className="font-medium">{t("contacts.import.consentTitle")}</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">
-                    Leave unticked if you're not sure — you can record consent per contact later.
-                    Without it, these contacts can be stored but not messaged.
+                    {t("contacts.import.consentHelp")}
                   </span>
                 </span>
               </label>
@@ -401,8 +402,11 @@ function ContactsPage() {
                   onClick={() => bulkImport.mutate()}
                   disabled={importableRows.length === 0 || bulkImport.isPending}
                 >
-                  Import {importableRows.length > 0 ? `${importableRows.length} valid ` : ""}
-                  contact{importableRows.length === 1 ? "" : "s"}
+                  {importableRows.length === 0
+                    ? t("contacts.import.submitNone")
+                    : importableRows.length === 1
+                      ? t("contacts.import.submitOne")
+                      : t("contacts.import.submitMany", { count: importableRows.length })}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -410,44 +414,53 @@ function ContactsPage() {
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button>
-                <Plus className="size-4" /> New contact
+                <Plus className="size-4" /> {t("contacts.new")}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>New contact</DialogTitle>
+                <DialogTitle>{t("contacts.new")}</DialogTitle>
               </DialogHeader>
               <div className="grid gap-3">
-                {/* Deal value is money and was accepting any text, so "call
-                    back next week" saved as 0 with no complaint. Each field
-                    now declares its own type, which also gives phones and
-                    emails the right mobile keyboard. */}
                 {(
                   [
-                    ["name", "Name", "text", true],
-                    ["phone", "WhatsApp number", "tel", false],
-                    ["email", "Email", "email", false],
-                    ["company", "Company", "text", false],
-                    ["value", "Deal value", "number", false],
+                    ["name", "contacts.field.name", "text", true],
+                    ["phone", "contacts.field.phone", "tel", false],
+                    ["email", "contacts.field.email", "email", false],
+                    ["company", "contacts.field.company", "text", false],
+                    ["value", "contacts.field.value", "number", false],
                   ] as const
                 ).map(([key, label, type, required]) => (
                   <div key={key} className="grid gap-1.5">
                     <Label htmlFor={key}>
-                      {label}
-                      {required && <span className="ml-0.5 text-destructive">*</span>}
+                      {t(label)}
+                      {required && <span className="ms-0.5 text-destructive">*</span>}
                     </Label>
                     <Input
                       id={key}
                       type={type}
                       {...(type === "number" ? { min: 0, step: "0.01" } : {})}
+                      {...(key === "phone"
+                        ? {
+                            placeholder: "+971501234567",
+                            pattern: "^\\+[1-9][0-9]{7,14}$",
+                            inputMode: "tel" as const,
+                            "aria-describedby": "phone-hint",
+                          }
+                        : {})}
                       {...(required ? { required: true, "aria-required": true } : {})}
                       value={form[key]}
                       onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                     />
+                    {key === "phone" && (
+                      <p id="phone-hint" className="text-xs text-muted-foreground">
+                        {t("contacts.phoneHint")}
+                      </p>
+                    )}
                   </div>
                 ))}
                 <div className="grid gap-1.5">
-                  <Label htmlFor="notes">Notes</Label>
+                  <Label htmlFor="notes">{t("contacts.field.notes")}</Label>
                   <Textarea
                     id="notes"
                     value={form.notes}
@@ -466,29 +479,34 @@ function ContactsPage() {
                     onChange={(e) => setForm({ ...form, consent: e.target.checked })}
                   />
                   <span className="text-sm">
-                    <span className="font-medium">This person agreed to be contacted.</span>
+                    <span className="font-medium">{t("contacts.consentTitle")}</span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
-                      Required before you can message them. Tick only if they actually opted in —
-                      the date is recorded as your proof of consent.
+                      {t("contacts.consentHelp")}
                     </span>
                   </span>
                 </label>
               </div>
               <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-end">
                 {contactProblem && (
-                  <p className="text-xs text-muted-foreground sm:mr-auto">{contactProblem}</p>
+                  <p className="text-xs text-muted-foreground sm:me-auto">{contactProblem}</p>
                 )}
                 <Button
                   onClick={() => create.mutate()}
                   disabled={create.isPending || contactProblem !== null}
                 >
-                  Save contact
+                  {t("contacts.save")}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
       </header>
+
+      <ContactDetailDialog
+        contactId={detailFor?.id ?? null}
+        contactName={detailFor?.name ?? ""}
+        onOpenChange={(open) => !open && setDetailFor(null)}
+      />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {!contacts.isPending && (contacts.data ?? []).length === 0 ? (
@@ -506,56 +524,84 @@ function ContactsPage() {
           </div>
         ) : STAGES.map((stage) => {
           const rows = filtered.filter((c) => c.stage === stage.id);
+          // L1: the column showed a card count and nothing else, so the only way
+          // to answer "how much is sitting in Negotiation?" was to add the cards
+          // up by eye. Totalled over the filtered rows, not all contacts, so the
+          // figure always matches the cards actually on screen.
+          const { total } = stageTotal(rows, stage.id);
           return (
             <section key={stage.id} className="rounded-xl bg-muted/50 p-3">
-              <div className="mb-3 flex items-center justify-between px-1">
-                <h2 className="text-sm font-semibold">{stage.label}</h2>
-                <Badge variant="secondary" className="text-[10px]">
-                  {rows.length}
-                </Badge>
+              <div className="mb-3 flex items-center justify-between gap-2 px-1">
+                <h2 className="text-sm font-semibold">{t(`stage.${stage.id}`)}</h2>
+                <div className="flex items-center gap-2">
+                  {rows.length > 0 && (
+                    <span className="text-xs font-semibold text-brand">
+                      {formatStageMoney(total, tenant?.currency)}
+                    </span>
+                  )}
+                  <Badge variant="secondary" className="text-[10px]">
+                    {rows.length}
+                  </Badge>
+                </div>
               </div>
               <div className="space-y-2">
                 {rows.length === 0 && (
-                  <p className="px-1 text-xs text-muted-foreground">No contacts here.</p>
+                  <p className="px-1 text-xs text-muted-foreground">{t("contacts.emptyStage")}</p>
                 )}
                 {rows.map((c) => (
                   <Card key={c.id}>
                     <CardContent className="space-y-2 p-3">
                       <div>
-                        <p className="text-sm font-semibold">{c.name}</p>
+                        {/* H13: the card was not openable at all — only the small
+                            "Numbers & branches" link below it was, which nobody
+                            found. The name is the button now, so clicking the
+                            contact opens the contact. Kept as a button rather
+                            than wrapping the whole card, because the card also
+                            holds a stage select and a consent action that must
+                            stay independently clickable. */}
+                        <button
+                          type="button"
+                          onClick={() => setDetailFor({ id: c.id, name: c.name })}
+                          className="text-start text-sm font-semibold underline-offset-2 hover:underline"
+                        >
+                          {c.name}
+                        </button>
                         <p className="text-xs text-muted-foreground">
-                          {c.phone ?? c.email ?? "No contact details"}
+                          {c.phone ?? c.email ?? t("contacts.noDetails")}
                           {c.company ? ` · ${c.company}` : ""}
                         </p>
+                        <button
+                          type="button"
+                          onClick={() => setDetailFor({ id: c.id, name: c.name })}
+                          className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                          {t("contacts.open")}
+                        </button>
                         {c.consent_given ? (
                           <Badge variant="outline" className="mt-1 text-[10px]">
-                            Consented
+                            {t("contacts.consented")}
                             {c.consent_at
                               ? ` · ${new Date(c.consent_at).toLocaleDateString()}`
                               : ""}
                           </Badge>
                         ) : (
-                          // Without consent this contact cannot be messaged at
-                          // all — say so here rather than letting the send fail
-                          // later with an error that looks like a bug.
                           <button
                             type="button"
                             onClick={() => grantConsent.mutate(c.id)}
                             disabled={grantConsent.isPending}
                             className="mt-1 inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
-                            title="You can't message this contact until they've agreed to be contacted."
+                            title={t("contacts.needsConsentTitle")}
                           >
-                            Can't message — record consent
+                            {t("contacts.needsConsent")}
                           </button>
                         )}
                       </div>
                       <div className="flex items-center justify-between gap-2">
+                        {/* Same formatter as the column total, so a card and the
+                            heading above it can never disagree about currency
+                            or rounding. */}
                         <span className="text-xs font-semibold text-brand">
-                          {Number(c.value ?? 0).toLocaleString(undefined, {
-                            style: "currency",
-                            currency: tenant?.currency || "USD",
-                            maximumFractionDigits: 0,
-                          })}
+                          {formatStageMoney(Number(c.value ?? 0), tenant?.currency)}
                         </span>
                         <Select
                           value={c.stage}
@@ -567,7 +613,7 @@ function ContactsPage() {
                           <SelectContent>
                             {STAGES.map((s) => (
                               <SelectItem key={s.id} value={s.id}>
-                                {s.label}
+                                {t(`stage.${s.id}`)}
                               </SelectItem>
                             ))}
                           </SelectContent>

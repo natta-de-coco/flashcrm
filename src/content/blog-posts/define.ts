@@ -25,7 +25,12 @@ export function defineArticles(articles: ArticleDraft[], startAt = 0): Post[] {
       published: day.toISOString().slice(0, 10),
       readingMinutes: Math.max(
         1,
-        Math.ceil(article.html.replace(/<[^>]*>/g, " ").trim().split(/\s+/).length / 220),
+        Math.ceil(
+          article.html
+            .replace(/<[^>]*>/g, " ")
+            .trim()
+            .split(/\s+/).length / 220,
+        ),
       ),
     };
   });

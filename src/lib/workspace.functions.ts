@@ -2,16 +2,9 @@
 // own country, so amounts, dates, AI replies and the compliance rules we
 // enforce all follow that company — never another one's settings.
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { COUNTRIES, CURRENCIES, LANGUAGES, regionForCountry } from "@/lib/locale";
+import { regionForCountry } from "@/lib/locale";
+import { RegionSchema } from "@/lib/region-schema";
 import { createServerFn } from "@tanstack/react-start";
-import { z } from "zod";
-
-const RegionSchema = z.object({
-  country: z.enum(COUNTRIES.map((c) => c.code) as [string, ...string[]]),
-  currency: z.enum(CURRENCIES.map((c) => c.code) as [string, ...string[]]),
-  locale: z.enum(LANGUAGES.map((l) => l.code) as [string, ...string[]]),
-  timezone: z.string().min(1).max(64),
-});
 
 export const getWorkspaceRegion = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])

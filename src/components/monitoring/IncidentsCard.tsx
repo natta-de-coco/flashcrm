@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getErrorEvents } from "@/lib/telemetry.functions";
 import { useQuery } from "@tanstack/react-query";
 import { Bug } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
 
 const KIND_LABEL: Record<string, string> = {
   frontend: "Frontend error",
@@ -16,7 +17,33 @@ const KIND_LABEL: Record<string, string> = {
   error_boundary: "Screen crashed",
 };
 
+const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+type Incident = Awaited<ReturnType<typeof getErrorEvents>>["events"][number];
+
+type IncidentGroup = {
+  latest: Incident;
+  count: number;
+};
+
+function groupIncidents(events: Incident[]): IncidentGroup[] {
+  const grouped = new Map<string, IncidentGroup>();
+
+  for (const event of events) {
+    const key = `${event.kind}:${event.route ?? ""}:${event.message}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+    grouped.set(key, { latest: event, count: 1 });
+  }
+
+  return [...grouped.values()];
+}
+
 export function IncidentsCard() {
+  const { t, tr, tx } = useI18n();
   const incidents = useQuery({
     queryKey: ["error-events"],
     queryFn: () => getErrorEvents(),
@@ -24,31 +51,47 @@ export function IncidentsCard() {
   });
 
   const events = incidents.data?.events ?? [];
+  const activeCutoff = Date.now() - ACTIVE_WINDOW_MS;
+  const activeGroups = groupIncidents(
+    events.filter((event) => new Date(event.created_at).getTime() >= activeCutoff),
+  );
+  const historicalCount =
+    events.length - activeGroups.reduce((total, group) => total + group.count, 0);
 
   return (
     <Card className="mb-6">
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
           <Bug className="size-4 text-primary" />
-          Application incidents
-          {events.length > 0 && <Badge variant="secondary">{events.length} recent</Badge>}
+          {tr("incidentsCard.applicationIncidents", {
+            badge: (
+              <Badge variant={activeGroups.length > 0 ? "destructive" : "secondary"}>
+                {activeGroups.length > 0
+                  ? t("incidentsCard.active", { length: activeGroups.length })
+                  : t("incidentsCard.healthy")}
+              </Badge>
+            ),
+          })}
         </CardTitle>
-        <CardDescription>
-          Captured automatically with the page, session and user so nothing fails silently. Only
-          your own workspace is shown.
-        </CardDescription>
+        <CardDescription>{t("incidentsCard.activeMeansRecordedInThe")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {incidents.isLoading && <Skeleton className="h-16 w-full" />}
-        {!incidents.isLoading && events.length === 0 && (
+        {!incidents.isLoading && activeGroups.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No incidents recorded — the app has been running cleanly.
+            {t("incidentsCard.noIncidentsRecordedInThe")}
           </p>
         )}
-        {events.slice(0, 25).map((event) => (
-          <div key={event.id} className="rounded-lg border p-3">
+        {activeGroups.slice(0, 25).map(({ latest: event, count }) => (
+          <div
+            key={`${event.kind}:${event.route ?? ""}:${event.message}`}
+            className="rounded-lg border p-3"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-semibold">{KIND_LABEL[event.kind] ?? event.kind}</span>
+              <span className="text-sm font-semibold">
+                {tx(`incidentsCard.kind.${event.kind}`, KIND_LABEL[event.kind] ?? event.kind)}
+                {count > 1 ? t("incidentsCard.repeatedTimes", { count: count }) : ""}
+              </span>
               <Badge variant={event.severity === "error" ? "destructive" : "secondary"}>
                 {event.severity}
               </Badge>
@@ -61,6 +104,17 @@ export function IncidentsCard() {
             </p>
           </div>
         ))}
+        {!incidents.isLoading && historicalCount > 0 && (
+          <p className="pt-1 text-xs text-muted-foreground">
+            {tr("incidentsCard.olderKeptInHistoryAnd", {
+              historicalCount: historicalCount,
+              value:
+                historicalCount === 1
+                  ? t("incidentsCard.incidentIs")
+                  : t("incidentsCard.incidentsAre"),
+            })}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

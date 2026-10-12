@@ -18,6 +18,7 @@ import {
   Sparkles,
   UserPlus,
 } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * "+ Create" menu. Every entry lands on a real working flow — no dead
@@ -35,26 +36,27 @@ const ACTIONS = [
 ] as const;
 
 export function QuickCreate({ compact = false }: { compact?: boolean }) {
+  const { t, tx } = useI18n();
   const navigate = useNavigate();
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         {compact ? (
-          <Button size="icon" aria-label="Create" className="size-9 shrink-0">
+          <Button size="icon" aria-label={t("quickCreate.create")} className="size-9 shrink-0">
             <Plus className="size-4" />
           </Button>
         ) : (
           <Button className="gap-1.5">
             <Plus className="size-4" />
-            Create
+            {t("quickCreate.create")}
           </Button>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>Create</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("quickCreate.create")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {ACTIONS.map((action) => (
+        {ACTIONS.map((action, index) => (
           <DropdownMenuItem
             key={action.label}
             onSelect={() => void navigate({ to: action.to })}
@@ -62,8 +64,12 @@ export function QuickCreate({ compact = false }: { compact?: boolean }) {
           >
             <action.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <span className="min-w-0">
-              <span className="block text-sm font-medium leading-tight">{action.label}</span>
-              <span className="block truncate text-xs text-muted-foreground">{action.desc}</span>
+              <span className="block text-sm font-medium leading-tight">
+                {tx(`quickCreate.action.${index}.label`, action.label)}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {tx(`quickCreate.action.${index}.desc`, action.desc)}
+              </span>
             </span>
           </DropdownMenuItem>
         ))}

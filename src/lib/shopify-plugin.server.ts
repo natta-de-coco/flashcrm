@@ -1,7 +1,12 @@
+import { clampGreeting, liquidDoubleQuoted, safeOrigin, safeSiteKey } from "./plugin-encoding";
 import { buildZip } from "./plugin-zip.server";
 
 const VERSION = "1.0.0";
 
+// The greeting is already liquidDoubleQuoted when it gets here. It sits in a
+// double-quoted Liquid literal inside a single-quoted HTML attribute, and the
+// whole value is printed through `escape`, so neither the default nor the
+// store's own setting can end the attribute or open markup.
 function popupSnippet(origin: string, siteKey: string, greeting: string): string {
   return `{% comment %}
   Flas CRM popup chatbot v${VERSION}
@@ -12,8 +17,8 @@ function popupSnippet(origin: string, siteKey: string, greeting: string): string
   src="${origin}/flas-popup.js"
   data-site-key="${siteKey}"
   data-platform="shopify"
-  data-title="{{ settings.flas_popup_title | default: 'Chat with us' }}"
-  data-greeting="{{ settings.flas_popup_greeting | default: '${greeting.replace(/'/g, "\\'")}' }}"
+  data-title="{{ settings.flas_popup_title | default: 'Chat with us' | escape }}"
+  data-greeting='{{ settings.flas_popup_greeting | default: "${greeting}" | escape }}'
   data-accent="#25D366"
   data-brand="#075E54"
   async
@@ -103,15 +108,18 @@ export function buildShopifyPlugin(input: {
   siteKey: string;
   greeting: string;
 }): Uint8Array {
+  // A key or address that cannot be written safely stops the build here.
+  const origin = safeOrigin(input.origin);
+  const siteKey = safeSiteKey(input.siteKey);
   return buildZip([
     {
       path: "flas-crm-shopify/snippets/flas-crm-popup.liquid",
-      content: popupSnippet(input.origin, input.siteKey, input.greeting),
+      content: popupSnippet(origin, siteKey, liquidDoubleQuoted(clampGreeting(input.greeting))),
     },
     {
       path: "flas-crm-shopify/sections/flas-lead-capture.liquid",
-      content: leadSection(input.origin, input.siteKey),
+      content: leadSection(origin, siteKey),
     },
-    { path: "flas-crm-shopify/INSTALL.txt", content: install(input.origin, input.siteKey) },
+    { path: "flas-crm-shopify/INSTALL.txt", content: install(origin, siteKey) },
   ]);
 }

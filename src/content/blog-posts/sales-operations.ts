@@ -3,13 +3,14 @@ import { defineArticles } from "./define";
 /** Continues the release schedule after the previous batch. */
 export const SALES_POSTS = defineArticles(
   [
-  {
-    slug: "whatsapp-sales-pipeline-stages",
-    title: "WhatsApp sales pipeline stages that reflect real progress",
-    excerpt: "Define practical sales stages for WhatsApp enquiries, qualification and quotations so an active chat is not mistaken for a likely sale.",
-    category: "Sales",
-    keywords: ["whatsapp sales pipeline", "crm pipeline stages", "whatsapp lead management"],
-    html: `
+    {
+      slug: "whatsapp-sales-pipeline-stages",
+      title: "WhatsApp sales pipeline stages that reflect real progress",
+      excerpt:
+        "Define practical sales stages for WhatsApp enquiries, qualification and quotations so an active chat is not mistaken for a likely sale.",
+      category: "Sales",
+      keywords: ["whatsapp sales pipeline", "crm pipeline stages", "whatsapp lead management"],
+      html: `
 <p>A lively WhatsApp conversation can make an opportunity feel advanced even when the customer has not confirmed what they need. Sales stages should describe evidence of progress, not the number of messages exchanged or the agent's optimism.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Give each stage an entry condition</h2>
@@ -32,14 +33,19 @@ export const SALES_POSTS = defineArticles(
 <p>Look for quotations that remain unchanged for a long time and new enquiries that never become qualified or closed. Read a few examples before blaming the salesperson. The cause might be unclear requirements, slow pricing approval or a stage definition nobody understands.</p>
 <p>Use the <a href="/blog/whatsapp-lead-qualification-questions">qualification questions</a> to improve the early stages and the <a href="/blog/whatsapp-quotation-follow-up">quotation follow-up guide</a> for the middle. The pipeline should explain the next decision the business needs to make.</p>
 `,
-  },
-  {
-    slug: "whatsapp-quotation-follow-up",
-    title: "How to follow up on a WhatsApp quotation without nagging",
-    excerpt: "Make quotation follow-ups useful by referring to the current document, resolving uncertainty and agreeing on a realistic next step.",
-    category: "Sales",
-    keywords: ["whatsapp quotation follow up", "sales quote follow up", "whatsapp sales messages"],
-    html: `
+    },
+    {
+      slug: "whatsapp-quotation-follow-up",
+      title: "How to follow up on a WhatsApp quotation without nagging",
+      excerpt:
+        "Make quotation follow-ups useful by referring to the current document, resolving uncertainty and agreeing on a realistic next step.",
+      category: "Sales",
+      keywords: [
+        "whatsapp quotation follow up",
+        "sales quote follow up",
+        "whatsapp sales messages",
+      ],
+      html: `
 <p>“Any update?” is easy to send and difficult for a customer to act on. A useful quotation follow-up identifies the document, recalls the decision being made and offers help with the detail that may be holding it up.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Agree on the next step when you send the quote</h2>
@@ -63,14 +69,19 @@ export const SALES_POSTS = defineArticles(
 <p>If repeated appropriate follow-ups receive no response, move the opportunity out of active chasing according to your team's process. Respect requests to stop. A contact staying in the CRM does not mean staff should keep sending reminders indefinitely.</p>
 <p>Use the <a href="/blog/whatsapp-sales-pipeline-stages">pipeline guide</a> to distinguish an open decision from an inactive lead. End each useful exchange with a clear next action, even when that action is to close the opportunity.</p>
 `,
-  },
-  {
-    slug: "quotation-revision-control-whatsapp",
-    title: "Quotation revision control for WhatsApp sales teams",
-    excerpt: "Keep quantities, prices and document versions clear when customers revise quotations over WhatsApp and several agents share the sale.",
-    category: "Sales",
-    keywords: ["quotation revision control", "whatsapp quotation management", "sales document versions"],
-    html: `
+    },
+    {
+      slug: "quotation-revision-control-whatsapp",
+      title: "Quotation revision control for WhatsApp sales teams",
+      excerpt:
+        "Keep quantities, prices and document versions clear when customers revise quotations over WhatsApp and several agents share the sale.",
+      category: "Sales",
+      keywords: [
+        "quotation revision control",
+        "whatsapp quotation management",
+        "sales document versions",
+      ],
+      html: `
 <p>A customer approves “the quote” after three different PDFs have been sent in the same chat. One contains the old quantity, one changes delivery and one corrects the price. Unless the team can identify the current document, approval is ambiguous.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Give the quotation a stable reference</h2>
@@ -94,14 +105,19 @@ export const SALES_POSTS = defineArticles(
 <p>When the customer agrees, reference the specific quotation and confirm any unresolved changes before moving to the next commercial step. If the acceptance message is unclear, clarify rather than choosing the version most convenient for the business.</p>
 <p>Use the <a href="/blog/whatsapp-quotation-follow-up">follow-up guide</a> for the review period and the <a href="/blog/quotation-to-invoice-handoff">quotation-to-invoice handoff</a> for the next stage. The goal is a shared understanding of the current offer, not simply a tidy folder of PDFs.</p>
 `,
-  },
-  {
-    slug: "quotation-to-invoice-handoff",
-    title: "From approved quotation to invoice: a clean WhatsApp handoff",
-    excerpt: "Carry the accepted scope from quotation to invoice with clear references, responsible staff and checks that prevent avoidable rework.",
-    category: "Sales",
-    keywords: ["quotation to invoice workflow", "whatsapp invoicing workflow", "sales finance handoff"],
-    html: `
+    },
+    {
+      slug: "quotation-to-invoice-handoff",
+      title: "From approved quotation to invoice: a clean WhatsApp handoff",
+      excerpt:
+        "Carry the accepted scope from quotation to invoice with clear references, responsible staff and checks that prevent avoidable rework.",
+      category: "Sales",
+      keywords: [
+        "quotation to invoice workflow",
+        "whatsapp invoicing workflow",
+        "sales finance handoff",
+      ],
+      html: `
 <p>A customer approves a quotation, but the invoice is prepared from an earlier version or sent to the wrong contact. The sale was not lost at the conversation stage; the handoff failed after agreement. A short set of checks can prevent that avoidable rework.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Identify the accepted commercial record</h2>
@@ -126,14 +142,19 @@ export const SALES_POSTS = defineArticles(
 <p>An accepted quotation, an issued invoice and a recorded payment are separate events. Decide what each means in your pipeline and review process. Avoid marking a balance paid because the customer said they had arranged a transfer.</p>
 <p>Use the <a href="/blog/quotation-revision-control-whatsapp">revision guide</a> before the handoff and the <a href="/blog/whatsapp-payment-status-team-workflow">payment-status workflow</a> afterward. The handoff is complete when the next person has the accepted facts and knows what they are responsible for.</p>
 `,
-  },
-  {
-    slug: "whatsapp-payment-status-team-workflow",
-    title: "Keep payment status clear when sales happen on WhatsApp",
-    excerpt: "Separate customer payment messages from verified internal records so sales and finance teams can coordinate invoice follow-through clearly.",
-    category: "Operations",
-    keywords: ["whatsapp payment tracking", "crm invoice payment status", "sales payment follow up"],
-    html: `
+    },
+    {
+      slug: "whatsapp-payment-status-team-workflow",
+      title: "Keep payment status clear when sales happen on WhatsApp",
+      excerpt:
+        "Separate customer payment messages from verified internal records so sales and finance teams can coordinate invoice follow-through clearly.",
+      category: "Operations",
+      keywords: [
+        "whatsapp payment tracking",
+        "crm invoice payment status",
+        "sales payment follow up",
+      ],
+      html: `
 <p>“I have paid” is useful information from a customer, but it is not the same event as your business confirming the payment against the correct invoice. Teams need a clear way to move between those states without asking the customer the same question repeatedly.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Define the states in plain language</h2>
@@ -157,14 +178,19 @@ export const SALES_POSTS = defineArticles(
 <p>Look for invoices where the customer reported payment but no internal decision followed. Investigate unclear references and inconsistent ownership. Fix the process that caused the delay rather than sending repeated reminders from different agents.</p>
 <p>Use the <a href="/blog/quotation-to-invoice-handoff">quotation-to-invoice guide</a> to preserve the document chain and the <a href="/blog/whatsapp-shift-handover-checklist">handover checklist</a> to keep pending checks visible. Clear payment status is a coordination habit supported by software.</p>
 `,
-  },
-  {
-    slug: "whatsapp-shift-handover-checklist",
-    title: "A WhatsApp shift handover checklist that saves the next agent time",
-    excerpt: "Hand over WhatsApp conversations with the current requirement, commitments and next action so customers do not have to repeat themselves.",
-    category: "Operations",
-    keywords: ["whatsapp shift handover", "shared inbox handoff checklist", "customer conversation handover"],
-    html: `
+    },
+    {
+      slug: "whatsapp-shift-handover-checklist",
+      title: "A WhatsApp shift handover checklist that saves the next agent time",
+      excerpt:
+        "Hand over WhatsApp conversations with the current requirement, commitments and next action so customers do not have to repeat themselves.",
+      category: "Operations",
+      keywords: [
+        "whatsapp shift handover",
+        "shared inbox handoff checklist",
+        "customer conversation handover",
+      ],
+      html: `
 <p>The next agent should not have to read an entire chat to discover that the customer is waiting for a revised delivery date. A good handover records the current state of the work, especially what the business has already promised.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Write for someone who was not present</h2>
@@ -183,14 +209,15 @@ export const SALES_POSTS = defineArticles(
 <p>Have the incoming agent explain the next action for a few handed-over conversations. If they cannot, improve the notes immediately. This is a practical quality check and a useful way to train new staff without creating a long manual.</p>
 <p>Use the <a href="/blog/whatsapp-inbox-daily-review">daily inbox review</a> to catch unowned work and the <a href="/blog/quotation-revision-control-whatsapp">quotation revision guide</a> for document-heavy handovers. The handover succeeds when the customer can continue naturally with the next person.</p>
 `,
-  },
-  {
-    slug: "whatsapp-inbox-daily-review",
-    title: "A daily WhatsApp inbox review for missed enquiries and stalled sales",
-    excerpt: "Review unassigned conversations, waiting customers and stalled quotations with a short daily routine that gives every issue a next action.",
-    category: "Operations",
-    keywords: ["whatsapp inbox management", "daily crm review", "missed whatsapp enquiries"],
-    html: `
+    },
+    {
+      slug: "whatsapp-inbox-daily-review",
+      title: "A daily WhatsApp inbox review for missed enquiries and stalled sales",
+      excerpt:
+        "Review unassigned conversations, waiting customers and stalled quotations with a short daily routine that gives every issue a next action.",
+      category: "Operations",
+      keywords: ["whatsapp inbox management", "daily crm review", "missed whatsapp enquiries"],
+      html: `
 <p>An inbox can look under control because agents are replying to new messages while older enquiries remain unresolved. A daily review should find work that has become invisible, especially conversations without an owner or a clear next action.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Start with unowned work</h2>
@@ -214,14 +241,19 @@ export const SALES_POSTS = defineArticles(
 <p>Start with a manageable time slot and a focused set of views. The duration should follow the workload, but avoid turning the daily check into a meeting that consumes the team's best reply time. Deep investigations can have separate owners.</p>
 <p>Use the <a href="/blog/whatsapp-shift-handover-checklist">handover checklist</a> to improve continuity and the <a href="/blog/whatsapp-response-time-metrics">response metric guide</a> to understand delays. End the review with fewer ambiguous items than you started with, rather than a larger spreadsheet of concerns.</p>
 `,
-  },
-  {
-    slug: "whatsapp-response-time-metrics",
-    title: "WhatsApp response-time metrics: measure a useful reply",
-    excerpt: "Distinguish automated acknowledgements from useful human responses and review waiting time without rewarding empty speed.",
-    category: "Operations",
-    keywords: ["whatsapp response time", "customer support response metrics", "whatsapp inbox kpi"],
-    html: `
+    },
+    {
+      slug: "whatsapp-response-time-metrics",
+      title: "WhatsApp response-time metrics: measure a useful reply",
+      excerpt:
+        "Distinguish automated acknowledgements from useful human responses and review waiting time without rewarding empty speed.",
+      category: "Operations",
+      keywords: [
+        "whatsapp response time",
+        "customer support response metrics",
+        "whatsapp inbox kpi",
+      ],
+      html: `
 <p>An instant “Thanks for your message” can make an inbox appear responsive while the customer still waits hours for an answer. Response-time reporting should distinguish acknowledgement from useful progress.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Define the events before calculating the metric</h2>
@@ -245,14 +277,19 @@ export const SALES_POSTS = defineArticles(
 <p>If staff are rewarded only for first-response speed, they may send quick acknowledgements before understanding the question. Review answer quality and the next action alongside timing. A thoughtful clarification can be more valuable than a fast generic reply.</p>
 <p>Use the <a href="/blog/whatsapp-inbox-daily-review">daily review</a> to find waiting work and the <a href="/blog/whatsapp-campaign-reply-capacity">campaign capacity guide</a> to prevent avoidable overload. A useful metric points toward a better customer experience, rather than merely a smaller number.</p>
 `,
-  },
-  {
-    slug: "whatsapp-support-to-sales-handoff",
-    title: "Handing a WhatsApp conversation from support to sales",
-    excerpt: "Recognise genuine buying interest during support conversations and transfer it with context, clear ownership and respect for the original issue.",
-    category: "Sales",
-    keywords: ["support to sales handoff", "whatsapp customer handoff", "customer service sales crm"],
-    html: `
+    },
+    {
+      slug: "whatsapp-support-to-sales-handoff",
+      title: "Handing a WhatsApp conversation from support to sales",
+      excerpt:
+        "Recognise genuine buying interest during support conversations and transfer it with context, clear ownership and respect for the original issue.",
+      category: "Sales",
+      keywords: [
+        "support to sales handoff",
+        "whatsapp customer handoff",
+        "customer service sales crm",
+      ],
+      html: `
 <p>A customer contacts support about an existing product and then asks about buying another one. That can become a useful sales conversation, but only if the original support need remains owned. A handoff should add help rather than make the customer repeat the problem to a different person.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Resolve or clearly retain the original issue</h2>
@@ -271,14 +308,19 @@ export const SALES_POSTS = defineArticles(
 <p>Review whether the customer had to repeat details, whether the original issue was completed and whether the sales next step was appropriate. Do not judge the support team only by the number of opportunities it creates. That can encourage unnecessary transfers and weaken service.</p>
 <p>Use the <a href="/blog/whatsapp-shift-handover-checklist">handover checklist</a> for durable notes and the <a href="/blog/whatsapp-lead-qualification-questions">qualification guide</a> for the new requirement. A good transfer leaves the customer with more useful help and the business with clearer responsibility.</p>
 `,
-  },
-  {
-    slug: "whatsapp-crm-for-service-quotations",
-    title: "WhatsApp CRM for service businesses that quote before they sell",
-    excerpt: "Organise service enquiries around scope, site details, quotation revisions and follow-through when a fixed online price is not enough.",
-    category: "Sales",
-    keywords: ["whatsapp crm service business", "service quotation crm", "whatsapp lead to quote"],
-    html: `
+    },
+    {
+      slug: "whatsapp-crm-for-service-quotations",
+      title: "WhatsApp CRM for service businesses that quote before they sell",
+      excerpt:
+        "Organise service enquiries around scope, site details, quotation revisions and follow-through when a fixed online price is not enough.",
+      category: "Sales",
+      keywords: [
+        "whatsapp crm service business",
+        "service quotation crm",
+        "whatsapp lead to quote",
+      ],
+      html: `
 <p>A service business often cannot answer a price enquiry from a product list. The team needs to understand the scope, location and timing before preparing a useful quotation. A WhatsApp CRM should support that investigation without turning every conversation into a long form.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Identify the facts that change the quotation</h2>
@@ -302,7 +344,7 @@ export const SALES_POSTS = defineArticles(
 <p>Trial a new enquiry, an incomplete requirement, a revised quotation and an accepted offer. Ask the receiving operations person whether the handoff is enough to continue through the business's normal fulfilment process.</p>
 <p>Use the <a href="/blog/quotation-revision-control-whatsapp">revision guide</a> and <a href="/blog/quotation-to-invoice-handoff">invoice handoff checklist</a>. The value of a service CRM is a clearer path from a vague enquiry to an agreed piece of work.</p>
 `,
-  },
+    },
   ],
   40,
 );

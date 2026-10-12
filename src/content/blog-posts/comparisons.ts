@@ -4,7 +4,8 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-wati",
     title: "Flas CRM vs Wati: compare the work after the first reply",
-    excerpt: "Compare Flas CRM and Wati for shared messaging, sales handoffs and quotation workflows, with a practical trial checklist for small teams.",
+    excerpt:
+      "Compare Flas CRM and Wati for shared messaging, sales handoffs and quotation workflows, with a practical trial checklist for small teams.",
     category: "Comparison",
     keywords: ["flas crm vs wati", "wati alternative", "whatsapp sales crm"],
     html: `
@@ -32,7 +33,8 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-respond-io",
     title: "Flas CRM vs respond.io: sales workspace or omnichannel focus?",
-    excerpt: "Evaluate Flas CRM and respond.io around channel coverage, ownership and the steps from customer conversation to a completed sale.",
+    excerpt:
+      "Evaluate Flas CRM and respond.io around channel coverage, ownership and the steps from customer conversation to a completed sale.",
     category: "Comparison",
     keywords: ["flas crm vs respond.io", "respond.io alternative", "omnichannel whatsapp crm"],
     html: `
@@ -61,7 +63,8 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-interakt",
     title: "Flas CRM vs Interakt: choosing a WhatsApp sales workflow",
-    excerpt: "Compare Flas CRM and Interakt for lead qualification, sales stages and quotation follow-through using a realistic buying scenario.",
+    excerpt:
+      "Compare Flas CRM and Interakt for lead qualification, sales stages and quotation follow-through using a realistic buying scenario.",
     category: "Comparison",
     keywords: ["flas crm vs interakt", "interakt alternative", "whatsapp crm for sales"],
     html: `
@@ -86,7 +89,8 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-aisensy",
     title: "Flas CRM vs AiSensy: campaigns and the sales work they create",
-    excerpt: "Assess Flas CRM and AiSensy by campaign replies, lead ownership and sales follow-through instead of headline sending volume.",
+    excerpt:
+      "Assess Flas CRM and AiSensy by campaign replies, lead ownership and sales follow-through instead of headline sending volume.",
     category: "Comparison",
     keywords: ["flas crm vs aisensy", "aisensy alternative", "whatsapp campaign crm"],
     html: `
@@ -115,9 +119,14 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-hubspot",
     title: "Flas CRM vs HubSpot for WhatsApp-led sales teams",
-    excerpt: "Compare Flas CRM with HubSpot's WhatsApp integration, including CRM fit, subscription scope and the cost of changing an established workflow.",
+    excerpt:
+      "Compare Flas CRM with HubSpot's WhatsApp integration, including CRM fit, subscription scope and the cost of changing an established workflow.",
     category: "Comparison",
-    keywords: ["flas crm vs hubspot", "hubspot whatsapp alternative", "whatsapp crm small business"],
+    keywords: [
+      "flas crm vs hubspot",
+      "hubspot whatsapp alternative",
+      "whatsapp crm small business",
+    ],
     html: `
 <p>If your sales team already keeps reliable customer records in HubSpot, replacing that system to improve WhatsApp could create more work than it removes. If the team mainly sells through chat and has no established CRM, the calculation is different. Flas CRM and HubSpot should be compared from those starting points.</p>
 <p>This comparison is published by the team behind Flas CRM. Competitor capabilities were checked against their own public documentation in September 2026, and we do not quote competitor pricing here because it changes and varies by region — ask each vendor for a dated proposal. The recommendations below are evaluation criteria, not results from a head-to-head benchmark.</p>
@@ -145,7 +154,8 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-zoho-crm",
     title: "Flas CRM vs Zoho CRM: where should WhatsApp sales live?",
-    excerpt: "Evaluate Flas CRM and Zoho CRM around customer records, WhatsApp follow-ups and quotation handling without assuming either fits every team.",
+    excerpt:
+      "Evaluate Flas CRM and Zoho CRM around customer records, WhatsApp follow-ups and quotation handling without assuming either fits every team.",
     category: "Comparison",
     keywords: ["flas crm vs zoho crm", "zoho whatsapp alternative", "whatsapp contact management"],
     html: `
@@ -171,9 +181,14 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-zendesk",
     title: "Flas CRM vs Zendesk: quotation-led sales or support workflows?",
-    excerpt: "Compare Flas CRM and Zendesk by the work your WhatsApp team handles: resolving service requests, qualifying leads and preparing quotations.",
+    excerpt:
+      "Compare Flas CRM and Zendesk by the work your WhatsApp team handles: resolving service requests, qualifying leads and preparing quotations.",
     category: "Comparison",
-    keywords: ["flas crm vs zendesk", "zendesk whatsapp alternative", "whatsapp sales vs support crm"],
+    keywords: [
+      "flas crm vs zendesk",
+      "zendesk whatsapp alternative",
+      "whatsapp sales vs support crm",
+    ],
     html: `
 <p>“We need a WhatsApp inbox” can describe a sales team preparing quotations or a support team resolving delivery problems. Those teams may share a channel while needing different systems. That distinction matters when comparing Flas CRM with Zendesk.</p>
 <p>This comparison is published by the team behind Flas CRM. Competitor capabilities were checked against their own public documentation in September 2026, and we do not quote competitor pricing here because it changes and varies by region — ask each vendor for a dated proposal. The recommendations below are evaluation criteria, not results from a head-to-head benchmark.</p>
@@ -202,9 +217,14 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-freshchat",
     title: "Flas CRM vs Freshchat: compare conversations and commercial follow-up",
-    excerpt: "A practical Flas CRM and Freshchat comparison for teams deciding how customer chat should connect with leads, quotations and daily support.",
+    excerpt:
+      "A practical Flas CRM and Freshchat comparison for teams deciding how customer chat should connect with leads, quotations and daily support.",
     category: "Comparison",
-    keywords: ["flas crm vs freshchat", "freshchat alternative", "whatsapp customer engagement crm"],
+    keywords: [
+      "flas crm vs freshchat",
+      "freshchat alternative",
+      "whatsapp customer engagement crm",
+    ],
     html: `
 <p>A customer asks whether a product is available, receives an answer and then requests a formal quotation. If the team has to start a second process at that point, chat software has solved only part of the job. This is a useful scenario for comparing Flas CRM with Freshchat.</p>
 <p>This comparison is published by the team behind Flas CRM. Competitor capabilities were checked against their own public documentation in September 2026, and we do not quote competitor pricing here because it changes and varies by region — ask each vendor for a dated proposal. The recommendations below are evaluation criteria, not results from a head-to-head benchmark.</p>
@@ -228,7 +248,8 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-manychat",
     title: "Flas CRM vs Manychat: automated conversations and the next sales step",
-    excerpt: "Compare Flas CRM and Manychat by automation needs, human handoff and the work required when a WhatsApp lead asks for a quotation.",
+    excerpt:
+      "Compare Flas CRM and Manychat by automation needs, human handoff and the work required when a WhatsApp lead asks for a quotation.",
     category: "Comparison",
     keywords: ["flas crm vs manychat", "manychat whatsapp alternative", "whatsapp automation crm"],
     html: `
@@ -253,7 +274,8 @@ export const COMPARISON_POSTS = defineArticles([
   {
     slug: "flas-crm-vs-twilio-whatsapp",
     title: "Flas CRM vs Twilio WhatsApp: buy a workspace or build your workflow?",
-    excerpt: "Compare a ready-to-use Flas CRM workspace with building on Twilio's WhatsApp APIs, including development, maintenance and sales operations.",
+    excerpt:
+      "Compare a ready-to-use Flas CRM workspace with building on Twilio's WhatsApp APIs, including development, maintenance and sales operations.",
     category: "Comparison",
     keywords: ["flas crm vs twilio", "twilio whatsapp alternative", "build vs buy whatsapp crm"],
     html: `

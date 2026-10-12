@@ -16,6 +16,8 @@ import { useServerFn } from "@tanstack/react-start";
 import { BellRing, Check, Gauge, RefreshCw, Save, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 type Definition = {
   metric: string;
@@ -27,6 +29,13 @@ type Definition = {
 
 /** Advisor-set KPI targets with live readings and missed-target alerts. */
 export function KpiTargetsCard() {
+  const i18n = useI18n();
+  // The metric list comes from the server in English; its name, unit and
+  // explanation are looked up here by metric id so they follow the language.
+  const metricText = (d: Definition, part: "label" | "hint" | "unit") => {
+    const key = `kpiTargetsCard.metric.${d.metric}.${part}`;
+    return hasMessage(key) ? i18n.t(key as MessageKey) : d[part];
+  };
   const qc = useQueryClient();
   const load = useServerFn(getKpiOverview);
   const save = useServerFn(saveKpiTargets);
@@ -64,8 +73,8 @@ export function KpiTargetsCard() {
       setDrafts({});
       toast.success(
         res.saved > 0
-          ? `Advisor set ${res.saved} KPI targets`
-          : "The advisor could not set targets yet — add more data first",
+          ? i18n.t("kpiTargetsCard.advisorSetKpiTargets", { saved: res.saved })
+          : i18n.t("kpiTargetsCard.theAdvisorCouldNotSet"),
       );
       refresh();
     },
@@ -87,7 +96,7 @@ export function KpiTargetsCard() {
       return save({ data: { targets: rows, source: "manual" } });
     },
     onSuccess: () => {
-      toast.success("KPI targets saved");
+      toast.success(i18n.t("kpiTargetsCard.kpiTargetsSaved"));
       refresh();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -140,11 +149,10 @@ export function KpiTargetsCard() {
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Gauge className="size-4 text-brand" /> KPI targets & alerts
+            <Gauge className="size-4 text-brand" /> {i18n.t("kpiTargetsCard.kpiTargetsAlerts")}
           </CardTitle>
           <CardDescription>
-            Response time, conversion, lead velocity and social backlog — measured live against the
-            targets your advisor sets.
+            {i18n.t("kpiTargetsCard.responseTimeConversionLeadVelocity")}
           </CardDescription>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -155,7 +163,9 @@ export function KpiTargetsCard() {
             disabled={generateTargets.isPending}
           >
             <Sparkles className="size-4" />
-            {generateTargets.isPending ? "Setting…" : "Let advisor set targets"}
+            {generateTargets.isPending
+              ? i18n.t("kpiTargetsCard.setting")
+              : i18n.t("kpiTargetsCard.letAdvisorSetTargets")}
           </Button>
           <Button
             size="sm"
@@ -163,7 +173,8 @@ export function KpiTargetsCard() {
             onClick={() => runCheck.mutate()}
             disabled={runCheck.isPending || targets.length === 0}
           >
-            <RefreshCw className={cn("size-4", runCheck.isPending && "animate-spin")} /> Check now
+            <RefreshCw className={cn("size-4", runCheck.isPending && "animate-spin")} />{" "}
+            {i18n.t("kpiTargetsCard.checkNow")}
           </Button>
         </div>
       </CardHeader>
@@ -201,7 +212,7 @@ export function KpiTargetsCard() {
                       onClick={() => clearAlert.mutate(a.id)}
                       disabled={clearAlert.isPending}
                     >
-                      <Check className="size-4" /> Resolve
+                      <Check className="size-4" /> {i18n.t("kpiTargetsCard.resolve")}
                     </Button>
                   </div>
                 ))}
@@ -225,42 +236,51 @@ export function KpiTargetsCard() {
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{d.label}</span>
+                        <span className="font-medium">{metricText(d, "label")}</span>
                         <Badge variant="outline" className="text-[10px]">
-                          {d.direction === "lower" ? "lower is better" : "higher is better"}
+                          {d.direction === "lower"
+                            ? i18n.t("kpiTargetsCard.lowerIsBetter")
+                            : i18n.t("kpiTargetsCard.higherIsBetter")}
                         </Badge>
                         {target?.source === "advisor" ? (
                           <Badge className="bg-brand text-brand-foreground text-[10px]">
-                            advisor
+                            {i18n.t("kpiTargetsCard.advisor")}
                           </Badge>
                         ) : null}
                         {missed ? (
                           <Badge variant="destructive" className="text-[10px]">
-                            off target
+                            {i18n.t("kpiTargetsCard.offTarget")}
                           </Badge>
                         ) : target && measured != null ? (
                           <Badge variant="secondary" className="text-[10px]">
-                            on track
+                            {i18n.t("kpiTargetsCard.onTrack")}
                           </Badge>
                         ) : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Now:{" "}
-                        <span className="font-medium text-foreground">
-                          {measured != null ? `${measured}${d.unit}` : "not enough data"}
-                        </span>{" "}
-                        · {target?.note ?? d.hint}
+                        {i18n.tr("kpiTargetsCard.now", {
+                          span: (
+                            <span className="font-medium text-foreground">
+                              {measured != null
+                                ? `${measured}${d.unit === "%" ? "" : " "}${metricText(d, "unit")}`
+                                : i18n.t("kpiTargetsCard.notEnoughData")}
+                            </span>
+                          ),
+                          value: target?.note ?? metricText(d, "hint"),
+                        })}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 sm:justify-end">
                       <Input
                         className="h-9 w-28"
                         inputMode="decimal"
-                        placeholder="target"
+                        placeholder={i18n.t("kpiTargetsCard.target")}
                         value={drafts[d.metric] ?? ""}
                         onChange={(e) => setDrafts({ ...drafts, [d.metric]: e.target.value })}
                       />
-                      <span className="w-16 text-xs text-muted-foreground">{d.unit}</span>
+                      <span className="w-16 text-xs text-muted-foreground">
+                        {metricText(d, "unit")}
+                      </span>
                     </div>
                   </div>
                 );
@@ -273,7 +293,7 @@ export function KpiTargetsCard() {
               onClick={() => saveTargets.mutate()}
               disabled={saveTargets.isPending}
             >
-              <Save className="size-4" /> Save targets
+              <Save className="size-4" /> {i18n.t("kpiTargetsCard.saveTargets")}
             </Button>
           </>
         )}

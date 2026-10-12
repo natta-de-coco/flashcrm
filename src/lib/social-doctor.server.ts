@@ -10,6 +10,7 @@
 // probed with read-only or validation endpoints only. A real test post
 // requires explicit, separate user confirmation.
 import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
+import { openSecret } from "@/lib/secret-box.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   normalizeProviderError,
@@ -127,9 +128,7 @@ export type ProviderAdapter = {
     check: CheckResult;
   }>;
   /** Who does the platform say this token belongs to? */
-  identity: (
-    account: AccountUnderTest,
-  ) => Promise<{
+  identity: (account: AccountUnderTest) => Promise<{
     id: string | null;
     name: string | null;
     username: string | null;
@@ -420,6 +419,9 @@ export async function runConnectionTest(args: {
   triggeredBy?: string | null;
   trigger?: "manual" | "auto" | "post_oauth" | "pre_publish" | "scheduled";
 }): Promise<DoctorReport> {
+  // Opened here as well as by the callers: the test sends this token to the
+  // provider, and ciphertext would fail every check for the wrong reason.
+  args.account.access_token = await openSecret(args.account.access_token);
   const { account } = args;
   const startedAt = Date.now();
   const checks: CheckResult[] = [];

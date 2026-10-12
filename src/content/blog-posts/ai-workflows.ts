@@ -3,13 +3,18 @@ import { defineArticles } from "./define";
 /** Continues the release schedule after the previous batch. */
 export const AI_POSTS = defineArticles(
   [
-  {
-    slug: "ai-chatbot-knowledge-base-checklist",
-    title: "An AI chatbot knowledge base checklist for useful customer answers",
-    excerpt: "Prepare chatbot knowledge with current product facts, clear scope and named owners so automated answers are grounded in your business.",
-    category: "AI",
-    keywords: ["ai chatbot knowledge base", "whatsapp chatbot training", "business chatbot content"],
-    html: `
+    {
+      slug: "ai-chatbot-knowledge-base-checklist",
+      title: "An AI chatbot knowledge base checklist for useful customer answers",
+      excerpt:
+        "Prepare chatbot knowledge with current product facts, clear scope and named owners so automated answers are grounded in your business.",
+      category: "AI",
+      keywords: [
+        "ai chatbot knowledge base",
+        "whatsapp chatbot training",
+        "business chatbot content",
+      ],
+      html: `
 <p>A chatbot cannot reliably explain a delivery policy that your own team describes three different ways. Before adding more instructions, make the business information clear, current and internally consistent.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Start with the questions customers actually ask</h2>
@@ -34,14 +39,19 @@ export const AI_POSTS = defineArticles(
 <p>When an answer is wrong, find the cause. The source may be outdated, contradictory or missing the condition that matters. Repairing that source is usually more understandable than adding a long instruction telling the chatbot never to make the same mistake again.</p>
 <p>Use the <a href="/blog/ai-chatbot-pricing-answers">pricing answer guide</a> for commercially sensitive facts and the <a href="/blog/ai-chatbot-test-plan">test plan</a> before broadening the rollout. Start with a knowledge set your team can maintain and defend.</p>
 `,
-  },
-  {
-    slug: "ai-chatbot-human-handoff-design",
-    title: "Design an AI chatbot handoff customers can actually use",
-    excerpt: "Plan when a chatbot should transfer to a person, what context the agent needs and what to say when no human is immediately available.",
-    category: "AI",
-    keywords: ["ai chatbot human handoff", "whatsapp bot human agent", "chatbot escalation design"],
-    html: `
+    },
+    {
+      slug: "ai-chatbot-human-handoff-design",
+      title: "Design an AI chatbot handoff customers can actually use",
+      excerpt:
+        "Plan when a chatbot should transfer to a person, what context the agent needs and what to say when no human is immediately available.",
+      category: "AI",
+      keywords: [
+        "ai chatbot human handoff",
+        "whatsapp bot human agent",
+        "chatbot escalation design",
+      ],
+      html: `
 <p>A chatbot that says “I will transfer you” has made a promise. If no agent receives the conversation or the customer has to repeat every detail, the promise has not been fulfilled. Handoff needs an operational design as well as a trigger.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Choose clear reasons to transfer</h2>
@@ -60,14 +70,19 @@ export const AI_POSTS = defineArticles(
 <p>Run a conversation where a human starts replying after the handoff. Check for conflicting automated messages and confirm how the bot is resumed, if that is part of your process. The customer should not receive two different answers because the system and agent both think they own the conversation.</p>
 <p>Use the <a href="/blog/ai-chatbot-test-plan">chatbot test plan</a> and <a href="/blog/whatsapp-shift-handover-checklist">handover checklist</a>. The pass condition is simple: a customer can ask for help, reach the responsible team and continue without starting over.</p>
 `,
-  },
-  {
-    slug: "ai-chatbot-pricing-answers",
-    title: "How to stop a sales chatbot from guessing prices",
-    excerpt: "Define which prices a chatbot may answer, which need a quotation and how to test changes, missing details and expired offers.",
-    category: "AI",
-    keywords: ["chatbot pricing accuracy", "ai chatbot wrong prices", "whatsapp sales bot pricing"],
-    html: `
+    },
+    {
+      slug: "ai-chatbot-pricing-answers",
+      title: "How to stop a sales chatbot from guessing prices",
+      excerpt:
+        "Define which prices a chatbot may answer, which need a quotation and how to test changes, missing details and expired offers.",
+      category: "AI",
+      keywords: [
+        "chatbot pricing accuracy",
+        "ai chatbot wrong prices",
+        "whatsapp sales bot pricing",
+      ],
+      html: `
 <p>A wrong price is not a harmless chatbot flourish. It can create a customer expectation that the sales team must later correct. Pricing answers need a clear boundary between published facts, conditional estimates and quotations requiring a person.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Classify the kinds of price you use</h2>
@@ -91,14 +106,19 @@ export const AI_POSTS = defineArticles(
 <p>Update the approved source, remove conflicting material and rerun the relevant tests. Assign this work to the person responsible for the price list rather than hoping the bot administrator notices the change.</p>
 <p>Use the <a href="/blog/ai-chatbot-knowledge-base-checklist">knowledge checklist</a> and <a href="/blog/quotation-revision-control-whatsapp">quotation revision guide</a>. Keep the customer's commercial decision grounded in a current, identifiable offer.</p>
 `,
-  },
-  {
-    slug: "after-hours-whatsapp-chatbot",
-    title: "An after-hours WhatsApp chatbot that sets the right expectation",
-    excerpt: "Use after-hours automation for approved answers and useful enquiry capture while making human availability and next steps clear.",
-    category: "AI",
-    keywords: ["after hours whatsapp chatbot", "whatsapp out of hours support", "business chatbot availability"],
-    html: `
+    },
+    {
+      slug: "after-hours-whatsapp-chatbot",
+      title: "An after-hours WhatsApp chatbot that sets the right expectation",
+      excerpt:
+        "Use after-hours automation for approved answers and useful enquiry capture while making human availability and next steps clear.",
+      category: "AI",
+      keywords: [
+        "after hours whatsapp chatbot",
+        "whatsapp out of hours support",
+        "business chatbot availability",
+      ],
+      html: `
 <p>A customer messaging at night may need a simple fact or may need a person who is not available until morning. An after-hours chatbot should distinguish those situations. Pretending the full team is present can create a promise the business cannot keep.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Define what can be answered without a live check</h2>
@@ -122,14 +142,15 @@ export const AI_POSTS = defineArticles(
 <p>Ask for a human, request an unavailable price and change the question mid-conversation. Confirm that the bot stays within scope and leaves a usable record for the morning team. Review any case where it implies an immediate commitment.</p>
 <p>Use the <a href="/blog/ai-chatbot-human-handoff-design">handoff guide</a> and <a href="/blog/whatsapp-inbox-daily-review">daily inbox routine</a>. Useful after-hours automation makes the next working day easier while being honest with the customer about what can happen now.</p>
 `,
-  },
-  {
-    slug: "ai-chatbot-test-plan",
-    title: "A practical test plan before launching your WhatsApp AI chatbot",
-    excerpt: "Test chatbot answers, uncertainty and human handoff with a repeatable set of realistic customer questions before widening the rollout.",
-    category: "AI",
-    keywords: ["whatsapp chatbot testing", "ai chatbot test plan", "chatbot quality checklist"],
-    html: `
+    },
+    {
+      slug: "ai-chatbot-test-plan",
+      title: "A practical test plan before launching your WhatsApp AI chatbot",
+      excerpt:
+        "Test chatbot answers, uncertainty and human handoff with a repeatable set of realistic customer questions before widening the rollout.",
+      category: "AI",
+      keywords: ["whatsapp chatbot testing", "ai chatbot test plan", "chatbot quality checklist"],
+      html: `
 <p>Three successful demo questions do not establish that a chatbot is ready for customers. A useful test plan includes ordinary requests, missing information and questions the bot should decline to answer confidently.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Write expected behaviour before testing</h2>
@@ -154,14 +175,19 @@ export const AI_POSTS = defineArticles(
 <p>Launch only the answer areas that passed a reasonable review and keep a person responsible for monitoring early conversations. Expand when the team has evidence that the current scope is dependable. Testing reduces uncertainty; it does not establish that every future question will be answered correctly.</p>
 <p>Use the <a href="/blog/ai-chatbot-knowledge-base-checklist">knowledge checklist</a> to prepare sources and the <a href="/blog/ai-chatbot-weekly-review">weekly review routine</a> to maintain quality after launch.</p>
 `,
-  },
-  {
-    slug: "human-sounding-whatsapp-business-replies",
-    title: "Write natural WhatsApp business replies without pretending to be human",
-    excerpt: "Make business replies clear, specific and conversational while keeping automated assistance transparent and avoiding invented familiarity.",
-    category: "AI",
-    keywords: ["human sounding whatsapp replies", "natural chatbot messages", "whatsapp customer service writing"],
-    html: `
+    },
+    {
+      slug: "human-sounding-whatsapp-business-replies",
+      title: "Write natural WhatsApp business replies without pretending to be human",
+      excerpt:
+        "Make business replies clear, specific and conversational while keeping automated assistance transparent and avoiding invented familiarity.",
+      category: "AI",
+      keywords: [
+        "human sounding whatsapp replies",
+        "natural chatbot messages",
+        "whatsapp customer service writing",
+      ],
+      html: `
 <p>A message sounds natural when it responds to what the customer actually said. Adding emojis, a first name and an enthusiastic greeting does not help if the answer ignores the question. Good business writing begins with attention.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Lead with the useful answer</h2>
@@ -184,14 +210,19 @@ export const AI_POSTS = defineArticles(
 <p>A quick read often exposes wording nobody would naturally use. Shorten unnecessary clauses, replace vague pronouns and remove repeated reassurance. Keep technical language only when it helps the customer make a decision.</p>
 <p>Use the <a href="/blog/ai-chatbot-human-handoff-design">human handoff guide</a> when the answer needs a person and the <a href="/blog/whatsapp-lead-qualification-questions">qualification guide</a> for sales questions. Natural writing is a clear, truthful response to this customer, at this point in the conversation.</p>
 `,
-  },
-  {
-    slug: "whatsapp-crm-role-access-checklist",
-    title: "WhatsApp CRM access roles: give each teammate the access they need",
-    excerpt: "Plan CRM permissions around daily responsibilities, test real accounts and review access when employees change roles or leave the team.",
-    category: "Operations",
-    keywords: ["whatsapp crm access roles", "crm permissions checklist", "shared inbox team access"],
-    html: `
+    },
+    {
+      slug: "whatsapp-crm-role-access-checklist",
+      title: "WhatsApp CRM access roles: give each teammate the access they need",
+      excerpt:
+        "Plan CRM permissions around daily responsibilities, test real accounts and review access when employees change roles or leave the team.",
+      category: "Operations",
+      keywords: [
+        "whatsapp crm access roles",
+        "crm permissions checklist",
+        "shared inbox team access",
+      ],
+      html: `
 <p>A person helping with website content may not need to read customer conversations or change billing information. A salesperson may need quotations without needing workspace administration. Start permissions from the job people do, rather than giving everyone the same access for convenience.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Map tasks to access</h2>
@@ -215,14 +246,19 @@ export const AI_POSTS = defineArticles(
 <p>A role that blocks essential daily work encourages staff to share accounts or ask an administrator to perform routine tasks. If that happens, investigate the workflow and supported permissions. Do not solve it by automatically giving everyone full control.</p>
 <p>Use the <a href="/blog/whatsapp-crm-first-week-rollout">rollout guide</a> to establish responsibilities and the <a href="/blog/whatsapp-shift-handover-checklist">handover checklist</a> when staff change. Good access design protects boundaries while letting each person do their actual job.</p>
 `,
-  },
-  {
-    slug: "ai-chatbot-weekly-review",
-    title: "A weekly AI chatbot review that improves real conversations",
-    excerpt: "Review chatbot answers by consequence, repair weak source information and retest handoffs without turning quality checks into a huge project.",
-    category: "AI",
-    keywords: ["ai chatbot quality review", "chatbot monitoring routine", "whatsapp bot improvement"],
-    html: `
+    },
+    {
+      slug: "ai-chatbot-weekly-review",
+      title: "A weekly AI chatbot review that improves real conversations",
+      excerpt:
+        "Review chatbot answers by consequence, repair weak source information and retest handoffs without turning quality checks into a huge project.",
+      category: "AI",
+      keywords: [
+        "ai chatbot quality review",
+        "chatbot monitoring routine",
+        "whatsapp bot improvement",
+      ],
+      html: `
 <p>A chatbot can become less useful without any software change. The business updates its hours, a promotion ends or customers begin asking about a new product. A weekly review helps the team notice the gap between current operations and automated answers.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Choose a sample with variety</h2>
@@ -245,14 +281,19 @@ export const AI_POSTS = defineArticles(
 <p>Repeat the failed question and a few related variations after making the correction. Note what changed, why and who checked it. This helps the next reviewer understand whether a later problem is new or a return of an earlier issue.</p>
 <p>Use the <a href="/blog/ai-chatbot-test-plan">test plan</a> for repeatable cases and the <a href="/blog/ai-chatbot-knowledge-base-checklist">knowledge checklist</a> for source ownership. A useful weekly review produces a small number of verified improvements, not a large report that nobody acts on.</p>
 `,
-  },
-  {
-    slug: "whatsapp-chatbot-vs-live-chat",
-    title: "WhatsApp chatbot vs live chat: divide the work by uncertainty",
-    excerpt: "Choose what automation should answer and what needs a person by examining repeatability, uncertainty and the commercial consequence of mistakes.",
-    category: "Comparison",
-    keywords: ["whatsapp chatbot vs live chat", "ai vs human customer support", "chatbot sales handoff"],
-    html: `
+    },
+    {
+      slug: "whatsapp-chatbot-vs-live-chat",
+      title: "WhatsApp chatbot vs live chat: divide the work by uncertainty",
+      excerpt:
+        "Choose what automation should answer and what needs a person by examining repeatability, uncertainty and the commercial consequence of mistakes.",
+      category: "Comparison",
+      keywords: [
+        "whatsapp chatbot vs live chat",
+        "ai vs human customer support",
+        "chatbot sales handoff",
+      ],
+      html: `
 <p>The choice between a chatbot and a person is rarely all-or-nothing. Some customer questions have a stable answer. Others require judgment, current information or authority to make an exception. Divide the work by that uncertainty rather than by a target percentage of automated conversations.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Automate questions with dependable answers</h2>
@@ -276,14 +317,19 @@ export const AI_POSTS = defineArticles(
 <p>A question that once required a person may become repeatable after the business publishes a clear policy. A previously simple answer may become conditional after a service change. Adjust the scope based on those facts.</p>
 <p>Use the <a href="/blog/ai-chatbot-human-handoff-design">handoff guide</a> and <a href="/blog/ai-chatbot-weekly-review">weekly review routine</a>. The goal is a dependable answer and next action, whichever part of the team provides it.</p>
 `,
-  },
-  {
-    slug: "whatsapp-automation-readiness-checklist",
-    title: "Is your business ready for WhatsApp automation? A practical checklist",
-    excerpt: "Check knowledge quality, ownership, handoff and measurement before automating WhatsApp conversations so the workflow has a solid foundation.",
-    category: "AI",
-    keywords: ["whatsapp automation checklist", "chatbot readiness", "business whatsapp automation"],
-    html: `
+    },
+    {
+      slug: "whatsapp-automation-readiness-checklist",
+      title: "Is your business ready for WhatsApp automation? A practical checklist",
+      excerpt:
+        "Check knowledge quality, ownership, handoff and measurement before automating WhatsApp conversations so the workflow has a solid foundation.",
+      category: "AI",
+      keywords: [
+        "whatsapp automation checklist",
+        "chatbot readiness",
+        "business whatsapp automation",
+      ],
+      html: `
 <p>If staff disagree about prices, hours and who should answer an enquiry, automation will inherit that confusion. Readiness is less about having a large message volume and more about having a process that can be explained consistently.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Can the team agree on the answers?</h2>
@@ -307,7 +353,7 @@ export const AI_POSTS = defineArticles(
 <p>Ask common questions, incomplete questions and direct requests for a person. Check the customer-side messages and the receiving agent's view. Fix unsupported promises and failed transfers before expanding availability.</p>
 <p>Use the <a href="/blog/ai-chatbot-test-plan">test plan</a> and <a href="/blog/ai-chatbot-knowledge-base-checklist">knowledge checklist</a>. A business is ready to automate a workflow when it can explain the approved answer, recognise the exception and name the person responsible for what happens next.</p>
 `,
-  },
+    },
   ],
   30,
 );

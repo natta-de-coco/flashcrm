@@ -7,12 +7,17 @@ import { SecurityCard } from "@/components/settings/SecurityCard";
 import { TeamCard } from "@/components/settings/TeamCard";
 import { EmailMarketingCard } from "@/components/settings/EmailMarketingCard";
 import { LeadAlertsSettingsCard } from "@/components/settings/LeadAlertsSettingsCard";
+
+import { InvoiceBrandingCard } from "@/components/settings/InvoiceBrandingCard";
+:src/routes/_authenticated/settings.index.tsx
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
+import { isCompanyManager } from "@/lib/permissions";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
-export const Route = createFileRoute("/_authenticated/settings")({
+export const Route = createFileRoute("/_authenticated/settings/")({
   head: () => ({
     meta: [
       { title: "Settings — Flas CRM" },
@@ -31,20 +36,24 @@ export const Route = createFileRoute("/_authenticated/settings")({
 });
 
 function SettingsPage() {
+  const { t, tr } = useI18n();
   const { isAdmin } = useAuth();
-  const { tenant } = useTenant();
+  const { tenant, staffRole } = useTenant();
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+          {t("settingsIndex.settings")}
+        </h1>
         <p className="text-sm text-muted-foreground">
-          Your company&apos;s own preferences: region and currency, billing, security, data and
-          teammates. Anything that connects Flas to an outside system lives under{" "}
-          <Link to="/connect" className="underline underline-offset-2">
-            Integrations
-          </Link>
-          .
+          {tr("settingsIndex.yourCompanySOwnPreferences", {
+            link: (
+              <Link to="/connect" className="underline underline-offset-2">
+                {t("settingsIndex.integrations")}
+              </Link>
+            ),
+          })}
         </p>
       </header>
 
@@ -54,6 +63,8 @@ function SettingsPage() {
         <CompanyBillingProfileCard />
 
         <BillingCard />
+
+        {isCompanyManager(staffRole) && <InvoiceBrandingCard />}
 
         {isAdmin && <AuditLogCard />}
 
@@ -66,7 +77,6 @@ function SettingsPage() {
         <DataPrivacyCard />
 
         <TeamCard />
-
       </div>
     </main>
   );

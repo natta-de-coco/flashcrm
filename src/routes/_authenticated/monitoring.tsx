@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { IncidentsCard } from "@/components/monitoring/IncidentsCard";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { retryWebhookEvent } from "@/lib/crm.functions";
 import { getAnalyticsInsights, getWhatsAppAnalytics } from "@/lib/flash-ai.functions";
+import { META_ANALYTICS_UNAVAILABLE, plainErrorMessage, toPlainError } from "@/lib/plain-error";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -21,9 +23,25 @@ import {
   RotateCcw,
   Sparkles,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
+
+import { useI18n } from "@/hooks/useI18n";
+
+/**
+ * What to tell the reader when Meta returns no figures for a number (QA H11
+ * and §5). The raw text — `(#100) Tried accessing nonexisting field (analytics)
+ * on node type (WhatsAppBusinessPhoneNumber)` — was printed in a badge exactly
+ * as Meta wrote it. It reads like a broken connection; it is in fact a field
+ * Flas asks for on the wrong node, because Meta keeps message analytics on the
+ * WhatsApp Business Account and no WABA id is stored in this schema.
+ */
+function metaUnavailableReason(raw: string | null | undefined): string {
+  if (!raw) return META_ANALYTICS_UNAVAILABLE;
+  const plain = toPlainError(raw);
+  return plain.kind === "provider_unsupported" ? META_ANALYTICS_UNAVAILABLE : plain.message;
+}
 
 
 export const Route = createFileRoute("/_authenticated/monitoring")({
@@ -71,6 +89,7 @@ type AlertRow = {
 const REFRESH_MS = 10000;
 
 function MonitoringPage() {
+  const { t, tr, tx } = useI18n();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"all" | "failed" | "processed">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -88,8 +107,24 @@ function MonitoringPage() {
   const insightsMutation = useMutation({
     mutationFn: () => fetchInsights(),
     onSuccess: (res) => setInsights(res.insights),
-    onError: (e: Error) => toast.error(friendlyError(e)),
+
+    // A model or provider failure used to be toasted verbatim (QA §5).
+    onError: (e: Error) => {
+      console.error("[monitoring] analytics insights failed", e);
+      toast.error(plainErrorMessage(e, { action: "prepare those recommendations" }));
+    },
+
   });
+
+  // The provider's own words are kept where an engineer can find them, and out
+  // of the page. Logged once per distinct message, not once per render.
+  const metaErrors = (waAnalytics.data?.perNumber ?? [])
+    .map((n) => n.meta.error)
+    .filter((message): message is string => Boolean(message))
+    .join(" | ");
+  useEffect(() => {
+    if (metaErrors) console.warn("[monitoring] Meta analytics unavailable:", metaErrors);
+  }, [metaErrors]);
 
   const events = useQuery({
     queryKey: ["webhook_events", filter],
@@ -173,8 +208,8 @@ function MonitoringPage() {
   const retryMutation = useMutation({
     mutationFn: async (eventId: string) => retry({ data: { eventId } }),
     onSuccess: (res) => {
-      if (res.ok) toast.success("Event reprocessed successfully");
-      else toast.error(res.error ?? "Retry failed");
+      if (res.ok) toast.success(t("monitoring.eventReprocessedSuccessfully"));
+      else toast.error(res.error ?? t("monitoring.retryFailed"));
       void qc.invalidateQueries({ queryKey: ["webhook_events"] });
       void qc.invalidateQueries({ queryKey: ["webhook_stats"] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
@@ -208,10 +243,11 @@ function MonitoringPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Webhook monitoring</h1>
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+            {t("monitoring.webhookMonitoring")}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Live delivery status for every WhatsApp event — refreshed automatically every 10
-            seconds.
+            {t("monitoring.liveDeliveryStatusForEvery")}
           </p>
         </div>
         <Button
@@ -223,7 +259,7 @@ function MonitoringPage() {
             void qc.invalidateQueries({ queryKey: ["system_alerts"] });
           }}
         >
-          <RefreshCw className="size-4" /> Refresh now
+          <RefreshCw className="size-4" /> {t("monitoring.refreshNow")}
         </Button>
       </header>
 
@@ -260,40 +296,49 @@ function MonitoringPage() {
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <BarChart3 className="size-4 text-primary" />
-                WhatsApp analytics — last {waAnalytics.data?.days ?? 30} days
+                {tr("monitoring.whatsappAnalyticsLastDays", {
+                  value: waAnalytics.data?.days ?? 30,
+                })}
               </CardTitle>
-              <CardDescription>
-                Delivery and engagement from your workspace, synced with Meta where available.
-              </CardDescription>
+              <CardDescription>{t("monitoring.deliveryAndEngagementFromYour")}</CardDescription>
             </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button
-                    size="sm"
-                    onClick={() => insightsMutation.mutate()}
-                    disabled={insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total}
-                  >
-                    {insightsMutation.isPending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Sparkles className="size-4" />
-                    )}
-                    Ask Flas AI what to improve
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {(insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total) && (
-                <TooltipContent>
-                  {!stats.data?.total ? "Available once messages have been sent" : insightsMutation.isPending ? "Generating insights..." : "Loading analytics..."}
-                </TooltipContent>
+
+            <Button
+              size="sm"
+              onClick={() => insightsMutation.mutate()}
+              // Advice needs something to advise on. Asked with no traffic, the
+              // model has nothing but the prompt and invents plausible-sounding
+              // recommendations, which is worse than an unavailable button.
+              disabled={insightsMutation.isPending || waAnalytics.isLoading || !stats.data?.total}
+              title={!stats.data?.total ? t("monitoring.availableOnceMessagesHaveBeen") : undefined}
+            >
+              {insightsMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
               )}
-            </Tooltip>
+              {t("monitoring.askFlasAiWhatTo")}
+            </Button>
+
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">
+          {/* M10: a line of text for five seconds reads as a stuck page. The
+              skeleton has the shape of the six tiles that are coming. */}
           {waAnalytics.isLoading && (
-            <p className="text-sm text-muted-foreground">Crunching your messaging stats…</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-lg border p-3">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="mt-2 h-6 w-16" />
+                </div>
+              ))}
+            </div>
+          )}
+          {waAnalytics.isError && (
+            <p className="text-sm text-muted-foreground">
+              {plainErrorMessage(waAnalytics.error, { action: "load your messaging stats" })}
+            </p>
           )}
           {waAnalytics.data && (
             <>
@@ -345,7 +390,7 @@ function MonitoringPage() {
 
               {waAnalytics.data.perNumber.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold">Per WhatsApp number</p>
+                  <p className="text-sm font-semibold">{t("monitoring.perWhatsappNumber")}</p>
                   {waAnalytics.data.perNumber.map((n) => (
                     <div
                       key={n.id}
@@ -362,18 +407,30 @@ function MonitoringPage() {
                           ) : null}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {n.local.conversations} conversations · {n.local.unread} unread
+                          {tr("monitoring.conversationsUnread", {
+                            conversations: n.local.conversations,
+                            unread: n.local.unread,
+                          })}
                         </p>
                       </div>
                       {n.meta.ok ? (
                         <div className="flex gap-2">
-                          <Badge variant="secondary">Meta sent: {n.meta.sent}</Badge>
-                          <Badge variant="secondary">Meta delivered: {n.meta.delivered}</Badge>
+                          <Badge variant="secondary">
+                            {tr("monitoring.metaSent", { sent: n.meta.sent })}
+                          </Badge>
+                          <Badge variant="secondary">
+                            {tr("monitoring.metaDelivered", { delivered: n.meta.delivered })}
+                          </Badge>
                         </div>
                       ) : (
-                        <Badge variant="outline" className="text-[10px]">
-                          Meta analytics unavailable{n.meta.error ? ` — ${n.meta.error}` : ""}
-                        </Badge>
+                        <div className="max-w-md sm:text-end">
+                          <Badge variant="outline" className="text-[10px]">
+                            {t("monitoring.metaSOwnTotalsUnavailable")}
+                          </Badge>
+                          <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                            {metaUnavailableReason(n.meta.error)}
+                          </p>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -383,7 +440,8 @@ function MonitoringPage() {
               {insights && (
                 <div className="rounded-lg border bg-muted/40 p-4">
                   <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                    <Sparkles className="size-4 text-primary" /> Flas AI recommendations
+                    <Sparkles className="size-4 text-primary" />{" "}
+                    {t("monitoring.flasAiRecommendations")}
                   </p>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
                     {insights}
@@ -391,10 +449,7 @@ function MonitoringPage() {
                 </div>
               )}
               {!insights && !insightsMutation.isPending && (
-                <p className="text-xs text-muted-foreground">
-                  Tip: run “Ask Flas AI what to improve” to get a plain-English action plan based on
-                  these numbers — deliverability, response time, bot balance and compliance.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("monitoring.tipRunAskFlasAi")}</p>
               )}
             </>
           )}
@@ -405,21 +460,23 @@ function MonitoringPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <AlertTriangle className="size-4 text-destructive" />
-            Alerts
-            {openAlerts.length > 0 && <Badge variant="destructive">{openAlerts.length} open</Badge>}
+            {t("monitoring.alerts")}
+            {openAlerts.length > 0 && (
+              <Badge variant="destructive">
+                {tr("monitoring.open", { length: openAlerts.length })}
+              </Badge>
+            )}
           </CardTitle>
-          <CardDescription>
-            Raised automatically whenever a webhook event or WhatsApp delivery fails.
-          </CardDescription>
+          <CardDescription>{t("monitoring.raisedAutomaticallyWheneverAWebhook")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {(alerts.data ?? []).length === 0 && (
             <p className="text-sm text-muted-foreground">
               {!configured
-                ? "No WhatsApp number is connected yet, so there is nothing to monitor."
+                ? t("monitoring.noWhatsappNumberIsConnected")
                 : stats.data?.total
-                  ? "No alerts — everything has been delivering cleanly."
-                  : "No alerts yet. Nothing has been sent through this workspace so far."}
+                  ? t("monitoring.noAlertsEverythingHasBeen")
+                  : t("monitoring.noAlertsYetNothingHas")}
             </p>
           )}
           {(alerts.data ?? []).map((alert) => (
@@ -437,7 +494,7 @@ function MonitoringPage() {
                     variant={alert.severity === "critical" ? "destructive" : "secondary"}
                     className="capitalize"
                   >
-                    {alert.severity}
+                    {tx(`monitoring.severity.${alert.severity}`, alert.severity)}
                   </Badge>
                 </p>
                 {alert.message && (
@@ -451,11 +508,11 @@ function MonitoringPage() {
               </div>
               {alert.resolved ? (
                 <Badge variant="secondary" className="gap-1">
-                  <CheckCircle2 className="size-3" /> Resolved
+                  <CheckCircle2 className="size-3" /> {t("monitoring.resolved")}
                 </Badge>
               ) : (
                 <Button size="sm" variant="outline" onClick={() => void resolveAlert(alert.id)}>
-                  Mark resolved
+                  {t("monitoring.markResolved")}
                 </Button>
               )}
             </div>
@@ -469,10 +526,8 @@ function MonitoringPage() {
         <CardHeader className="gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-base">Event log</CardTitle>
-              <CardDescription>
-                Last 100 webhook events. Failed events can be retried safely.
-              </CardDescription>
+              <CardTitle className="text-base">{t("monitoring.eventLog")}</CardTitle>
+              <CardDescription>{t("monitoring.last100WebhookEventsFailed")}</CardDescription>
             </div>
             <div className="flex gap-1">
               {(["all", "failed", "processed"] as const).map((f) => (
@@ -483,25 +538,22 @@ function MonitoringPage() {
                   className="capitalize"
                   onClick={() => setFilter(f)}
                 >
-                  {f}
+                  {tx(`monitoring.filter.${f}`, f)}
                 </Button>
               ))}
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
-          {events.isLoading && <p className="text-sm text-muted-foreground">Loading events…</p>}
+          {events.isLoading && (
+            <p className="text-sm text-muted-foreground">{t("monitoring.loadingEvents")}</p>
+          )}
           {!events.isLoading && (events.data ?? []).length === 0 && (
-            <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg border-dashed bg-muted/20">
-              <Activity className="mx-auto mb-4 size-12 text-muted-foreground" />
-              <h2 className="mb-2 text-xl font-bold">No events yet</h2>
-              <p className="mb-4 max-w-sm text-sm text-muted-foreground">
-                Live delivery status for every WhatsApp event will appear here.
-              </p>
-              <Button onClick={() => void qc.invalidateQueries({ queryKey: ["webhook_events"] })}>
-                <RefreshCw className="mr-2 size-4" /> Refresh now
-              </Button>
-            </div>
+
+            <p className="text-sm text-muted-foreground">
+              {t("monitoring.noWebhookEventsRecordedYet")}
+            </p>
+
           )}
           {(events.data ?? []).map((event) => (
             <div key={event.id} className="rounded-lg border p-3">
@@ -512,21 +564,25 @@ function MonitoringPage() {
                       variant={event.status === "failed" ? "destructive" : "secondary"}
                       className="capitalize"
                     >
-                      {event.status}
+                      {tx(`monitoring.status.${event.status}`, event.status)}
                     </Badge>
                     <span className="capitalize">{event.source}</span>
                     <span className="text-muted-foreground">· {event.event_type}</span>
                     {event.attempts > 1 && (
                       <span className="text-xs text-muted-foreground">
-                        {event.attempts} attempts
+                        {tr("monitoring.attempts", { attempts: event.attempts })}
                       </span>
                     )}
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
                     {new Date(event.created_at).toLocaleString()}
-                    {event.duration_ms != null ? ` · ${event.duration_ms} ms` : ""}
+                    {event.duration_ms != null
+                      ? t("monitoring.ms", { durationms: event.duration_ms })
+                      : ""}
                     {event.last_retry_at
-                      ? ` · retried ${new Date(event.last_retry_at).toLocaleTimeString()}`
+                      ? t("monitoring.retried", {
+                          toLocaleTimeString: new Date(event.last_retry_at).toLocaleTimeString(),
+                        })
                       : ""}
                   </p>
                   {event.error && (
@@ -539,7 +595,9 @@ function MonitoringPage() {
                     variant="ghost"
                     onClick={() => setExpanded(expanded === event.id ? null : event.id)}
                   >
-                    {expanded === event.id ? "Hide payload" : "View payload"}
+                    {expanded === event.id
+                      ? t("monitoring.hidePayload")
+                      : t("monitoring.viewPayload")}
                   </Button>
                   {event.status === "failed" && (
                     <Button
@@ -553,7 +611,7 @@ function MonitoringPage() {
                       ) : (
                         <RotateCcw className="size-4" />
                       )}
-                      Retry
+                      {t("monitoring.retry")}
                     </Button>
                   )}
                 </div>

@@ -5,6 +5,7 @@
 // themselves. Every query is scoped to the caller's RLS client, so results
 // never cross tenants.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isOptedIn } from "./campaign-audience";
 import { inferCountryFromPhone, countryOption } from "./locale";
 import { aiOptionsFor, callFlashAi } from "./flash-ai.server";
 
@@ -27,7 +28,10 @@ export async function gatherAudienceSegments(supabase: SupabaseClient): Promise<
   let consented = 0;
   for (const lead of leads ?? []) {
     bySource.set(lead.source, (bySource.get(lead.source) ?? 0) + 1);
-    if (lead.consent_given || lead.subscribed) consented += 1;
+    // Was `consent_given || subscribed`, which reported a 100% consent rate for
+    // every workspace: `leads.subscribed` defaults to true and nothing ever
+    // clears it, so it is a suppression flag, not evidence of an opt-in (H8).
+    if (isOptedIn(lead)) consented += 1;
   }
 
   const byStage = new Map<string, number>();

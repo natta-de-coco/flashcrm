@@ -1,3 +1,15 @@
+import { WebsiteKnowledgeCard } from "@/components/WebsiteKnowledgeCard";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,9 +27,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTenant } from "@/hooks/useTenant";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Bot, Save } from "lucide-react";
+import { AlertTriangle, Bot, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/chatbot")({
   head: () => ({
@@ -38,16 +51,22 @@ export const Route = createFileRoute("/_authenticated/chatbot")({
 });
 
 const MODELS = [
-  { id: "google/gemini-3.7-flash", label: "Fast (Gemini 3.7 Flas)" },
-  { id: "google/gemini-3.1-pro-preview", label: "Smartest (Gemini 3.1 Pro)" },
-  { id: "google/gemini-3.1-flash-lite", label: "Cheapest (Gemini 3.1 Flas Lite)" },
+  { id: "google/gemini-3.7-flash", label: "Quick replies" },
+  { id: "google/gemini-3.1-pro-preview", label: "More detailed reasoning" },
+  { id: "google/gemini-3.1-flash-lite", label: "Lower cost" },
 ];
 
 function ChatbotPage() {
+  const { t, tr, language } = useI18n();
   const qc = useQueryClient();
   const { tenant } = useTenant();
+  // Asked before automatic replies are switched on: it is a decision, not a default.
+  const [confirmingOn, setConfirmingOn] = useState(false);
   const [form, setForm] = useState({
-    enabled: true,
+    // Off until a company admin turns it on. This used to start checked, so
+    // saving anything on this page switched automatic replies on.
+    enabled: false,
+    auto_enroll_new_chats: false,
     bot_name: "Assistant",
     greeting: "",
     instructions: "",
@@ -56,9 +75,6 @@ function ChatbotPage() {
     handoff_keywords: "",
   });
 
-  // Per-tenant bot settings — each company configures its own assistant.
-  // Previously this read/wrote a single platform-wide row shared by every
-  // tenant on the CRM.
   const settings = useQuery({
     queryKey: ["tenant_bot_settings", tenant?.id],
     enabled: !!tenant?.id,
@@ -73,11 +89,30 @@ function ChatbotPage() {
     },
   });
 
+  // The opt-in policy arrives with a database change applied separately from
+  // the app. Until it has been, there is no policy to show or to save.
+  const policy = useQuery({
+    queryKey: ["assistant-opt-in-policy"],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { error } = await supabase
+        .from("tenant_bot_settings")
+        .select("auto_enroll_new_chats" as never)
+        .limit(1);
+      return !error;
+    },
+  });
+  const policyAvailable = policy.data === true;
+  const saved = settings.data as
+    { auto_enroll_new_chats?: boolean; automation_changed_at?: string | null } | null | undefined;
+
   useEffect(() => {
     const s = settings.data;
     if (!s) return;
     setForm({
       enabled: s.enabled,
+      auto_enroll_new_chats:
+        (s as { auto_enroll_new_chats?: boolean }).auto_enroll_new_chats ?? false,
       bot_name: s.bot_name,
       greeting: s.greeting,
       instructions: s.instructions,
@@ -87,6 +122,12 @@ function ChatbotPage() {
     });
   }, [settings.data]);
 
+  const instructionsTrimmed = form.instructions.trim();
+  const greetingTrimmed = form.greeting.trim();
+  const instructionsValid = instructionsTrimmed.length >= 20;
+  const greetingValid = greetingTrimmed.length > 0;
+  const isDormant = form.enabled && (!instructionsValid || !greetingValid);
+
   const save = useMutation({
     mutationFn: async () => {
       if (!tenant?.id) throw new Error("Your workspace is still being set up.");
@@ -94,6 +135,11 @@ function ChatbotPage() {
         {
           tenant_id: tenant.id,
           enabled: form.enabled,
+          // Only meaningful while the assistant is on, and only sent to a
+          // database that has the column.
+          ...((policyAvailable
+            ? { auto_enroll_new_chats: form.enabled && form.auto_enroll_new_chats }
+            : {}) as object),
           bot_name: form.bot_name,
           greeting: form.greeting,
           instructions: form.instructions,
@@ -109,7 +155,11 @@ function ChatbotPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Chatbot updated");
+      if (isDormant) {
+        toast.warning(t("chatbot.chatbotSavedButAutoReply"));
+      } else {
+        toast.success(t("chatbot.chatbotUpdated"));
+      }
       void qc.invalidateQueries({ queryKey: ["tenant_bot_settings", tenant?.id] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -119,35 +169,122 @@ function ChatbotPage() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
         <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <Bot className="size-6 text-brand" /> AI chatbot
+          <Bot className="size-6 text-brand" /> {t("chatbot.aiChatbot")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          The assistant answers WhatsApp and website chats automatically, then hands off to a human
-          when needed.
+          {t("chatbot.theAssistantAnswersWhatsappAnd")}
         </p>
       </header>
 
       <div className="grid max-w-3xl gap-4">
+        <WebsiteKnowledgeCard />
         <Card>
           <CardHeader className="flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-base">Auto-reply</CardTitle>
-              <CardDescription>Reply instantly to new incoming messages.</CardDescription>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base" id="auto-reply-title">
+                  {t("chatbot.autoReply")}
+                </CardTitle>
+                {form.enabled && (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      isDormant
+                        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                        : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                    }`}
+                  >
+                    {isDormant ? t("chatbot.dormant") : t("chatbot.active")}
+                  </span>
+                )}
+              </div>
+              <CardDescription id="auto-reply-desc">
+                {t("chatbot.replyInstantlyToNewIncoming")}
+              </CardDescription>
             </div>
             <Switch
+              aria-labelledby="auto-reply-title"
+              aria-describedby="auto-reply-desc"
               checked={form.enabled}
-              onCheckedChange={(v) => setForm({ ...form, enabled: v })}
+              onCheckedChange={(v) =>
+                v && !form.enabled ? setConfirmingOn(true) : setForm({ ...form, enabled: v })
+              }
             />
           </CardHeader>
         </Card>
 
+        {policyAvailable && (
+          <Card>
+            <CardHeader className="flex-row items-center justify-between gap-4">
+              <div className="space-y-1">
+                <CardTitle className="text-base" id="auto-enrol-title">
+                  {t("chatbot.answerNewConversations")}
+                </CardTitle>
+                <CardDescription id="auto-enrol-desc">
+                  {t("chatbot.answerNewConversationsHint")}
+                </CardDescription>
+                {saved?.automation_changed_at && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("chatbot.automationLastChanged", {
+                      date: new Date(saved.automation_changed_at).toLocaleString(language),
+                    })}
+                  </p>
+                )}
+              </div>
+              <Switch
+                aria-labelledby="auto-enrol-title"
+                aria-describedby="auto-enrol-desc"
+                checked={form.enabled && form.auto_enroll_new_chats}
+                disabled={!form.enabled}
+                onCheckedChange={(v) => setForm({ ...form, auto_enroll_new_chats: v })}
+              />
+            </CardHeader>
+          </Card>
+        )}
+
+        <AlertDialog open={confirmingOn} onOpenChange={setConfirmingOn}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("chatbot.turnOnAutomaticReplies")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("chatbot.turnOnAutomaticRepliesBody")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("chatbot.notNow")}</AlertDialogCancel>
+              <AlertDialogAction onClick={() => setForm({ ...form, enabled: true })}>
+                {t("chatbot.turnOn")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {isDormant && (
+          <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200">
+            <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+            <AlertTitle className="font-semibold text-amber-800 dark:text-amber-300">
+              {t("chatbot.autoReplyIsDormant")}
+            </AlertTitle>
+            <AlertDescription className="text-amber-800/90 dark:text-amber-300/90 text-xs sm:text-sm">
+              {t("chatbot.evenThoughTheAutoReply")}
+              <ul className="mt-1.5 list-disc ps-4 space-y-0.5">
+                {!instructionsValid && (
+                  <li>
+                    {t("chatbot.instructionsMustBeAtLeast", { length: instructionsTrimmed.length })}
+                  </li>
+                )}
+                {!greetingValid && <li>{t("chatbot.aFirstGreetingMessageIs")}</li>}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Personality</CardTitle>
+            <CardTitle className="text-base">{t("chatbot.personality")}</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-1.5">
-              <Label htmlFor="bot_name">Bot name</Label>
+              <Label htmlFor="bot_name">{t("chatbot.botName")}</Label>
               <Input
                 id="bot_name"
                 value={form.bot_name}
@@ -155,31 +292,51 @@ function ChatbotPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="greeting">First greeting</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="greeting">{t("chatbot.firstGreeting")}</Label>
+                {form.enabled && !greetingValid && (
+                  <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                    {t("chatbot.requiredForAutoReply")}
+                  </span>
+                )}
+              </div>
               <Textarea
                 id="greeting"
                 rows={2}
                 value={form.greeting}
                 onChange={(e) => setForm({ ...form, greeting: e.target.value })}
+                placeholder={t("chatbot.eGHiThereThanks")}
+                className={
+                  form.enabled && !greetingValid
+                    ? "border-amber-500/50 focus-visible:ring-amber-500"
+                    : ""
+                }
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="instructions">Instructions / knowledge</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="instructions">{t("chatbot.instructionsKnowledge")}</Label>
+                <span
+                  className={`text-xs font-medium ${instructionsValid ? "text-muted-foreground" : form.enabled ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-muted-foreground"}`}
+                >
+                  {tr("chatbot.20MinChars", { length: instructionsTrimmed.length })}
+                </span>
+              </div>
               <Textarea
                 id="instructions"
                 rows={8}
                 value={form.instructions}
                 onChange={(e) => setForm({ ...form, instructions: e.target.value })}
-                placeholder="Describe your business, products, pricing, opening hours and tone of voice."
+                placeholder={t("chatbot.tellUsWhatYouSell")}
+                className={
+                  form.enabled && !instructionsValid
+                    ? "border-amber-500/50 focus-visible:ring-amber-500"
+                    : ""
+                }
               />
             </div>
             <div className="grid gap-1.5">
-              <Label>Model</Label>
-              {/* These are the shared Flas AI models. A workspace that has
-                  added its own OpenAI or Anthropic key uses that provider's
-                  model instead, and this picker does not apply to it -- which
-                  the page previously did not say, so the list looked like the
-                  only option there was. */}
+              <Label>{t("chatbot.model")}</Label>
               <Select value={form.model} onValueChange={(v) => setForm({ ...form, model: v })}>
                 <SelectTrigger>
                   <SelectValue />
@@ -193,12 +350,13 @@ function ChatbotPage() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                These run on the shared Flas AI key. To use your own account instead, add an OpenAI
-                or Anthropic key under{" "}
-                <Link to="/connect" hash="ai-keys" className="text-brand underline underline-offset-2">
-                  Integrations → Your own AI keys
-                </Link>
-                . Your provider&apos;s model is used then, and this setting no longer applies.
+                {tr("chatbot.customerRepliesUseFlasAi", {
+                  link: (
+                    <Link to="/catalog" className="underline">
+                      {t("chatbot.catalog")}
+                    </Link>
+                  ),
+                })}
               </p>
             </div>
           </CardContent>
@@ -206,34 +364,29 @@ function ChatbotPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Human handoff</CardTitle>
-            <CardDescription>
-              When a contact uses one of these words, the bot stops and an agent takes over.
-            </CardDescription>
+            <CardTitle className="text-base">{t("chatbot.humanHandoff")}</CardTitle>
+            <CardDescription>{t("chatbot.requestsForAPersonAnd")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <div className="grid gap-1.5">
-              <Label htmlFor="handoff">Handoff keywords (comma separated)</Label>
+              <Label htmlFor="handoff">{t("chatbot.handoffKeywordsCommaSeparated")}</Label>
               <Input
                 id="handoff"
                 value={form.handoff_keywords}
                 onChange={(e) => setForm({ ...form, handoff_keywords: e.target.value })}
-                placeholder="human, agent, complaint, refund"
+                placeholder={t("chatbot.humanAgentComplaintRefund")}
               />
             </div>
             <label className="flex items-center gap-3 text-sm">
-              <Switch
-                checked={form.business_hours_only}
-                onCheckedChange={(v) => setForm({ ...form, business_hours_only: v })}
-              />
-              Only auto-reply outside of agent availability
+              <Switch checked={false} disabled />
+              {t("chatbot.availabilityBasedSchedulingComingSoon")}
             </label>
           </CardContent>
         </Card>
 
         <div>
           <Button onClick={() => save.mutate()} disabled={save.isPending}>
-            <Save className="size-4" /> Save chatbot
+            <Save className="size-4" /> {t("chatbot.saveChatbot")}
           </Button>
         </div>
       </div>

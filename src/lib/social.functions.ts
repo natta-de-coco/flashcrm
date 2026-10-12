@@ -1,5 +1,6 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
+import { ConnectSchema, PLATFORMS } from "@/lib/social-schema";
 import { z } from "zod";
 
 const PLATFORMS = [
@@ -11,7 +12,6 @@ const PLATFORMS = [
   "tiktok",
   "google_business",
 ] as const;
-
 const IdSchema = z.object({ id: z.string().uuid() });
 
 const ReplySchema = z.object({ id: z.string().uuid(), reply: z.string().min(1).max(2000) });
@@ -63,10 +63,31 @@ export const getSocialHub = createServerFn({ method: "GET" })
     return { accounts: accounts.data, interactions: interactions.data, posts: posts.data };
   });
 
-// connectSocialAccount (a pasted access token, typed into a browser form) was
-// removed in Batch 1. Social tokens now originate only from the OAuth callback
-// -> server-side token store. A token in a browser form is a token in client
-// JSON, the network tab, and anything that records either.
+
+/** Connect an Instagram professional account or Facebook Page (admin only via RLS). */
+export const connectSocialAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => ConnectSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { sealSecret } = await import("@/lib/secret-box.server");
+    const { error } = await context.supabase.from("social_accounts").insert({
+      platform: data.platform,
+      label: data.label.trim(),
+      external_id: data.externalId?.trim() || null,
+      access_token: await sealSecret(data.accessToken?.trim() || null),
+    });
+    if (error) throw error;
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "social.account_connected",
+      actorId: context.userId,
+      entityType: "social_account",
+      details: { platform: data.platform, label: data.label },
+    });
+    return { ok: true };
+  });
+
 
 export const deleteSocialAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -100,36 +121,57 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     // Tenant membership is proven by reading the account through RLS first.
     const { data: account, error } = await context.supabase
       .from("social_accounts")
-      .select("id, tenant_id, platform, external_id")
+      .select("id, tenant_id, platform, external_id, connect_method, last_synced_at")
       .eq("id", data.id)
       .single();
     if (error || !account) throw new Error("Account not found");
     type SocialPlatform = import("@/lib/social.server").SocialPlatform;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { TOKEN_READ_COLUMNS } = await import("@/lib/social-token-store.server");
-    const { readTokensForAccount } = await import("@/lib/social-authorizations.server");
-    const { data: secret } = await supabaseAdmin
-      .from("social_accounts")
-      .select(
-        `tenant_id, platform, connect_method, authorization_id, granted_scopes, ${TOKEN_READ_COLUMNS}`,
-      )
-      .eq("id", account.id)
-      .eq("tenant_id", account.tenant_id)
-      .single();
-    // Channel-model accounts read the token from their authorization.
-    const tokens = secret ? await readTokensForAccount(secret) : null;
+
+    const { openSecret } = await import("@/lib/secret-box.server");
+    const readSecret = async () => {
+      const { data: stored } = await supabaseAdmin
+        .from("social_accounts")
+        .select("access_token, refresh_token, token_expires_at")
+        .eq("id", account.id)
+        .eq("tenant_id", account.tenant_id)
+        .single();
+      return stored ? { ...stored, access_token: await openSecret(stored.access_token) } : stored;
+    };
+    let secret = await readSecret();
+
+    // Google access tokens last an hour and X ones two. Sync never renewed
+    // them, so a connection worked for an hour and then failed until someone
+    // pressed Retry. Renew first when the token has expired or is about to.
+    const expiresAt = secret?.token_expires_at ? new Date(secret.token_expires_at).getTime() : null;
+    if (secret?.refresh_token && expiresAt !== null && expiresAt - Date.now() < 2 * 60_000) {
+      const { retryConnection } = await import("@/lib/integration-health.server");
+      await retryConnection({
+        accountId: account.id,
+        tenantId: account.tenant_id,
+        trigger: "auto",
+        actorId: context.userId,
+      });
+      secret = await readSecret();
+    }
 
     const { syncSocialAccount } = await import("@/lib/social.server");
-    const result = await syncSocialAccount({
-      id: account.id,
-      tenant_id: account.tenant_id,
-      platform: account.platform as SocialPlatform,
-      external_id: account.external_id,
-      access_token: tokens?.access ?? null,
-      connect_method: secret?.connect_method ?? null,
-      granted_scopes: secret?.granted_scopes ?? null,
-    });
+    // A first sync brings the whole history at once. Filing two years of it as
+    // "Open" reported dozens of conversations waiting for a reply that nobody
+    // was ever going to send.
+    const result = await syncSocialAccount(
+      {
+        id: account.id,
+        tenant_id: account.tenant_id,
+        platform: account.platform as SocialPlatform,
+        external_id: account.external_id,
+        access_token: secret?.access_token ?? null,
+        connect_method: account.connect_method ?? null,
+      },
+      !account.last_synced_at,
+    );
+
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -196,42 +238,57 @@ export const sendSocialReply = createServerFn({ method: "POST" })
       );
       const { data: secret } = await supabaseAdmin
         .from("social_accounts")
-        .select(`tenant_id, platform, ${TOKEN_READ_COLUMNS}`)
+
+        .select("access_token, platform")
         .eq("id", row.account_id)
         .eq("tenant_id", row.tenant_id)
         .single();
-      // replyToComment() calls Meta's Graph API. It must only ever receive a
-      // Meta token: sending a YouTube comment's reply through it would have
-      // handed the account's Google token to Meta.
-      const { connectorDefinition, resolveCapability } = await import(
-        "@/lib/social-connector-definitions"
-      );
-      const def = secret ? connectorDefinition(secret.platform as never) : undefined;
-      const canReply =
-        !!def &&
-        (secret?.platform === "facebook" || secret?.platform === "instagram") &&
-        ["implemented", "requires_provider_review"].includes(
-          resolveCapability(def, "comments_reply").status,
-        );
-      const token = canReply && secret ? (await readStoredTokens(secret)).access : null;
-      if (token) {
+      if (secret) {
+        const { openSecret } = await import("@/lib/secret-box.server");
+        secret.access_token = await openSecret(secret.access_token);
+      }
+      const replyPlatform = secret?.platform;
+      if (secret?.access_token && (replyPlatform === "facebook" || replyPlatform === "instagram")) {
         const { replyToComment } = await import("@/lib/social.server");
-        metaDelivered = await replyToComment(row.external_id, data.reply, token);
+        metaDelivered = await replyToComment(
+          replyPlatform,
+          row.external_id,
+          data.reply,
+          secret.access_token,
+        );
+        // A reply the platform refused must not be recorded as sent. It was
+        // marked "replied" regardless, so a customer's comment looked handled
+        // while nobody had answered it.
+        if (!metaDelivered) {
+          throw new Error(
+            `${replyPlatform === "facebook" ? "Facebook" : "Instagram"} did not accept the reply, so it was not sent. Check the connection's permissions and try again.`,
+          );
+        }
+
       }
     }
 
-    await context.supabase
-      .from("social_interactions")
-      .update({ status: "replied", replied_at: new Date().toISOString() })
-      .eq("id", row.id);
-    await context.supabase.from("social_interactions").insert({
+    // Only a reply the platform accepted answers the customer. A Messenger
+    // reply is saved in FLAS but never sent, so marking the message "replied"
+    // told the team it was handled while the customer heard nothing.
+    if (metaDelivered) {
+      await context.supabase
+        .from("social_interactions")
+        .update({ status: "replied", replied_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }
+    const { replyMarker } = await import("@/lib/social-thread");
+    const { error: saveError } = await context.supabase.from("social_interactions").insert({
       tenant_id: row.tenant_id,
       account_id: row.account_id,
       kind: row.kind,
       direction: "out",
       author_name: "You",
       body: data.reply,
+      // Names the message this answers, so it shows in that thread only.
+      external_id: replyMarker(row.id, metaDelivered),
     });
+    if (saveError) throw new Error(`The reply could not be saved: ${saveError.message}`);
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -306,6 +363,46 @@ export const saveSocialPost = createServerFn({ method: "POST" })
       entityType: "social_post",
       details: { platform: data.platform },
     });
+    return { ok: true };
+  });
+
+const UpdatePostSchema = z.object({
+  id: z.string().uuid(),
+  caption: z.string().min(1).max(4000),
+  accountId: z.string().uuid().nullable().optional(),
+  scheduledAt: z.string().datetime().nullable().optional(),
+});
+
+/**
+ * Rewrites a draft or planned post in place.
+ *
+ * A saved draft used to be unreachable: the composer cleared itself after
+ * saving and the only trace was a row in "Reach & audience" with a delete icon
+ * (QA, 26 Sep). A published post is read back from the platform and is never
+ * edited here — changing the caption in Flas would not change the post, so the
+ * update refuses it rather than pretending.
+ */
+export const updateSocialPost = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => UpdatePostSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: changed, error } = await context.supabase
+      .from("social_posts")
+      .update({
+        caption: data.caption,
+        account_id: data.accountId ?? null,
+        scheduled_at: data.scheduledAt ?? null,
+        status: data.scheduledAt ? "scheduled" : "draft",
+      })
+      .eq("id", data.id)
+      .neq("status", "published")
+      .select("id");
+    if (error) throw error;
+    if (!changed?.[0]) {
+      throw new Error(
+        "That post could not be edited. A published post is read from the platform and cannot be changed here.",
+      );
+    }
     return { ok: true };
   });
 

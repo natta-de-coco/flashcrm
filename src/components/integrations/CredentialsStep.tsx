@@ -6,11 +6,13 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { CredentialSpec } from "@/lib/connection-setup";
 import { savePlatformApp } from "@/lib/platform-apps.functions";
+import { addWhatsAppNumber } from "@/lib/wa-numbers.functions";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Check, CheckCircle2, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * Collects the values a channel needs, with the instructions for finding each
@@ -27,15 +29,19 @@ export function CredentialsStep({
   platformName,
   redirectUri,
   onSaved,
+  continueLabel = "Continue",
 }: {
   spec: CredentialSpec;
   platformName: string;
   /** Whitelisting this exact URL is the most common missed step. */
   redirectUri: string;
   onSaved: () => void;
+  continueLabel?: string;
 }) {
+  const { t, tr } = useI18n();
   const qc = useQueryClient();
   const saveApp = useServerFn(savePlatformApp);
+  const addNumber = useServerFn(addWhatsAppNumber);
   const [values, setValues] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
 
@@ -59,29 +65,29 @@ export function CredentialsStep({
         return;
       }
       // WhatsApp: the credentials belong to one phone number, not to an app.
-      const { count } = await supabase
-        .from("wa_numbers")
-        .select("id", { count: "exact", head: true });
+      // Saved by the server, which encrypts the token and app secret.
       const appSecret = value("app_secret").trim();
-      const { error } = await supabase.from("wa_numbers").insert({
-        label: value("label").trim(),
-        display_phone: value("display_phone").trim() || null,
-        phone_number_id: value("phone_number_id").trim(),
-        access_token: value("access_token").trim(),
-        ...(appSecret ? { app_secret: appSecret } : {}),
-        is_default: (count ?? 0) === 0,
+      await addNumber({
+        data: {
+          label: value("label").trim(),
+          displayPhone: value("display_phone").trim() || undefined,
+          phoneNumberId: value("phone_number_id").trim(),
+          accessToken: value("access_token").trim(),
+          appSecret: appSecret || undefined,
+        },
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       setSaved(true);
       setValues({});
       toast.success(
         spec.scope === "provider"
-          ? "Keys saved — this channel can connect now."
-          : "Number connected.",
+          ? t("credentialsStep.appDetailsSavedProviderSign")
+          : t("credentialsStep.numberConnected"),
       );
       void qc.invalidateQueries({ queryKey: ["connect-readiness"] });
+      void qc.invalidateQueries({ queryKey: ["integration-readiness"] });
+      void qc.invalidateQueries({ queryKey: ["connections"] });
       void qc.invalidateQueries({ queryKey: ["platform-apps"] });
       void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
       onSaved();
@@ -93,11 +99,11 @@ export function CredentialsStep({
     return (
       <Alert>
         <CheckCircle2 className="size-4" />
-        <AlertTitle>Saved</AlertTitle>
+        <AlertTitle>{t("credentialsStep.saved")}</AlertTitle>
         <AlertDescription>
           {spec.scope === "provider"
-            ? "Move on to the last step to run the secure login."
-            : "Flas can now send and receive on this number."}
+            ? t("credentialsStep.moveOnToTheLast")
+            : t("credentialsStep.flasCanNowSendAnd")}
         </AlertDescription>
       </Alert>
     );
@@ -108,15 +114,16 @@ export function CredentialsStep({
       {spec.scope === "provider" && (
         <>
           <p className="text-muted-foreground">
-            These are your own app keys, so {platformName} talks to your business rather than to
-            Flas. You enter them once.
+            {tr("credentialsStep.theseAreYourOwnApp", { platformName: platformName })}
           </p>
 
           {spec.alsoUnlocks && spec.alsoUnlocks.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              The same keys also connect{" "}
-              <span className="font-medium text-foreground">{spec.alsoUnlocks.join(", ")}</span> —
-              you will not be asked again for those.
+              {tr("credentialsStep.theSameKeysAlsoConnect", {
+                span: (
+                  <span className="font-medium text-foreground">{spec.alsoUnlocks.join(", ")}</span>
+                ),
+              })}
             </p>
           )}
 
@@ -124,12 +131,11 @@ export function CredentialsStep({
               app still refuses the login, so it is on the same screen. */}
           <div className="rounded-lg border bg-muted/40 p-3">
             <p className="mb-1.5 text-xs font-medium">
-              First, add this redirect URI to the app you create
+              {t("credentialsStep.firstAddThisRedirectUri")}
             </p>
             <CopyRow value={redirectUri} />
             <p className="mt-1.5 text-xs text-muted-foreground">
-              The platform rejects the login unless this exact URL is listed as an authorized
-              redirect.
+              {t("credentialsStep.thePlatformRejectsTheLogin")}
             </p>
           </div>
         </>
@@ -152,7 +158,7 @@ export function CredentialsStep({
             spellCheck={false}
             onChange={(e) => set(field.key, e.target.value)}
           />
-          <ul className="ml-1 space-y-1">
+          <ul className="ms-1 space-y-1">
             {field.help.map((h) => (
               <li key={h} className="flex gap-2 text-xs text-muted-foreground">
                 <span aria-hidden className="mt-1.5 size-1 shrink-0 rounded-full bg-current" />
@@ -175,12 +181,12 @@ export function CredentialsStep({
 
       <div className="flex items-center gap-3 border-t pt-4">
         <Button disabled={!complete || save.isPending} onClick={() => save.mutate()}>
-          {save.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
-          Continue
+          {save.isPending ? <Loader2 className="me-1.5 size-3.5 animate-spin" /> : null}
+          {continueLabel}
         </Button>
         {!complete && (
           <span className="text-xs text-muted-foreground">
-            Fill every field above to continue.
+            {t("credentialsStep.fillEveryFieldAboveTo")}
           </span>
         )}
       </div>
@@ -189,6 +195,7 @@ export function CredentialsStep({
 }
 
 function CopyRow({ value }: { value: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex items-center gap-2">
@@ -207,7 +214,7 @@ function CopyRow({ value }: { value: string }) {
         }}
       >
         {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-        {copied ? "Copied" : "Copy"}
+        {copied ? t("credentialsStep.copied") : t("credentialsStep.copy")}
       </Button>
     </div>
   );

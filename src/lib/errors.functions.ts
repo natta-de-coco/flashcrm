@@ -119,7 +119,12 @@ export const listErrorGroups = createServerFn({ method: "GET" })
 
     const groups = new Map<
       string,
-      ErrorGroup & { _users: Set<string>; _routes: Set<string>; _rel: Set<string>; _orgs: Set<string> }
+      ErrorGroup & {
+        _users: Set<string>;
+        _routes: Set<string>;
+        _rel: Set<string>;
+        _orgs: Set<string>;
+      }
     >();
 
     for (const r of rows ?? []) {

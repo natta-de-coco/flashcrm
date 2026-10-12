@@ -33,18 +33,35 @@ const PORT = 54987;
 
 const p = new EmbeddedPostgres({
   databaseDir: path.join(HERE, ".pgdata-grants"),
-  user: "postgres", password: "postgres", port: PORT, persistent: false,
+  user: "postgres",
+  password: "postgres",
+  port: PORT,
+  persistent: false,
   initdbFlags: ["--encoding=UTF8", "--locale=C"],
 });
 await p.initialise();
 await p.start();
-const c = new pg.Client({ host: "localhost", port: PORT, user: "postgres", password: "postgres", database: "postgres" });
+const c = new pg.Client({
+  host: "localhost",
+  port: PORT,
+  user: "postgres",
+  password: "postgres",
+  database: "postgres",
+});
 await c.connect();
 await c.query("SET search_path TO public, extensions");
 await c.query(fs.readFileSync(path.join(HERE, "supabase-shim.sql"), "utf8"));
-for (const f of fs.readdirSync(MIG).filter((f) => f.endsWith(".sql")).sort()) {
-  try { await c.query(fs.readFileSync(path.join(MIG, f), "utf8")); }
-  catch { try { await c.query("ROLLBACK"); } catch {} }
+for (const f of fs
+  .readdirSync(MIG)
+  .filter((f) => f.endsWith(".sql"))
+  .sort()) {
+  try {
+    await c.query(fs.readFileSync(path.join(MIG, f), "utf8"));
+  } catch {
+    try {
+      await c.query("ROLLBACK");
+    } catch {}
+  }
 }
 
 // ── what privileges does `authenticated` actually hold? ─────────────────────
@@ -58,10 +75,18 @@ for (const r of cols.rows) (byPriv[r.privilege_type] ??= []).push(r.column_name)
 for (const [k, v] of Object.entries(byPriv)) console.log(`  ${k.padEnd(10)}:`, v.join(", "));
 
 // ── seed a company and a company admin ──────────────────────────────────────
-const org = (await c.query("insert into organizations(name,slug) values('Acme','acme') returning id")).rows[0].id;
-const uid = (await c.query("insert into auth.users(email) values('admin@acme.test') returning id")).rows[0].id;
-await c.query("update profiles set tenant_id=$2, staff_role='company_admin' where id=$1", [uid, org]);
-await c.query("insert into user_roles(user_id,role) values($1,'admin') on conflict do nothing", [uid]);
+const org = (
+  await c.query("insert into organizations(name,slug) values('Acme','acme') returning id")
+).rows[0].id;
+const uid = (await c.query("insert into auth.users(email) values('admin@acme.test') returning id"))
+  .rows[0].id;
+await c.query("update profiles set tenant_id=$2, staff_role='company_admin' where id=$1", [
+  uid,
+  org,
+]);
+await c.query("insert into user_roles(user_id,role) values($1,'admin') on conflict do nothing", [
+  uid,
+]);
 
 const asRole = async (role, sql, params = []) => {
   await c.query("begin");
@@ -73,7 +98,9 @@ const asRole = async (role, sql, params = []) => {
     return { ok: true };
   } catch (e) {
     return { ok: false, err: e.message.split("\n")[0] };
-  } finally { await c.query("commit"); }
+  } finally {
+    await c.query("commit");
+  }
 };
 
 const UPSERT = `insert into platform_apps (tenant_id, provider, client_id, client_secret, label, updated_at)
@@ -97,17 +124,28 @@ const expect = async (label, role, sql, shouldSucceed, params = []) => {
 console.log("\n=== the contract savePlatformApp relies on ===");
 await expect("upsert as authenticated must be refused", "authenticated", UPSERT, false, [org]);
 await expect("upsert as service_role must succeed", "service_role", UPSERT, true, [org]);
-await expect("list non-secret columns as authenticated", "authenticated",
-  "select id, provider, client_id, label, updated_at from platform_apps", true);
+await expect(
+  "list non-secret columns as authenticated",
+  "authenticated",
+  "select id, provider, client_id, label, updated_at from platform_apps",
+  true,
+);
 
 console.log("\n=== the secret must stay unreadable from the browser ===");
-await expect("select client_secret", "authenticated", "select client_secret from platform_apps", false);
+await expect(
+  "select client_secret",
+  "authenticated",
+  "select client_secret from platform_apps",
+  false,
+);
 await expect("select *", "authenticated", "select * from platform_apps", false);
 
 console.log("");
-console.log(failures === 0
-  ? "OK - the secret is unreadable from the browser, and the service role can still save it."
-  : `FAIL - ${failures} problem(s).`);
+console.log(
+  failures === 0
+    ? "OK - the secret is unreadable from the browser, and the service role can still save it."
+    : `FAIL - ${failures} problem(s).`,
+);
 await c.end();
 await p.stop();
 process.exit(failures === 0 ? 0 : 1);

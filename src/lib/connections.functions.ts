@@ -28,7 +28,7 @@ export const getConnections = createServerFn({ method: "GET" })
       supabase
         .from("social_accounts")
         .select(
-          "id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, missing_scopes, authorization_id",
+"id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, missing_scopes, authorization_id, granted_scopes",
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -36,14 +36,32 @@ export const getConnections = createServerFn({ method: "GET" })
         .select("id, account_id, overall, scores, findings, suggestions, created_at")
         .order("created_at", { ascending: false })
         .limit(60),
-      supabase.from("wa_numbers").select("id, label, active").limit(20),
+      supabase
+        .from("wa_numbers")
+        .select("id, label, active, phone_number_id, display_phone, is_default, created_at")
+        .limit(20),
       supabase.from("lead_sites").select("id, name, platform, active").limit(50),
     ]);
     if (accounts.error) throw accounts.error;
 
-    const { providerReadiness } = await import("@/lib/oauth.server");
     const tenantId = await callerTenantId(supabase, context.userId);
-    const providerReady = await providerReadiness(tenantId);
+
+    // Whether each connection's access token renews itself. Worked out here
+    // because the refresh token is deliberately unreadable from a browser
+    // session; only the yes/no leaves the server.
+    const renewing = new Set<string>();
+    const tokened = new Set<string>();
+    if (tenantId) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: rows } = await supabaseAdmin
+        .from("social_accounts")
+        .select("id, access_token, refresh_token")
+        .eq("tenant_id", tenantId);
+      for (const row of rows ?? []) {
+        if (row.refresh_token) renewing.add(row.id);
+        if (row.access_token) tokened.add(row.id);
+      }
+    }
 
     const { computeHealth } = await import("@/lib/connections.server");
     // Whether each account actually holds a token, reduced to a boolean on the
@@ -62,9 +80,16 @@ export const getConnections = createServerFn({ method: "GET" })
     }
     const enriched = (accounts.data ?? []).map((a) => ({
       ...a,
+      renews: renewing.has(a.id),
       health: computeHealth({
         active: a.active,
-        access_token: withToken.has(a.id) ? "present" : null,
+
+        renews: renewing.has(a.id),
+        // Both branches of this were "set", so health could never report a
+        // missing credential -- an account saved without a token showed as
+        // healthy right up until its first sync failed.
+        access_token: tokened.has(a.id) ? "set" : null,
+
         token_expires_at: a.token_expires_at,
         last_synced_at: a.last_synced_at,
       }),
@@ -73,7 +98,6 @@ export const getConnections = createServerFn({ method: "GET" })
     return {
       accounts: enriched,
       scans: scans.data ?? [],
-      providerReady,
       whatsappNumbers: waNumbers.data ?? [],
       sites: sites.data ?? [],
       serverTime: new Date().toISOString(),
@@ -95,8 +119,22 @@ export const startConnect = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    const tenantId = await callerTenantId(context.supabase, context.userId);
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    const tenantId = profile?.tenant_id ?? null;
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
+
+    // Connecting a social account changes the whole workspace, so the server
+    // must enforce the same company-admin boundary that the screen shows.
+    // A hidden button is not an authorization control.
+    if (!["company_admin", "super_admin"].includes(profile?.staff_role ?? "")) {
+      throw new Error("Only a company admin can connect Facebook, Google, or another channel.");
+    }
+
+
 
     // A reconnect or upgrade names a channel. It must be visible to the caller
     // through RLS -- i.e. in their own workspace -- and on the same platform.
@@ -137,16 +175,18 @@ export const startConnect = createServerFn({ method: "POST" })
       }
     }
 
+
     const { startAuthorization } = await import("@/lib/oauth.server");
     const { logAudit } = await import("@/lib/audit.server");
-    await logAudit({
-      action: "connection.authorize_started",
-      tenantId,
-      actorId: context.userId,
-      entityType: "platform",
-      entityId: data.platform,
-    });
-    return startAuthorization({
+
+    // Run first, then record what actually happened.
+    //
+    // This logged "Authorization started" before knowing whether one could
+    // start, so a workspace with no app keys -- or a deployment whose origin
+    // is not in OAUTH_ALLOWED_ORIGINS -- accumulated a row per click saying an
+    // authorization had begun when the customer was never sent anywhere. That
+    // is why the logs show repeated attempts against nothing connected.
+    const result = await startAuthorization({
       platform: data.platform,
       origin: data.origin.replace(/\/$/, ""),
       tenantId,
@@ -155,6 +195,24 @@ export const startConnect = createServerFn({ method: "POST" })
       ...(tierIds?.length ? { tierIds } : {}),
       targetAccountId: data.accountId ?? null,
     });
+
+    await logAudit({
+      action: result.ready ? "connection.authorize_started" : "connection.authorize_blocked",
+      tenantId,
+      actorId: context.userId,
+      entityType: "platform",
+      entityId: data.platform,
+      ...(result.ready ? {} : { details: { reason: result.reason } }),
+    });
+
+    return result.ready
+      ? result
+      : {
+          ready: false as const,
+          reason:
+            "This connection is temporarily unavailable. Please ask a FLAS administrator to check setup.",
+          missing: [],
+        };
   });
 
 /**
@@ -171,46 +229,22 @@ export const startConnect = createServerFn({ method: "POST" })
  */
 export const getConnectReadiness = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const tenantId = await callerTenantId(context.supabase, context.userId);
-    const { CONNECTORS } = await import("@/lib/connections-catalog");
-    const { resolveCredentials, providerEnvNames } = await import("@/lib/oauth.server");
-
-    // One lookup per provider family, not per connector -- Facebook and
-    // Instagram share the same Meta app.
-    const seen = new Map<string, { ready: boolean; missing: string[]; source: string }>();
-
-    const rows = [];
-    for (const c of CONNECTORS) {
-      if (!c.oauth || !c.provider) continue;
-      let state = seen.get(c.provider);
-      if (!state) {
-        const missing: string[] = [];
-        let source = "none";
-        if (tenantId) {
-          const creds = await resolveCredentials(c.provider, tenantId);
-          source = creds.source ?? "none";
-          const [idEnv, secretEnv] = providerEnvNames(c.provider);
-          if (!creds.id && idEnv) missing.push(idEnv);
-          if (!creds.secret && secretEnv) missing.push(secretEnv);
-        } else {
-          missing.push(...providerEnvNames(c.provider));
-        }
-        state = { ready: missing.length === 0, missing, source };
-        seen.set(c.provider, state);
-      }
-      rows.push({
-        id: c.id,
-        name: c.name,
-        provider: c.provider,
-        ready: state.ready,
-        missing: state.missing,
-        // "tenant" when this workspace pasted its own app keys, "shared" when
-        // it is falling back to the platform-wide ones.
-        source: state.source,
-      });
-    }
-    return rows;
+  .handler(async () => {
+    const { getIntegrationReadiness } = await import("@/lib/integration-readiness.functions");
+    const { publicAppOrigin } = await import("@/lib/oauth-preflight.server");
+    const result = await getIntegrationReadiness({
+      data: { origin: publicAppOrigin() ?? "http://localhost:8080" },
+    });
+    return result.rows
+      .filter((row) => row.oauth)
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        provider: row.provider!,
+        ready: row.ready,
+        missing: row.missing,
+        source: row.source,
+      }));
   });
 
 /** Flas Account Scan for one connected account. */
@@ -307,24 +341,50 @@ export const disconnectConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
   .handler(async ({ data, context }) => {
-    // Membership is proven through RLS: the row is visible only to its own
-    // workspace. Everything after this uses the service role, scoped to the
-    // tenant this read returned -- never to one taken from the request.
-    const { data: visible } = await context.supabase
+
+    // The update runs as the caller, so RLS decides who may disconnect. It
+    // returns the row so a refusal is visible: an RLS-blocked UPDATE affects
+    // zero rows without raising, which previously reported success while
+    // changing nothing.
+    const { data: changed, error } = await context.supabase
       .from("social_accounts")
-      .select("id, tenant_id")
+      .update({ active: false, health: "disconnected" })
       .eq("id", data.id)
-      .maybeSingle();
-    if (!visible) throw new Error("Connection not found in this workspace.");
+      .select("id, tenant_id, platform");
+    if (error) throw error;
+    const disconnected = changed?.[0];
+    if (!disconnected) {
+      throw new Error(
+        "That connection was not found, or you do not have permission to disconnect it.",
+      );
+    }
+
+    // Disconnecting used to leave the access and refresh tokens stored, so a
+    // "disconnected" account could still act on the customer's behalf.
+    const { revokeAndClearTokens } = await import("@/lib/connections.server");
+    const revocation = await revokeAndClearTokens({
+      accountId: disconnected.id,
+      tenantId: disconnected.tenant_id,
+      platform: disconnected.platform,
+    });
+
 
     const { disconnectSocialAccount } = await import("@/lib/social-disconnect.server");
     const result = await disconnectSocialAccount({
       accountId: visible.id,
       tenantId: visible.tenant_id,
       actorId: context.userId,
+
+      entityType: "social_account",
+      entityId: data.id,
+      details: {
+        tokens_cleared: true,
+        provider_revoked: revocation.revoked,
+        note: revocation.reason,
+      },
     });
-    if (!result.ok) throw new Error("The connection could not be disconnected. Try again.");
-    return { ok: true, providerRevoke: result.providerRevoke };
+    return { ok: true, providerRevoked: revocation.revoked, note: revocation.reason };
+
   });
 
 /** Exportable Integration Health Report for the signed-in workspace. */
@@ -335,6 +395,46 @@ export const getIntegrationHealthReport = createServerFn({ method: "GET" })
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
     const { buildHealthReport } = await import("@/lib/integration-health.server");
     return buildHealthReport(tenantId);
+  });
+
+/**
+ * Encrypts this workspace's stored credentials that are still in plaintext.
+ *
+ * Admins only, because it rewrites every stored token. Idempotent: running it
+ * again changes nothing. Values written from now on are sealed anyway; this
+ * catches the ones stored before the key was configured.
+ */
+export const encryptStoredCredentials = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile?.tenant_id) {
+      throw new Error("Your workspace is still being set up — try again in a moment.");
+    }
+    if (!["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""))) {
+      throw new Error("Only company admins can encrypt stored credentials.");
+    }
+    const { sealTenantSecrets } = await import("@/lib/secret-box.server");
+    const report = await sealTenantSecrets(profile.tenant_id);
+    if (!report.configured) {
+      throw new Error(
+        "No encryption key is configured. Add TOKEN_ENCRYPTION_KEYS to the server's secrets first.",
+      );
+    }
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "credentials.sealed",
+      tenantId: profile.tenant_id,
+      actorId: context.userId,
+      entityType: "workspace",
+      entityId: profile.tenant_id,
+      details: { sealed: report.sealedNow },
+    });
+    return report;
   });
 
 /** Re-checks permissions and refreshes tokens for one or all connections. */

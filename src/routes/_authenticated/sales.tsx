@@ -4,9 +4,17 @@ import { PageHeader } from "@/components/PageHeader";
 import { useTenant } from "@/hooks/useTenant";
 import { todayInTimeZone } from "@/lib/locale";
 import {
+  documentChargeBlocker,
+  invoiceLineBlocker,
+  lineText,
+  salesDraftBlocker,
+} from "@/lib/form-validation";
+import {
   InvoiceBuilder,
   emptyDocument,
-  type BuilderState, previewTotals } from "@/components/sales/InvoiceBuilder";
+  type BuilderState,
+  previewTotals,
+} from "@/components/sales/InvoiceBuilder";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,13 +36,16 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowRight, Download, FileText, History, KanbanSquare, LayoutList, Plus, Receipt, Send, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, Download, FileText, History, KanbanSquare, LayoutList, Plus, Receipt, Send, ShieldCheck } from "lucide-react";
 import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
 import { DocumentHistoryDialog } from "@/components/sales/DocumentHistoryDialog";
 import { CompanyBillingProfileCard } from "@/components/settings/CompanyBillingProfileCard";
 import { isSubscriptionReceipt } from "@/lib/sales-pipeline";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
+import { referenceFor, type SendReference } from "@/lib/send-reference";
 
 /**
  * Why a document cannot be finalised yet, or null when it can.
@@ -48,12 +59,18 @@ function finaliseBlocker(state: BuilderState): string | null {
   const named = state.customer.name.trim() || state.customer.company.trim();
   if (!named) return "Add a customer name or company before finalising.";
 
-  const usable = state.items.filter(
-    (i) => (i.description ?? "").trim().length > 0 && Number(i.quantity) > 0,
-  );
+  // `name` as well as `description`: the line-item field labelled "Description
+  // shown on the PDF" writes `name`, and `description` is only ever set by
+  // picking a catalogue product. Testing description alone made every
+  // hand-typed invoice permanently unfinalisable, with the banner pointing at
+  // a field the user had already filled in.
+  const usable = state.items.filter((i) => lineText(i).length > 0 && Number(i.quantity) > 0);
   if (usable.length === 0) {
     return "Add at least one line with a description and a quantity above zero.";
   }
+
+  const badLine = invoiceLineBlocker(state.items) ?? documentChargeBlocker(state);
+  if (badLine) return badLine;
 
   if (previewTotals(state).grand <= 0) {
     return "The total is zero — check the prices before finalising.";
@@ -122,6 +139,7 @@ function downloadBase64(base64: string, filename: string) {
 }
 
 function SalesPage() {
+  const { t, tr, tx } = useI18n();
   const qc = useQueryClient();
   // Issue dates are the tenant's calendar day. Computing them from UTC dated a
   // quotation raised on the 10th in Dubai as the 9th.
@@ -142,8 +160,16 @@ function SalesPage() {
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
   const [sendFor, setSendFor] = useState<DocRow | null>(null);
   const [sendNote, setSendNote] = useState("");
-  const [historyDocId, setHistoryDocId] = useState<string | null>(null);
+const [historyDocId, setHistoryDocId] = useState<string | null>(null);
   const [showCompanyProfile, setShowCompanyProfile] = useState(false);
+
+  // Why the last WhatsApp send did not go, shown in the dialog with the PDF as
+  // the way to send it by hand.
+  const [sendBlocks, setSendBlocks] = useState<{ code: string; message: string }[]>([]);
+  // One reference per document message, kept until the server answers for it,
+  // so a second click or a retry after a lost answer is the same message.
+  const sendRef = useRef<SendReference | null>(null);
+
 
   const { data, isLoading } = useQuery({
     queryKey: ["sales-workspace"],
@@ -272,7 +298,7 @@ function SalesPage() {
       return id;
     },
     onSuccess: (id, finalize) => {
-      toast.success(finalize ? "Document finalised and numbered." : "Draft saved.");
+      toast.success(finalize ? t("sales.documentFinalisedAndNumbered") : t("sales.draftSaved"));
       qc.invalidateQueries({ queryKey: ["sales-workspace"] });
       if (finalize) setBuilder(null);
       else if (id && builder) setBuilder({ ...builder, id });
@@ -287,20 +313,46 @@ function SalesPage() {
   });
 
   const send = useMutation({
-    mutationFn: () =>
-      sendWa({
+    mutationFn: () => {
+      sendRef.current = referenceFor(sendRef.current, `${sendFor!.id}\n${sendNote.trim()}`, () =>
+        crypto.randomUUID(),
+      );
+      return sendWa({
         data: {
           id: sendFor!.id,
           origin: origin(),
+          clientRef: sendRef.current.ref,
           ...(sendNote.trim() ? { note: sendNote.trim() } : {}),
         },
-      }),
+      });
+    },
     onSuccess: (result) => {
-      toast.success(`Sent on WhatsApp to ${result.phone}`);
+      // The server has answered for this message; the next one is new.
+      sendRef.current = null;
+      qc.invalidateQueries({ queryKey: ["sales-workspace"] });
+      if (result.state === "blocked") {
+        // Nothing was sent. The dialog stays open with the reason and the PDF.
+        setSendBlocks(result.blocks);
+        return;
+      }
+      if (result.state === "accepted" || result.state === "duplicate") {
+        toast.success(t("sales.sentOnWhatsappTo", { phone: result.phone ?? "" }));
+      } else {
+        // Refused, or never answered: said as such, never as "sent".
+        toast.warning(
+          t("sales.notSentOnWhatsappReason", {
+            reason: tx(
+              `inbox.sendFailure.${result.failureReason ?? "unknown"}`,
+              result.deliveryError ?? "",
+            ),
+          }),
+        );
+      }
       setSendFor(null);
       setSendNote("");
-      qc.invalidateQueries({ queryKey: ["sales-workspace"] });
+      setSendBlocks([]);
     },
+    // Kept for the retry: no answer is not a "no".
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -317,8 +369,16 @@ function SalesPage() {
       }),
     onSuccess: (result) => {
       toast.success(
-        result.receiptSent ? "Payment recorded — PAID copy sent on WhatsApp." : "Payment recorded.",
+        result.receiptSent ? t("sales.paymentRecordedPaidCopySent") : t("sales.paymentRecorded"),
       );
+      if (result.receiptNotSent) {
+        const why = result.receiptNotSent.blocks.length
+          ? result.receiptNotSent.blocks
+              .map((b) => tx(`inbox.block.${b.code}`, b.message))
+              .join(" ")
+          : tx(`inbox.sendFailure.${result.receiptNotSent.reason ?? "unknown"}`, "");
+        toast.warning(t("sales.paidCopyNotSentReason", { reason: why }));
+      }
       setPayFor(null);
       setPayForm({ amount: "", reference: "", method: "bank_transfer" });
       qc.invalidateQueries({ queryKey: ["sales-workspace"] });
@@ -329,7 +389,7 @@ function SalesPage() {
   const convert = useMutation({
     mutationFn: (id: string) => convertQuote({ data: { id } }),
     onSuccess: () => {
-      toast.success("Quotation converted to a draft invoice.");
+      toast.success(t("sales.quotationConvertedToADraft"));
       qc.invalidateQueries({ queryKey: ["sales-workspace"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -339,12 +399,16 @@ function SalesPage() {
     return (
       <div className="mx-auto max-w-5xl">
         <PageHeader
-          title={builder.id ? `Edit ${builder.kind}` : `New ${builder.kind}`}
-          description="Add your lines, save the draft, then finalise to lock the number and generate the PDF."
+          title={
+            builder.id
+              ? t(builder.kind === "quotation" ? "sales.editQuotation" : "sales.editInvoice")
+              : t(builder.kind === "quotation" ? "sales.newQuotation" : "sales.newInvoice")
+          }
+          description={t("sales.addYourLinesSaveThe")}
           actions={
             <>
               <Button variant="ghost" onClick={() => setBuilder(null)}>
-                Back
+                {t("sales.back")}
               </Button>
               {builder.id && (
                 <Button
@@ -357,25 +421,28 @@ function SalesPage() {
               )}
               <Button
                 variant="outline"
-                disabled={save.isPending}
+                disabled={save.isPending || salesDraftBlocker(builder) !== null}
+                title={salesDraftBlocker(builder) ?? undefined}
                 onClick={() => save.mutate(false)}
               >
-                Save draft
+                {t("sales.saveDraft")}
               </Button>
               <Button
                 disabled={save.isPending || finaliseBlocker(builder) !== null}
                 title={finaliseBlocker(builder) ?? undefined}
                 onClick={() => save.mutate(true)}
               >
-                Finalise &amp; number
+                {t("sales.finaliseNumber")}
               </Button>
             </>
           }
         />
         {finaliseBlocker(builder) && (
           <p className="mb-4 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-            <strong className="text-foreground">Not ready to finalise:</strong>{" "}
-            {finaliseBlocker(builder)} You can still save it as a draft.
+            {tr("sales.youCanStillSaveIt", {
+              strong: <strong className="text-foreground">{t("sales.notReadyToFinalise")}</strong>,
+              finaliseBlocker: finaliseBlocker(builder),
+            })}
           </p>
         )}
         <InvoiceBuilder
@@ -391,8 +458,8 @@ function SalesPage() {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader
-        title="Quotations & Invoices"
-        description="Quote a customer, turn it into an invoice, send the PDF on WhatsApp and let Flas deliver the stamped PAID copy the moment payment lands."
+        title={t("sales.quotationsInvoices")}
+        description={t("sales.quoteACustomerTurnIt")}
         actions={
           <>
             <Button
@@ -403,16 +470,16 @@ function SalesPage() {
               <Receipt className="h-4 w-4 text-primary" /> Tax &amp; TRN Profile
             </Button>
             <Button variant="outline" onClick={() => startNew("quotation")}>
-              <Plus className="mr-1 h-4 w-4" /> Quotation
+              <Plus className="me-1 h-4 w-4" /> {t("sales.quotation")}
             </Button>
             <Button onClick={() => startNew("invoice")}>
-              <Plus className="mr-1 h-4 w-4" /> Invoice
+              <Plus className="me-1 h-4 w-4" /> {t("sales.invoice")}
             </Button>
           </>
         }
       />
 
-      {/* Toolbar: view toggle + list-mode filters */}
+{/* Toolbar: view toggle + list-mode filters */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         {/* Board / List toggle */}
         <div className="flex rounded-lg border p-0.5">
@@ -438,27 +505,26 @@ function SalesPage() {
         {viewMode === "list" && (
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="quotations">Quotations</TabsTrigger>
-              <TabsTrigger value="unpaid">Unpaid</TabsTrigger>
-              <TabsTrigger value="paid">Paid</TabsTrigger>
+              <TabsTrigger value="all">{t("sales.all")}</TabsTrigger>
+              <TabsTrigger value="quotations">{t("sales.quotations")}</TabsTrigger>
+              <TabsTrigger value="unpaid">{t("sales.unpaid")}</TabsTrigger>
+              <TabsTrigger value="paid">{t("sales.paid")}</TabsTrigger>
             </TabsList>
           </Tabs>
         )}
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading your sales documents…</p>
+        <p className="text-sm text-muted-foreground">{t("sales.loadingYourSalesDocuments")}</p>
       ) : viewMode === "board" ? (
         customerDocs.length === 0 ? (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Receipt className="h-4 w-4" /> Nothing here yet
+                <Receipt className="h-4 w-4" /> {t("sales.nothingHereYet")}
               </CardTitle>
               <CardDescription>
-                Create your first quotation — when the customer accepts, one click turns it into an
-                invoice with the same lines.
+                {t("sales.createYourFirstQuotationWhen")}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -488,12 +554,9 @@ function SalesPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Receipt className="h-4 w-4" /> Nothing here yet
+              <Receipt className="h-4 w-4" /> {t("sales.nothingHereYet")}
             </CardTitle>
-            <CardDescription>
-              Create your first quotation — when the customer accepts, one click turns it into an
-              invoice with the same lines.
-            </CardDescription>
+            <CardDescription>{t("sales.createYourFirstQuotationWhen")}</CardDescription>
           </CardHeader>
         </Card>
       ) : (
@@ -504,32 +567,39 @@ function SalesPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-semibold">{doc.doc_number || "Draft"}</span>
+                    <span className="font-semibold">{doc.doc_number || t("sales.draft")}</span>
                     <Badge className={STATUS_TONE[doc.status] ?? "bg-muted"} variant="secondary">
-                      {doc.status.replace("_", " ")}
+                      {hasMessage(`sales.status.${doc.status}`)
+                        ? t(`sales.status.${doc.status}` as MessageKey)
+                        : doc.status.replace("_", " ")}
                     </Badge>
-                    <span className="text-xs uppercase text-muted-foreground">{doc.kind}</span>
+                    <span className="text-xs uppercase text-muted-foreground">
+                      {doc.kind === "quotation" ? t("sales.quotation") : t("sales.invoice")}
+                    </span>
                   </div>
                   <p className="mt-1 truncate text-sm text-muted-foreground">
-                    {doc.customer_snapshot?.name ?? "No customer"}
+                    {doc.customer_snapshot?.name ?? t("sales.noCustomer")}
                     {doc.customer_snapshot?.company
                       ? ` · ${doc.customer_snapshot.company}`
                       : ""} · {doc.issue_date}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="mr-2 text-right">
+                  <div className="me-2 text-end">
                     <div className="font-semibold">
                       {doc.currency} {Number(doc.grand_total).toFixed(2)}
                     </div>
                     {Number(doc.balance) > 0 && Number(doc.paid_amount) > 0 ? (
                       <div className="text-xs text-amber-600">
-                        Balance {doc.currency} {Number(doc.balance).toFixed(2)}
+                        {tr("sales.balance", {
+                          currency: doc.currency,
+                          toFixed: Number(doc.balance).toFixed(2),
+                        })}
                       </div>
                     ) : null}
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => openExisting.mutate(doc.id)}>
-                    Edit
+                    {t("sales.edit2")}
                   </Button>
                   <Button
                     size="sm"
@@ -545,14 +615,14 @@ function SalesPage() {
                     disabled={download.isPending}
                     onClick={() => download.mutate(doc.id)}
                   >
-                    <Download className="mr-1 h-4 w-4" /> PDF
+                    <Download className="me-1 h-4 w-4" /> PDF
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => setSendFor(doc)}>
-                    <Send className="mr-1 h-4 w-4" /> WhatsApp
+                    <Send className="me-1 h-4 w-4" /> WhatsApp
                   </Button>
                   {doc.kind === "quotation" ? (
                     <Button size="sm" onClick={() => convert.mutate(doc.id)}>
-                      <ArrowRight className="mr-1 h-4 w-4" /> To invoice
+                      <ArrowRight className="me-1 h-4 w-4" /> {t("sales.toInvoice")}
                     </Button>
                   ) : Number(doc.balance) > 0 ? (
                     <Button
@@ -566,7 +636,7 @@ function SalesPage() {
                         });
                       }}
                     >
-                      Mark paid
+                      {t("sales.markPaid")}
                     </Button>
                   ) : null}
                 </div>
@@ -576,26 +646,54 @@ function SalesPage() {
         </div>
       )}
 
-      <Dialog open={!!sendFor} onOpenChange={(open) => !open && setSendFor(null)}>
+      <Dialog
+        open={!!sendFor}
+        onOpenChange={(open) => {
+          if (open) return;
+          setSendFor(null);
+          setSendBlocks([]);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Send on WhatsApp</DialogTitle>
+            <DialogTitle>{t("sales.sendOnWhatsapp")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Flas finalises the document if needed and sends the customer a secure link where they
-            can view, download and pay.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("sales.flasFinalisesTheDocumentIf")}</p>
           <div className="space-y-1.5">
-            <Label>Message to add (optional)</Label>
+            <Label>{t("sales.messageToAddOptional")}</Label>
             <Textarea
               rows={3}
               value={sendNote}
-              placeholder="Hi Ahmed, here is the quotation we discussed."
+              placeholder={t("sales.hiAhmedHereIsThe")}
               onChange={(e) => setSendNote(e.target.value)}
             />
           </div>
+          {sendBlocks.length > 0 && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+            >
+              <p className="flex items-center gap-1.5 font-semibold text-destructive">
+                <AlertTriangle className="size-4 shrink-0" /> {t("sales.notSentOnWhatsapp")}
+              </p>
+              <ul className="mt-1 space-y-1 text-muted-foreground">
+                {sendBlocks.map((b) => (
+                  <li key={b.code}>{tx(`inbox.block.${b.code}`, b.message)}</li>
+                ))}
+              </ul>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                disabled={download.isPending}
+                onClick={() => sendFor && download.mutate(sendFor.id)}
+              >
+                <Download className="size-4" /> {t("sales.downloadPdfToSendYourself")}
+              </Button>
+            </div>
+          )}
           <Button disabled={send.isPending} onClick={() => send.mutate()}>
-            {send.isPending ? "Sending…" : "Send now"}
+            {send.isPending ? t("sales.sending") : t("sales.sendNow")}
           </Button>
         </DialogContent>
       </Dialog>
@@ -603,11 +701,11 @@ function SalesPage() {
       <Dialog open={!!payFor} onOpenChange={(open) => !open && setPayFor(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Record payment</DialogTitle>
+            <DialogTitle>{t("sales.recordPayment")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label>Amount received</Label>
+              <Label>{t("sales.amountReceived")}</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -616,19 +714,16 @@ function SalesPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Reference (optional)</Label>
+              <Label>{t("sales.referenceOptional")}</Label>
               <Input
                 value={payForm.reference}
-                placeholder="Bank transfer ref / receipt no."
+                placeholder={t("sales.bankTransferRefReceiptNo")}
                 onChange={(e) => setPayForm({ ...payForm, reference: e.target.value })}
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              When the balance reaches zero Flas sends the customer the PAID-stamped PDF on WhatsApp
-              automatically.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("sales.whenTheBalanceReachesZero")}</p>
             <Button disabled={pay.isPending || !payForm.amount} onClick={() => pay.mutate()}>
-              {pay.isPending ? "Saving…" : "Save payment"}
+              {pay.isPending ? t("sales.saving") : t("sales.savePayment")}
             </Button>
           </div>
         </DialogContent>

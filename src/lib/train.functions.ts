@@ -51,7 +51,8 @@ export const getBrandKnowledge = createServerFn({ method: "GET" })
     return {
       profile: profile.data,
       website: state.data ?? null,
-      recentPages: pages.data ?? [],
+      recentPages: (pages.data ?? []).filter((p) => p.indexed_at === state.data?.last_synced_at),
+      websiteReaderReady: Boolean(process.env["FIRECRAWL_API_KEY"]?.trim()),
     };
   });
 
@@ -83,7 +84,49 @@ export const syncWebsiteNow = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { syncWebsiteKnowledge } = await import("@/lib/website-knowledge.server");
-    return syncWebsiteKnowledge(context.supabase, data.siteUrl);
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, staff_role")
+      .eq("id", context.userId)
+      .maybeSingle();
+    if (!profile?.tenant_id || !["company_admin", "super_admin"].includes(profile.staff_role))
+      throw new Error("Only your workspace admin can change website knowledge.");
+    const client = context.supabase;
+    const tenantId = profile.tenant_id;
+    const { data: state, error: stateError } = await client
+      .from("website_sync_state")
+      .select("updated_at")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (stateError) throw new Error("Website reading is temporarily unavailable.");
+    const startedAt = new Date().toISOString();
+    if (state && Date.now() - Date.parse(state.updated_at) < 60_000)
+      throw new Error("Please wait a minute before reading the website again.");
+    const claimed = state
+      ? await client
+          .from("website_sync_state")
+          .update({ status: "syncing", updated_at: startedAt })
+          .eq("tenant_id", tenantId)
+          .eq("updated_at", state.updated_at)
+          .select("tenant_id")
+          .maybeSingle()
+      : await client
+          .from("website_sync_state")
+          .insert({ tenant_id: tenantId, status: "syncing", updated_at: startedAt })
+          .select("tenant_id")
+          .maybeSingle();
+    if (claimed.error || !claimed.data)
+      throw new Error("Website reading is already in progress. Try again shortly.");
+    try {
+      return await syncWebsiteKnowledge(client, data.siteUrl, tenantId);
+    } catch (error) {
+      await client
+        .from("website_sync_state")
+        .update({ status: "error", error: "Website reading did not finish. Please retry." })
+        .eq("tenant_id", tenantId)
+        .eq("updated_at", startedAt);
+      throw error;
+    }
   });
 
 /** Flas proposes brand knowledge fields from the indexed website content. */

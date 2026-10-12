@@ -41,6 +41,13 @@ export type Connector = {
   blurb: string;
   /** True when Flas can run the platform's official OAuth authorization flow. */
   oauth: boolean;
+  /**
+   * Set when the connector cannot actually be connected yet, with the reason
+   * shown in place of a Connect button. A Connect that "succeeds" and then
+   * does nothing is worse than an honest "not yet".
+   */
+  unavailableReason?: string;
+  limitedReason?: string;
   /** OAuth provider family used for the token exchange. */
   provider?: "meta" | "google" | "linkedin" | "tiktok" | "twitter" | "pinterest";
   /** Capabilities the official API supports (subject to granted permissions). */
@@ -58,9 +65,10 @@ export type Connector = {
 export const CONNECTORS: Connector[] = [
   {
     id: "facebook",
+    limitedReason: "Publishing and sending Messenger replies are not available yet.",
     name: "Facebook",
     group: "social",
-    blurb: "Page posts, comments, Messenger and Page insights.",
+    blurb: "Read Page posts, comments, Messenger and basic insights.",
     oauth: true,
     provider: "meta",
     manageUrl: "https://business.facebook.com/latest/home",
@@ -68,11 +76,11 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "instagram",
+    limitedReason:
+      "Publishing and Instagram DMs are not available yet. A professional account linked to a Facebook Page is required.",
     name: "Instagram",
     group: "social",
-    // No DMs: Flas has no Instagram messaging implementation (registry:
-    // direct_messages_read/send not_implemented). Comment sync is not DM sync.
-    blurb: "Feed, Reels, comments and account insights.",
+blurb: "Professional account posts, comments and insights.",
     oauth: true,
     provider: "meta",
     manageUrl: "https://business.facebook.com/latest/instagram_content",
@@ -80,6 +88,8 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "linkedin",
+    limitedReason:
+      "Reading and analytics depend on approved LinkedIn access. Publishing is not available yet.",
     name: "LinkedIn",
     group: "social",
     blurb: "Company page posts and follower/impression analytics.",
@@ -92,7 +102,8 @@ export const CONNECTORS: Connector[] = [
     id: "tiktok",
     name: "TikTok",
     group: "social",
-    blurb: "Video publishing and video performance data.",
+    blurb: "Connect your TikTok profile.",
+    limitedReason: "Profile and video metrics. Video publishing is not implemented in FLAS yet.",
     oauth: true,
     provider: "tiktok",
     manageUrl: "https://www.tiktok.com/tiktokstudio",
@@ -100,6 +111,8 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "youtube",
+    limitedReason:
+      "Read videos, comments and public statistics. Uploading and comment replies are not available yet.",
     name: "YouTube",
     group: "social",
     blurb: "Channel videos, comments and channel statistics.",
@@ -113,6 +126,7 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "twitter",
+    limitedReason: "Read posts and public metrics. Publishing and DMs are not available yet.",
     name: "X / Twitter",
     group: "social",
     blurb: "Posts and public post metrics.",
@@ -136,9 +150,11 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "pinterest",
+    limitedReason:
+      "Profile connection only. Pin sync, publishing and analytics are not available yet.",
     name: "Pinterest",
     group: "social",
-    blurb: "Pins, boards and pin analytics.",
+    blurb: "Connect your Pinterest profile.",
     oauth: true,
     provider: "pinterest",
     manageUrl: "https://www.pinterest.com/business/hub/",
@@ -150,21 +166,22 @@ export const CONNECTORS: Connector[] = [
     group: "social",
     blurb: "Threads posts and post insights.",
     oauth: true,
+    unavailableReason:
+      "Threads uses its own login and its own app keys, separate from Facebook's. Flas does not support that login yet.",
     provider: "meta",
     manageUrl: "https://www.threads.net",
     profilePattern: (h) => `https://www.threads.net/@${h.replace("@", "")}`,
   },
   {
     id: "whatsapp",
+    unavailableReason:
+      "Simple WhatsApp onboarding is coming soon. Existing connected numbers keep working.",
     name: "WhatsApp Business",
     group: "messaging",
     blurb: "Numbers, templates, chatbot and conversations.",
     oauth: false,
     manageUrl: "https://business.facebook.com/wa/manage/",
-    // No internalHref: this used to point at /connect, the page the card is
-    // already on, so "Set up in Flas" went nowhere. WhatsApp has no OAuth
-    // flow, so its guided wizard collects the Phone Number ID and permanent
-    // token directly instead.
+    // Embedded Signup is a separate integration, not the Pages OAuth flow.
   },
   {
     id: "meta_ads",
@@ -181,6 +198,8 @@ export const CONNECTORS: Connector[] = [
     group: "ads",
     blurb: "Search spend, conversions and search terms.",
     oauth: true,
+    unavailableReason:
+      "Google Ads needs a Google Ads developer token, and Flas does not read ad data yet.",
     provider: "google",
     manageUrl: "https://ads.google.com",
   },
@@ -190,6 +209,8 @@ export const CONNECTORS: Connector[] = [
     group: "ads",
     blurb: "B2B campaign performance and lead gen forms.",
     oauth: true,
+    unavailableReason:
+      "LinkedIn Ads needs LinkedIn's Advertising API approval, and Flas does not read ad data yet. Connecting it would also sign out your LinkedIn Page connection.",
     provider: "linkedin",
     manageUrl: "https://www.linkedin.com/campaignmanager/",
   },
@@ -198,14 +219,10 @@ export const CONNECTORS: Connector[] = [
     name: "TikTok Ads",
     group: "ads",
     blurb: "Campaign spend and creative performance.",
-    // TikTok Ads is TikTok for Business / the Marketing API -- a separate
-    // product with its own advertiser authorization. It previously reused the
-    // consumer Login Kit flow and requested only user.info.basic, which can
-    // read no ads data at all. Disabled until a real Marketing API adapter
-    // exists; the registry marks it not implemented.
-    oauth: false,
+oauth: true,
     unavailableReason:
-      "Not implemented. TikTok Ads uses the TikTok for Business Marketing API, which Flas does not integrate yet.",
+      "TikTok Ads needs TikTok's advertising API, which has its own login and developer approval. Flas does not support it yet.",
+    provider: "tiktok",
     manageUrl: "https://ads.tiktok.com",
   },
   {
@@ -237,6 +254,7 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "shopify",
+    unavailableReason: "Guided Shopify onboarding is coming soon.",
     name: "Shopify",
     group: "commerce",
     blurb: "Store widget, products and order-driven leads.",
@@ -246,6 +264,7 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "woocommerce",
+    unavailableReason: "Guided WooCommerce onboarding is coming soon.",
     name: "WooCommerce",
     group: "commerce",
     blurb: "Store leads and product catalogue sync.",

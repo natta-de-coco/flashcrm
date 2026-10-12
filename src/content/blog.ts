@@ -139,7 +139,8 @@ const CORE_POSTS: Post[] = [
 
   {
     slug: "whatsapp-business-api-approval-checklist",
-    title: "Getting your WhatsApp Business API number approved: the checklist Meta does not publish",
+    title:
+      "Getting your WhatsApp Business API number approved: the checklist Meta does not publish",
     excerpt:
       "Business verification, display name review and number registration reject applications for boring, avoidable reasons. Here is what to fix before you apply.",
     category: "WhatsApp",
@@ -799,7 +800,13 @@ Buttons: [Call us] [Get directions]</code></pre>
  * No import cycle: comparisons.ts -> define.ts -> blog.ts is a type-only
  * import, which is erased at compile time.
  */
-export const POSTS: Post[] = [...CORE_POSTS, ...COMPARISON_POSTS, ...BUYING_POSTS, ...LEAD_CAPTURE_POSTS, ...AI_POSTS];
+export const POSTS: Post[] = [
+  ...CORE_POSTS,
+  ...COMPARISON_POSTS,
+  ...BUYING_POSTS,
+  ...LEAD_CAPTURE_POSTS,
+  ...AI_POSTS,
+];
 
 /** Newest first, which is the order both the index and the sitemap want. */
 export const POSTS_BY_DATE = [...POSTS].sort((a, b) => b.published.localeCompare(a.published));

@@ -1,6 +1,7 @@
 // Server-only OAuth plumbing for platform connections. Flas never asks the
 // user for a platform password: we redirect to the platform's own consent
 // screen and exchange the returned code for a token server-side.
+import { openSecret } from "@/lib/secret-box.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connectorDefinition } from "@/lib/social-connector-definitions";
 import type { AccountPlatform, Connector } from "./connections-catalog";
@@ -63,8 +64,8 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     secretEnv: "TIKTOK_CLIENT_SECRET",
   },
   twitter: {
-    authorizeUrl: "https://twitter.com/i/oauth2/authorize",
-    tokenUrl: "https://api.twitter.com/2/oauth2/token",
+    authorizeUrl: "https://x.com/i/oauth2/authorize",
+    tokenUrl: "https://api.x.com/2/oauth2/token",
     idEnv: "X_CLIENT_ID",
     secretEnv: "X_CLIENT_SECRET",
     // Real PKCE is generated per-authorization below.  The hardcoded challenge
@@ -84,11 +85,14 @@ export type StartResult =
   { ready: true; url: string } | { ready: false; reason: string; missing: string[] };
 
 /** Providers that require PKCE (send code_challenge on auth, code_verifier on exchange). */
-// TikTok requires PKCE; Google and X support S256 and reject nothing by
-// sending it. Meta's classic dialog and Pinterest are left out deliberately —
+// X requires PKCE; Google supports S256 and rejects nothing by sending it.
+// TikTok is left out: its docs describe PKCE for desktop and mobile apps only,
+// with a HEX-encoded SHA-256 challenge rather than the RFC 7636 base64url one
+// generated here, so a web flow that honoured the challenge would fail the
+// exchange. Meta's classic dialog and Pinterest are left out deliberately —
 // an unsupported code_challenge is an unknown parameter, and providers differ
 // in whether they ignore or reject those. Widen only with a verified source.
-const PKCE_PROVIDERS: Provider[] = ["twitter", "tiktok", "google"];
+const PKCE_PROVIDERS: Provider[] = ["twitter", "google"];
 
 function base64UrlEncode(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
@@ -113,7 +117,7 @@ export function providerCredentials(provider: Provider): {
   secret: string | undefined;
 } {
   const cfg = PROVIDERS[provider];
-  return { id: process.env[cfg.idEnv], secret: process.env[cfg.secretEnv] };
+  return { id: process.env[cfg.idEnv]?.trim(), secret: process.env[cfg.secretEnv]?.trim() };
 }
 
 /**
@@ -126,14 +130,19 @@ export async function resolveCredentials(
   tenantId?: string | null,
 ): Promise<{ id: string | undefined; secret: string | undefined; source: "workspace" | "shared" }> {
   if (tenantId) {
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("platform_apps")
       .select("client_id, client_secret")
       .eq("tenant_id", tenantId)
       .eq("provider", provider)
       .maybeSingle();
+    if (error) throw new Error("Could not resolve provider configuration.");
     if (data?.client_id && data.client_secret) {
-      return { id: data.client_id, secret: data.client_secret, source: "workspace" };
+      return {
+        id: data.client_id,
+        secret: (await openSecret(data.client_secret)) ?? undefined,
+        source: "workspace",
+      };
     }
   }
   const env = providerCredentials(provider);
@@ -217,9 +226,12 @@ export function resolveAllowedOrigin(candidate: string): string | null {
     return null;
   }
   if (
-    parsed.protocol !== "https:" &&
-    parsed.hostname !== "localhost" &&
-    parsed.hostname !== "127.0.0.1"
+
+    parsed.username ||
+    parsed.password ||
+    (parsed.protocol !== "https:" &&
+      !(parsed.protocol === "http:" && ["localhost", "127.0.0.1"].includes(parsed.hostname)))
+
   ) {
     return null;
   }
@@ -264,56 +276,28 @@ export async function startAuthorization(args: {
       missing: [],
     };
   }
+  // A connector that cannot work yet refuses here, before any credentials
+  // or state are touched, with the reason the card shows.
+  if (meta.unavailableReason) {
+    return { ready: false, reason: meta.unavailableReason, missing: [] };
+  }
   const cfg = PROVIDERS[meta.provider];
-  const creds = await resolveCredentials(meta.provider, args.tenantId);
-  if (!creds.id || !creds.secret) {
-    return {
-      ready: false,
-      reason: `${meta.name} needs your own ${meta.provider} app keys. Open Connect & setup → Platform app keys, paste the ${meta.provider} App ID and Secret once, and every account on this platform then connects with one click.`,
-      missing: providerEnvNames(meta.provider),
-    };
-  }
-
-  // The origin arrives from the browser, so it decides where a provider sends
-  // an authorization code. Providers enforce their own redirect allowlists,
-  // which limits the damage, but an unchecked value here is still an
-  // attacker-controlled input reaching an outbound URL. Check it against ours.
-  const allowedOrigin = resolveAllowedOrigin(args.origin);
-  if (!allowedOrigin) {
-    // Almost always a deployment that was never told its own address: with no
-    // OAUTH_ALLOWED_ORIGINS or PUBLIC_APP_URL the allowlist is loopback only,
-    // and every provider is refused. Name the setting so the fix is obvious.
-    let attempted = "this address";
-    try {
-      attempted = new URL(args.origin).origin;
-    } catch {
-      /* keep the generic wording for a malformed origin */
-    }
-    return {
-      ready: false,
-      reason: `${attempted} is not an allowed sign-in return address for this deployment. Add it to OAUTH_ALLOWED_ORIGINS in the host's secrets and redeploy.`,
-      missing: ["OAUTH_ALLOWED_ORIGINS"],
-    };
-  }
-
-  // Tokens are stored encrypted or not at all. Checked before the consent
-  // screen, so a customer never approves access Flas then cannot keep.
-  const { encryptionConfigured } = await import("@/lib/social-secrets.server");
-  if (!encryptionConfigured()) {
+  const { oauthPreflight } = await import("./oauth-preflight.server");
+  const preflight = await oauthPreflight(meta.provider, args.tenantId, args.origin);
+  const { credentials: creds, allowedOrigin } = preflight;
+  if (!preflight.ready || !allowedOrigin || !creds.id) {
     return {
       ready: false,
       reason:
-        "Flas cannot store this connection securely yet: token encryption is not configured on this deployment.",
-      missing: ["SOCIAL_TOKEN_ENCRYPTION_KEYS", "SOCIAL_TOKEN_ACTIVE_KEY_ID"],
+        "This connection is temporarily unavailable. A FLAS administrator needs to complete setup.",
+      missing: [],
     };
   }
 
-  // 32 bytes from the CSPRNG = 256 bits, base64url-encoded (43 characters).
-  // The previous two UUIDv4s gave ~244: six bits of each are fixed
-  // version/variant markers, not randomness.
+// Tokens are stored sealed via secret-box
   const stateBytes = new Uint8Array(32);
   crypto.getRandomValues(stateBytes);
-  const state = base64UrlEncode(stateBytes.buffer);
+  const state = [...stateBytes].map((b) => b.toString(16).padStart(2, "0")).join("");
   // Only the digest is stored. The state itself lives in the provider's
   // redirect URL and nowhere we control, so reading oauth_states yields
   // nothing that can be replayed against a live authorization.
@@ -403,7 +387,8 @@ export async function startAuthorization(args: {
     state,
     scopes,
     extraAuthParams: cfg.extraAuthParams,
-    configId: cfg.configIdEnv ? process.env[cfg.configIdEnv] : undefined,
+    configId:
+      creds.source === "shared" && cfg.configIdEnv ? process.env[cfg.configIdEnv] : undefined,
     pkceChallenge: pkce?.challenge,
   });
   return { ready: true, url: `${cfg.authorizeUrl}?${params.toString()}` };
@@ -429,7 +414,10 @@ export function buildAuthorizeParams(args: {
   // A configuration supersedes the scope list. Sending both invites the two to
   // disagree, and the configuration is the one the business granted.
   const useConfigId = Boolean(args.configId);
-  const scopeSeparator = args.provider === "meta" ? "," : " ";
+  // Meta and TikTok take comma-separated scopes (TikTok's docs: "A comma (,)
+  // separated string"); everyone else uses the RFC 6749 space. TikTok was
+  // sent spaces, which its authorize endpoint does not accept.
+  const scopeSeparator = args.provider === "meta" || args.provider === "tiktok" ? "," : " ";
 
   const params = new URLSearchParams({
     client_id: args.clientId,
@@ -519,7 +507,16 @@ function readTokenSet(json: TokenResponse): TokenSet | null {
   };
 }
 
-function applyClientCredentials(
+/**
+ * Providers whose token endpoint requires the client to authenticate with an
+ * HTTP Basic header rather than body parameters. X confidential clients get
+ * `unauthorized_client` ("Missing valid authorization header") without it, and
+ * Pinterest documents the header as required. Both were sent the secret in the
+ * body, so no X or Pinterest connection could ever complete.
+ */
+const BASIC_AUTH_PROVIDERS: Provider[] = ["twitter", "pinterest"];
+
+export function applyClientCredentials(
   body: URLSearchParams,
   provider: Provider,
   id: string,
@@ -530,11 +527,9 @@ function applyClientCredentials(
     body.set("client_secret", secret);
     return;
   }
-  // Pinterest and X (for confidential clients) authenticate the client with
-  // HTTP Basic -- see tokenRequestHeaders. The secret must not also be in the
-  // body: RFC 6749 forbids using two client-authentication methods at once.
-  // X's PKCE flow still takes client_id in the body; Pinterest's does not.
-  if (BASIC_AUTH_PROVIDERS.includes(provider)) {
+if (BASIC_AUTH_PROVIDERS.includes(provider)) {
+    // The secret travels only in the Authorization header. X still expects
+    // client_id in the body; Pinterest does not use it.
     if (provider === "twitter") body.set("client_id", id);
     return;
   }
@@ -542,15 +537,7 @@ function applyClientCredentials(
   body.set("client_secret", secret);
 }
 
-/**
- * Providers whose token endpoint takes client credentials as HTTP Basic.
- * Verified 2026-09-11: Pinterest's token docs use Basic; X's say confidential
- * clients "will need to use a basic authentication scheme".
- */
-const BASIC_AUTH_PROVIDERS: readonly Provider[] = ["pinterest", "twitter"];
-
-/** Token-endpoint headers, including HTTP Basic for providers that need it. */
-export function tokenRequestHeaders(
+export function tokenEndpointHeaders(
   provider: Provider,
   id: string,
   secret: string,
@@ -593,7 +580,7 @@ export async function exchangeCode(args: {
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
-    headers: tokenRequestHeaders(args.provider, creds.id, creds.secret),
+headers: tokenEndpointHeaders(args.provider, creds.id, creds.secret),
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
@@ -672,7 +659,7 @@ export async function refreshAccessToken(args: {
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
-    headers: tokenRequestHeaders(args.provider, creds.id, creds.secret),
+headers: tokenEndpointHeaders(args.provider, creds.id, creds.secret),
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
@@ -710,4 +697,44 @@ export async function consumeState(state: string): Promise<{
     redirect_uri: row.redirect_uri,
     code_verifier: row.code_verifier ?? null,
   };
+}
+
+/**
+ * Upgrades a Meta login token to a long-lived one (about 60 days).
+ *
+ * The code exchange returns a short-lived user token that lasts one to two
+ * hours. It was saved as-is, so every Meta connection died within hours, and a
+ * Page token taken from it expires with it -- whereas one taken from a
+ * long-lived user token does not expire. Meta's documented flow is to exchange
+ * the code and then immediately exchange the result for a long-lived token.
+ */
+export async function upgradeMetaToken(token: string, tenantId: string | null): Promise<TokenSet> {
+  return refreshAccessToken({
+    provider: "meta",
+    refreshToken: null,
+    currentToken: token,
+    tenantId,
+  });
+}
+
+/**
+ * The permissions Meta actually granted. Meta's code exchange response carries
+ * no scope list, so without this a permission the customer unticked on the
+ * consent screen could never be detected.
+ */
+export async function metaGrantedScopes(token: string): Promise<string[] | null> {
+  try {
+    const res = await fetch("https://graph.facebook.com/v21.0/me/permissions", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json: { data?: { status?: string; permission?: string }[] } = await res
+      .json()
+      .catch(() => ({}));
+    if (!res.ok || !Array.isArray(json?.data)) return null;
+    return json.data
+      .filter((p) => p?.status === "granted" && typeof p.permission === "string")
+      .map((p) => String(p.permission));
+  } catch {
+    return null;
+  }
 }

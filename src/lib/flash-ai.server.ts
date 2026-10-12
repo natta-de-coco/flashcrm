@@ -5,6 +5,16 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export const FLASH_MODEL = "openai/gpt-5.6-sol";
 
+/**
+ * The Gemini model a workspace's own Google key is spent on.
+ *
+ * Named here rather than inline because it is in the request URL, so a wrong
+ * value fails as a 404 from Google rather than as anything self-explanatory.
+ */
+// Google restricts older 2.5 models for new projects. Keep an operator override
+// so a provider retirement does not require editing every AI feature.
+const GEMINI_MODEL = process.env["FLAS_GOOGLE_MODEL"] || "gemini-3.8-flash";
+
 type RlsClient = {
   from: (table: string) => never;
 };
@@ -21,6 +31,17 @@ export type FlashAiOptions = {
   /** For the usage ledger, so a tenant can see what spent their quota. */
   feature?: string;
   userId?: string | null;
+  /**
+   * Earlier turns of a conversation, oldest first. The WhatsApp assistant needs
+   * them: it answers the thread, not a single question. Without this it had to
+   * call the gateway itself, which is how the busiest AI feature in the product
+   * ended up outside the ceiling, the usage ledger and bring-your-own-key.
+   */
+  turns?: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Ask for a JSON object rather than prose, where the provider supports it. */
+  json?: boolean;
+  /** Model for the platform gateway. A workspace's own key uses its provider's default. */
+  platformModel?: string;
 };
 
 /**
@@ -53,7 +74,86 @@ export async function aiOptionsFor(
   return { tenantId: await resolveTenantId(supabase), feature, userId: userId ?? null };
 }
 
-type ResolvedProvider = { provider: string; apiKey: string; url: string; headers: Record<string, string> };
+type ResolvedProvider = {
+  provider: string;
+  /** Which request/response shape `url` speaks. */
+  shape?: "responses" | "chat";
+  apiKey: string;
+  url: string;
+  headers: Record<string, string>;
+};
+
+export class AiProviderError extends Error {
+  constructor(
+    message: string,
+    readonly allowFallback = true,
+  ) {
+    super(message);
+    this.name = "AiProviderError";
+  }
+}
+
+function providerFailure(provider: string, status: number): AiProviderError {
+  const name = provider === "platform" ? "Built-in Flas AI" : provider;
+  const reason =
+    status === 401 || status === 403
+      ? "could not authenticate or access this model. Check the key and its permissions"
+      : status === 404
+        ? "could not find the configured model. An administrator must update the model or its access"
+        : status === 402 || status === 429
+          ? "has reached a credit or rate limit. Check the provider's billing and quota"
+          : status >= 500
+            ? "is temporarily unavailable. Try again shortly"
+            : "could not accept this request. Ask an administrator to check the configuration";
+  // Never echo an upstream response: it can include a credential or user data.
+  return new AiProviderError(
+    `${name} ${reason} (HTTP ${status}).`,
+    status !== 400 && status !== 422,
+  );
+}
+
+async function platformProvider(): Promise<ResolvedProvider | null> {
+  const key = process.env["LOVABLE_API_KEY"];
+  return key
+    ? {
+        provider: "platform",
+        apiKey: key,
+        url: "https://ai.gateway.lovable.dev/v1/responses",
+        headers: { Authorization: `Bearer ${key}`, "Lovable-API-Key": key },
+      }
+    : null;
+}
+
+async function savedProvider(
+  provider: string,
+  storedKey: string,
+): Promise<ResolvedProvider | null> {
+  const { openSecret } = await import("@/lib/secret-box.server");
+  const apiKey = await openSecret(storedKey);
+  if (!apiKey) return null;
+  if (provider === "openai")
+    return {
+      provider,
+      apiKey,
+      url: "https://api.openai.com/v1/chat/completions",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    };
+  if (provider === "anthropic")
+    return {
+      provider,
+      apiKey,
+      url: "https://api.anthropic.com/v1/messages",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    };
+  if (provider === "google")
+    return {
+      provider,
+      apiKey,
+      url: `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      headers: { "x-goog-api-key": apiKey },
+    };
+  return null;
+}
 
 /**
  * Picks whose key pays for this call. A tenant that has pasted their own
@@ -64,32 +164,22 @@ type ResolvedProvider = { provider: string; apiKey: string; url: string; headers
 async function resolveProvider(tenantId: string | null | undefined): Promise<ResolvedProvider> {
   if (tenantId) {
     try {
-      const { data } = await supabaseAdmin.rpc("get_tenant_ai_key", { _tenant_id: tenantId });
+      const { data, error } = await supabaseAdmin.rpc("get_tenant_ai_key", {
+        _tenant_id: tenantId,
+      });
+      if (error) throw new Error("AI configuration unavailable");
       const row = Array.isArray(data) ? data[0] : data;
       const provider = (row as { provider?: string } | null)?.provider;
       const apiKey = (row as { api_key?: string } | null)?.api_key;
       if (provider && apiKey) {
-        if (provider === "openai") {
-          return {
-            provider,
-            apiKey,
-            url: "https://api.openai.com/v1/chat/completions",
-            headers: { Authorization: `Bearer ${apiKey}` },
-          };
-        }
-        if (provider === "anthropic") {
-          return {
-            provider,
-            apiKey,
-            url: "https://api.anthropic.com/v1/messages",
-            headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-          };
-        }
-        // Unknown provider string — fall through to the platform key rather
-        // than guessing an endpoint and failing in a confusing way.
+        const resolved = await savedProvider(provider, apiKey);
+        if (resolved) return resolved;
+        throw new Error("Saved AI key cannot be used");
       }
     } catch {
-      /* fall back to the platform key */
+      throw new Error(
+        "Could not read this workspace's AI key. Ask an administrator to check or replace it.",
+      );
     }
   }
   const key = process.env["LOVABLE_API_KEY"];
@@ -103,12 +193,105 @@ async function resolveProvider(tenantId: string | null | undefined): Promise<Res
 }
 
 /** Calls the AI provider and returns plain text. */
+/** Below the hosting edge's ~100 second request limit, so our message wins. */
+export const AI_TIMEOUT_MS = 85_000;
+
 export async function callFlashAi(
   system: string,
   user: string,
   options: FlashAiOptions = {},
 ): Promise<string> {
-  const { tenantId = null, feature = "ai", userId = null } = options;
+  const chosen = await resolveProvider(options.tenantId);
+  const candidates = [chosen];
+  if (options.tenantId) {
+    const { data, error } = await supabaseAdmin.rpc(
+      "get_tenant_ai_resilience" as never,
+      { _tenant_id: options.tenantId } as never,
+    );
+    // Missing migration or unreadable settings must not silently enable sharing.
+    if (!error && data === true) {
+      const { data: keys } = await supabaseAdmin
+        .from("ai_provider_keys")
+        .select("provider, api_key")
+        .eq("tenant_id", options.tenantId)
+        .eq("active", true)
+        .order("created_at", { ascending: false })
+        .limit(3);
+      for (const row of keys ?? []) {
+        if (candidates.some((c) => c.provider === row.provider)) continue;
+        try {
+          const candidate = await savedProvider(row.provider, row.api_key);
+          if (candidate) candidates.push(candidate);
+        } catch {
+          /* An unreadable backup must not stop other configured backups. */
+        }
+      }
+      const platform = await platformProvider();
+      if (platform && !candidates.some((c) => c.provider === "platform")) candidates.push(platform);
+    }
+  }
+  const deadline = Date.now() + AI_TIMEOUT_MS;
+  let lastFailure: unknown;
+  for (let i = 0; i < candidates.length; i++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    // Reserve time for backups and bound the entire operation below the edge limit.
+    const timeout = i < candidates.length - 1 ? Math.min(25_000, remaining) : remaining;
+    try {
+      return await attemptFlashAi(system, user, options, candidates[i]!, timeout);
+    } catch (error) {
+      lastFailure = error;
+      if (!(error instanceof AiProviderError) || !error.allowFallback) throw error;
+    }
+  }
+  throw (
+    lastFailure ??
+    new AiProviderError("No AI provider completed in time. Please ask a teammate to reply.")
+  );
+}
+
+/** Runs one provider only, with synthetic input: never hides failure behind a backup. */
+export async function testAiProvider(tenantId: string, provider: string): Promise<void> {
+  let chosen: ResolvedProvider | null = null;
+  if (provider === "platform") chosen = await platformProvider();
+  else {
+    const { data, error } = await supabaseAdmin
+      .from("ai_provider_keys")
+      .select("api_key")
+      .eq("tenant_id", tenantId)
+      .eq("provider", provider)
+      .eq("active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error("Could not read this workspace's AI configuration.");
+    if (data) chosen = await savedProvider(provider, data.api_key);
+  }
+  if (!chosen) throw new Error("No active key is saved for this provider.");
+  await attemptFlashAi(
+    "You are testing a connection. Reply with OK.",
+    "Reply with OK.",
+    { tenantId, feature: "ai_health" },
+    chosen,
+    20_000,
+  );
+}
+
+async function attemptFlashAi(
+  system: string,
+  user: string,
+  options: FlashAiOptions,
+  chosen: ResolvedProvider,
+  timeoutMs: number,
+): Promise<string> {
+  const {
+    tenantId = null,
+    feature = "ai",
+    userId = null,
+    turns = [],
+    json: wantsJson = false,
+    platformModel,
+  } = options;
   const startedAt = Date.now();
 
   // Ceiling per tenant. Without this, one authenticated user in a loop is an
@@ -132,7 +315,15 @@ export async function callFlashAi(
     }
   }
 
-  const chosen = await resolveProvider(tenantId);
+  // The platform gateway's Responses endpoint takes one instruction and one
+  // question. A conversation, or a required JSON object, needs its chat
+  // endpoint instead -- same key, same account, same accounting.
+  if (chosen.provider === "platform" && (turns.length > 0 || wantsJson)) {
+    chosen.shape = "chat";
+    chosen.url = "https://ai.gateway.lovable.dev/v1/chat/completions";
+  }
+
+  const jsonFormat = wantsJson ? { response_format: { type: "json_object" } } : {};
 
   const body =
     chosen.provider === "openai"
@@ -140,29 +331,51 @@ export async function callFlashAi(
           model: "gpt-4o",
           messages: [
             { role: "system", content: system },
+            ...turns,
             { role: "user", content: user },
           ],
+          ...jsonFormat,
         }
       : chosen.provider === "anthropic"
         ? {
             model: "claude-sonnet-5",
             max_tokens: 4096,
             system,
-            messages: [{ role: "user", content: user }],
+            // Anthropic has no JSON mode; the instruction carries the rule, and
+            // every caller that asks for JSON validates what comes back.
+            messages: [...turns, { role: "user", content: user }],
           }
-        : {
-            model: FLASH_MODEL,
-            input: [
-              { role: "system", content: system },
-              { role: "user", content: user },
-            ],
-          };
-
-  const res = await fetch(chosen.url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...chosen.headers },
-    body: JSON.stringify(body),
-  });
+        : chosen.provider === "google"
+          ? {
+              // Gemini has no system role; the instruction is a separate field,
+              // and the model is already in the URL.
+              systemInstruction: { parts: [{ text: system }] },
+              contents: [
+                ...turns.map((turn) => ({
+                  role: turn.role === "assistant" ? "model" : "user",
+                  parts: [{ text: turn.content }],
+                })),
+                { role: "user", parts: [{ text: user }] },
+              ],
+              ...(wantsJson ? { generationConfig: { responseMimeType: "application/json" } } : {}),
+            }
+          : chosen.shape === "chat"
+            ? {
+                model: platformModel || FLASH_MODEL,
+                messages: [
+                  { role: "system", content: system },
+                  ...turns,
+                  { role: "user", content: user },
+                ],
+                ...jsonFormat,
+              }
+            : {
+                model: FLASH_MODEL,
+                input: [
+                  { role: "system", content: system },
+                  { role: "user", content: user },
+                ],
+              };
 
   const recordUsage = async (ok: boolean) => {
     if (!tenantId) return;
@@ -178,73 +391,132 @@ export async function callFlashAi(
     } catch {
       /* accounting must never break the feature */
     }
+    if (!ok) {
+      const { recordErrorEvent } = await import("@/lib/telemetry.server");
+      await recordErrorEvent({
+        kind: "ai_provider",
+        message: `AI request failed: ${chosen.provider} (${feature}).`,
+        tenantId,
+        userId,
+        sessionId: `ai:${tenantId}:${chosen.provider}:${feature}`,
+        context: { provider: chosen.provider, feature },
+      });
+    }
   };
 
-  const raw = await res.text();
-  if (!res.ok) await recordUsage(false);
-  else await recordUsage(true);
-
-  // A tenant's own key failing is their configuration to fix, and saying
-  // "Flas AI failed" would send them hunting in the wrong place.
-  if (!res.ok && chosen.provider !== "platform") {
-    throw new Error(
-      `Your ${chosen.provider} API key was rejected (HTTP ${res.status}). Check the key in Settings → AI, or remove it to fall back to the built-in assistant.`,
+  // A bounded wait. There was none, so a slow or stuck provider left the
+  // spinner running indefinitely -- the SEO Studio writes a whole article in
+  // one call, and those routinely take a minute. The hosting edge drops a
+  // request after about 100 seconds with a bare error, so stopping first means
+  // the person gets a message that says what happened. The signal also covers
+  // reading the body, where a stalled stream would otherwise hang.
+  let res: Response;
+  let raw: string;
+  try {
+    res = await fetch(chosen.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...chosen.headers },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    raw = await res.text();
+  } catch (error) {
+    await recordUsage(false);
+    const name = error instanceof Error ? error.name : "";
+    throw new AiProviderError(
+      name === "TimeoutError" || name === "AbortError"
+        ? "The AI provider did not finish in time. Try again, or ask for a shorter piece."
+        : "The AI service could not be reached. Try again in a moment.",
     );
   }
   if (!res.ok) {
-    let message = raw.slice(0, 300);
-    try {
-      const parsed = JSON.parse(raw) as { error?: { message?: string }; message?: string };
-      message = parsed.error?.message ?? parsed.message ?? message;
-    } catch {
-      /* keep raw snippet */
-    }
-    if (res.status === 429) {
-      throw new Error("Flas AI is busy right now — wait a few seconds and try again.");
-    }
-    if (res.status === 402) {
-      throw new Error(
-        "AI credits are exhausted — the workspace owner can top up in Lovable billing settings.",
-      );
-    }
-    throw new Error(`Flas AI request failed [${res.status}]: ${message}`);
+    await recordUsage(false);
+    throw providerFailure(chosen.provider, res.status);
   }
 
   // Each provider returns a different shape; normalize to plain text here so
   // every caller keeps receiving a string regardless of whose key paid.
-  const json = JSON.parse(raw) as {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    await recordUsage(false);
+    throw new AiProviderError("The AI service returned an unreadable response.");
+  }
+  const json = (parsed ?? {}) as {
     // Lovable Responses API
     output_text?: string;
     output?: Array<{ type: string; content?: Array<{ type: string; text?: string }> }>;
     // OpenAI chat completions
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string; refusal?: string }; finish_reason?: string }>;
     // Anthropic messages
     content?: Array<{ type?: string; text?: string }>;
+    // Gemini generateContent
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> }; finishReason?: string }>;
+    promptFeedback?: { blockReason?: string };
+    stop_reason?: string;
   };
 
-  let text = "";
-  if (chosen.provider === "openai") {
-    text = (json.choices?.[0]?.message?.content ?? "").trim();
-  } else if (chosen.provider === "anthropic") {
-    text = (json.content ?? [])
-      .filter((part) => part.type === "text" && part.text)
-      .map((part) => part.text)
-      .join("")
-      .trim();
-  } else {
-    text = (json.output_text ?? "").trim();
-    if (!text) {
-      for (const item of json.output ?? []) {
-        if (item.type !== "message") continue;
-        for (const part of item.content ?? []) {
-          if (part.type === "output_text" && part.text) text += part.text;
-        }
-      }
-    }
-    text = text.trim();
+  if (
+    json.promptFeedback?.blockReason ||
+    json.choices?.[0]?.message?.refusal ||
+    json.choices?.[0]?.finish_reason === "content_filter" ||
+    json.stop_reason === "refusal" ||
+    ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "RECITATION"].includes(
+      json.candidates?.[0]?.finishReason ?? "",
+    )
+  ) {
+    await recordUsage(false);
+    throw new AiProviderError(
+      "The AI provider could not safely answer this request. Ask a teammate to review it.",
+      false,
+    );
   }
 
-  if (!text) throw new Error("Flas AI returned an empty response — try rephrasing your goal.");
+  let text = "";
+  try {
+    if (chosen.provider === "openai" || chosen.shape === "chat") {
+      text = (json.choices?.[0]?.message?.content ?? "").trim();
+    } else if (chosen.provider === "anthropic") {
+      text = (json.content ?? [])
+        .filter((part) => part.type === "text" && part.text)
+        .map((part) => part.text)
+        .join("")
+        .trim();
+    } else if (chosen.provider === "google") {
+      text = (json.candidates?.[0]?.content?.parts ?? [])
+        .map((part) => part.text ?? "")
+        .join("")
+        .trim();
+    } else {
+      text = (json.output_text ?? "").trim();
+      if (!text) {
+        for (const item of json.output ?? []) {
+          if (item.type !== "message") continue;
+          for (const part of item.content ?? []) {
+            if (part.type === "output_text" && part.text) text += part.text;
+          }
+        }
+      }
+      text = text.trim();
+    }
+  } catch {
+    await recordUsage(false);
+    throw new AiProviderError("The AI service returned an unreadable response.");
+  }
+  if (!text) {
+    await recordUsage(false);
+    throw new AiProviderError("Flas AI returned an empty response — try rephrasing your goal.");
+  }
+  if (wantsJson) {
+    try {
+      JSON.parse(text);
+    } catch {
+      await recordUsage(false);
+      throw new AiProviderError("The AI response did not match the required format.");
+    }
+  }
+  await recordUsage(true);
   return text;
 }
 
@@ -270,7 +542,18 @@ export async function getBusinessContext(supabase: RlsClient): Promise<BusinessC
 
 export type LeadSummary = {
   totalLeads: number;
+  /**
+   * People who actually opted in, across website leads AND contacts.
+   *
+   * This used to count `consent_given || subscribed` over leads alone. Nothing
+   * in the product ever sets `subscribed` to false and it defaults to true, so
+   * every lead counted as consented -- while a workspace whose only consented
+   * person was a contact was told nobody had opted in, and the campaign writer
+   * refused to write. Both halves of that are wrong in opposite directions.
+   */
   consentedLeads: number;
+  /** Consented people who are contacts rather than website leads. */
+  consentedContacts: number;
   bySource: Record<string, number>;
   topTags: string[];
   contactsByStage: Record<string, number>;
@@ -303,11 +586,13 @@ export async function gatherLeadSummary(supabase: RlsClient): Promise<LeadSummar
   const { data: contacts } = await (
     supabase.from("contacts") as never as {
       select: (cols: string) => {
-        limit: (n: number) => Promise<{ data: Array<{ stage: string }> | null }>;
+        limit: (n: number) => Promise<{
+          data: Array<{ stage: string; consent_given: boolean | null }> | null;
+        }>;
       };
     }
   )
-    .select("stage")
+    .select("stage, consent_given")
     .limit(500);
 
   const bySource: Record<string, number> = {};
@@ -315,20 +600,26 @@ export async function gatherLeadSummary(supabase: RlsClient): Promise<LeadSummar
   let consented = 0;
   for (const lead of leads ?? []) {
     bySource[lead.source] = (bySource[lead.source] ?? 0) + 1;
-    if (lead.consent_given || lead.subscribed) consented += 1;
+    // consent_given is the record of consent. `subscribed` is a suppression
+    // flag that defaults to true and has no writer anywhere in the product, so
+    // counting it as consent marked everyone opted in.
+    if (lead.consent_given === true && lead.subscribed !== false) consented += 1;
     for (const tag of lead.tags ?? []) {
       tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
     }
   }
 
   const contactsByStage: Record<string, number> = {};
+  let consentedContacts = 0;
   for (const c of contacts ?? []) {
     contactsByStage[c.stage] = (contactsByStage[c.stage] ?? 0) + 1;
+    if (c.consent_given === true) consentedContacts += 1;
   }
 
   return {
     totalLeads: (leads ?? []).length,
-    consentedLeads: consented,
+    consentedLeads: consented + consentedContacts,
+    consentedContacts,
     bySource,
     topTags: [...tagCounts.entries()]
       .sort((a, b) => b[1] - a[1])
@@ -484,13 +775,15 @@ export async function gatherMessagingAnalytics(
         .select("id, label, display_phone, phone_number_id, access_token")
         .eq("tenant_id", tenantId)
         .eq("active", true)
-    : { data: [] as Array<{
-        id: string;
-        label: string;
-        display_phone: string;
-        phone_number_id: string;
-        access_token: string;
-      }> };
+    : {
+        data: [] as Array<{
+          id: string;
+          label: string;
+          display_phone: string;
+          phone_number_id: string;
+          access_token: string;
+        }>,
+      };
 
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;
@@ -498,11 +791,18 @@ export async function gatherMessagingAnalytics(
     const local = perNumberLocal.get(n.id) ?? { conversations: 0, unread: 0 };
     const meta: NumberAnalytics["meta"] = { ok: false, sent: 0, delivered: 0 };
     try {
-      // Token in the header, not the URL (URLs land in access logs).
+
+      // Stored tokens may be encrypted; sending the stored value as-is sent
+      // ciphertext to Meta. Opened here, and sent as a header rather than in
+      // the URL.
+      const { openSecret } = await import("@/lib/secret-box.server");
+      const token = await openSecret(n.access_token);
+      if (!token) throw new Error("This number has no usable access token.");
       const url =
         `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
         `?fields=analytics.start(${start}).end(${end}).granularity(DAY)`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${n.access_token}` } });
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+
       const json = (await res.json()) as {
         analytics?: { data_points?: Array<{ sent?: number; delivered?: number }> };
         error?: { message?: string };

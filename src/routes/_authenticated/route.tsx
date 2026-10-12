@@ -9,7 +9,13 @@ import { QuickCreate } from "@/components/QuickCreate";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { ProfileBanner } from "@/components/ProfileBanner";
 
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { PageLanguage } from "@/components/PageLanguage";
+
+
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, navMessageKey, workspaceDefaultLanguage } from "@/lib/i18n";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
 import { canReach } from "@/lib/permissions";
 import { MANAGER_SECTION, NAV_SECTIONS, type NavSection } from "@/lib/navigation";
@@ -46,19 +52,19 @@ export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
 });
 
+function shortcutHint(): string {
+  if (typeof navigator === "undefined") return "Ctrl K";
+  const platform =
+    (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+    navigator.platform ??
+    "";
+  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘K" : "Ctrl K";
+}
+
 const SIDEBAR_MIN = 224;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_KEY = "flash.sidebar.width";
 
-/**
- * Shared grouped nav — used by the desktop sidebar and the mobile drawer.
- *
- * Filters by the signed-in user's staff role. The Manager section is passed in
- * already gated by isSuperAdmin and carries no route the permission table
- * knows about, so it is left alone; everything else is deny-by-default. A
- * section whose every item is filtered out drops its heading too, rather than
- * leaving an empty "Business" label behind.
- */
 function NavMenu({
   sections,
   onNavigate,
@@ -67,6 +73,10 @@ function NavMenu({
   onNavigate?: () => void;
 }) {
   const { staffRole, loading } = useTenant();
+  const { t } = useI18n();
+  // A nav entry with no translation key keeps its English text rather than
+  // showing the key itself.
+  const text = (key: string, fallback: string) => (hasMessage(key) ? t(key) : fallback);
   const visible = sections
     .map((section) => ({
       ...section,
@@ -76,8 +86,6 @@ function NavMenu({
     }))
     .filter((section) => section.items.length > 0);
 
-  // While the profile is still loading, show nothing rather than the full menu
-  // followed by a visible collapse.
   if (loading) return null;
 
   return (
@@ -85,7 +93,7 @@ function NavMenu({
       {visible.map((section) => (
         <div key={section.title}>
           <p className="mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
-            {section.title}
+            {text(`nav.section.${section.title.toLowerCase()}`, section.title)}
           </p>
           <div className="flex flex-col gap-0.5">
             {section.items.map((item) => (
@@ -94,17 +102,15 @@ function NavMenu({
                 to={item.to}
                 onClick={onNavigate}
                 className="flex items-start gap-3 rounded-lg px-3 py-1.5 text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                activeProps={{
-                  className: cn("bg-sidebar-accent text-sidebar-accent-foreground"),
-                }}
+                activeProps={{ className: cn("bg-sidebar-accent text-sidebar-accent-foreground") }}
               >
                 <item.icon className="mt-0.5 size-4 shrink-0" />
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-medium leading-tight">
-                    {item.label}
+                    {text(navMessageKey(item.to, "label"), item.label)}
                   </span>
                   <span className="block truncate text-[11px] leading-tight text-sidebar-foreground/50">
-                    {item.desc}
+                    {text(navMessageKey(item.to, "desc"), item.desc)}
                   </span>
                 </span>
               </Link>
@@ -116,8 +122,23 @@ function NavMenu({
   );
 }
 
+/**
+ * Applies the company's language for a teammate who has never chosen one.
+ * Renders nothing; lives inside TenantProvider to read the workspace.
+ */
+function WorkspaceLanguageDefault() {
+  const { tenant } = useTenant();
+  const { language, setLanguage } = useI18n();
+  useEffect(() => {
+    const next = workspaceDefaultLanguage(document.cookie, tenant?.locale, language);
+    if (next) setLanguage(next, { inherited: true });
+  }, [tenant?.locale, language, setLanguage]);
+  return null;
+}
+
 function AuthenticatedLayout() {
   const { session, loading, signOut, user, isSuperAdmin } = useAuth();
+  const { t, dir } = useI18n();
   const navigate = useNavigate();
   // Reads saved locale from DB and applies lang + dir to <html> live.
   // Must be called inside the QueryClientProvider (which wraps this tree).
@@ -133,18 +154,14 @@ function AuthenticatedLayout() {
     if (!loading && !session) navigate({ to: "/auth" });
   }, [loading, session, navigate]);
 
-  // Auto-close the mobile drawer on any route change (nav links, back button, redirects).
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Presence heartbeat so the platform manager can see who is online.
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
     const beat = async () => {
-      // Only send the heartbeat when a valid token exists, otherwise the
-      // authenticated server fn rejects the call with "No authorization header".
       let { data } = await supabase.auth.getSession();
       if (!data.session) {
         const refreshed = await supabase.auth.refreshSession();
@@ -167,7 +184,6 @@ function AuthenticatedLayout() {
     };
   }, [session]);
 
-  // Restore the user's preferred sidebar width (client-only, after hydration).
   useEffect(() => {
     const saved = Number(window.localStorage.getItem(SIDEBAR_KEY));
     if (saved >= SIDEBAR_MIN && saved <= SIDEBAR_MAX) setSidebarW(saved);
@@ -180,8 +196,10 @@ function AuthenticatedLayout() {
     e.preventDefault();
     const startX = e.clientX;
     const startW = sidebarW;
+    // In Arabic the sidebar sits on the right, so dragging its edge left widens it.
+    const grow = (ev: PointerEvent) => (dir === "rtl" ? startX - ev.clientX : ev.clientX - startX);
     const move = (ev: PointerEvent) =>
-      setSidebarW(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startW + ev.clientX - startX)));
+      setSidebarW(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startW + grow(ev))));
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
@@ -190,11 +208,9 @@ function AuthenticatedLayout() {
     window.addEventListener("pointerup", up);
   }
 
-  // Cold builds can take a moment to hydrate the session. Show the real shell
-  // as a calm skeleton instead of a jarring full-screen text flash.
   if (loading || !session) {
     return (
-      <div className="flex min-h-screen bg-background">
+      <div className="flex min-h-screen bg-background" data-app-shell>
         <aside
           className="sticky top-0 hidden h-screen shrink-0 flex-col gap-3 bg-sidebar p-4 lg:flex"
           style={{ width: sidebarW }}
@@ -208,7 +224,6 @@ function AuthenticatedLayout() {
           ))}
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Mirrors the real mobile/tablet header so nothing jumps on hydration. */}
           <div className="flex h-14 items-center gap-3 border-b border-sidebar-border bg-sidebar px-3 lg:hidden">
             <Skeleton className="size-9 rounded-md bg-sidebar-accent/60" />
             <Skeleton className="size-8 rounded-full bg-sidebar-accent/60" />
@@ -223,18 +238,23 @@ function AuthenticatedLayout() {
               ))}
             </div>
             <Skeleton className="h-64 w-full" />
-            <span className="sr-only">Loading your workspace…</span>
+            <span className="sr-only">{t("shell.loading")}</span>
           </div>
         </div>
       </div>
     );
   }
 
+  // Inbox and Sales still render legacy top-level divs. Give those routes one
+  // main landmark from the shell. Routes that already render <main> keep their
+  // own landmark so we never create nested/duplicate main elements.
+  const shellOwnsMain = pathname === "/inbox" || pathname === "/sales";
+
   return (
     <TenantProvider>
+      <WorkspaceLanguageDefault />
       <OnboardingModal />
-      <div className="flex min-h-screen bg-background">
-        {/* Fixed sidebar — pinned, fits without scrolling, desktop (lg+) only */}
+      <div className="flex min-h-screen bg-background" data-app-shell>
         <aside
           className="sticky top-0 hidden h-screen shrink-0 flex-col bg-sidebar p-4 text-sidebar-foreground lg:flex"
           style={{ width: sidebarW }}
@@ -250,50 +270,47 @@ function AuthenticatedLayout() {
 
           <div className="border-t border-sidebar-border pt-3">
             <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">{user?.email}</p>
+            <LanguageSwitcher className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             <Button
               variant="ghost"
               className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onClick={() => {
-                void signOut();
-              }}
+              onClick={() => void signOut()}
             >
-              <LogOut className="size-4" />
-              Sign out
+              <LogOut className="size-4" /> {t("shell.signOut")}
             </Button>
           </div>
 
-          {/* Drag handle — pull the sidebar wider or narrower */}
+          {/* -end-1: the sidebar's inner edge, which is its left side in Arabic. */}
           <div
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize sidebar"
+            aria-label={t("shell.resizeSidebar")}
             onPointerDown={onDragStart}
-            className="absolute inset-y-0 -right-1 w-2 cursor-col-resize transition-colors hover:bg-sidebar-primary/30"
+            className="absolute inset-y-0 -end-1 w-2 cursor-col-resize transition-colors hover:bg-sidebar-primary/30"
           />
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Mobile/tablet header — sidebar hides below lg; hamburger opens the nav drawer */}
           <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-sidebar-border bg-sidebar px-3 text-sidebar-foreground lg:hidden">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  aria-label="Open menu"
+                  aria-label={t("shell.openMenu")}
                   className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 >
                   <Menu className="size-5" />
                 </Button>
               </SheetTrigger>
               <SheetContent
-                side="left"
+                // The menu slides in from the side the sidebar lives on.
+                side={dir === "rtl" ? "right" : "left"}
                 className="flash-scroll w-72 overflow-y-auto border-sidebar-border bg-sidebar p-4 text-sidebar-foreground [&>button]:text-sidebar-foreground/70"
               >
                 <SheetHeader className="mb-4">
                   <SheetTitle className="flex items-center gap-2 text-sidebar-foreground">
-                    <FlashLogoBadge className="size-8" />
-                     Flas CRM
+                    <FlashLogoBadge className="size-8" /> Flas CRM
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="flex flex-col gap-4">
@@ -303,6 +320,7 @@ function AuthenticatedLayout() {
                   <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">
                     {user?.email}
                   </p>
+                  <LanguageSwitcher className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-3 text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -311,8 +329,7 @@ function AuthenticatedLayout() {
                       void signOut();
                     }}
                   >
-                    <LogOut className="size-4" />
-                    Sign out
+                    <LogOut className="size-4" /> {t("shell.signOut")}
                   </Button>
                 </div>
               </SheetContent>
@@ -324,7 +341,7 @@ function AuthenticatedLayout() {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Search Flas"
+              aria-label={t("shell.searchLabel")}
               onClick={() => setPaletteOpen(true)}
               className="shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
@@ -333,7 +350,6 @@ function AuthenticatedLayout() {
             <QuickCreate compact />
           </header>
 
-          {/* Desktop top bar — universal search and the Create shortcut */}
           <header className="sticky top-0 z-30 hidden h-14 items-center gap-3 border-b bg-background/95 px-6 backdrop-blur lg:flex">
             <button
               type="button"
@@ -341,18 +357,35 @@ function AuthenticatedLayout() {
               className="flex h-9 w-full max-w-md items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
             >
               <Search className="size-4" />
-              Search Flas…
-              <kbd className="ml-auto rtl:mr-auto rtl:ml-0 rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
-                ⌘K
+
+              {t("shell.search")}
+              <kbd className="ms-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
+                {shortcutHint()}
               </kbd>
             </button>
-            <div className="ml-auto rtl:mr-auto rtl:ml-0">
+            <div className="ms-auto flex items-center gap-2">
+              <LanguageSwitcher />
+
               <QuickCreate />
             </div>
           </header>
 
-          <ProfileBanner />
-          <Outlet />
+<ProfileBanner />
+          
+          {shellOwnsMain ? (
+            <main id="content" className="min-h-0 flex-1 overflow-y-auto p-6">
+              <PageLanguage pathname={pathname}>
+                <Outlet />
+              </PageLanguage>
+            </main>
+          ) : (
+            <div id="content" className="contents">
+              <PageLanguage pathname={pathname}>
+                <Outlet />
+              </PageLanguage>
+            </div>
+          )}
+
           <MobileBottomNav onMore={() => setMobileOpen(true)} />
         </div>
       </div>

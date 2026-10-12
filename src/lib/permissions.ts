@@ -12,19 +12,39 @@
  * usability decision, not a security boundary, and the two must not be
  * confused.
  */
-export type StaffRole = "super_admin" | "company_admin" | "marketing_manager" | "staff" | "seo_editor";
+export type StaffRole =
+  "super_admin" | "company_admin" | "marketing_manager" | "staff" | "seo_editor";
 
 /** Every route the sidebar can offer, so a typo cannot silently grant nothing. */
 export const ALL_ROUTES = [
-  "/dashboard", "/inbox", "/contacts", "/marketing", "/social", "/content", "/seo-blog",
-  "/advisor", "/campaign-planner", "/sales", "/catalog", "/chatbot",
-  "/monitoring", "/connect", "/settings",
+  "/dashboard",
+  "/inbox",
+  "/contacts",
+  "/marketing",
+  "/social",
+  "/content",
+  "/seo-blog",
+  "/advisor",
+  "/campaign-planner",
+  "/sales",
+  "/catalog",
+  "/chatbot",
+  "/monitoring",
+  "/connect",
+  "/settings",
 ] as const;
 export type AppRoute = (typeof ALL_ROUTES)[number];
 
 const MARKETING: AppRoute[] = [
-  "/dashboard", "/inbox", "/contacts", "/marketing", "/social", "/content", "/seo-blog",
-  "/campaign-planner", "/advisor",
+  "/dashboard",
+  "/inbox",
+  "/contacts",
+  "/marketing",
+  "/social",
+  "/content",
+  "/seo-blog",
+  "/campaign-planner",
+  "/advisor",
 ];
 
 /** Front-line agent: the conversation and the customer, not the company's setup. */
@@ -60,7 +80,10 @@ export function isCompanyManager(role: string | null | undefined): boolean {
 }
 
 /** Labels and one-line explanations, shown wherever a role is chosen. */
-export const ROLE_LABELS: Record<Exclude<StaffRole, "super_admin">, { label: string; hint: string }> = {
+export const ROLE_LABELS: Record<
+  Exclude<StaffRole, "super_admin">,
+  { label: string; hint: string }
+> = {
   company_admin: {
     label: "Company admin",
     hint: "Full access, including billing, integrations and the team.",

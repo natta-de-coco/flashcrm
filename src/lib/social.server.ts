@@ -2,6 +2,8 @@
 // YouTube, X, LinkedIn, TikTok, Google Business), AI reply drafting and AI
 // content composing. Tenant data flows through the caller's RLS-scoped
 // client; only social account tokens are read via the admin client.
+import { openSecret } from "@/lib/secret-box.server";
+import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin-api";
@@ -19,13 +21,26 @@ export type SocialAccountSecret = {
   platform: SocialPlatform;
   external_id: string | null;
   access_token: string | null;
-  /** "oauth" for accounts connected through the callback; "manual" = legacy. */
-  connect_method?: string | null;
-  /** Scopes the provider granted. Features whose scope is absent are skipped, not attempted. */
-  granted_scopes?: readonly string[] | null;
+
+  /** "oauth" for a connection made through the provider login; otherwise pasted. */
+  connect_method: string | null;
+
 };
 
-export type SyncResult = { ok: boolean; posts: number; interactions: number; error?: string };
+import type { SkippedSection } from "@/lib/sync-report";
+
+export type SyncResult = {
+  ok: boolean;
+  posts: number;
+  interactions: number;
+  error?: string;
+  /**
+   * Sections the provider refused. A sync that read the posts but not the
+   * comments is not a success: without this the product reported
+   * "synced, 0 interactions" and threw the reason away.
+   */
+  skipped?: SkippedSection[];
+};
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -84,20 +99,41 @@ async function saveInteraction(
     author_handle?: string | null;
     body: string;
     created_at?: string | null;
+    /** "out" for something the business sent. Shown as ours, not the customer's. */
+    direction?: "in" | "out";
+    /** Meta's conversation id, so a DM belongs to a thread rather than standing alone. */
+    thread_id?: string | null;
+    /** Old history imported on a first sync is not work waiting to be done. */
+    status?: "open" | "replied" | "archived";
   },
 ): Promise<boolean> {
-  const { error } = await supabaseAdmin.from("social_interactions").upsert(
-    {
-      tenant_id: account.tenant_id,
-      account_id: account.id,
-      direction: "in",
-      ...i,
-      author_handle: i.author_handle ?? null,
-      created_at: i.created_at ?? new Date().toISOString(),
-    },
-    { onConflict: "account_id,external_id" },
-  );
-  return !error;
+
+  const row = {
+    tenant_id: account.tenant_id,
+    account_id: account.id,
+    direction: "in" as "in" | "out",
+    author_handle: null as string | null,
+    ...i,
+    created_at: i.created_at ?? new Date().toISOString(),
+  };
+  const { error } = await supabaseAdmin
+    .from("social_interactions")
+    .upsert(row, { onConflict: "account_id,external_id" });
+  if (!error) return true;
+
+  // thread_id is added by 20260927120000. Until that migration runs, PostgREST
+  // rejects the whole row with 42703 rather than ignoring the unknown column, so
+  // a sync would stop working between this deploy and the SQL. Retry without it:
+  // threads group by author until the column exists.
+  if (error.code === "42703" && "thread_id" in row) {
+    const { thread_id: _dropped, ...withoutThread } = row;
+    const retry = await supabaseAdmin
+      .from("social_interactions")
+      .upsert(withoutThread, { onConflict: "account_id,external_id" });
+    return !retry.error;
+  }
+  return false;
+
 }
 
 async function finishSync(account: SocialAccountSecret, stats?: Record<string, number>) {
@@ -119,16 +155,163 @@ function missingCreds(message: string): SyncResult {
 
 /* ---------- Meta (Instagram / Facebook) ---------- */
 
-async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
+/**
+ * Every id and name that means "us" for this account.
+ *
+ * A Page's own replies were being stored as inbound messages under the
+ * customer's name, because the only check was `from.id === external_id` and the
+ * id Meta reports does not always equal the id stored on the row -- a Page
+ * connected through a different route, or an Instagram row pointed at the Page,
+ * both break that single comparison. Asking the token who it belongs to, and
+ * keeping the name as a second signal, means a reply we sent is recognized as
+ * ours whichever id it arrives under.
+ */
+async function selfIdentity(
+  account: SocialAccountSecret,
+  token: string,
+): Promise<{ ids: Set<string>; name: string | null; handles: Set<string> }> {
+  const ids = new Set<string>();
+  const handles = new Set<string>();
+  if (account.external_id) ids.add(String(account.external_id));
+  let name: string | null = null;
+  try {
+    const me = await graphGet(`/me?fields=id,name`, token);
+    if (me?.id) ids.add(String(me.id));
+    if (typeof me?.name === "string") name = me.name;
+  } catch {
+    // Not fatal: the stored id still identifies us for the common case.
+  }
+  // An Instagram comment names its author by handle and carries no id we ask
+  // for, while `/me` on a Page-derived token answers with the Page. So the
+  // Page's display name was being compared against an Instagram handle, which
+  // agree only by coincidence, and our own Instagram comments went on being
+  // filed as the customer's. Ask the Instagram account what it is called.
+  if (account.platform === "instagram" && account.external_id) {
+    try {
+      const ig = await graphGet(`/${account.external_id}?fields=id,username`, token);
+      if (ig?.id) ids.add(String(ig.id));
+      const handle = normalizeHandle(ig?.username);
+      if (handle) handles.add(handle);
+    } catch {
+      // Without it, an own comment is still recognized whenever Meta sends an id.
+    }
+  }
+  return { ids, name, handles };
+}
+
+/** A handle as it compares: no leading @, no case, no surrounding space. */
+function normalizeHandle(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/^@/, "").toLowerCase() : "";
+}
+
+/** True when this comment or message was sent by the business, not the customer. */
+function sentByUs(
+  from: { id?: unknown; name?: unknown; handle?: unknown } | null | undefined,
+  self: { ids: Set<string>; name: string | null; handles: Set<string> },
+): boolean {
+  if (!from) return false;
+  if (from.id != null && self.ids.has(String(from.id))) return true;
+  const handle = normalizeHandle(from.handle);
+  if (handle && self.handles.has(handle)) return true;
+  return Boolean(
+    self.name && typeof from.name === "string" && from.name.trim() === self.name.trim(),
+  );
+}
+
+/** What an attachment-only message says, so the thread is never a blank bubble. */
+function describeAttachments(msg: {
+  message?: unknown;
+  attachments?: { data?: Array<{ mime_type?: unknown; name?: unknown; image_data?: unknown }> };
+  sticker?: unknown;
+}): string {
+  const text = typeof msg.message === "string" ? msg.message.trim() : "";
+  if (text) return text;
+  if (msg.sticker) return "(sticker)";
+  const parts = msg.attachments?.data ?? [];
+  if (parts.length === 0) return "(no text)";
+  const described = parts.map((a) => {
+    const mime = typeof a?.mime_type === "string" ? a.mime_type : "";
+    const name = typeof a?.name === "string" && a.name ? `: ${a.name}` : "";
+    if (a?.image_data || mime.startsWith("image/")) return `(photo${name})`;
+    if (mime.startsWith("video/")) return `(video${name})`;
+    if (mime.startsWith("audio/")) return `(voice message${name})`;
+    return `(attachment${name})`;
+  });
+  return described.join(" ");
+}
+
+/**
+ * How old an item has to be, on a FIRST sync, to be filed as history rather
+ * than as work waiting for a reply. Importing two years of DMs as "Open" told
+ * the team they had 27 conversations to answer when most were from 2025.
+ */
+const HISTORY_CUTOFF_DAYS = 30;
+
+function olderThanCutoff(at: string | null | undefined, firstSync: boolean): boolean {
+  if (!firstSync || !at) return false;
+  const when = Date.parse(at);
+  if (!Number.isFinite(when)) return false;
+  return Date.now() - when > HISTORY_CUTOFF_DAYS * 86_400_000;
+}
+
+async function syncMeta(account: SocialAccountSecret, firstSync = false): Promise<SyncResult> {
   if (!account.access_token || !account.external_id) {
     return missingCreds("Add the Meta account ID and access token first.");
   }
   const token = account.access_token;
+  const self = await selfIdentity(account, token);
   let posts = 0;
   let interactions = 0;
   let stats: Record<string, number> | undefined;
+  const skipped: SkippedSection[] = [];
+  const { skipReason } = await import("@/lib/sync-report");
+  const note = (what: string, error: unknown) => {
+    skipped.push({ what, reason: skipReason(what, error) });
+    console.error(`[social] ${account.platform} sync could not read ${what}:`, error);
+  };
 
   if (account.platform === "instagram") {
+    // Who this id actually belongs to, before anything is written under the
+    // Instagram label. A Facebook Page answers `followers_count` with the
+    // Page's followers, so an Instagram row pinned to a Page id used to show a
+    // Facebook number as its audience with nothing saying so (QA, 26 Sep).
+    // `media_count` exists only on an Instagram user node, so asking for it
+    // makes Meta name the node type when the id is something else.
+    const { readInstagramIdentity } = await import("@/lib/instagram-identity");
+    let identityProfile: Record<string, unknown> | null = null;
+    let identityError: string | null = null;
+    try {
+      identityProfile = await graphGet(
+        `/${account.external_id}?fields=id,username,followers_count,media_count`,
+        token,
+      );
+    } catch (error) {
+      identityError = (error as { message?: unknown } | null)?.message
+        ? String((error as { message?: unknown }).message)
+        : String(error);
+    }
+    const identity = readInstagramIdentity({
+      storedId: account.external_id,
+      profile: identityProfile,
+      errorMessage: identityError,
+    });
+    if (identity.kind === "wrong_account") {
+      // Refused outright: the posts and comments read with this id would be
+      // saved against the wrong account, which is worse than not syncing.
+      console.error(
+        `[social] instagram sync refused: ${identity.message}`,
+        identity.nodeType ? `node type ${identity.nodeType}` : "",
+      );
+      return { ok: false, posts: 0, interactions: 0, error: identity.message };
+    }
+    if (identity.kind === "instagram" && identity.followers !== null) {
+      stats = { followers: identity.followers };
+    } else if (identity.kind === "unconfirmed") {
+      // No number is stored when Meta would not confirm the account — the old
+      // stat stays as it was and the reason is reported.
+      note("Instagram profile", new Error(identity.message));
+    }
+
     const media = await graphGet(
       `/${account.external_id}/media?fields=id,caption,like_count,comments_count,timestamp&limit=20`,
       token,
@@ -151,6 +334,7 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
           token,
         );
         for (const c of comments.data ?? []) {
+          const ours = sentByUs({ id: c.from?.id, handle: c.username }, self);
           if (
             await saveInteraction(account, {
               external_id: c.id,
@@ -159,20 +343,20 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
               author_handle: c.username ?? null,
               body: c.text ?? "",
               created_at: c.timestamp,
+              direction: ours ? "out" : "in",
+              ...(ours || olderThanCutoff(c.timestamp, firstSync)
+                ? { status: ours ? ("replied" as const) : ("archived" as const) }
+                : {}),
             })
           )
             interactions++;
         }
-      } catch {
-        // Token lacks instagram_manage_comments — skip comments for this media.
+      } catch (error) {
+        // Almost always a missing instagram_manage_comments. Reported, not swallowed.
+        if (!skipped.some((s) => s.what === "Instagram comments")) {
+          note("Instagram comments", error);
+        }
       }
-    }
-    try {
-      const profile = await graphGet(`/${account.external_id}?fields=followers_count`, token);
-      if (typeof profile?.followers_count === "number")
-        stats = { followers: profile.followers_count };
-    } catch {
-      // followers_count unavailable for this token — fine.
     }
   } else {
     const feed = await graphGet(
@@ -192,7 +376,9 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
         posts++;
 
       for (const c of p.comments?.data ?? []) {
-        if (c.from?.id === account.external_id) continue;
+        // Our own comments are stored as ours rather than skipped, so a thread
+        // reads as a conversation instead of a list of unanswered customers.
+        const ours = sentByUs(c.from, self);
         if (
           await saveInteraction(account, {
             external_id: c.id,
@@ -200,6 +386,12 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
             author_name: c.from?.name ?? "Facebook user",
             body: c.message ?? "",
             created_at: c.created_time,
+            direction: ours ? "out" : "in",
+            ...(ours
+              ? { status: "replied" as const }
+              : olderThanCutoff(c.created_time, firstSync)
+                ? { status: "archived" as const }
+                : {}),
           })
         )
           interactions++;
@@ -209,26 +401,36 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
     // Messenger DMs — requires pages_messaging permission; best-effort.
     try {
       const convs = await graphGet(
-        `/${account.external_id}/conversations?fields=messages.limit(10){id,message,from,created_time}&limit=10`,
+        `/${account.external_id}/conversations?fields=messages.limit(10){id,message,from,created_time,attachments{mime_type,name,image_data},sticker}&limit=10`,
         token,
       );
       for (const conv of convs.data ?? []) {
         for (const msg of conv.messages?.data ?? []) {
-          if (msg.from?.id === account.external_id) continue; // our own replies
+          // Both directions are stored now. Our replies used to be skipped
+          // entirely when the id matched and, when it did not, stored as if the
+          // customer had sent them.
+          const ours = sentByUs(msg.from, self);
           if (
             await saveInteraction(account, {
               external_id: msg.id,
               kind: "dm",
-              author_name: msg.from?.name ?? "Messenger user",
-              body: msg.message ?? "",
+              author_name: ours ? (self.name ?? "You") : (msg.from?.name ?? "Messenger user"),
+              body: describeAttachments(msg),
               created_at: msg.created_time,
+              direction: ours ? "out" : "in",
+              thread_id: conv.id ?? null,
+              ...(ours
+                ? { status: "replied" as const }
+                : olderThanCutoff(msg.created_time, firstSync)
+                  ? { status: "archived" as const }
+                  : {}),
             })
           )
             interactions++;
         }
       }
-    } catch {
-      // Messaging permission missing — comments/posts still synced.
+    } catch (error) {
+      note("Messenger conversations", error);
     }
 
     try {
@@ -238,13 +440,15 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
       );
       const followers = page?.followers_count ?? page?.fan_count;
       if (typeof followers === "number") stats = { followers };
-    } catch {
-      // ignore
+    } catch (error) {
+      note("Facebook page details", error);
     }
   }
 
-  await finishSync(account, stats);
-  return { ok: true, posts, interactions };
+
+  await finishSync(account.id, stats);
+  return { ok: true, posts, interactions, ...(skipped.length ? { skipped } : {}) };
+
 }
 
 /* ---------- YouTube (Data API v3 — API key + channel ID) ---------- */
@@ -252,8 +456,25 @@ async function syncMeta(account: SocialAccountSecret): Promise<SyncResult> {
 async function syncYouTube(account: SocialAccountSecret): Promise<SyncResult> {
   const credential = account.access_token?.trim();
   const channelId = account.external_id?.trim();
+
+  // Two kinds of credential share this column. A connection made through
+  // Google's login holds an OAuth access token, which is a credential for a
+  // person and belongs in the Authorization header. A pasted connection holds
+  // a YouTube Data API key, which is what `key=` is for. Sending an OAuth
+  // token as `key=` is rejected by Google, so OAuth-connected channels could
+  // connect but never sync.
+  // Pasted connections store a YouTube Data API key, and Google API keys always
+  // begin "AIza". Anything else -- an OAuth access token ("ya29...") -- goes in
+  // the Authorization header, even for a caller that did not say how the
+  // account was connected.
+  const oauth = account.connect_method === "oauth" || !credential?.startsWith("AIza");
   if (!credential || !channelId) {
-    return missingCreds("Connect the YouTube channel through Connect & setup first.");
+    return missingCreds(
+      oauth
+        ? "Reconnect YouTube: this connection has no usable token or channel."
+        : "Add the channel ID (starts with UC…) and a YouTube Data API key first.",
+    );
+
   }
   // OAuth-connected channels authenticate as the user, with a Bearer token.
   // `key=` is Google's API-key mechanism for public data only; it survives for
@@ -367,7 +588,7 @@ async function syncTwitter(account: SocialAccountSecret): Promise<SyncResult> {
     return missingCreds("Add your numeric X user ID and a Bearer token first.");
   }
   const tw = async (path: string): Promise<any> => {
-    const res = await fetch(`https://api.twitter.com/2${path}`, {
+    const res = await fetch(`https://api.x.com/2${path}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const json: any = await res.json().catch(() => ({}));
@@ -570,15 +791,14 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
       "Add the location path (accounts/123/locations/456) and a Google OAuth token first.",
     );
   }
-  // The legacy "Google My Business API v4" (mybusiness.googleapis.com) is
-  // deprecated and Google actively sunsets it — this will hard-fail with no
-  // warning once it's fully shut down. Reviews now live on the split-out
-  // Business Profile Reviews API; the review object shape (reviewId,
-  // reviewer, starRating, comment, createTime) is documented as unchanged,
-  // only the host/path/version moved. Not verified against a live account —
-  // check the first real sync against this.
+  // Reviews are served by the v4 Google My Business API:
+  // GET mybusiness.googleapis.com/v4/{accounts/*/locations/*}/reviews. An
+  // earlier change moved this to "mybusinessreviews.googleapis.com/v1" on the
+  // belief that v4 was being retired. That host does not exist -- it answers
+  // 404 and Google's API directory lists no such API -- so every review sync
+  // failed. The v4 reviews method is current and not marked deprecated.
   const res = await fetch(
-    `https://mybusinessreviews.googleapis.com/v1/${location.replace(/^\/+|\/+$/g, "")}/reviews?pageSize=20`,
+    `https://mybusiness.googleapis.com/v4/${location.replace(/^\/+|\/+$/g, "")}/reviews?pageSize=50`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   const json: any = await res.json().catch(() => ({}));
@@ -615,12 +835,24 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
 /* ---------- entry point ---------- */
 
 /** Pulls recent posts, comments/DMs/reviews and audience stats for one account. */
-export async function syncSocialAccount(account: SocialAccountSecret): Promise<SyncResult> {
+export async function syncSocialAccount(
+  stored: SocialAccountSecret,
+  /**
+   * True when this account has never synced. Its whole history arrives at once,
+   * and filing two years of it as "Open" told the team they had dozens of
+   * conversations to answer.
+   */
+  firstSync = false,
+): Promise<SyncResult> {
   try {
+    // Opened here as well as by the callers, so one that passes the stored
+    // column straight through cannot hand a provider ciphertext. Plaintext is
+    // returned unchanged, so opening twice is harmless.
+    const account = { ...stored, access_token: await openSecret(stored.access_token) };
     switch (account.platform) {
       case "instagram":
       case "facebook":
-        return await syncMeta(account);
+        return await syncMeta(account, firstSync);
       case "youtube":
         return await syncYouTube(account);
       case "twitter":
@@ -631,6 +863,17 @@ export async function syncSocialAccount(account: SocialAccountSecret): Promise<S
         return await syncTikTok(account);
       case "google_business":
         return await syncGoogleBusiness(account);
+      default:
+        // Every connector reaches this from the same Sync button. Falling off
+        // the switch returned undefined, which the caller then read `.ok`
+        // from and crashed with a TypeError.
+        return {
+          ok: false,
+          posts: 0,
+          interactions: 0,
+          error:
+            "Flas does not sync this platform yet. The connection is saved, but nothing is pulled from it.",
+        };
     }
   } catch (e) {
     return {
@@ -644,12 +887,21 @@ export async function syncSocialAccount(account: SocialAccountSecret): Promise<S
 
 /** Posts a reply to a Facebook/Instagram comment. Returns true when Meta accepts it. */
 export async function replyToComment(
+  platform: "facebook" | "instagram",
   commentExternalId: string,
   message: string,
   token: string,
 ): Promise<boolean> {
   try {
-    const res = await fetch(`${GRAPH}/${commentExternalId}/replies`, {
+    // Opened here too: a caller passing the stored column must not send Meta
+    // ciphertext. Plaintext passes through unchanged.
+    token = (await openSecret(token)) ?? "";
+    // Facebook and Instagram reply on different edges: /{comment}/comments
+    // for a Facebook comment, /{comment}/replies for an Instagram one. Every
+    // Facebook reply was sent to /replies, which is Instagram's, so none was
+    // ever delivered.
+    const edge = platform === "facebook" ? "comments" : "replies";
+    const res = await fetch(`${GRAPH}/${commentExternalId}/${edge}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ message }),

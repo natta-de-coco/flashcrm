@@ -34,5 +34,7 @@ dist-ssr
 # Production error dumps: contain customer emails and stack traces.
 .errors/
 
-# Throwaway Postgres data directories written by the supabase/verify suites
+# Disposable local database verification artifacts
 supabase/verify/.pgdata*/
+supabase/verify/result*.json
+

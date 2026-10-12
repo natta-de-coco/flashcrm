@@ -1,7 +1,4 @@
-import {
-  connectorDefinition,
-  resolveAllCapabilities,
-} from "@/lib/social-connector-definitions";
+import { connectorDefinition, resolveAllCapabilities } from "@/lib/social-connector-definitions";
 
 /**
  * The connection and authorization-attempt state model.
@@ -138,6 +135,7 @@ const TRANSITIONS: Readonly<Record<ConnectionState, readonly ConnectionState[]>>
     "disconnected",
     "provider_unavailable",
   ],
+
   scope_incomplete: [
     "connected",
     "token_expiring",
@@ -150,11 +148,13 @@ const TRANSITIONS: Readonly<Record<ConnectionState, readonly ConnectionState[]>>
   token_expiring: [
     "connected",
     "scope_incomplete",
+
     "refresh_failed",
     "revoked",
     "disconnected",
     "provider_unavailable",
   ],
+
   refresh_failed: [
     "connected",
     "token_expiring",
@@ -163,6 +163,7 @@ const TRANSITIONS: Readonly<Record<ConnectionState, readonly ConnectionState[]>>
     "provider_unavailable",
     "authorization_started",
   ],
+
   // A provider outage must resolve back to whatever it interrupted, and must
   // never be a route to a state that discards a token — otherwise an hour of
   // Meta 5xx would sign every customer out.
@@ -402,7 +403,10 @@ export const CONNECTION_STATE_INFO: Readonly<Record<ConnectionState, StatePresen
 
 export const ATTEMPT_STATE_INFO: Readonly<Record<AttemptState, { label: string; note: string }>> = {
   started: { label: "In progress", note: "The consent screen was opened." },
-  callback_received: { label: "Finishing", note: "The provider replied; Flas is completing setup." },
+  callback_received: {
+    label: "Finishing",
+    note: "The provider replied; Flas is completing setup.",
+  },
   cancelled: { label: "Cancelled", note: "The provider or the person declined the request." },
   callback_error: { label: "Failed", note: "The provider replied but the exchange failed." },
   expired: {

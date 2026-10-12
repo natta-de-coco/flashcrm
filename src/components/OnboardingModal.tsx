@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useI18n } from "@/hooks/useI18n";
 
 const BLOCKED_NAMES = [
   "test", "testing", "admin", "administrator", "fake", "user", "company",
@@ -39,6 +40,7 @@ function isDisallowedName(val: string): boolean {
 }
 
 export function OnboardingModal() {
+  const { t } = useI18n();
   const { needsOnboarding, loading, refresh } = useTenant();
   const { user } = useAuth();
   const runOnboarding = useServerFn(completeOnboarding);
@@ -72,16 +74,22 @@ export function OnboardingModal() {
   };
 
   const submit = async () => {
-    const trimmedCompany = companyName.trim();
+const trimmedCompany = companyName.trim();
     const trimmedFull = fullName.trim();
     const trimmedMobile = mobilePhone.trim();
 
     if (trimmedCompany.length < 3) {
-      toast.error("Please enter your real company name (at least 3 characters)");
+      toast.error(t("onboardingModal.pleaseEnterYourCompanyName") || "Please enter your real company name (at least 3 characters)");
       return;
     }
     if (isDisallowedName(trimmedCompany)) {
       toast.error("Please enter a valid, real business name (generic or test names are not allowed)");
+      return;
+    }
+    if (trimmedFull.length < 2) {
+      toast.error(t("onboardingModal.pleaseEnterYourFullName") || "Please enter your full name");
+      return;
+    }
       return;
     }
 
@@ -111,13 +119,12 @@ export function OnboardingModal() {
         session = refreshed.session;
       }
       if (!session?.access_token) {
-        toast.error("Your session expired — please sign in again.");
+        toast.error(t("onboardingModal.yourSessionExpiredPleaseSign"));
         setBusy(false);
         window.location.href = "/auth";
         return;
       }
-
-      await runOnboarding({
+await runOnboarding({
         data: {
           companyName: trimmedCompany,
           fullName: trimmedFull,
@@ -130,10 +137,10 @@ export function OnboardingModal() {
         },
       });
 
-      toast.success(`Welcome to Flas, ${trimmedFull}! Your 1-month free trial has started.`);
+      toast.success(t("onboardingModal.welcomeToFlasYour1", { trim: trimmedFull }) || `Welcome to Flas, ${trimmedFull}! Your 1-month free trial has started.`);
       await refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not finish setup");
+      toast.error(e instanceof Error ? e.message : t("onboardingModal.couldNotFinishSetup"));
       setBusy(false);
     }
   };
@@ -143,7 +150,7 @@ export function OnboardingModal() {
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader className="items-center text-center">
           <FlashLogoBadge className="mb-2 size-12" />
-          <DialogTitle>Set up your company workspace</DialogTitle>
+<DialogTitle>{t("onboardingModal.nameYourCompany") || "Set up your company workspace"}</DialogTitle>
           <DialogDescription>
             {knownName
               ? `Welcome, ${knownName.split(" ")[0]}. Please provide your real business details so invoices, messaging and currency are set up correctly.`
@@ -152,11 +159,11 @@ export function OnboardingModal() {
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
-          {/* Company & Owner */}
+{/* Company & Owner */}
           <div className="space-y-3 rounded-lg border p-3 bg-muted/20">
             <div className="space-y-1.5">
               <Label htmlFor="ob-company" className="flex items-center gap-1.5 text-xs font-semibold">
-                <Building2 className="h-3.5 w-3.5 text-primary" /> Company name *
+                <Building2 className="h-3.5 w-3.5 text-primary" /> {t("onboardingModal.companyName") || "Company name"} *
               </Label>
               <Input
                 id="ob-company"
@@ -169,7 +176,7 @@ export function OnboardingModal() {
 
             <div className="space-y-1.5">
               <Label htmlFor="ob-name" className="flex items-center gap-1.5 text-xs font-semibold">
-                <User className="h-3.5 w-3.5 text-primary" /> Business owner's full name *
+                <User className="h-3.5 w-3.5 text-primary" /> {t("onboardingModal.yourFullName") || "Business owner's full name"} *
               </Label>
               <Input
                 id="ob-name"
@@ -287,11 +294,11 @@ export function OnboardingModal() {
           </div>
 
           <Button className="w-full" onClick={submit} disabled={busy}>
-            {busy ? "Setting up your workspace…" : "Complete Setup & Start Free Month"}
+{busy ? (t("onboardingModal.creatingYourWorkspace") || "Setting up your workspace…") : (t("onboardingModal.startMyFreeMonth") || "Complete Setup & Start Free Month")}
           </Button>
 
           <p className="text-center text-xs text-muted-foreground">
-            All details can be updated anytime from Settings &amp; Business Profile.
+All details can be updated anytime from Settings &amp; Business Profile.
           </p>
         </div>
       </DialogContent>

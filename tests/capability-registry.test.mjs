@@ -35,14 +35,20 @@ const MUTATION = process.env.MUTATION ?? "";
 if (MUTATION === "gbp_messaging") {
   const gbp = CONNECTOR_DEFINITIONS.find((c) => c.id === "google_business");
   gbp.capabilities.direct_messages_read = {
-    providerSupports: true, flasImplements: true, requiredScopes: [], reviewRequired: false,
+    providerSupports: true,
+    flasImplements: true,
+    requiredScopes: [],
+    reviewRequired: false,
   };
   console.log("!! MUTATION: Google Business Profile given messaging — the suite must FAIL");
 }
 if (MUTATION === "youtube_dm") {
   const yt = CONNECTOR_DEFINITIONS.find((c) => c.id === "youtube");
   yt.capabilities.direct_messages_send = {
-    providerSupports: true, flasImplements: true, requiredScopes: [], reviewRequired: false,
+    providerSupports: true,
+    flasImplements: true,
+    requiredScopes: [],
+    reviewRequired: false,
   };
   console.log("!! MUTATION: YouTube given DM send — the suite must FAIL");
 }
@@ -53,9 +59,22 @@ if (MUTATION === "youtube_dm") {
  * Google Business Profile chat was retired by Google on 31 July 2024.
  */
 const NO_DM_CONNECTORS = [
-  "google_business", "youtube", "pinterest", "tiktok", "threads", "twitter",
-  "linkedin", "meta_ads", "google_ads", "linkedin_ads", "tiktok_ads",
-  "google_analytics", "search_console", "wordpress", "shopify", "woocommerce",
+  "google_business",
+  "youtube",
+  "pinterest",
+  "tiktok",
+  "threads",
+  "twitter",
+  "linkedin",
+  "meta_ads",
+  "google_ads",
+  "linkedin_ads",
+  "tiktok_ads",
+  "google_analytics",
+  "search_console",
+  "wordpress",
+  "shopify",
+  "woocommerce",
 ];
 
 const DM_KEYS = ["direct_messages_read", "direct_messages_send"];
@@ -71,7 +90,8 @@ describe("registry shape", () => {
       for (const key of CAPABILITY_KEYS) {
         assert.ok(c.capabilities[key], `${c.id} is missing capability "${key}"`);
         assert.equal(
-          typeof c.capabilities[key].providerSupports, "boolean",
+          typeof c.capabilities[key].providerSupports,
+          "boolean",
           `${c.id}.${key}.providerSupports must be a boolean`,
         );
       }
@@ -91,8 +111,14 @@ describe("registry shape", () => {
     for (const key of CAPABILITY_KEYS) {
       assert.ok(CAPABILITY_LABELS[key], `no label for capability "${key}"`);
     }
-    for (const s of ["implemented", "scope_not_requested", "not_implemented",
-      "requires_provider_review", "limited_by_account_type", "not_supported"]) {
+    for (const s of [
+      "implemented",
+      "scope_not_requested",
+      "not_implemented",
+      "requires_provider_review",
+      "limited_by_account_type",
+      "not_supported",
+    ]) {
       assert.ok(STATUS_LABELS[s], `no label for status "${s}"`);
     }
   });
@@ -152,7 +178,8 @@ describe("scopes", () => {
       for (const r of resolveAllCapabilities(c)) {
         if (r.missingScopes.length > 0 && r.flasImplements && r.providerSupports) {
           assert.equal(
-            r.status, "scope_not_requested",
+            r.status,
+            "scope_not_requested",
             `${c.id}.${r.key} is missing ${r.missingScopes.join(", ")} but resolved to "${r.status}"`,
           );
         }
@@ -179,7 +206,11 @@ describe("honest capability display", () => {
       assert.ok(c, `${id} is missing from the registry`);
       for (const key of DM_KEYS) {
         const shown = advertisableCapabilities(c).some((x) => x.key === key);
-        assert.equal(shown, false, `${id} advertises "${key}" — it has no such API under its scopes`);
+        assert.equal(
+          shown,
+          false,
+          `${id} advertises "${key}" — it has no such API under its scopes`,
+        );
       }
     }
   });
@@ -188,7 +219,8 @@ describe("honest capability display", () => {
     const gbp = connectorDefinition("google_business");
     for (const key of DM_KEYS) {
       assert.equal(
-        gbp.capabilities[key].providerSupports, false,
+        gbp.capabilities[key].providerSupports,
+        false,
         `google_business.${key} claims provider support — Google retired Business Profile chat on 31 July 2024`,
       );
       assert.equal(resolveCapability(gbp, key).status, "not_supported");
@@ -199,7 +231,8 @@ describe("honest capability display", () => {
     const yt = connectorDefinition("youtube");
     for (const key of DM_KEYS) {
       assert.equal(
-        yt.capabilities[key].providerSupports, false,
+        yt.capabilities[key].providerSupports,
+        false,
         `youtube.${key} claims provider support — YouTube has no private DM API, only public comments`,
       );
     }
@@ -269,7 +302,8 @@ describe("observed capabilities cannot exceed the static definition", () => {
     // definition does not allow — the case the two-layer model exists to catch.
     const ceiling = capabilityCeiling("google_business");
     assert.equal(
-      ceiling.has("direct_messages_read"), false,
+      ceiling.has("direct_messages_read"),
+      false,
       "an observed google_business row could claim DM access",
     );
     assert.ok(ceiling.has("reviews_read"), "reviews_read should be within the GBP ceiling");

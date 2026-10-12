@@ -53,12 +53,23 @@ export async function requestSiteActivation(input: ActivationInput): Promise<{
   // real emails from your domain) to an address of their choosing.
   const adminEmail = site.admin_email ?? input.adminEmail ?? null;
 
+  // The domain and platform are claimed the same way, and for the same reason.
+  // The site key lives in public website code, so anyone who reads it could
+  // otherwise point an already-active site at a domain of their own: lead
+  // collection breaks, and the origin check starts trusting the wrong site.
+  // Before activation these are still being set up, so a pending site may
+  // still change them; an active one may not, and a workspace admin changes
+  // them from inside FLAS instead.
+  const locked = site.status === "active";
+  const domain = locked ? site.domain : (input.domain ?? site.domain);
+  const platform = locked ? undefined : input.platform;
+
   await supabaseAdmin
     .from("lead_sites")
     .update({
-      domain: input.domain ?? site.domain,
+      domain,
       admin_email: adminEmail,
-      platform: input.platform,
+      ...(platform ? { platform } : {}),
     })
     .eq("id", site.id);
 

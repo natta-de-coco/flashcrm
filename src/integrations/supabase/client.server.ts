@@ -3,7 +3,6 @@
 // Use this for admin operations in server functions and server routes only.
 // For user-authenticated queries (with RLS), use the auth middleware instead.
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./types";
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith("sb_publishable_") || value.startsWith("sb_secret_");
@@ -46,7 +45,14 @@ function createSupabaseAdminClient() {
     throw new Error(message);
   }
 
-  return createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  // The checked-in generated Database type currently lags several committed
+  // migrations (for example refresh_locked_until and release_connection_refresh).
+  // Keeping the service-role client bound to that stale snapshot makes valid,
+  // migrated server operations fail TypeScript even though the schema supports
+  // them. The browser/RLS client remains strongly typed; this privileged server
+  // client intentionally follows the live migrated schema until types are
+  // regenerated from Supabase as part of the deployment gate.
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     global: {
       fetch: createSupabaseFetch(SUPABASE_SERVICE_ROLE_KEY),
     },

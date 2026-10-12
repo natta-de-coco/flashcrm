@@ -114,7 +114,8 @@ SELECT o.id,
        (SELECT count(*) FROM public.profiles p WHERE p.tenant_id = o.id AND p.suspended)  AS members_suspended,
        (SELECT count(*) FROM public.contacts c WHERE c.tenant_id = o.id)                  AS contacts,
        (SELECT count(*) FROM public.messages  m WHERE m.tenant_id = o.id)                 AS messages,
-       (SELECT max(p.last_seen_at) FROM public.profiles p WHERE p.tenant_id = o.id)       AS last_active
+       (SELECT max(p.last_seen_at) FROM public.profiles p WHERE p.tenant_id = o.id)       AS last_active,
+       o.subscription_renews_at                                   AS subscription_renews_at
   FROM public.organizations o;
 
 GRANT SELECT ON public.company_billing_overview TO authenticated;

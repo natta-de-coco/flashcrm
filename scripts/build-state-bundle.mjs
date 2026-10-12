@@ -68,9 +68,6 @@ await build({
     {
       name: "stub-supabase-admin",
       setup(b) {
-        // The admin client reads environment variables at import time. Nothing
-        // under test touches it, so it is replaced with a proxy that throws if
-        // anything ever does — a silent stub would hide a real dependency.
         b.onResolve({ filter: /client\.server$/ }, () => ({
           path: "stub-supabase-admin",
           namespace: "stub",
@@ -85,19 +82,63 @@ await build({
   ],
 });
 
-// Batch 2A: per-channel capability states (pure) and channel discovery parsing.
+
 await build({
-  entryPoints: ["src/lib/social-channel-capabilities.ts"],
-  outfile: "node_modules/.cache/flas-channel-caps.mjs",
+  entryPoints: ["src/lib/locale.ts"],
+  outfile: "node_modules/.cache/flas-locale.mjs",
+
   format: "esm",
   platform: "node",
   bundle: true,
   logLevel: "error",
   alias: { "@": "./src" },
 });
+
+
 await build({
-  entryPoints: ["src/lib/social-authorizations.server.ts"],
-  outfile: "node_modules/.cache/flas-authorizations.mjs",
+  entryPoints: ["src/lib/navigation.ts"],
+  outfile: "node_modules/.cache/flas-navigation.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+await build({
+  entryPoints: ["src/lib/social-schema.ts"],
+  outfile: "node_modules/.cache/flas-social-schema.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+await build({
+  entryPoints: ["src/lib/form-validation.ts"],
+  outfile: "node_modules/.cache/flas-form-validation.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+await build({
+  entryPoints: ["src/lib/connection-status.ts"],
+  outfile: "node_modules/.cache/flas-connection-status.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+await build({
+  entryPoints: ["src/lib/connections.server.ts"],
+  outfile: "node_modules/.cache/flas-connections-server.mjs",
+
   format: "esm",
   platform: "node",
   bundle: true,
@@ -114,4 +155,61 @@ await build({
   platform: "node",
   bundle: true,
   logLevel: "error",
+});
+
+
+await build({
+  entryPoints: ["src/lib/social.server.ts"],
+  outfile: "node_modules/.cache/flas-social-server.mjs",
+
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+
+  alias: { "@": "./src" },
+  plugins: [stubSupabase],
+});
+
+await build({
+  entryPoints: ["src/lib/secret-box.server.ts"],
+  outfile: "node_modules/.cache/flas-secret-box.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+  plugins: [stubSupabase],
+});
+
+await build({
+  entryPoints: ["src/lib/connection-targets.server.ts"],
+  outfile: "node_modules/.cache/flas-connection-targets.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+await build({
+  entryPoints: ["src/lib/reports.server.ts"],
+  outfile: "node_modules/.cache/flas-reports.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});
+
+// The manager portal's subscription rules: dates, access and what a save does.
+await build({
+  entryPoints: ["src/lib/subscription-admin.ts"],
+  outfile: "node_modules/.cache/flas-subscription-admin.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+
 });

@@ -109,7 +109,7 @@ function BlogIndex() {
             <div className="relative grid gap-6 p-8 sm:p-10">
               <div
                 aria-hidden
-                className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-brand/15 blur-3xl"
+                className="pointer-events-none absolute -end-16 -top-16 size-56 rounded-full bg-brand/15 blur-3xl"
               />
               <div className="flex flex-wrap items-center gap-3 text-xs">
                 <span className="rounded-full bg-brand-soft px-2.5 py-1 font-semibold text-brand">
@@ -150,7 +150,8 @@ function BlogIndex() {
               </h2>
               <p className="mt-2 flex-1 text-sm text-muted-foreground">{p.excerpt}</p>
               <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-brand">
-                Read <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                Read{" "}
+                <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
               </span>
             </Link>
           ))}

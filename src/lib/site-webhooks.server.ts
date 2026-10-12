@@ -3,6 +3,7 @@
 // into the lead engine so contacts/leads, consent and assignment stay uniform.
 import { createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
+import { hostMatchesPin } from "@/lib/domain-pin";
 
 export const siteLeadSchema = z.object({
   name: z.string().max(200).optional(),
@@ -58,11 +59,7 @@ export async function resolveSite(siteKey: string, req: Request) {
     const host = extractHost(req);
     // Shopify calls come from the shop domain server-side (no Origin header) —
     // when there's no origin to check, the HMAC signature is the auth.
-    if (
-      host &&
-      host !== site.domain.toLowerCase() &&
-      !host.endsWith(`.${site.domain.toLowerCase()}`)
-    ) {
+    if (host && !hostMatchesPin(host, site.domain)) {
       return { site: null as null, error: "Domain not allowed for this site key" };
     }
   }
@@ -121,9 +118,49 @@ export async function ingestPlatformLead(
   return { ok: true };
 }
 
-export function json(body: unknown, status = 200) {
+export function json(body: unknown, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
   });
+}
+
+/**
+ * The checks that come after "is this signature valid?" and before the lead is
+ * written. A signature proves a body was produced by someone holding the
+ * secret; it does not prove this is the first time that body has arrived, so a
+ * captured request could be sent again and again. Each delivery is therefore
+ * remembered once, and a site cannot write leads without limit.
+ */
+export async function acceptPlatformEvent(args: {
+  site: LeadSite;
+  platform: string;
+  rawBody: string;
+  request: Request;
+}): Promise<{ ok: true } | { ok: false; response: Response }> {
+  const { webhookEventId, firstTimeSeen, leadIntakeAllowed } =
+    await import("@/lib/public-limits.server");
+
+  const eventId = webhookEventId(args.rawBody, args.request);
+  if (!(await firstTimeSeen(`site:${args.platform}:${args.site.id}`, eventId))) {
+    // Answer 200 so the provider stops retrying, but do the work only once.
+    return { ok: false, response: json({ ok: true, duplicate: true }) };
+  }
+
+  if (args.site.tenant_id) {
+    const limit = await leadIntakeAllowed({
+      tenantId: args.site.tenant_id,
+      siteId: args.site.id,
+    });
+    if (!limit.ok) {
+      return {
+        ok: false,
+        response: json({ error: limit.error }, 429, {
+          "retry-after": String(limit.retryAfterSeconds),
+        }),
+      };
+    }
+  }
+
+  return { ok: true };
 }

@@ -3,13 +3,18 @@ import { defineArticles } from "./define";
 /** Third batch: continues the release schedule after BUYING_POSTS. */
 export const LEAD_CAPTURE_POSTS = defineArticles(
   [
-  {
-    slug: "wordpress-whatsapp-lead-capture-checklist",
-    title: "WordPress WhatsApp lead capture: test the enquiry, not just the button",
-    excerpt: "Check a WordPress WhatsApp widget from mobile tap to CRM ownership, including clear expectations, useful fields and realistic response times.",
-    category: "Lead capture",
-    keywords: ["wordpress whatsapp lead capture", "wordpress whatsapp crm plugin", "whatsapp website widget"],
-    html: `
+    {
+      slug: "wordpress-whatsapp-lead-capture-checklist",
+      title: "WordPress WhatsApp lead capture: test the enquiry, not just the button",
+      excerpt:
+        "Check a WordPress WhatsApp widget from mobile tap to CRM ownership, including clear expectations, useful fields and realistic response times.",
+      category: "Lead capture",
+      keywords: [
+        "wordpress whatsapp lead capture",
+        "wordpress whatsapp crm plugin",
+        "whatsapp website widget",
+      ],
+      html: `
 <p>A WhatsApp button can appear perfectly on a WordPress page while sending visitors into an unattended conversation. Installing the widget is only the first step. Test whether the visitor can ask a useful question and whether your team receives enough context to answer it.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Choose the pages where a conversation helps</h2>
@@ -28,14 +33,19 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>Count completed enquiries, qualified conversations and the opportunities that receive a next action. Button clicks alone do not show whether the widget helps sales. Inspect a few unsuccessful sessions or test cases to see where the experience becomes unclear.</p>
 <p>Use the <a href="/blog/whatsapp-click-link-vs-lead-widget">link versus widget comparison</a> to choose the right capture approach. Pair it with the <a href="/blog/whatsapp-landing-page-copy">landing-page copy guide</a> so the invitation and the actual response tell the same story.</p>
 `,
-  },
-  {
-    slug: "shopify-whatsapp-pre-sale-questions",
-    title: "Shopify WhatsApp enquiries: answer the questions before checkout",
-    excerpt: "Use WhatsApp on a Shopify store to handle size, delivery and product questions without creating an unmanageable support queue.",
-    category: "Lead capture",
-    keywords: ["shopify whatsapp enquiries", "shopify whatsapp lead capture", "whatsapp ecommerce sales"],
-    html: `
+    },
+    {
+      slug: "shopify-whatsapp-pre-sale-questions",
+      title: "Shopify WhatsApp enquiries: answer the questions before checkout",
+      excerpt:
+        "Use WhatsApp on a Shopify store to handle size, delivery and product questions without creating an unmanageable support queue.",
+      category: "Lead capture",
+      keywords: [
+        "shopify whatsapp enquiries",
+        "shopify whatsapp lead capture",
+        "whatsapp ecommerce sales",
+      ],
+      html: `
 <p>A shopper may leave a product page because one practical detail is missing: whether an item fits, arrives in time or works with something they already own. A WhatsApp invitation can help with that uncertainty, provided the agent receives enough context and the answer is dependable.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Choose questions that deserve a conversation</h2>
@@ -59,14 +69,15 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>Look at a sample of conversations and identify questions that the product page could answer more clearly. Update that information, then see whether enquiries become more specific. A useful chat channel can reduce uncertainty while also teaching you how to improve the store.</p>
 <p>Use the <a href="/blog/whatsapp-lead-qualification-questions">qualification guide</a> for bulk or custom requests and the <a href="/blog/whatsapp-lead-attribution">attribution guide</a> to track meaningful outcomes. The objective is an informed purchase, not simply a larger volume of messages.</p>
 `,
-  },
-  {
-    slug: "whatsapp-click-link-vs-lead-widget",
-    title: "WhatsApp click-to-chat link vs lead widget: which should you use?",
-    excerpt: "Compare a direct WhatsApp link with a lead capture widget by visitor effort, contact context and the way your team follows up.",
-    category: "Comparison",
-    keywords: ["whatsapp link vs widget", "click to chat lead capture", "whatsapp website form"],
-    html: `
+    },
+    {
+      slug: "whatsapp-click-link-vs-lead-widget",
+      title: "WhatsApp click-to-chat link vs lead widget: which should you use?",
+      excerpt:
+        "Compare a direct WhatsApp link with a lead capture widget by visitor effort, contact context and the way your team follows up.",
+      category: "Comparison",
+      keywords: ["whatsapp link vs widget", "click to chat lead capture", "whatsapp website form"],
+      html: `
 <p>A direct WhatsApp link gets a visitor toward a conversation quickly. A lead widget can collect context before the conversation begins. The better choice depends on what the visitor needs and what your team does with the information, not on which option produces more form submissions.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>What a direct link is good at</h2>
@@ -89,14 +100,19 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>Run the alternatives with comparable traffic and staffing. Track how many visitors complete the relevant action, how many become qualified enquiries and how many receive a useful response. If the sample is small, inspect the conversations instead of declaring a winner from a tiny percentage difference.</p>
 <p>Use the <a href="/blog/wordpress-whatsapp-lead-capture-checklist">WordPress capture checklist</a> to test the journey and the <a href="/blog/whatsapp-landing-page-copy">copy guide</a> to set expectations. Choose the least complicated option that reliably connects the visitor's question with someone able to answer it.</p>
 `,
-  },
-  {
-    slug: "whatsapp-landing-page-copy",
-    title: "WhatsApp landing-page copy that gives visitors a reason to ask",
-    excerpt: "Write clear WhatsApp calls to action with a specific purpose, realistic response expectations and enough context for a useful sales enquiry.",
-    category: "Lead capture",
-    keywords: ["whatsapp landing page copy", "whatsapp call to action", "whatsapp lead conversion"],
-    html: `
+    },
+    {
+      slug: "whatsapp-landing-page-copy",
+      title: "WhatsApp landing-page copy that gives visitors a reason to ask",
+      excerpt:
+        "Write clear WhatsApp calls to action with a specific purpose, realistic response expectations and enough context for a useful sales enquiry.",
+      category: "Lead capture",
+      keywords: [
+        "whatsapp landing page copy",
+        "whatsapp call to action",
+        "whatsapp lead conversion",
+      ],
+      html: `
 <p>“Chat with us” tells a visitor what button to press but gives little reason to press it. Good WhatsApp copy explains what the business can help decide, what information is useful and what will happen after the visitor sends a message.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Connect the invitation to the page</h2>
@@ -120,14 +136,19 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>Read a sample of recent enquiries. Are visitors asking the intended questions? Do they know what information to send? Are they surprised by response times? These observations suggest more useful changes than swapping one enthusiastic adjective for another.</p>
 <p>Use the <a href="/blog/whatsapp-click-link-vs-lead-widget">link-versus-widget guide</a> to choose the interaction and the <a href="/blog/whatsapp-lead-qualification-questions">qualification questions</a> to continue it. The best copy is a clear invitation that the actual team can fulfil.</p>
 `,
-  },
-  {
-    slug: "whatsapp-lead-qualification-questions",
-    title: "WhatsApp lead qualification questions that do not feel like a form",
-    excerpt: "Qualify WhatsApp enquiries with a few useful questions about requirements, timing and decision steps while keeping the conversation natural.",
-    category: "Sales",
-    keywords: ["whatsapp lead qualification", "sales qualification questions whatsapp", "qualify inbound leads"],
-    html: `
+    },
+    {
+      slug: "whatsapp-lead-qualification-questions",
+      title: "WhatsApp lead qualification questions that do not feel like a form",
+      excerpt:
+        "Qualify WhatsApp enquiries with a few useful questions about requirements, timing and decision steps while keeping the conversation natural.",
+      category: "Sales",
+      keywords: [
+        "whatsapp lead qualification",
+        "sales qualification questions whatsapp",
+        "qualify inbound leads",
+      ],
+      html: `
 <p>A customer asking “How much?” may be ready to buy or may not yet know which service they need. Sending a long questionnaire usually makes that uncertainty harder to resolve. Qualification should gather enough information for the next useful action, one step at a time.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Answer what you can before asking more</h2>
@@ -146,14 +167,19 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>When you have enough information to answer or quote, do that. Additional questions can wait until they become relevant. If the customer is not ready, record the uncertainty honestly rather than moving the opportunity into an advanced stage to make the pipeline look stronger.</p>
 <p>Use the <a href="/blog/quotation-to-payment-on-whatsapp">pipeline stage guide</a> to define what qualified means for your business. Pair it with the <a href="/blog/quotation-to-payment-on-whatsapp">quotation follow-up guide</a> so qualification leads to a useful next step rather than a well-filled record that nobody acts on.</p>
 `,
-  },
-  {
-    slug: "whatsapp-campaign-segmentation",
-    title: "WhatsApp campaign segmentation: make the message relevant first",
-    excerpt: "Build WhatsApp audiences around a clear customer need, current preferences and a useful next action instead of sending every offer to everyone.",
-    category: "Lead capture",
-    keywords: ["whatsapp campaign segmentation", "whatsapp audience targeting", "whatsapp marketing relevance"],
-    html: `
+    },
+    {
+      slug: "whatsapp-campaign-segmentation",
+      title: "WhatsApp campaign segmentation: make the message relevant first",
+      excerpt:
+        "Build WhatsApp audiences around a clear customer need, current preferences and a useful next action instead of sending every offer to everyone.",
+      category: "Lead capture",
+      keywords: [
+        "whatsapp campaign segmentation",
+        "whatsapp audience targeting",
+        "whatsapp marketing relevance",
+      ],
+      html: `
 <p>A customer who asked about office printers does not automatically need an offer for garden equipment. Segmentation begins with that ordinary observation: the reason someone is in your contact list should help determine whether a message is useful to them.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Start with the reason for the message</h2>
@@ -177,14 +203,19 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>Record qualified interest, questions that reveal missing information and requests for no further promotions. Review the segment when the replies show that the original assumption was wrong. Do not keep repeating a campaign simply because its audience is easy to select.</p>
 <p>Use the <a href="/blog/whatsapp-campaign-reply-capacity">reply capacity guide</a> to choose a manageable batch. Then apply the <a href="/blog/whatsapp-lead-attribution">attribution guide</a> to connect responses with opportunities. Better targeting starts with better reasons for contacting people.</p>
 `,
-  },
-  {
-    slug: "whatsapp-campaign-reply-capacity",
-    title: "Plan WhatsApp campaign reply capacity before you press send",
-    excerpt: "Estimate the agent workload a WhatsApp campaign may create and choose a send size your team can handle with useful, timely replies.",
-    category: "Operations",
-    keywords: ["whatsapp campaign capacity", "whatsapp campaign replies", "whatsapp sales staffing"],
-    html: `
+    },
+    {
+      slug: "whatsapp-campaign-reply-capacity",
+      title: "Plan WhatsApp campaign reply capacity before you press send",
+      excerpt:
+        "Estimate the agent workload a WhatsApp campaign may create and choose a send size your team can handle with useful, timely replies.",
+      category: "Operations",
+      keywords: [
+        "whatsapp campaign capacity",
+        "whatsapp campaign replies",
+        "whatsapp sales staffing",
+      ],
+      html: `
 <p>A campaign can create its own service problem. The offer generates interest, the inbox fills up and customers wait while the team tries to work out who should reply. Capacity planning should happen before the audience is finalised.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Estimate useful work, not just message count</h2>
@@ -208,14 +239,19 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>After the first batch, inspect reply volume, the complexity of questions and the oldest unanswered conversation. Use that evidence to change the next batch rather than continuing automatically because the original schedule says so.</p>
 <p>Pair this process with <a href="/blog/whatsapp-campaign-segmentation">audience segmentation</a> and the <a href="/blog/whatsapp-shared-inbox-for-teams">daily inbox review</a>. A smaller campaign that receives competent follow-through can be more useful than a larger campaign that overwhelms the people responsible for converting interest into a sale.</p>
 `,
-  },
-  {
-    slug: "turn-blog-readers-into-whatsapp-enquiries",
-    title: "Turn blog readers into useful WhatsApp enquiries",
-    excerpt: "Connect helpful blog content to a relevant WhatsApp next step with clear calls to action, internal links and a practical measurement plan.",
-    category: "Lead capture",
-    keywords: ["blog to whatsapp leads", "seo whatsapp lead generation", "content marketing whatsapp crm"],
-    html: `
+    },
+    {
+      slug: "turn-blog-readers-into-whatsapp-enquiries",
+      title: "Turn blog readers into useful WhatsApp enquiries",
+      excerpt:
+        "Connect helpful blog content to a relevant WhatsApp next step with clear calls to action, internal links and a practical measurement plan.",
+      category: "Lead capture",
+      keywords: [
+        "blog to whatsapp leads",
+        "seo whatsapp lead generation",
+        "content marketing whatsapp crm",
+      ],
+      html: `
 <p>A visitor reading a comparison article is usually trying to make a decision. Sending them straight into a vague sales pitch can waste the attention the article earned. The next step should help them resolve the uncertainty that brought them to the page.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Give each article a specific reader job</h2>
@@ -234,14 +270,19 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>Track article visits, completed enquiries, qualified opportunities and useful next actions as separate stages. A button click is not a sale, and the last page visited may not be the only content that influenced the decision.</p>
 <p>Review a sample of conversations alongside the numbers. If readers are asking thoughtful, relevant questions but not buying, investigate fit and follow-through rather than simply adding more calls to action. A good content-to-chat journey helps the right customer take the next step with realistic expectations.</p>
 `,
-  },
-  {
-    slug: "whatsapp-lead-attribution",
-    title: "WhatsApp lead attribution: track the enquiry without overstating the result",
-    excerpt: "Separate clicks, conversations, qualified leads and sales when measuring WhatsApp lead sources, including the limits of attribution data.",
-    category: "Lead capture",
-    keywords: ["whatsapp lead attribution", "track whatsapp leads", "whatsapp conversion measurement"],
-    html: `
+    },
+    {
+      slug: "whatsapp-lead-attribution",
+      title: "WhatsApp lead attribution: track the enquiry without overstating the result",
+      excerpt:
+        "Separate clicks, conversations, qualified leads and sales when measuring WhatsApp lead sources, including the limits of attribution data.",
+      category: "Lead capture",
+      keywords: [
+        "whatsapp lead attribution",
+        "track whatsapp leads",
+        "whatsapp conversion measurement",
+      ],
+      html: `
 <p>A visitor clicks a WhatsApp button on Monday, asks a question on Tuesday and buys after a phone call on Friday. Which channel gets credit? A useful attribution process records what you know without pretending every sale has one simple cause.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Define four different events</h2>
@@ -264,14 +305,19 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>Compare the kinds of enquiries each source produces, not just their volume. A guide that generates fewer but clearer requirements may be valuable to a quotation-led business. Investigate poor follow-through before deciding that the source itself is weak.</p>
 <p>Use the <a href="/blog/turn-blog-readers-into-whatsapp-enquiries">blog-to-enquiry guide</a> and <a href="/blog/whatsapp-lead-qualification-questions">qualification questions</a> to improve the path. The report should help the team choose what to improve next, while staying honest about what the data cannot establish.</p>
 `,
-  },
-  {
-    slug: "website-whatsapp-enquiry-abandonment",
-    title: "Why visitors abandon a WhatsApp enquiry before sending it",
-    excerpt: "Diagnose friction between a website call to action and a completed WhatsApp enquiry with mobile checks, clearer copy and shorter forms.",
-    category: "Lead capture",
-    keywords: ["whatsapp enquiry abandonment", "website whatsapp conversion", "whatsapp form friction"],
-    html: `
+    },
+    {
+      slug: "website-whatsapp-enquiry-abandonment",
+      title: "Why visitors abandon a WhatsApp enquiry before sending it",
+      excerpt:
+        "Diagnose friction between a website call to action and a completed WhatsApp enquiry with mobile checks, clearer copy and shorter forms.",
+      category: "Lead capture",
+      keywords: [
+        "whatsapp enquiry abandonment",
+        "website whatsapp conversion",
+        "whatsapp form friction",
+      ],
+      html: `
 <p>Your website shows many clicks on the WhatsApp button, but the team receives few enquiries. That gap can have several causes: accidental taps, unclear expectations, an awkward form or a visitor who changes their mind. Treat it as a journey to inspect, not proof that the audience is poor.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Reproduce the journey on the devices visitors use</h2>
@@ -294,7 +340,7 @@ export const LEAD_CAPTURE_POSTS = defineArticles(
 <p>Try a clearer invitation, a shorter form or more visible response hours. Keep the traffic source and staffing reasonably comparable when interpreting the result. With low volume, supplement the numbers with direct usability checks and conversation review.</p>
 <p>The <a href="/blog/whatsapp-click-link-vs-lead-widget">link-versus-widget comparison</a> helps decide whether a form is needed at all. The <a href="/blog/whatsapp-landing-page-copy">copy guide</a> helps align the promise. Success means more useful enquiries reaching a responsible person, not simply increasing the count of button taps.</p>
 `,
-  },
+    },
   ],
   20,
 );

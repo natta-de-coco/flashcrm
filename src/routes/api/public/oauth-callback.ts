@@ -1,6 +1,7 @@
 // Platform OAuth redirect target. The caller is authenticated by the
 // single-use, unguessable state row created when the flow started — no session
 // is required, and no code is trusted without a matching live state.
+import { isUserCancellation } from "@/lib/oauth-outcome";
 import { createFileRoute } from "@tanstack/react-router";
 import { capabilityCeiling, usesChannelModel } from "@/lib/social-connector-definitions";
 
@@ -12,7 +13,14 @@ function backTo(origin: string, path: string, params: Record<string, string>) {
 
 function back(origin: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();
-  return new Response(null, { status: 302, headers: { Location: `${origin}/social?${qs}` } });
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "no-referrer",
+      Location: `${origin}/connect?${qs}`,
+    },
+  });
 }
 
 /** Map raw provider/SDK errors to a small set of user-safe codes.  Prevents
@@ -103,23 +111,26 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
         const origin = url.origin;
         const state = url.searchParams.get("state") ?? "";
         const code = url.searchParams.get("code") ?? "";
-        // Only the OAuth `error` code is kept (RFC 6749 §4.1.2.1: a fixed ASCII
-        // token such as access_denied). `error_description` is free provider
-        // text and is never logged or audited -- providers have echoed request
-        // detail into it.
-        const rawError = url.searchParams.get("error");
-        const deniedCode =
-          rawError && /^[a-z_]{1,64}$/.test(rawError) ? rawError : rawError ? "provider_error" : null;
-        const denied = deniedCode ?? (url.searchParams.get("error_description") ? "provider_error" : null);
+
+        const providerError = url.searchParams.get("error");
+        const denied = url.searchParams.get("error_description") ?? providerError;
 
         if (!state) {
           await auditOutcome("failed", null, null, null, "No state parameter in the callback");
-          return back(origin, { connect_error: "callback_invalid" });
+          return back(origin, {
+            connect_error: "Authorization response was incomplete.",
+            connect_code: "incomplete",
+          });
+
         }
 
-        const { consumeState, exchangeCode, ProviderTokenError } = await import(
-          "@/lib/oauth.server"
-        );
+        const {
+          consumeState,
+          exchangeCode,
+          ProviderTokenError,
+          upgradeMetaToken,
+          metaGrantedScopes,
+        } = await import("@/lib/oauth.server");
         const row = await consumeState(state);
         if (!row) {
           await auditOutcome(
@@ -130,7 +141,10 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             "State was already used or older than its expiry — start the connection again",
           );
           return back(origin, {
-            connect_error: "oauth_state_expired",
+
+            connect_error: "This authorization link expired. Please start the connection again.",
+            connect_code: "expired",
+
           });
         }
         /** Moves a connection waiting on this authorization to how it ended. */
@@ -162,9 +176,17 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             row.user_id ?? null,
             denied ? `authorization_cancelled (${denied})` : "authorization_cancelled (no_code)",
           );
+          // Pressing Cancel is a choice, not a failure: it gets its own calm
+          // outcome instead of "Connection failed -- ask an administrator".
+          if (denied && isUserCancellation(providerError, url.searchParams.get("error_reason"))) {
+            return back(origin, { connect_cancelled: row.platform });
+          }
           return back(origin, {
-            connect_error: "authorization_cancelled",
-            platform: row.platform,
+
+            connect_error: `Authorization was not completed for ${row.platform.replace(/_/g, " ")}.`,
+            connect_code: denied ? "provider_refused" : "incomplete",
+            connect_platform: row.platform,
+
           });
         }
 
@@ -182,71 +204,34 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
         }
 
         try {
-          // The verifier is stored encrypted and bound to this state's digest,
-          // so one copied from another attempt's row does not decrypt.
-          let codeVerifier: string | null = null;
-          if (row.code_verifier) {
-            const { decryptSecret, tokenAad } = await import("@/lib/social-secrets.server");
-            const { sha256Hex } = await import("@/lib/oauth.server");
-            codeVerifier = await decryptSecret(
-              row.code_verifier,
-              tokenAad(row.tenant_id, `oauth:${await sha256Hex(state)}`, "code_verifier"),
-            );
-          }
-          const tokens = await exchangeCode({
+
+          let tokens = await exchangeCode({
+
             provider: meta.provider,
             code,
             redirectUri: row.redirect_uri,
             tenantId: row.tenant_id,
             codeVerifier,
           });
-          // Batch 2A: channel-model platforms store ONE authorization,
-          // discover the channels it reaches, and let the person choose. The
-          // redirect carries an opaque authorization id -- never a token, and
-          // never a channel id the browser could substitute.
-          if (usesChannelModel(row.platform)) {
-            const { completeChannelAuthorization } = await import(
-              "@/lib/social-authorizations.server"
-            );
-            const { sha256Hex } = await import("@/lib/oauth.server");
-            const outcome = await completeChannelAuthorization({
-              tenantId: row.tenant_id,
-              userId: row.user_id ?? null,
-              platform: row.platform,
-              provider: meta.provider,
-              stateHash: await sha256Hex(state),
-              tokens: {
-                token: tokens.token,
-                refreshToken: tokens.refreshToken ?? null,
-                expiresAt: tokens.expiresAt,
-                scopes: tokens.scopes,
-              },
-            });
-            await markAttemptState("completed", `channel_authorization_${outcome.kind}`);
-            await auditOutcome(
-              "succeeded",
-              row.platform,
-              row.tenant_id,
-              row.user_id ?? null,
-              outcome.kind,
-            );
-            if (outcome.kind === "reconnected") {
-              return backTo(origin, "/channels", {
-                reconnected: row.platform,
-                account: outcome.accountId,
-              });
+
+
+          if (meta.provider === "meta") {
+            // Meta's code exchange yields a short-lived user token (1-2 hours).
+            // Upgrade it now: Page tokens taken from a long-lived user token do
+            // not expire, ones taken from a short-lived token die with it. A
+            // failed upgrade keeps the short-lived token -- the connection
+            // still works and shows as expiring -- rather than turning a good
+            // login into an error.
+            try {
+              const longLived = await upgradeMetaToken(tokens.token, row.tenant_id);
+              tokens = { ...tokens, token: longLived.token, expiresAt: longLived.expiresAt };
+            } catch {
+              console.error(
+                "[oauth-callback] Meta long-lived token exchange failed; keeping the short-lived token",
+              );
             }
-            if (outcome.kind === "no_channels") {
-              return backTo(origin, "/channels", {
-                authorization: outcome.authorizationId,
-                step: "none",
-                reason: outcome.reason,
-              });
-            }
-            return backTo(origin, "/channels", {
-              authorization: outcome.authorizationId,
-              step: "select",
-            });
+            const granted = await metaGrantedScopes(tokens.token);
+            if (granted) tokens = { ...tokens, scopes: granted };
           }
 
           const { discoverProfile, saveAuthorizedConnection } =
@@ -258,13 +243,21 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           // authorization as "connected" is how an account ends up green in
           // the UI while doing nothing.
           if (platform === "facebook" || platform === "instagram") {
-            const { discoverMetaTargets, diagnoseMetaConnection, needsTargetSelection } =
+            const { discoverMetaTargets, diagnoseMetaConnection } =
               await import("@/lib/meta-discovery.server");
             const discovery = await discoverMetaTargets(tokens.token);
             const diagnosis = diagnoseMetaConnection(discovery, platform);
             if (diagnosis) {
-              await markAttemptState("callback_error", "no_usable_target");
-              await endAuth("callback_error", "no_usable_target");
+
+              await markAttemptState("callback_error", diagnosis.title);
+              await auditOutcome(
+                "blocked",
+                row.platform,
+                row.tenant_id,
+                row.user_id ?? null,
+                diagnosis.title,
+              );
+
               // Stop here rather than storing a connection that cannot work.
               // Pass the explanation through, not just the headline -- the
               // user lands on a page that has no other way to learn what went
@@ -276,10 +269,9 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                 ...(diagnosis.helpUrl ? { connect_help: diagnosis.helpUrl } : {}),
               });
             }
-            if (needsTargetSelection(discovery, platform)) {
-              // More than one Page/account qualifies — the user must choose
-              // rather than us silently taking whichever came back first.
-              await saveAuthorizedConnection({
+            {
+              // Confirm the Page/account explicitly, even when only one is available.
+              const pendingId = await saveAuthorizedConnection({
                 tenantId: row.tenant_id,
                 platform,
                 token: tokens.token,
@@ -289,12 +281,64 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                 profile: {},
                 permissions: [...capabilityCeiling(platform)],
               });
-              return back(origin, { connected: platform, select_target: "1" });
+              // The authorization itself finished; only the choice of Page
+              // remains. Without this the attempt later read as "expired".
+              await markAttemptState(
+                "completed",
+                "Authorized; waiting for the customer to choose which Page to connect",
+              );
+              // The pending row's own id, so the picker opens on the row this
+              // login just created -- not the first row for the platform,
+              // which once several channels can be connected is often another.
+              return back(origin, { connected: platform, select_target: pendingId ?? "1" });
+            }
+          }
+
+          // Ask the provider which asset this grant can manage, then require a choice.
+          if ((await import("@/lib/connection-targets.server")).hasTargetDiscovery(platform)) {
+            const { listConnectionTargets, noTargetReason } =
+              await import("@/lib/connection-targets.server");
+            const listed = await listConnectionTargets(platform, tokens.token);
+            if (!listed.ok || listed.targets.length === 0) {
+              const customerReason = listed.ok ? noTargetReason(platform) : listed.reason;
+              const diagnostic = listed.ok ? customerReason : (listed.diagnostic ?? customerReason);
+              await markAttemptState("callback_error", diagnostic.slice(0, 200));
+              await auditOutcome(
+                "blocked",
+                row.platform,
+                row.tenant_id,
+                row.user_id ?? null,
+                diagnostic,
+              );
+              return back(origin, {
+                connect_blocked: platform,
+                connect_reason: customerReason,
+                // Detailed discovery evidence stays in the tenant audit log.
+              });
+            }
+            {
+              const pendingTargetId = await saveAuthorizedConnection({
+                tenantId: row.tenant_id,
+                platform,
+                token: tokens.token,
+                refreshToken: tokens.refreshToken,
+                expiresAt: tokens.expiresAt,
+                grantedScopes: tokens.scopes,
+                profile: {},
+                permissions: [...capabilityCeiling(platform)],
+              });
+              await markAttemptState(
+                "completed",
+                "Authorized; waiting for the customer to choose which account to connect",
+              );
+              return back(origin, { connected: platform, select_target: pendingTargetId ?? "1" });
             }
           }
 
           const profile = await discoverProfile(platform, tokens.token);
-          await saveAuthorizedConnection({
+          if (!profile.external_id)
+            throw new Error("The provider did not identify an account. Please connect again.");
+          const accountId = await saveAuthorizedConnection({
             tenantId: row.tenant_id,
             platform,
             token: tokens.token,
@@ -312,7 +356,10 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             row.user_id ?? null,
             "Connected",
           );
-          return back(origin, { connected: row.platform });
+          return back(origin, {
+            connected: row.platform,
+            ...(accountId ? { account_id: accountId } : {}),
+          });
         } catch (e) {
           // Log the raw error server-side, but only leak a sanitized code to
           // the browser URL (previous version echoed full SDK error text).
@@ -331,9 +378,8 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
           // most common support message, and until now the only trace of it
           // was a sanitised code in their address bar.
           try {
-            const { normalizeProviderError, recordIntegrationError } = await import(
-              "@/lib/integration-errors.server"
-            );
+            const { normalizeProviderError, recordIntegrationError } =
+              await import("@/lib/integration-errors.server");
             await recordIntegrationError({
               tenantId: row.tenant_id,
               platform: row.platform,

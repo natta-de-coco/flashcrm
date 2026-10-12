@@ -3,9 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ExternalLink, FileText, Globe, PenSquare, Sparkles, BarChart3, Search } from "lucide-react";
+import { Link, createFileRoute } from "@tanstack/react-router";
+import { ExternalLink, FileText, Globe, PenSquare, Sparkles, Search } from "lucide-react";
 import { useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
 import { SearchConsoleDashboard } from "@/components/seo/SearchConsoleDashboard";
 
 export const Route = createFileRoute("/_authenticated/seo-blog/")({
@@ -34,6 +35,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 /** Content hub: every drafted and published SEO article for this workspace. */
 function SeoBlogHub() {
+  const { t, tr, tx } = useI18n();
   const articles = useQuery({
     queryKey: ["seo_articles"],
     queryFn: async () => {
@@ -58,22 +60,24 @@ function SeoBlogHub() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6 space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">SEO & Search Studio</h1>
+<h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+            {t("seoBlogIndex.seoStudio") || "SEO & Search Studio"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Rank higher on Google, monitor Search Console organic clicks, and publish AI articles.
+            {t("seoBlogIndex.turnProductImagesIntoRanked") || "Rank higher on Google, monitor Search Console organic clicks, and publish AI articles."}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {tab === "articles" ? (
             <Button asChild>
               <Link to="/seo-blog/studio" search={{ article: undefined }}>
-                <PenSquare className="size-4 mr-1.5" /> New article
+                <PenSquare className="size-4 me-1.5" /> {t("seoBlogIndex.newArticle") || "New article"}
               </Link>
             </Button>
           ) : (
             <Button variant="outline" asChild>
               <Link to="/connect">
-                <ExternalLink className="size-4 mr-1.5" /> Domain settings
+                <ExternalLink className="size-4 me-1.5" /> Domain settings
               </Link>
             </Button>
           )}
@@ -113,8 +117,8 @@ function SeoBlogHub() {
               <FileText className="size-5" />
             </span>
             <div>
-              <p className="text-2xl font-bold leading-none">{rows.length}</p>
-              <p className="text-xs text-muted-foreground">Articles drafted</p>
+              <p className="stat-label">{t("seoBlogIndex.articlesDrafted")}</p>
+              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{rows.length}</p>
             </div>
           </CardContent>
         </Card>
@@ -124,8 +128,8 @@ function SeoBlogHub() {
               <Globe className="size-5" />
             </span>
             <div>
-              <p className="text-2xl font-bold leading-none">{published}</p>
-              <p className="text-xs text-muted-foreground">Published to WordPress</p>
+              <p className="stat-label">{t("seoBlogIndex.publishedToWordpress")}</p>
+              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{published}</p>
             </div>
           </CardContent>
         </Card>
@@ -135,8 +139,8 @@ function SeoBlogHub() {
               <Sparkles className="size-5" />
             </span>
             <div>
-              <p className="text-2xl font-bold leading-none">{avgScore}</p>
-              <p className="text-xs text-muted-foreground">Average SEO score</p>
+              <p className="stat-label">{t("seoBlogIndex.averageSeoScore")}</p>
+              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{avgScore}</p>
             </div>
           </CardContent>
         </Card>
@@ -144,14 +148,15 @@ function SeoBlogHub() {
 
       <Card className="mt-4">
         <CardHeader>
-          <CardTitle className="text-base">Articles</CardTitle>
+          <CardTitle className="text-base">{t("seoBlogIndex.articles")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {articles.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          {articles.isLoading && (
+            <p className="text-sm text-muted-foreground">{t("seoBlogIndex.loading")}</p>
+          )}
           {!articles.isLoading && rows.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              No articles yet. Open the studio, drop in product photos and let Flas AI draft your
-              first post.
+              {t("seoBlogIndex.noArticlesYetOpenThe")}
             </p>
           )}
           {rows.map((a) => (
@@ -162,22 +167,27 @@ function SeoBlogHub() {
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold">{a.title}</p>
                 <p className="text-xs text-muted-foreground">
-                  {a.primary_keyword ?? "no keyword"} · score {a.seo_score} · updated{" "}
-                  {new Date(a.updated_at).toLocaleDateString()}
+                  {tr("seoBlogIndex.scoreUpdated", {
+                    value: a.primary_keyword ?? t("seoBlogIndex.noKeyword"),
+                    seoscore: a.seo_score,
+                    toLocaleDateString: new Date(a.updated_at).toLocaleDateString(),
+                  })}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <Badge className={`${STATUS_STYLE[a.status]} capitalize`}>{a.status}</Badge>
+                <Badge className={`${STATUS_STYLE[a.status]} capitalize`}>
+                  {tx(`seoBlogIndex.status.${a.status}`, a.status)}
+                </Badge>
                 {a.wp_post_url && (
                   <Button size="sm" variant="ghost" asChild>
                     <a href={a.wp_post_url} target="_blank" rel="noreferrer">
-                      <ExternalLink className="size-3.5" /> Live
+                      <ExternalLink className="size-3.5" /> {t("seoBlogIndex.live")}
                     </a>
                   </Button>
                 )}
                 <Button size="sm" variant="outline" asChild>
                   <Link to="/seo-blog/studio" search={{ article: a.id }}>
-                    Open
+                    {t("seoBlogIndex.open")}
                   </Link>
                 </Button>
               </div>

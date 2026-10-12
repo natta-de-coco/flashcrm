@@ -83,7 +83,7 @@ export async function ingestLead(input: IngestLeadInput): Promise<void> {
 
   let contactId = existingContact?.id ?? null;
   if (!contactId) {
-    const { data: created } = await supabaseAdmin
+    const { data: created, error: contactError } = await supabaseAdmin
       .from("contacts")
       .insert({
         tenant_id: tenantId,
@@ -95,7 +95,15 @@ export async function ingestLead(input: IngestLeadInput): Promise<void> {
       })
       .select("id")
       .single();
-    contactId = created?.id ?? null;
+    // A failed contact insert used to be ignored, and the lead was written
+    // anyway: a lead belonging to nobody, unroutable, while the website was
+    // told everything went fine. Refuse instead, so the site can send it again.
+    if (contactError || !created?.id) {
+      throw new Error(
+        `Could not save the contact for this lead: ${contactError?.message ?? "no contact was created"}`,
+      );
+    }
+    contactId = created.id;
   } else if (consented) {
     await supabaseAdmin
       .from("contacts")

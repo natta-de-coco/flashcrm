@@ -10,11 +10,7 @@ export async function recordAuthEmailOutcome(input: {
   const recipientEmail = input.recipientEmail.trim().toLowerCase();
 
   const [{ data: profile }, { count }] = await Promise.all([
-    supabaseAdmin
-      .from("profiles")
-      .select("tenant_id")
-      .eq("email", recipientEmail)
-      .maybeSingle(),
+    supabaseAdmin.from("profiles").select("tenant_id").eq("email", recipientEmail).maybeSingle(),
     supabaseAdmin
       .from("auth_email_attempts")
       .select("id", { count: "exact", head: true })

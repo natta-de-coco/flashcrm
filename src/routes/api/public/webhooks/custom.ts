@@ -3,6 +3,7 @@
 // endpoint, tagged with source "custom".
 import { createFileRoute } from "@tanstack/react-router";
 import {
+  acceptPlatformEvent,
   ingestPlatformLead,
   json,
   resolveSite,
@@ -32,6 +33,9 @@ export const Route = createFileRoute("/api/public/webhooks/custom")({
         } catch {
           return json({ error: "Invalid payload" }, 400);
         }
+
+        const gate = await acceptPlatformEvent({ site, platform: "custom", rawBody, request });
+        if (!gate.ok) return gate.response;
 
         try {
           await ingestPlatformLead(site, "custom", payload);

@@ -35,6 +35,17 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
         try {
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const { requestSiteActivation } = await import("@/lib/plugin-activation.server");
+          const { siteHostname } = await import("@/lib/domain-pin");
+
+          const domain = siteHostname(parsed.domain);
+          // An invalid supplied address must not turn into an unrestricted
+          // null pin. Omission may still preserve an existing registered pin.
+          if (parsed.domain !== undefined && !domain) {
+            return new Response(JSON.stringify({ error: "Invalid website address" }), {
+              status: 400,
+              headers: corsHeaders,
+            });
+          }
 
           const { data: site } = await supabaseAdmin
             .from("lead_sites")
@@ -52,7 +63,9 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
           const result = await requestSiteActivation({
             siteId: site.id,
             origin: new URL(request.url).origin,
-            domain: parsed.domain ?? null,
+            // The plugin reports its full address (home_url()); the pin is
+            // checked against the host name, so that is what is stored.
+            domain,
             adminEmail: parsed.adminEmail ?? null,
             platform: parsed.platform ?? "wordpress",
           });
@@ -71,8 +84,13 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
       GET: async ({ request }) => {
         const url = new URL(request.url);
         const token = url.searchParams.get("token") ?? "";
-        const html = (title: string, message: string, ok: boolean) =>
-          new Response(
+        // Everything below is a value someone else typed (a site name, a
+        // provider's message), printed into hand-written HTML.
+        const { escapeHtml } = await import("@/lib/html-escape");
+        const html = (rawTitle: string, rawMessage: string, ok: boolean) => {
+          const title = escapeHtml(rawTitle);
+          const message = escapeHtml(rawMessage);
+          return new Response(
             `<!doctype html><html lang="en"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${title}</title></head>
@@ -83,6 +101,7 @@ export const Route = createFileRoute("/api/public/plugin/activate")({
 </main></body></html>`,
             { status: ok ? 200 : 400, headers: { "Content-Type": "text/html; charset=utf-8" } },
           );
+        };
 
         if (token.length < 20)
           return html("Invalid link", "This activation link is not valid.", false);

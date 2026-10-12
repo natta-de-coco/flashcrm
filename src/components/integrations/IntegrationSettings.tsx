@@ -1,4 +1,6 @@
 import { WordPressSitesCard } from "@/components/WordPressSitesCard";
+import { addWhatsAppNumber, setDefaultWhatsAppNumber } from "@/lib/wa-numbers.functions";
+import { useServerFn } from "@tanstack/react-start";
 import { ApiKeysCard } from "@/components/settings/ApiKeysCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Plus, Save, Star, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
 
 /**
  * Everything that wires Flas to an outside system: the WhatsApp Cloud API
@@ -27,6 +30,7 @@ import { toast } from "sonner";
  * the connector cards it belongs with.
  */
 export function IntegrationSettings() {
+  const i18n = useI18n();
   const { isAdmin } = useAuth();
   const { tenant } = useTenant();
   const qc = useQueryClient();
@@ -49,18 +53,19 @@ export function IntegrationSettings() {
   });
 
   const numbers = useQuery({
-    queryKey: ["wa_numbers"],
+    queryKey: ["wa_numbers", tenant?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("wa_numbers")
         .select(
           "id, label, display_phone, phone_number_id, is_default, active, created_at, alerts_enabled, deliverability_min, read_rate_min",
         )
+        .eq("tenant_id", tenant!.id)
         .order("created_at", { ascending: true });
       if (error) throw error;
       return data ?? [];
     },
-    enabled: isAdmin,
+    enabled: isAdmin && !!tenant?.id,
   });
 
   const planThresholds = useQuery({
@@ -79,17 +84,19 @@ export function IntegrationSettings() {
     planThresholds.data?.find((t) => t.plan === (tenant?.plan ?? "default")) ??
     planThresholds.data?.find((t) => t.plan === "default");
 
+  const saveNumber = useServerFn(addWhatsAppNumber);
   const addNumber = useMutation({
+    // Saved by the server, which encrypts the token and app secret.
     mutationFn: async () => {
-      const { error } = await supabase.from("wa_numbers").insert({
-        label: numForm.label.trim(),
-        display_phone: numForm.display_phone.trim() || null,
-        phone_number_id: numForm.phone_number_id.trim(),
-        access_token: numForm.access_token.trim(),
-        ...(numForm.app_secret.trim() ? { app_secret: numForm.app_secret.trim() } : {}),
-        is_default: (numbers.data ?? []).length === 0,
+      await saveNumber({
+        data: {
+          label: numForm.label.trim(),
+          displayPhone: numForm.display_phone.trim() || undefined,
+          phoneNumberId: numForm.phone_number_id.trim(),
+          accessToken: numForm.access_token.trim(),
+          appSecret: numForm.app_secret.trim() || undefined,
+        },
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       setNumForm({
@@ -99,7 +106,20 @@ export function IntegrationSettings() {
         access_token: "",
         app_secret: "",
       });
-      toast.success("Number connected");
+      toast.success(i18n.t("integrationSettings.numberConnected"));
+      void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Making a number the default is a server function, not a field: the previous
+  // default has to be cleared in the same breath, inside this workspace, or the
+  // unique index refuses the change.
+  const setDefault = useServerFn(setDefaultWhatsAppNumber);
+  const makeDefault = useMutation({
+    mutationFn: async (id: string) => setDefault({ data: { id } }),
+    onSuccess: () => {
+      toast.success(i18n.t("integrationSettings.defaultNumberUpdated"));
       void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -108,7 +128,6 @@ export function IntegrationSettings() {
   async function updateNumber(
     id: string,
     patch: {
-      is_default?: boolean;
       active?: boolean;
       label?: string;
       alerts_enabled?: boolean;
@@ -116,26 +135,38 @@ export function IntegrationSettings() {
       read_rate_min?: number | null;
     },
   ) {
-    const { error } = await supabase.from("wa_numbers").update(patch).eq("id", id);
+    if (!tenant?.id) return;
+    const { error } = await supabase
+      .from("wa_numbers")
+      .update(patch)
+      .eq("id", id)
+      .eq("tenant_id", tenant.id);
     if (error) toast.error(error.message);
     else void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
   }
 
   async function removeNumber(id: string) {
-    const { error } = await supabase.from("wa_numbers").delete().eq("id", id);
+    if (!tenant?.id) return;
+    const { error } = await supabase
+      .from("wa_numbers")
+      .delete()
+      .eq("id", id)
+      .eq("tenant_id", tenant.id);
     if (error) toast.error(error.message);
     else {
-      toast.success("Number removed");
+      toast.success(i18n.t("integrationSettings.numberRemoved"));
       void qc.invalidateQueries({ queryKey: ["wa_numbers"] });
     }
   }
 
   const templates = useQuery({
-    queryKey: ["wa_templates"],
+    queryKey: ["wa_templates", tenant?.id],
+    enabled: !!tenant?.id,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("wa_templates")
         .select("id, name, language, category, body, status")
+        .eq("tenant_id", tenant!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -155,7 +186,7 @@ export function IntegrationSettings() {
     },
     onSuccess: () => {
       setTplForm({ name: "", language: "en_US", category: "UTILITY", body: "" });
-      toast.success("Template added");
+      toast.success(i18n.t("integrationSettings.templateAdded"));
       void qc.invalidateQueries({ queryKey: ["wa_templates"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -166,7 +197,7 @@ export function IntegrationSettings() {
     // used to be settable from here directly, letting anyone declare their
     // own template pre-approved.
     if (status === "approved") {
-      toast.error("Templates are marked approved automatically once Meta approves them.");
+      toast.error(i18n.t("integrationSettings.templatesAreMarkedApprovedAutomatically"));
       return;
     }
     const { error } = await supabase.from("wa_templates").update({ status }).eq("id", id);
@@ -215,7 +246,7 @@ export function IntegrationSettings() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("WhatsApp settings saved");
+      toast.success(i18n.t("integrationSettings.whatsappSettingsSaved"));
       void qc.invalidateQueries({ queryKey: ["tenant_wa_config", tenant?.id] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -243,31 +274,39 @@ export function IntegrationSettings() {
 
   function copy(value: string) {
     void navigator.clipboard.writeText(value);
-    toast.success("Copied to clipboard");
+    toast.success(i18n.t("integrationSettings.copiedToClipboard"));
   }
 
   return (
     <div className="grid max-w-3xl gap-4">
       <Card id="whatsapp" className="scroll-mt-6">
         <CardHeader>
-          <CardTitle className="text-base">WhatsApp Cloud API</CardTitle>
-          <CardDescription>
-            Add this webhook in Meta → WhatsApp → Configuration, using the verify token stored in
-            your backend secrets.
-          </CardDescription>
+          <CardTitle className="text-base">
+            {i18n.t("integrationSettings.whatsappCloudApi")}
+          </CardTitle>
+          <CardDescription>{i18n.t("integrationSettings.addThisWebhookInMeta")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="grid gap-1.5">
-            <Label>Webhook URL</Label>
+            <Label>{i18n.t("integrationSettings.webhookUrl")}</Label>
             <div className="flex gap-2">
-              <Input readOnly value={webhookUrl} aria-label="WhatsApp webhook URL" />
-              <Button variant="outline" onClick={() => copy(webhookUrl)}>
+              <Input
+                readOnly
+                value={webhookUrl}
+                aria-label={i18n.t("integrationSettings.whatsappWebhookUrl")}
+              />
+              <Button
+                variant="outline"
+                aria-label={i18n.t("integrationSettings.copyWebhookUrl")}
+                title={i18n.t("integrationSettings.copyWebhookUrl")}
+                onClick={() => copy(webhookUrl)}
+              >
                 <Copy className="size-4" />
               </Button>
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="business_name">Business name</Label>
+            <Label htmlFor="business_name">{i18n.t("integrationSettings.businessName")}</Label>
             <Input
               id="business_name"
               value={form.business_name}
@@ -276,7 +315,9 @@ export function IntegrationSettings() {
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="display_phone">Display phone number</Label>
+            <Label htmlFor="display_phone">
+              {i18n.t("integrationSettings.displayPhoneNumber")}
+            </Label>
             <Input
               id="display_phone"
               value={form.display_phone}
@@ -285,7 +326,7 @@ export function IntegrationSettings() {
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="phone_number_id">Phone number ID</Label>
+            <Label htmlFor="phone_number_id">{i18n.t("integrationSettings.phoneNumberId")}</Label>
             <Input
               id="phone_number_id"
               value={form.phone_number_id}
@@ -295,17 +336,21 @@ export function IntegrationSettings() {
           </div>
           <div className="flex items-center gap-3">
             <Button onClick={() => save.mutate()} disabled={!isAdmin || save.isPending}>
-              <Save className="size-4" /> Save
+              <Save className="size-4" /> {i18n.t("integrationSettings.save")}
             </Button>
             {config.data?.webhook_verified ? (
-              <Badge className="bg-brand text-brand-foreground">Webhook verified</Badge>
+              <Badge className="bg-brand text-brand-foreground">
+                {i18n.t("integrationSettings.webhookVerified")}
+              </Badge>
             ) : (
-              <Badge variant="secondary">Webhook not verified yet</Badge>
+              <Badge variant="secondary">
+                {i18n.t("integrationSettings.webhookNotVerifiedYet")}
+              </Badge>
             )}
           </div>
           {!isAdmin && (
             <p className="text-xs text-muted-foreground">
-              Only admins can change the WhatsApp connection.
+              {i18n.t("integrationSettings.onlyAdminsCanChangeThe")}
             </p>
           )}
         </CardContent>
@@ -314,17 +359,19 @@ export function IntegrationSettings() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            Connected WhatsApp numbers
             {/* The count belongs in the heading: this card sits well below the
                 fold, and "can I see all of them?" should be answerable without
                 scrolling to the end of the list. */}
-            <Badge variant={(numbers.data ?? []).length > 0 ? "secondary" : "outline"}>
-              {(numbers.data ?? []).length}
-            </Badge>
+            {i18n.tr("integrationSettings.connectedWhatsappNumbers", {
+              badge: (
+                <Badge variant={(numbers.data ?? []).length > 0 ? "secondary" : "outline"}>
+                  {(numbers.data ?? []).length}
+                </Badge>
+              ),
+            })}
           </CardTitle>
           <CardDescription>
-            Connect more than one WhatsApp Business number. Incoming chats are routed to the number
-            the customer messaged, and replies go out from the same number.
+            {i18n.t("integrationSettings.connectMoreThanOneWhatsapp")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -332,16 +379,18 @@ export function IntegrationSettings() {
             <div className="grid gap-3 rounded-lg border p-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-1.5">
-                  <Label htmlFor="n_label">Label</Label>
+                  <Label htmlFor="n_label">{i18n.t("integrationSettings.label")}</Label>
                   <Input
                     id="n_label"
-                    placeholder="Sales line"
+                    placeholder={i18n.t("integrationSettings.salesLine")}
                     value={numForm.label}
                     onChange={(e) => setNumForm({ ...numForm, label: e.target.value })}
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="n_phone">Display phone number</Label>
+                  <Label htmlFor="n_phone">
+                    {i18n.t("integrationSettings.displayPhoneNumber")}
+                  </Label>
                   <Input
                     id="n_phone"
                     placeholder="+971 50 123 4567"
@@ -350,30 +399,32 @@ export function IntegrationSettings() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="n_pid">Phone number ID</Label>
+                  <Label htmlFor="n_pid">{i18n.t("integrationSettings.phoneNumberId")}</Label>
                   <Input
                     id="n_pid"
-                    placeholder="From Meta → WhatsApp → API Setup"
+                    placeholder={i18n.t("integrationSettings.fromMetaWhatsappApiSetup")}
                     value={numForm.phone_number_id}
                     onChange={(e) => setNumForm({ ...numForm, phone_number_id: e.target.value })}
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="n_token">Access token</Label>
+                  <Label htmlFor="n_token">{i18n.t("integrationSettings.accessToken")}</Label>
                   <Input
                     id="n_token"
                     type="password"
-                    placeholder="Permanent token from Meta"
+                    placeholder={i18n.t("integrationSettings.permanentTokenFromMeta")}
                     value={numForm.access_token}
                     onChange={(e) => setNumForm({ ...numForm, access_token: e.target.value })}
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="n_secret">App secret (recommended)</Label>
+                  <Label htmlFor="n_secret">
+                    {i18n.t("integrationSettings.appSecretRecommended")}
+                  </Label>
                   <Input
                     id="n_secret"
                     type="password"
-                    placeholder="Meta app secret — verifies webhook signatures"
+                    placeholder={i18n.t("integrationSettings.metaAppSecretVerifiesWebhook")}
                     value={numForm.app_secret}
                     onChange={(e) => setNumForm({ ...numForm, app_secret: e.target.value })}
                   />
@@ -389,7 +440,7 @@ export function IntegrationSettings() {
                   }
                   onClick={() => addNumber.mutate()}
                 >
-                  <Plus className="size-4" /> Connect number
+                  <Plus className="size-4" /> {i18n.t("integrationSettings.connectNumber")}
                 </Button>
               </div>
             </div>
@@ -398,12 +449,12 @@ export function IntegrationSettings() {
           <div className="space-y-2">
             {!isAdmin && (
               <p className="text-sm text-muted-foreground">
-                Only admins can view and manage connected numbers.
+                {i18n.t("integrationSettings.onlyAdminsCanViewAnd")}
               </p>
             )}
             {isAdmin && (numbers.data ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No numbers connected yet — the env-var configuration is used as a fallback.
+                {i18n.t("integrationSettings.noNumbersConnectedYetThe")}
               </p>
             )}
             {(numbers.data ?? []).map((n) => (
@@ -415,16 +466,21 @@ export function IntegrationSettings() {
                   <p className="truncate text-sm font-semibold">
                     {n.label}
                     {n.is_default && (
-                      <Badge className="ml-2 bg-brand text-brand-foreground">default</Badge>
+                      <Badge className="ms-2 bg-brand text-brand-foreground">
+                        {i18n.t("integrationSettings.default")}
+                      </Badge>
                     )}
                     {!n.active && (
-                      <Badge variant="secondary" className="ml-2">
-                        disabled
+                      <Badge variant="secondary" className="ms-2">
+                        {i18n.t("integrationSettings.disabled")}
                       </Badge>
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {n.display_phone ?? "No display number"} · ID {n.phone_number_id}
+                    {i18n.tr("integrationSettings.id", {
+                      value: n.display_phone ?? i18n.t("integrationSettings.noDisplayNumber"),
+                      phonenumberid: n.phone_number_id,
+                    })}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <label className="flex items-center gap-1.5">
@@ -434,19 +490,21 @@ export function IntegrationSettings() {
                         checked={n.alerts_enabled}
                         onChange={(e) => updateNumber(n.id, { alerts_enabled: e.target.checked })}
                       />
-                      Health alerts
+                      {i18n.t("integrationSettings.healthAlerts")}
                     </label>
                     <label className="flex items-center gap-1.5">
-                      Deliverability min
+                      {i18n.t("integrationSettings.deliverabilityMin")}
                       <Input
                         type="number"
-                        aria-label="Minimum delivery rate percent"
+                        aria-label={i18n.t("integrationSettings.minimumDeliveryRatePercent")}
                         min={0}
                         max={100}
                         className="h-7 w-16 px-2 text-xs"
                         defaultValue={n.deliverability_min ?? ""}
                         placeholder={
-                          planDefault ? String(Number(planDefault.deliverability_min)) : "plan"
+                          planDefault
+                            ? String(Number(planDefault.deliverability_min))
+                            : i18n.t("integrationSettings.plan")
                         }
                         disabled={!n.alerts_enabled}
                         onBlur={(e) => {
@@ -459,16 +517,18 @@ export function IntegrationSettings() {
                       %
                     </label>
                     <label className="flex items-center gap-1.5">
-                      Read rate min
+                      {i18n.t("integrationSettings.readRateMin")}
                       <Input
                         type="number"
-                        aria-label="Minimum read rate percent"
+                        aria-label={i18n.t("integrationSettings.minimumReadRatePercent")}
                         min={0}
                         max={100}
                         className="h-7 w-16 px-2 text-xs"
                         defaultValue={n.read_rate_min ?? ""}
                         placeholder={
-                          planDefault ? String(Number(planDefault.read_rate_min)) : "plan"
+                          planDefault
+                            ? String(Number(planDefault.read_rate_min))
+                            : i18n.t("integrationSettings.plan")
                         }
                         disabled={!n.alerts_enabled}
                         onBlur={(e) => {
@@ -482,9 +542,10 @@ export function IntegrationSettings() {
                     </label>
                     {planDefault && (
                       <span className="w-full text-[11px] text-muted-foreground">
-                        Leave blank to inherit your plan default (
-                        {Number(planDefault.deliverability_min)}% deliverability /{" "}
-                        {Number(planDefault.read_rate_min)}% read rate).
+                        {i18n.tr("integrationSettings.leaveBlankToInheritYour", {
+                          number: Number(planDefault.deliverability_min),
+                          number2: Number(planDefault.read_rate_min),
+                        })}
                       </span>
                     )}
                   </div>
@@ -494,9 +555,10 @@ export function IntegrationSettings() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => updateNumber(n.id, { is_default: true })}
+                      disabled={makeDefault.isPending}
+                      onClick={() => makeDefault.mutate(n.id)}
                     >
-                      <Star className="size-3.5" /> Make default
+                      <Star className="size-3.5" /> {i18n.t("integrationSettings.makeDefault")}
                     </Button>
                   )}
                   <Button
@@ -504,7 +566,9 @@ export function IntegrationSettings() {
                     size="sm"
                     onClick={() => updateNumber(n.id, { active: !n.active })}
                   >
-                    {n.active ? "Disable" : "Enable"}
+                    {n.active
+                      ? i18n.t("integrationSettings.disable")
+                      : i18n.t("integrationSettings.enable")}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => removeNumber(n.id)}>
                     <Trash2 className="size-3.5" />
@@ -518,10 +582,11 @@ export function IntegrationSettings() {
 
       <Card id="widget" className="scroll-mt-6">
         <CardHeader>
-          <CardTitle className="text-base">Website chat widget</CardTitle>
+          <CardTitle className="text-base">
+            {i18n.t("integrationSettings.websiteChatWidget")}
+          </CardTitle>
           <CardDescription>
-            Paste this snippet before the closing &lt;/body&gt; tag of your website. Chats appear in
-            your inbox instantly.
+            {i18n.t("integrationSettings.pasteThisSnippetBeforeThe")}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-2">
@@ -529,30 +594,42 @@ export function IntegrationSettings() {
             <Input
               readOnly
               value={embedSnippet || "Add a website below to generate your snippet"}
-              aria-label="Website widget embed snippet"
+              aria-label={i18n.t("integrationSettings.websiteWidgetEmbedSnippet")}
             />
-            <Button variant="outline" disabled={!embedSnippet} onClick={() => copy(embedSnippet)}>
+            <Button
+              variant="outline"
+              aria-label={i18n.t("integrationSettings.copyWebsiteWidgetEmbedSnippet")}
+              title={i18n.t("integrationSettings.copyWebsiteWidgetEmbedSnippet")}
+              disabled={!embedSnippet}
+              onClick={() => copy(embedSnippet)}
+            >
               <Copy className="size-4" />
             </Button>
           </div>
           <a
-            href={widgetSite ? `/widget-demo?siteKey=${encodeURIComponent(widgetSite.site_key)}` : "/widget-demo"}
+            href={
+              widgetSite
+                ? `/widget-demo?siteKey=${encodeURIComponent(widgetSite.site_key)}`
+                : "/widget-demo"
+            }
             target="_blank"
             rel="noreferrer"
             className="text-xs font-medium text-brand hover:underline"
           >
-            Preview the widget
+            {i18n.t("integrationSettings.previewTheWidget")}
           </a>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">WhatsApp message templates</CardTitle>
+          <CardTitle className="text-base">
+            {i18n.t("integrationSettings.whatsappMessageTemplates")}
+          </CardTitle>
           <CardDescription>
-            Keep your Meta-approved templates here so agents and the chatbot can send them. Use
-            {" {{1}}, {{2}} "}
-            for variables and mark a template approved once Meta approves it.
+            {i18n.tr("integrationSettings.keepYourMetaApprovedTemplates", {
+              value: " {{1}}, {{2}} ",
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -560,7 +637,7 @@ export function IntegrationSettings() {
             <div className="grid gap-3 rounded-lg border p-3">
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="grid gap-1.5">
-                  <Label htmlFor="t_name">Template name</Label>
+                  <Label htmlFor="t_name">{i18n.t("integrationSettings.templateName")}</Label>
                   <Input
                     id="t_name"
                     placeholder="order_update"
@@ -569,7 +646,7 @@ export function IntegrationSettings() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="t_lang">Language</Label>
+                  <Label htmlFor="t_lang">{i18n.t("integrationSettings.language")}</Label>
                   <Input
                     id="t_lang"
                     value={tplForm.language}
@@ -577,21 +654,23 @@ export function IntegrationSettings() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="t_cat">Category</Label>
+                  <Label htmlFor="t_cat">{i18n.t("integrationSettings.category")}</Label>
                   <select
                     id="t_cat"
                     className="h-9 rounded-md border bg-background px-3 text-sm"
                     value={tplForm.category}
                     onChange={(e) => setTplForm({ ...tplForm, category: e.target.value })}
                   >
-                    <option value="MARKETING">Marketing</option>
-                    <option value="UTILITY">Utility</option>
-                    <option value="AUTHENTICATION">Authentication</option>
+                    <option value="MARKETING">{i18n.t("integrationSettings.marketing")}</option>
+                    <option value="UTILITY">{i18n.t("integrationSettings.utility")}</option>
+                    <option value="AUTHENTICATION">
+                      {i18n.t("integrationSettings.authentication")}
+                    </option>
                   </select>
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="t_body">Body</Label>
+                <Label htmlFor="t_body">{i18n.t("integrationSettings.body")}</Label>
                 <Textarea
                   id="t_body"
                   rows={3}
@@ -605,7 +684,7 @@ export function IntegrationSettings() {
                   disabled={!tplForm.name.trim() || !tplForm.body.trim() || createTpl.isPending}
                   onClick={() => createTpl.mutate()}
                 >
-                  <Plus className="size-4" /> Add template
+                  <Plus className="size-4" /> {i18n.t("integrationSettings.addTemplate")}
                 </Button>
               </div>
             </div>
@@ -613,7 +692,9 @@ export function IntegrationSettings() {
 
           <div className="space-y-2">
             {(templates.data ?? []).length === 0 && (
-              <p className="text-sm text-muted-foreground">No templates yet.</p>
+              <p className="text-sm text-muted-foreground">
+                {i18n.t("integrationSettings.noTemplatesYet")}
+              </p>
             )}
             {(templates.data ?? []).map((tpl) => (
               <div key={tpl.id} className="rounded-lg border p-3">
@@ -642,10 +723,10 @@ export function IntegrationSettings() {
                         value={tpl.status}
                         onChange={(e) => void setTemplateStatus(tpl.id, e.target.value)}
                       >
-                        <option value="draft">draft</option>
-                        <option value="pending">pending</option>
-                        <option value="approved">approved</option>
-                        <option value="rejected">rejected</option>
+                        <option value="draft">{i18n.t("integrationSettings.draft")}</option>
+                        <option value="pending">{i18n.t("integrationSettings.pending")}</option>
+                        <option value="approved">{i18n.t("integrationSettings.approved")}</option>
+                        <option value="rejected">{i18n.t("integrationSettings.rejected")}</option>
                       </select>
                     )}
                   </div>

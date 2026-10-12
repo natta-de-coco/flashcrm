@@ -3,13 +3,14 @@ import { defineArticles } from "./define";
 /** Second batch: continues the release schedule after COMPARISON_POSTS. */
 export const BUYING_POSTS = defineArticles(
   [
-  {
-    slug: "whatsapp-crm-trial-scorecard",
-    title: "A WhatsApp CRM trial scorecard your whole team can use",
-    excerpt: "Test a WhatsApp CRM with real sales tasks, weighted criteria and clear pass conditions before committing your team and customer records.",
-    category: "Guides",
-    keywords: ["whatsapp crm trial", "crm evaluation checklist", "whatsapp crm comparison"],
-    html: `
+    {
+      slug: "whatsapp-crm-trial-scorecard",
+      title: "A WhatsApp CRM trial scorecard your whole team can use",
+      excerpt:
+        "Test a WhatsApp CRM with real sales tasks, weighted criteria and clear pass conditions before committing your team and customer records.",
+      category: "Guides",
+      keywords: ["whatsapp crm trial", "crm evaluation checklist", "whatsapp crm comparison"],
+      html: `
 <p>A CRM demonstration is designed to go smoothly. Your business needs to know what happens when a customer changes their mind, an agent is absent or a quotation needs correcting. A short, repeatable trial gives you better evidence than watching somebody else's prepared account.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Choose the tasks before opening a trial</h2>
@@ -33,14 +34,19 @@ export const BUYING_POSTS = defineArticles(
 <h2>Make the decision reviewable</h2>
 <p>Attach the <a href="/blog/whatsapp-crm-total-cost">cost worksheet</a> and <a href="/blog/whatsapp-crm-migration-checklist">migration checklist</a> to the scorecard. Finish with three statements: what passed, what remains uncertain and who owns the remaining work. That makes a buying decision useful to the people who must operate the system after the trial ends.</p>
 `,
-  },
-  {
-    slug: "whatsapp-crm-total-cost",
-    title: "WhatsApp CRM total cost: a budget beyond the subscription",
-    excerpt: "Estimate WhatsApp CRM ownership costs across software, message usage, AI, setup and staff time using a practical comparison worksheet.",
-    category: "Guides",
-    keywords: ["whatsapp crm cost", "whatsapp crm pricing comparison", "crm total cost of ownership"],
-    html: `
+    },
+    {
+      slug: "whatsapp-crm-total-cost",
+      title: "WhatsApp CRM total cost: a budget beyond the subscription",
+      excerpt:
+        "Estimate WhatsApp CRM ownership costs across software, message usage, AI, setup and staff time using a practical comparison worksheet.",
+      category: "Guides",
+      keywords: [
+        "whatsapp crm cost",
+        "whatsapp crm pricing comparison",
+        "crm total cost of ownership",
+      ],
+      html: `
 <p>Two WhatsApp CRM proposals can show similar monthly prices while covering different amounts of work. One may include the features your team needs; the other may require an extra integration or ongoing administration. Compare a complete operating budget before comparing the headline fee.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Start with one shared workload</h2>
@@ -65,14 +71,15 @@ export const BUYING_POSTS = defineArticles(
 <h2>Finish with a range</h2>
 <p>Prepare a normal and a busy-month estimate, then test the assumptions with the <a href="/blog/whatsapp-crm-trial-scorecard">CRM trial scorecard</a>. If you are considering custom development, add the responsibilities in the <a href="/blog/build-vs-buy-whatsapp-inbox">build-versus-buy guide</a>. A useful budget shows what causes the total to move and who can control it.</p>
 `,
-  },
-  {
-    slug: "whatsapp-crm-migration-checklist",
-    title: "WhatsApp CRM migration checklist: protect the working sales process",
-    excerpt: "Plan a WhatsApp CRM move around number setup, contact exports, active quotations, testing and rollback instead of a rushed account switch.",
-    category: "Operations",
-    keywords: ["whatsapp crm migration", "switch whatsapp crm", "whatsapp migration checklist"],
-    html: `
+    },
+    {
+      slug: "whatsapp-crm-migration-checklist",
+      title: "WhatsApp CRM migration checklist: protect the working sales process",
+      excerpt:
+        "Plan a WhatsApp CRM move around number setup, contact exports, active quotations, testing and rollback instead of a rushed account switch.",
+      category: "Operations",
+      keywords: ["whatsapp crm migration", "switch whatsapp crm", "whatsapp migration checklist"],
+      html: `
 <p>The risky part of a CRM move is often an ordinary open sale. A customer is waiting for a revised quotation, the responsible agent is absent and the new workspace contains only a name and a phone number. Plan the migration around unfinished work as well as data.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Inventory what must survive</h2>
@@ -91,14 +98,15 @@ export const BUYING_POSTS = defineArticles(
 <p>Send a test enquiry, assign it, reply, prepare a sample document and test a handover. Then inspect the first real working day for missing context, duplicate records and unowned conversations. Keep a short issue list with owners instead of asking agents to tolerate unexplained problems.</p>
 <p>Use the <a href="/blog/whatsapp-crm-trial-scorecard">trial scorecard</a> as the acceptance checklist. Close the migration only when the team can handle its actual open work, not when the last file finishes uploading.</p>
 `,
-  },
-  {
-    slug: "crm-vs-spreadsheet-whatsapp-sales",
-    title: "CRM vs spreadsheet for WhatsApp sales: when is it time to move?",
-    excerpt: "Decide whether your WhatsApp sales team needs a CRM by checking ownership, follow-ups and record quality rather than contact count alone.",
-    category: "Comparison",
-    keywords: ["crm vs spreadsheet", "whatsapp sales spreadsheet", "small business crm decision"],
-    html: `
+    },
+    {
+      slug: "crm-vs-spreadsheet-whatsapp-sales",
+      title: "CRM vs spreadsheet for WhatsApp sales: when is it time to move?",
+      excerpt:
+        "Decide whether your WhatsApp sales team needs a CRM by checking ownership, follow-ups and record quality rather than contact count alone.",
+      category: "Comparison",
+      keywords: ["crm vs spreadsheet", "whatsapp sales spreadsheet", "small business crm decision"],
+      html: `
 <p>A spreadsheet can be an excellent sales tool for one person with a small, predictable workload. It becomes harder to trust when several people update it at different times while the actual customer conversation lives elsewhere. The decision to adopt a CRM should begin with those coordination problems.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>When the spreadsheet is still enough</h2>
@@ -121,14 +129,19 @@ export const BUYING_POSTS = defineArticles(
 <p>At the end of each day, select five active opportunities. Can another team member identify the customer requirement, responsible person and next action without asking around? If that becomes consistently easier, the CRM is improving coordination.</p>
 <p>Prepare with the <a href="/blog/quotation-to-payment-on-whatsapp">pipeline stage guide</a> and <a href="/blog/crm-contact-import-cleanup">contact cleanup checklist</a>. Keep the spreadsheet if it still works; move when the shared process needs a stronger home.</p>
 `,
-  },
-  {
-    slug: "shared-inbox-vs-omnichannel-crm",
-    title: "Shared inbox vs omnichannel CRM: which problem are you solving?",
-    excerpt: "Understand the difference between team access, channel coverage and sales records so you can choose the right customer messaging setup.",
-    category: "Comparison",
-    keywords: ["shared inbox vs crm", "omnichannel crm comparison", "whatsapp shared inbox software"],
-    html: `
+    },
+    {
+      slug: "shared-inbox-vs-omnichannel-crm",
+      title: "Shared inbox vs omnichannel CRM: which problem are you solving?",
+      excerpt:
+        "Understand the difference between team access, channel coverage and sales records so you can choose the right customer messaging setup.",
+      category: "Comparison",
+      keywords: [
+        "shared inbox vs crm",
+        "omnichannel crm comparison",
+        "whatsapp shared inbox software",
+      ],
+      html: `
 <p>Giving five agents access to one inbox solves a different problem from connecting five customer channels. Neither automatically creates a reliable sales record. These distinctions are easy to lose when every vendor describes its product as an all-in-one platform.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>A shared inbox coordinates people</h2>
@@ -151,14 +164,19 @@ export const BUYING_POSTS = defineArticles(
 <p>For example: “We need three agents to handle WhatsApp enquiries, retain the current requirement and issue a quotation with a named follow-up owner.” That brief is more useful than “We need omnichannel.”</p>
 <p>Use it with the <a href="/blog/whatsapp-crm-trial-scorecard">trial scorecard</a> and insist that every shortlisted product demonstrates the same sequence. You will learn faster by following one real journey than by counting supported logos.</p>
 `,
-  },
-  {
-    slug: "build-vs-buy-whatsapp-inbox",
-    title: "Build vs buy a WhatsApp inbox: the maintenance decision",
-    excerpt: "Evaluate a custom WhatsApp inbox against ready-made CRM software by listing exception handling, ownership and ongoing maintenance work.",
-    category: "Comparison",
-    keywords: ["build vs buy whatsapp inbox", "custom whatsapp crm", "whatsapp inbox development"],
-    html: `
+    },
+    {
+      slug: "build-vs-buy-whatsapp-inbox",
+      title: "Build vs buy a WhatsApp inbox: the maintenance decision",
+      excerpt:
+        "Evaluate a custom WhatsApp inbox against ready-made CRM software by listing exception handling, ownership and ongoing maintenance work.",
+      category: "Comparison",
+      keywords: [
+        "build vs buy whatsapp inbox",
+        "custom whatsapp crm",
+        "whatsapp inbox development",
+      ],
+      html: `
 <p>A developer can demonstrate a sent and received WhatsApp message long before a business has a dependable team inbox. The gap contains assignment, permissions, retries, customer records and all the ordinary exceptions that happen after launch. Build-versus-buy decisions should price that gap explicitly.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Describe the missing capability precisely</h2>
@@ -177,14 +195,19 @@ export const BUYING_POSTS = defineArticles(
 <p>Start with a narrow workflow and sample data. Set acceptance criteria for successful tasks and for failure handling. Keep the pilot separate from a commitment to move every customer record or business number.</p>
 <p>The <a href="/blog/flas-crm-vs-twilio-whatsapp">Flas and Twilio comparison</a> explains the distinction between a workspace and an API-based implementation. Combine it with the <a href="/blog/whatsapp-crm-total-cost">ownership cost worksheet</a>. Approve a build when the specific business requirement and the maintenance owner are both clear.</p>
 `,
-  },
-  {
-    slug: "whatsapp-crm-small-team-buying-guide",
-    title: "Choosing a WhatsApp CRM for a small team without overbuying",
-    excerpt: "Prioritise ownership, handovers and quotation work when choosing a WhatsApp CRM for a small business with limited administration time.",
-    category: "Guides",
-    keywords: ["best whatsapp crm small team", "small business whatsapp crm", "whatsapp crm buying guide"],
-    html: `
+    },
+    {
+      slug: "whatsapp-crm-small-team-buying-guide",
+      title: "Choosing a WhatsApp CRM for a small team without overbuying",
+      excerpt:
+        "Prioritise ownership, handovers and quotation work when choosing a WhatsApp CRM for a small business with limited administration time.",
+      category: "Guides",
+      keywords: [
+        "best whatsapp crm small team",
+        "small business whatsapp crm",
+        "whatsapp crm buying guide",
+      ],
+      html: `
 <p>A small team rarely has a dedicated CRM administrator. The owner answers sales questions, one employee prepares quotations and another covers messages between other tasks. Software needs to fit that reality rather than assume somebody will maintain elaborate workflows all day.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Buy for the bottleneck you can name</h2>
@@ -209,14 +232,15 @@ export const BUYING_POSTS = defineArticles(
 <p>Begin with ownership and a daily review of active enquiries. Once those are reliable, add a more consistent quotation process and then automation for well-understood questions. Automating an unclear process can make confusion happen faster.</p>
 <p>Use the <a href="/blog/whatsapp-crm-first-week-rollout">first-week rollout guide</a> and <a href="/blog/whatsapp-crm-trial-scorecard">trial scorecard</a>. Choose the product that the whole team can keep useful during a busy week, including the person who only covers the inbox occasionally.</p>
 `,
-  },
-  {
-    slug: "whatsapp-crm-first-week-rollout",
-    title: "Your first week with a WhatsApp CRM: a practical rollout plan",
-    excerpt: "Introduce a WhatsApp CRM in five working days with clear owners, sample tasks, useful records and a review of what still needs attention.",
-    category: "Operations",
-    keywords: ["whatsapp crm onboarding", "crm rollout plan", "whatsapp crm implementation"],
-    html: `
+    },
+    {
+      slug: "whatsapp-crm-first-week-rollout",
+      title: "Your first week with a WhatsApp CRM: a practical rollout plan",
+      excerpt:
+        "Introduce a WhatsApp CRM in five working days with clear owners, sample tasks, useful records and a review of what still needs attention.",
+      category: "Operations",
+      keywords: ["whatsapp crm onboarding", "crm rollout plan", "whatsapp crm implementation"],
+      html: `
 <p>A new CRM can look busy on day one while nobody knows which conversations still need action. The first week should establish a small number of reliable habits. Advanced automation can wait until staff understand where work belongs.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Day one: make responsibilities visible</h2>
@@ -237,14 +261,15 @@ export const BUYING_POSTS = defineArticles(
 <h2>What counts as a successful first week?</h2>
 <p>The team can receive an enquiry, assign it, preserve the current requirement and continue it after a handover. Use the <a href="/blog/whatsapp-shared-inbox-for-teams">shift handover checklist</a> for the next stage. Expand the rollout when these basics are dependable, not merely when every employee has signed in once.</p>
 `,
-  },
-  {
-    slug: "crm-contact-import-cleanup",
-    title: "Clean contacts before a CRM import: a WhatsApp sales checklist",
-    excerpt: "Prepare contact imports with consistent phone numbers, careful duplicate review, field mapping and preserved consent information.",
-    category: "Operations",
-    keywords: ["crm contact import", "whatsapp contacts csv cleanup", "crm duplicate contacts"],
-    html: `
+    },
+    {
+      slug: "crm-contact-import-cleanup",
+      title: "Clean contacts before a CRM import: a WhatsApp sales checklist",
+      excerpt:
+        "Prepare contact imports with consistent phone numbers, careful duplicate review, field mapping and preserved consent information.",
+      category: "Operations",
+      keywords: ["crm contact import", "whatsapp contacts csv cleanup", "crm duplicate contacts"],
+      html: `
 <p>An import does not improve the quality of the spreadsheet it comes from. It can simply make duplicate customers and ambiguous phone numbers available to more people. Clean a representative sample before moving the whole list into your CRM.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Keep an untouched source file</h2>
@@ -268,14 +293,19 @@ export const BUYING_POSTS = defineArticles(
 <p>Keep the cleaned file, mapping notes and any rejected-row report together. Record which batch was imported so a second person does not repeat it accidentally. If records need correction, identify the affected batch before making broad changes.</p>
 <p>Use this process within the <a href="/blog/whatsapp-crm-migration-checklist">migration plan</a>, then follow the <a href="/blog/whatsapp-crm-first-week-rollout">first-week rollout</a> to make ownership and next actions reliable. A smaller clean list is more useful to the sales team than a larger list nobody trusts.</p>
 `,
-  },
-  {
-    slug: "whatsapp-crm-multiple-business-numbers",
-    title: "Managing multiple WhatsApp business numbers in one CRM",
-    excerpt: "Organise several WhatsApp numbers with clear brand ownership, reply checks and handover rules before adding more channels to the inbox.",
-    category: "Operations",
-    keywords: ["multiple whatsapp numbers crm", "multi number whatsapp inbox", "whatsapp branch management"],
-    html: `
+    },
+    {
+      slug: "whatsapp-crm-multiple-business-numbers",
+      title: "Managing multiple WhatsApp business numbers in one CRM",
+      excerpt:
+        "Organise several WhatsApp numbers with clear brand ownership, reply checks and handover rules before adding more channels to the inbox.",
+      category: "Operations",
+      keywords: [
+        "multiple whatsapp numbers crm",
+        "multi number whatsapp inbox",
+        "whatsapp branch management",
+      ],
+      html: `
 <p>A customer who messages a showroom number expects the showroom to answer. When several numbers share one workspace, agents need to preserve that context even if the same people cover multiple locations. More numbers should make access clearer, not make the business identity ambiguous.</p>
 <p>This guide is published by the team behind Flas CRM. We sell one of the products in this category, so treat it as a vendor's checklist — the criteria are written to be useful whichever tool you end up choosing.</p>
 <h2>Write a purpose for every number</h2>
@@ -299,7 +329,7 @@ export const BUYING_POSTS = defineArticles(
 <p>Estimate the additional enquiry workload and coverage hours. More entry points can create more unanswered work if the same team is already stretched. Test the fallback and ownership rules before putting a new number on public materials.</p>
 <p>Use the <a href="/blog/whatsapp-shared-inbox-for-teams">handover checklist</a> and <a href="/blog/whatsapp-shared-inbox-for-teams">daily inbox review</a> to keep the setup manageable. The useful outcome is that every number has a purpose and every incoming enquiry reaches a responsible person.</p>
 `,
-  },
+    },
   ],
   10,
 );

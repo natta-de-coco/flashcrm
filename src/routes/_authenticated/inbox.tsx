@@ -10,6 +10,7 @@ import { recordAuditEvent } from "@/lib/audit.functions";
 import {
   buildCatalogMessage,
   draftBotReply,
+  getSendContext,
   sendAgentMessage,
   sendTemplateMessage,
   translateMessage,
@@ -18,16 +19,30 @@ import type { Conversation, Message } from "@/lib/crm-types";
 import { supabase } from "@/integrations/supabase/client";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { requestedConversationId } from "@/lib/inbox-link";
+import {
+  containsFilterValue,
+  CONVERSATION_PAGE_SIZE,
+  type Cursor,
+  newestFirst,
+  olderThan,
+  oldestFirst,
+  pageOf,
+  serverSearchTerm,
+  shouldClearUnread,
+  THREAD_PAGE_SIZE,
+} from "@/lib/inbox-thread";
+import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { useServerFn } from "@tanstack/react-start";
 import {
-  AlertCircle,
+AlertCircle, AlertTriangle,
   Bell,
   Bot,
   Check,
   CheckCheck,
-  Clock,
+Clock,
   Download,
   Globe,
   Languages,
@@ -42,9 +57,10 @@ import {
   Settings2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-parameters";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
-
+import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   head: () => ({
@@ -55,6 +71,15 @@ export const Route = createFileRoute("/_authenticated/inbox")({
       { property: "og:description", content: "Live shared inbox for WhatsApp and website chats." },
     ],
   }),
+  // A contact's "Message in Inbox" button, and the WhatsApp chat a contact
+  // opens, both link here with the conversation they want. Without this the
+  // parameter was accepted and ignored, so the button dropped the user on the
+  // inbox and left them to find the thread. The parser is shared with the
+  // function that builds the link, so the two halves cannot drift apart.
+  validateSearch: (search: Record<string, unknown>): { conversation?: string } => {
+    const id = requestedConversationId(search);
+    return id ? { conversation: id } : {};
+  },
   component: InboxPage,
 });
 
@@ -102,9 +127,17 @@ function MessageDeliveryStatus({ status }: { status?: string | null }) {
 }
 
 function InboxPage() {
+  const i18n = useI18n();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [activeId, setActiveId] = useState<string | null>(null);
+  // Seeded from the link, and followed afterwards: opening a contact's chat
+  // while the inbox is already mounted changes the parameter without remounting,
+  // so the initial state alone would leave the old thread on screen.
+  const { conversation: requestedConversation } = Route.useSearch();
+  const [activeId, setActiveId] = useState<string | null>(requestedConversation ?? null);
+  useEffect(() => {
+    if (requestedConversation) setActiveId(requestedConversation);
+  }, [requestedConversation]);
   const [showTools, setShowTools] = useState(false);
   const [channel, setChannel] = useState<"chats" | "social">("chats");
   // Badge count of social DMs/comments still waiting for a reply.
@@ -129,12 +162,26 @@ function InboxPage() {
   const [reminderNote, setReminderNote] = useState("");
   const [reminderDue, setReminderDue] = useState("");
   const [templateId, setTemplateId] = useState("");
+  const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  useEffect(() => {
+    setTemplateId("");
+    setTemplateVariables([]);
+    setDraft("");
+  }, [activeId]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
+  const [autoTranslate, setAutoTranslate] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const autoTranslatedMessageIds = useRef(new Set<string>());
+  const autoTranslateStartedAt = useRef<number | null>(null);
 
   const send = useServerFn(sendAgentMessage);
+  const loadSendContext = useServerFn(getSendContext);
+  // One reference per message being sent. A second Enter or a double click
+  // repeats it, and the server sends that message once.
+  const sendRef = useRef<SendReference | null>(null);
+  const templateRef = useRef<SendReference | null>(null);
   const suggest = useServerFn(draftBotReply);
   const sendTemplate = useServerFn(sendTemplateMessage);
   const auditEvent = useServerFn(recordAuditEvent);
@@ -180,6 +227,19 @@ function InboxPage() {
     },
   });
 
+  const selectedTemplate = templates.data?.find((t) => t.id === templateId);
+  let parameterCount = 0;
+  let templatePreview = "";
+  let templateProblem = "";
+  if (selectedTemplate) {
+    try {
+      parameterCount = templateParameterCount(selectedTemplate.body);
+      templatePreview = renderTemplateBody(selectedTemplate.body, templateVariables);
+    } catch (error) {
+      templateProblem = error instanceof Error ? error.message : "Check template variables.";
+    }
+  }
+
   const products = useQuery({
     queryKey: ["products"],
     queryFn: async () => {
@@ -192,32 +252,105 @@ function InboxPage() {
     },
   });
 
-  const conversations = useQuery({
-    queryKey: ["conversations"],
-    queryFn: async () => {
-      const { data, error } = await supabase
+  // Newest first, a page at a time, with "load older" for the rest. Only the
+  // most recent 200 used to be reachable at all.
+  const conversations = useInfiniteQuery({
+    queryKey: ["conversations", requestedConversation],
+    initialPageParam: null as Cursor | null,
+    queryFn: async ({ pageParam }) => {
+      let query = supabase
         .from("conversations")
         .select("*, contacts(id, name, phone, company, stage), wa_numbers(label, display_phone)")
         .order("last_message_at", { ascending: false })
-        .limit(200);
+        .order("id", { ascending: false })
+        .limit(CONVERSATION_PAGE_SIZE + 1);
+      if (pageParam) query = query.or(olderThan("last_message_at", pageParam));
+      const { data, error } = await query;
+      if (error) throw error;
+      const page = pageOf(
+        data as unknown as Conversation[],
+        CONVERSATION_PAGE_SIZE,
+        (row) => row.last_message_at,
+      );
+      // A linked thread may be older than the conversations loaded so far.
+      // Fetch it through the same RLS-scoped client, never a privileged lookup.
+      if (
+        !pageParam &&
+        requestedConversation &&
+        !page.rows.some((row) => row.id === requestedConversation)
+      ) {
+        const linked = await supabase
+          .from("conversations")
+          .select("*, contacts(id, name, phone, company, stage), wa_numbers(label, display_phone)")
+          .eq("id", requestedConversation)
+          .maybeSingle();
+        if (linked.error) throw linked.error;
+        if (linked.data) page.rows.unshift(linked.data as unknown as Conversation);
+      }
+      return page;
+    },
+    getNextPageParam: (last) => last.before,
+  });
+  const loadedConversations = useMemo(
+    () => newestFirst(conversations.data?.pages ?? []),
+    [conversations.data],
+  );
+
+  // The search box filters what is loaded; this finds the rest. Without it a
+  // customer whose last message is older than the loaded pages could not be
+  // found by name or number at all.
+  const searchTerm = serverSearchTerm(search);
+  const foundConversations = useQuery({
+    queryKey: ["conversation-search", searchTerm],
+    enabled: !!searchTerm,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const value = containsFilterValue(searchTerm!);
+      const { data, error } = await supabase
+        .from("conversations")
+        .select(
+          "*, contacts!inner(id, name, phone, company, stage), wa_numbers(label, display_phone)",
+        )
+        .or(`name.ilike.${value},phone.ilike.${value}`, { referencedTable: "contacts" })
+        .order("last_message_at", { ascending: false })
+        .limit(50);
       if (error) throw error;
       return data as unknown as Conversation[];
     },
   });
 
-  const messages = useQuery({
+  // The newest page first. Reading the whole thread oldest-first ran into the
+  // API's row cap, which cut off the END of a long conversation: its latest
+  // messages, the reply just sent, and the customer's last message that the
+  // 24-hour rule below is worked out from.
+  const messages = useInfiniteQuery({
     queryKey: ["messages", activeId],
     enabled: Boolean(activeId),
-    queryFn: async () => {
-      const { data, error } = await supabase
+    initialPageParam: null as Cursor | null,
+    queryFn: async ({ pageParam }) => {
+      let query = supabase
         .from("messages")
         .select("*")
         .eq("conversation_id", activeId!)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(THREAD_PAGE_SIZE + 1);
+      if (pageParam) query = query.or(olderThan("created_at", pageParam));
+      const { data, error } = await query;
       if (error) throw error;
-      return data as unknown as Message[];
+      return pageOf(data as unknown as Message[], THREAD_PAGE_SIZE, (m) => m.created_at);
     },
+    getNextPageParam: (last) => last.before,
   });
+  const thread = useMemo(() => oldestFirst(messages.data?.pages ?? []), [messages.data]);
+
+  /** Loads the next, older page; a failure is said, not left as a button that did nothing. */
+  const loadOlder = (query: {
+    fetchNextPage: () => Promise<{ isError: boolean; error: Error | null }>;
+  }) =>
+    void query.fetchNextPage().then((result) => {
+      if (result.isError) toast.error(result.error?.message ?? i18n.t("inbox.searchRecentOnly"));
+    });
 
   // Near real-time inbox: realtime stream first, short polling as a fallback
   // whenever the socket is not connected, plus a visible connection indicator.
@@ -258,9 +391,39 @@ function InboxPage() {
     return () => window.clearInterval(timer);
   }, [liveStatus, qc]);
 
+  // Follows the newest message. Loading an earlier page adds messages above
+  // without changing which one is newest, so it does not pull the view down.
+  const newestMessageId = thread.at(-1)?.id ?? null;
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [messages.data?.length, activeId]);
+  }, [newestMessageId, activeId]);
+
+  // Opt-in and limited to messages received while this inbox is open. This
+  // avoids silently sending a customer's entire past chat to the translation
+  // provider when an agent only wants help with new messages.
+  useEffect(() => {
+    if (!autoTranslate || !activeId || !thread.length) return;
+    for (const message of thread) {
+      if (
+        message.direction !== "inbound" ||
+        message.translated_body ||
+        new Date(message.created_at).getTime() < (autoTranslateStartedAt.current ?? Infinity) ||
+        autoTranslatedMessageIds.current.has(message.id)
+      ) {
+        continue;
+      }
+      autoTranslatedMessageIds.current.add(message.id);
+      void translate({ data: { messageId: message.id, targetLanguage: "English" } })
+        .then(() => {
+          setExpandedTranslations((previous) => new Set(previous).add(message.id));
+          void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+        })
+        .catch(() => {
+          // Let a transient provider failure retry after the next refresh.
+          autoTranslatedMessageIds.current.delete(message.id);
+        });
+    }
+  }, [activeId, autoTranslate, thread, qc, translate]);
 
   if (team.isLoading || templates.isLoading || products.isLoading || conversations.isLoading) return (
   <div className="space-y-3 p-6">
@@ -277,10 +440,10 @@ function InboxPage() {
 );
 
   const list = useMemo(() => {
-    const all = conversations.data ?? [];
-    return all.filter((c) => {
+    const q = search.trim().toLowerCase();
+    const matching = loadedConversations.filter((c) => {
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-      const matchesAssignment =
+const matchesAssignment =
         assignmentFilter === "all" ||
         (assignmentFilter === "mine" && c.assigned_to === user?.id) ||
         (assignmentFilter === "unassigned" && !c.assigned_to);
@@ -292,9 +455,53 @@ function InboxPage() {
         c.last_message_preview?.toLowerCase().includes(q);
       return matchesStatus && matchesAssignment && Boolean(matchesSearch);
     });
-  }, [conversations.data, statusFilter, assignmentFilter, user?.id, search]);
+
+    // Matches the server found among conversations that are not loaded.
+    const loaded = new Set(loadedConversations.map((c) => c.id));
+    const older = (q ? (foundConversations.data ?? []) : []).filter(
+      (c) => !loaded.has(c.id) && (statusFilter === "all" || c.status === statusFilter),
+    );
+    return older.length === 0
+      ? matching
+      : [...matching, ...older].sort((a, b) =>
+          (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""),
+        );
+  }, [loadedConversations, foundConversations.data, statusFilter, search]);
+
 
   const active = list.find((c) => c.id === activeId) ?? null;
+
+  // WhatsApp permits a free-form reply only during the 24 hours after the
+  // customer's last inbound message. The server remains the authority for
+  // this rule, but exposing it here prevents an agent from writing a reply,
+  // pressing Send, and only then discovering why it could not leave FLAS.
+  const whatsappReplyWindowOpen = useMemo(() => {
+    if (active?.channel !== "whatsapp" || !messages.isSuccess) return true;
+    const newestInbound = thread
+      .filter((message) => message.direction === "inbound")
+      .map((message) => new Date(message.created_at).getTime())
+      .filter(Number.isFinite)
+      .reduce((newest, timestamp) => Math.max(newest, timestamp), 0);
+    return newestInbound > 0 && newestInbound >= Date.now() - 24 * 60 * 60 * 1000;
+  }, [active?.channel, thread, messages.isSuccess]);
+
+  // Which number a reply would leave from, who it would reach, and anything
+  // that would stop it -- asked of the same gate the send itself uses, so the
+  // composer cannot promise what the server will refuse.
+  const sendContext = useQuery({
+    queryKey: ["send-context", activeId],
+    queryFn: () => loadSendContext({ data: { conversationId: activeId! } }),
+    enabled: !!activeId && active?.channel === "whatsapp",
+    staleTime: 30_000,
+  });
+  // The closed 24-hour window already has its own notice and next step below.
+  const sendBlocks = (sendContext.data?.blocks ?? []).filter((b) => b.code !== "window_closed");
+
+  // Tools should stay out of the way while an agent is reading a thread, but
+  // a closed WhatsApp window has one clear next step: an approved template.
+  useEffect(() => {
+    if (active?.channel === "whatsapp" && !whatsappReplyWindowOpen) setShowTools(true);
+  }, [active?.channel, whatsappReplyWindowOpen]);
 
   // Auto-open the newest thread on desktop only. On mobile the list is a full
   // screen of its own, so auto-selecting would trap the user inside a chat.
@@ -305,26 +512,77 @@ function InboxPage() {
     setActiveId(list[0]!.id);
   }, [activeId, list]);
 
+  // The conversation open in a visible tab is being read. Unread used to be
+  // cleared only at the moment a conversation was opened, so a message that
+  // arrived while the agent was reading the thread left it marked unread until
+  // they went away and came back.
+  const activeUnread = active?.unread_count ?? 0;
   useEffect(() => {
-    if (!activeId) return;
-    void supabase.from("conversations").update({ unread_count: 0 }).eq("id", activeId);
-  }, [activeId]);
+    const clear = () => {
+      const visible = document.visibilityState === "visible";
+      if (!shouldClearUnread({ activeId, unreadCount: activeUnread, visible })) return;
+      void supabase
+        .from("conversations")
+        .update({ unread_count: 0 })
+        .eq("id", activeId!)
+        // Only a row that still has a count is written, so clearing never
+        // sets off a round of refreshes on its own.
+        .gt("unread_count", 0)
+        .then(({ error }) => {
+          if (error) console.error("[inbox] could not clear unread", error.message);
+          else void qc.invalidateQueries({ queryKey: ["conversations"] });
+        });
+    };
+    clear();
+    document.addEventListener("visibilitychange", clear);
+    return () => document.removeEventListener("visibilitychange", clear);
+  }, [activeId, activeUnread, qc]);
+
+  const describeBlocks = (blocks: { code: string; message: string }[]) =>
+    blocks.map((b) => i18n.tx(`inbox.block.${b.code}`, b.message)).join(" ");
+  const describeFailure = (reason: string | null, fallback: string | null) =>
+    i18n.tx(`inbox.sendFailure.${reason ?? "unknown"}`, fallback ?? "");
 
   const sendMutation = useMutation({
-    mutationFn: async (body: string) => send({ data: { conversationId: activeId!, body } }),
+    mutationFn: async (body: string) => {
+      sendRef.current = referenceFor(sendRef.current, `${activeId}\n${body}`, () =>
+        crypto.randomUUID(),
+      );
+      return send({ data: { conversationId: activeId!, body, clientRef: sendRef.current.ref } });
+    },
     onSuccess: (res) => {
-      if (res.blockedReasons?.length) {
-        toast.error("Message blocked by safety rules", {
-          description: res.blockedReasons.join(" "),
+      // The server has answered for this message, so the next one is new.
+      sendRef.current = null;
+      void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "blocked") {
+        toast.error(i18n.t("inbox.messageBlockedBySafetyRules"), {
+          description: describeBlocks(res.blocks),
         });
         return;
       }
+      // "duplicate" is this very message, already saved by an earlier copy of
+      // the request whose answer never arrived. It is in the thread, so the
+      // box is cleared like any sent message -- leaving the text there would
+      // invite sending it a second time.
       setDraft("");
-      if (res.deliveryError) toast.warning(`Saved, but not delivered: ${res.deliveryError}`);
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "unconfirmed") {
+        toast.warning(describeFailure("unconfirmed", res.deliveryError));
+      } else if (res.state === "rejected") {
+        toast.warning(
+          i18n.t("inbox.savedButNotDelivered", {
+            deliveryError: describeFailure(res.failureReason, res.deliveryError),
+          }),
+        );
+      }
     },
-    onError: (e: Error) => toast.error(friendlyError(e)),
+
+    // No answer is not a "no". The reference is kept, so trying the same text
+    // again asks the server about the same message: if the first copy did get
+    // through, the server says so instead of sending another.
+    onError: (e: Error) => toast.error(e.message),
+
   });
 
   const suggestMutation = useMutation({
@@ -386,28 +644,60 @@ function InboxPage() {
       logAction("reminder.create", { note: reminderNote || "Follow up", due: reminderDue });
       setReminderNote("");
       setReminderDue("");
-      toast.success("Follow-up reminder set");
+      toast.success(i18n.t("inbox.followUpReminderSet"));
       void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const templateMutation = useMutation({
-    mutationFn: async () =>
-      sendTemplate({ data: { templateId, conversationId: activeId!, variables: [] } }),
+    mutationFn: async () => {
+      templateRef.current = referenceFor(
+        templateRef.current,
+        `${activeId}\n${templateId}\n${JSON.stringify(templateVariables)}`,
+        () => crypto.randomUUID(),
+      );
+      return sendTemplate({
+        data: {
+          templateId,
+          conversationId: activeId!,
+          variables: templateVariables,
+          clientRef: templateRef.current.ref,
+        },
+      });
+    },
     onSuccess: (res) => {
-      if (res.blockedReasons?.length) {
-        toast.error("Template blocked by safety rules", {
-          description: res.blockedReasons.join(" "),
+      templateRef.current = null;
+      void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
+      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      if (res.state === "blocked") {
+        toast.error(i18n.t("inbox.templateBlockedBySafetyRules"), {
+          description: describeBlocks(res.blocks),
         });
         return;
       }
+      // As with a reply: a duplicate is this template, already in the thread.
       setTemplateId("");
-      toast.success("Template sent");
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
-      void qc.invalidateQueries({ queryKey: ["conversations"] });
+      setTemplateVariables([]);
+      // Accepted by WhatsApp is not delivered: the thread shows the receipt
+      // when it arrives. A refusal or a missing answer is said as such.
+      if (res.state === "accepted") {
+        toast.success(i18n.t("inbox.templateAcceptedByWhatsappDelivery"));
+      } else if (res.state === "unconfirmed") {
+        toast.warning(describeFailure("unconfirmed", res.deliveryError));
+      } else if (res.state === "rejected") {
+        toast.error(
+          i18n.t("inbox.savedButNotDelivered", {
+            deliveryError: describeFailure(res.failureReason, res.deliveryError),
+          }),
+        );
+      }
     },
-    onError: (e: Error) => toast.error(friendlyError(e)),
+
+    // Kept for the retry, as for a reply.
+    onError: (e: Error) => toast.error(e.message),
+
   });
 
   const translateMutation = useMutation({
@@ -429,7 +719,7 @@ function InboxPage() {
     onSuccess: (res) => {
       setDraft((d) => (d ? `${d}\n\n${res.body}` : res.body));
       setSelectedProductIds([]);
-      toast.success("Catalog message inserted — press Send to deliver");
+      toast.success(i18n.t("inbox.catalogMessageInsertedPressSend"));
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
@@ -454,7 +744,7 @@ function InboxPage() {
   }
 
   function exportConversations() {
-    const rows = (conversations.data ?? []).map((c) => ({
+    const rows = loadedConversations.map((c) => ({
       contact: c.contacts?.name ?? "",
       phone: c.contacts?.phone ?? "",
       company: c.contacts?.company ?? "",
@@ -484,12 +774,38 @@ function InboxPage() {
       ]),
     );
     logAction("conversations.export", { rows: rows.length });
-    toast.success("Conversations CSV downloaded");
+    toast.success(i18n.t("inbox.conversationsCsvDownloaded"));
   }
 
-  function exportTranscript() {
+  /** Every message of a conversation, for the transcript: not just the pages on screen. */
+  async function wholeThread(conversationId: string): Promise<Message[]> {
+    const size = 500;
+    const all: Message[] = [];
+    for (let from = 0; from < 200 * size; from += size) {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + size - 1);
+      if (error) throw error;
+      all.push(...(data as unknown as Message[]));
+      if (data.length < size) break;
+    }
+    return all;
+  }
+
+  async function exportTranscript() {
     if (!active) return;
-    const rows = (messages.data ?? []).map((m) => ({
+    let everyMessage: Message[];
+    try {
+      everyMessage = await wholeThread(active.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    const rows = everyMessage.map((m) => ({
       time: m.created_at,
       from: m.sender,
       direction: m.direction,
@@ -507,14 +823,14 @@ function InboxPage() {
       ]),
     );
     logAction("transcript.export", { rows: rows.length });
-    toast.success("Transcript CSV downloaded");
+    toast.success(i18n.t("inbox.transcriptCsvDownloaded"));
   }
 
   if (channel === "social") {
     return (
       <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 flex-col lg:h-[100dvh]">
         <div className="flex items-center gap-2 border-b bg-card px-4 py-3">
-          <h1 className="text-lg font-bold">Inbox</h1>
+          <h1 className="text-lg font-bold">{i18n.t("inbox.inbox")}</h1>
           <ChannelSwitch channel={channel} onChange={setChannel} pending={socialPending} />
         </div>
         <SocialInbox />
@@ -527,14 +843,14 @@ function InboxPage() {
       {/* Conversation list */}
       <div
         className={cn(
-          "w-full shrink-0 flex-col border-r bg-card md:flex md:max-w-sm",
+"w-full shrink-0 flex-col border-e bg-card lg:flex lg:max-w-sm",
           active ? "hidden" : "flex",
         )}
       >
         <div className="space-y-3 border-b p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <h1 className="text-lg font-bold">Inbox</h1>
+              <h1 className="text-lg font-bold">{i18n.t("inbox.inbox")}</h1>
               <ChannelSwitch channel={channel} onChange={setChannel} pending={socialPending} />
               <span
                 className={cn(
@@ -548,9 +864,11 @@ function InboxPage() {
                 title={
                   liveStatus === "live"
                     ? lastEventAt
-                      ? `Live · last update ${new Date(lastEventAt).toLocaleTimeString()}`
-                      : "Live — new messages arrive instantly"
-                    : "Reconnecting — checking for new messages every 10 seconds"
+                      ? i18n.t("inbox.liveLastUpdate", {
+                          toLocaleTimeString: new Date(lastEventAt).toLocaleTimeString(),
+                        })
+                      : i18n.t("inbox.liveNewMessagesArriveInstantly")
+                    : i18n.t("inbox.reconnectingCheckingForNewMessages")
                 }
               >
                 <span
@@ -564,25 +882,28 @@ function InboxPage() {
                   )}
                 />
                 {liveStatus === "live"
-                  ? "Live"
+                  ? i18n.t("inbox.live")
                   : liveStatus === "connecting"
-                    ? "Connecting"
-                    : "Polling"}
+                    ? i18n.t("inbox.connecting")
+                    : i18n.t("inbox.polling")}
               </span>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={exportConversations}
-              disabled={(conversations.data ?? []).length === 0}
-              title="Download all conversations as CSV"
+              disabled={loadedConversations.length === 0}
+              title={i18n.t("inbox.downloadAllConversationsAsCsv")}
             >
               <Download className="size-4" /> CSV
             </Button>
           </div>
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input aria-label="Search chats" className="pl-9" placeholder="Search chats"
+<Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="ps-9"
+              placeholder={i18n.t("inbox.searchChats")}
+              aria-label={i18n.t("inbox.searchConversations")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -628,11 +949,13 @@ function InboxPage() {
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {conversations.isLoading && (
-            <p className="p-4 text-sm text-muted-foreground">Loading conversations…</p>
+            <p className="p-4 text-sm text-muted-foreground">
+              {i18n.t("inbox.loadingConversations")}
+            </p>
           )}
           {!conversations.isLoading && list.length === 0 && (
             <p className="p-4 text-sm text-muted-foreground">
-              No conversations yet. Messages from WhatsApp and the website widget land here.
+              {i18n.t("inbox.noConversationsYetMessagesFrom")}
             </p>
           )}
           {list.map((c) => (
@@ -640,13 +963,13 @@ function InboxPage() {
               key={c.id}
               onClick={() => setActiveId(c.id)}
               className={cn(
-                "flex w-full flex-col gap-1 border-b px-4 py-3 text-left transition-colors hover:bg-muted/60",
+                "flex w-full flex-col gap-1 border-b px-4 py-3 text-start transition-colors hover:bg-muted/60",
                 activeId === c.id && "bg-secondary",
               )}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-semibold">
-                  {c.contacts?.name ?? "Unknown"}
+                  {c.contacts?.name ?? i18n.t("inbox.unknown")}
                 </span>
                 <span className="shrink-0 text-[11px] text-muted-foreground">
                   {new Date(c.last_message_at).toLocaleTimeString([], {
@@ -656,12 +979,12 @@ function InboxPage() {
                 </span>
               </div>
               <span className="truncate text-xs text-muted-foreground">
-                {c.last_message_preview ?? "No messages yet"}
+                {c.last_message_preview ?? i18n.t("inbox.noMessagesYet")}
               </span>
               <div className="flex items-center gap-1.5 pt-1">
                 <Badge variant="secondary" className="gap-1 text-[10px]">
                   {c.channel === "web" ? <Globe className="size-3" /> : null}
-                  {c.channel === "web" ? "Website" : "WhatsApp"}
+                  {c.channel === "web" ? i18n.t("inbox.website") : "WhatsApp"}
                 </Badge>
                 {c.wa_numbers && (
                   <Badge variant="outline" className="gap-1 text-[10px]">
@@ -671,7 +994,7 @@ function InboxPage() {
                 )}
                 {c.bot_enabled && (
                   <Badge className="gap-1 bg-brand text-brand-foreground text-[10px]">
-                    <Bot className="size-3" /> Bot
+                    <Bot className="size-3" /> {i18n.t("inbox.bot")}
                   </Badge>
                 )}
                 {c.unread_count > 0 && (
@@ -682,6 +1005,25 @@ function InboxPage() {
               </div>
             </button>
           ))}
+          {searchTerm && foundConversations.isError && (
+            <p className="p-4 text-xs text-muted-foreground" role="status">
+              {i18n.t("inbox.searchRecentOnly")}
+            </p>
+          )}
+          {!search.trim() && conversations.hasNextPage && (
+            <div className="p-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={() => loadOlder(conversations)}
+                disabled={conversations.isFetchingNextPage}
+              >
+                {conversations.isFetchingNextPage && <Loader2 className="size-4 animate-spin" />}
+                {i18n.t("inbox.loadOlderConversations")}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -689,7 +1031,7 @@ function InboxPage() {
       <div className={cn("min-w-0 flex-1 flex-col md:flex", active ? "flex" : "hidden")}>
         {!active ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
-            Select a conversation to start monitoring.
+            {i18n.t("inbox.selectAConversationToStart")}
           </div>
         ) : (
           <>
@@ -698,16 +1040,16 @@ function InboxPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="-ml-2 shrink-0 md:hidden"
+className="-ms-2 shrink-0 lg:hidden"
                   onClick={() => setActiveId(null)}
-                  aria-label="Back to conversations"
+                  aria-label={i18n.t("inbox.backToConversations")}
                 >
                   <ChevronLeft className="size-5" />
                 </Button>
                 <div className="min-w-0">
                   <h2 className="truncate font-semibold">{active.contacts?.name}</h2>
                   <p className="truncate text-xs text-muted-foreground">
-                    {active.contacts?.phone ?? "Website visitor"}
+                    {active.contacts?.phone ?? i18n.t("inbox.websiteVisitor")}
                     {active.contacts?.company ? ` · ${active.contacts.company}` : ""}
                   </p>
                 </div>
@@ -716,18 +1058,29 @@ function InboxPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="lg:hidden"
                   onClick={() => setShowTools((v) => !v)}
                   aria-expanded={showTools}
+                  aria-label={i18n.t("inbox.showMessageTools")}
                 >
-                  <Settings2 className="size-4" /> Tools
+                  <Settings2 className="size-4" /> {i18n.t("inbox.tools")}
                 </Button>
                 <label className="flex items-center gap-2 text-xs font-medium">
                   <Switch
                     checked={active.bot_enabled}
                     onCheckedChange={(v) => void updateConversation({ bot_enabled: v })}
                   />
-                  AI auto-reply
+                  {i18n.t("inbox.aiAutoReply")}
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium">
+                  <Switch
+                    checked={autoTranslate}
+                    onCheckedChange={(enabled) => {
+                      autoTranslateStartedAt.current = enabled ? Date.now() : null;
+                      setAutoTranslate(enabled);
+                    }}
+                    aria-label={i18n.t("inbox.autoTranslateNewIncomingMessages")}
+                  />
+                  {i18n.t("inbox.autoTranslateNew")}
                 </label>
                 <div className="flex gap-1">
                   {(["open", "pending", "closed"] as const).map((s) => (
@@ -745,23 +1098,23 @@ function InboxPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={exportTranscript}
-                  disabled={(messages.data ?? []).length === 0}
-                  title="Download this chat as CSV"
+                  onClick={() => void exportTranscript()}
+                  disabled={thread.length === 0}
+                  title={i18n.t("inbox.downloadThisChatAsCsv")}
                 >
-                  <Download className="size-4" /> Transcript
+                  <Download className="size-4" /> {i18n.t("inbox.transcript")}
                 </Button>
                 <select
                   className="h-9 rounded-md border bg-background px-2 text-xs"
                   value={active.assigned_to ?? ""}
                   onChange={(e) => void updateConversation({ assigned_to: e.target.value || null })}
                 >
-                  <option value="">Unassigned</option>
+                  <option value="">{i18n.t("inbox.unassigned")}</option>
                   {(team.data ?? []).map((member) => (
                     <option key={member.id} value={member.id}>
                       {member.id === user?.id
-                        ? "Me"
-                        : member.full_name || member.email || "Teammate"}
+                        ? i18n.t("inbox.me")
+                        : member.full_name || member.email || i18n.t("inbox.teammate")}
                     </option>
                   ))}
                 </select>
@@ -771,7 +1124,7 @@ function InboxPage() {
             {/* Thread tools: tags, templates, follow-up reminders */}
             <div
               className={cn(
-                "space-y-3 border-b bg-card px-4 py-3 lg:block lg:px-5",
+                "space-y-3 border-b bg-card px-4 py-3 lg:px-5",
                 showTools ? "block" : "hidden",
               )}
             >
@@ -780,12 +1133,20 @@ function InboxPage() {
                 {(active.tags ?? []).map((tag) => (
                   <Badge key={tag} variant="secondary" className="gap-1">
                     {tag}
-                    <button aria-label={`Remove ${tag}`} onClick={() => removeTag(tag)}>
+                    <button
+                      aria-label={i18n.t("inbox.remove", { tag: tag })}
+                      onClick={() => removeTag(tag)}
+                    >
                       <X className="size-3" />
                     </button>
                   </Badge>
                 ))}
-                <Input aria-label="Add tag" className="h-8 w-40" placeholder="Add tag"
+
+                <Input
+                  className="h-8 w-40"
+                  placeholder={i18n.t("inbox.addTag")}
+                  aria-label={i18n.t("inbox.addConversationTag")}
+
                   value={tagDraft}
                   onChange={(e) => setTagDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -801,19 +1162,28 @@ function InboxPage() {
                 <select
                   className="h-8 rounded-md border bg-background px-2 text-xs"
                   value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
+                  aria-label={i18n.t("inbox.approvedWhatsappTemplate")}
+                  onChange={(e) => {
+                    setTemplateId(e.target.value);
+                    setTemplateVariables([]);
+                  }}
                 >
-                  <option value="">Send approved template…</option>
+                  <option value="">{i18n.t("inbox.sendApprovedTemplate")}</option>
                   {(templates.data ?? []).map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name}
+                      {t.name} ({t.language})
                     </option>
                   ))}
                 </select>
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!templateId || templateMutation.isPending}
+                  disabled={
+                    !selectedTemplate ||
+                    Boolean(templateProblem) ||
+                    active.channel !== "whatsapp" ||
+                    templateMutation.isPending
+                  }
                   onClick={() => templateMutation.mutate()}
                 >
                   {templateMutation.isPending ? (
@@ -821,14 +1191,56 @@ function InboxPage() {
                   ) : (
                     <Send className="size-4" />
                   )}
-                  Send template
+                  {i18n.t("inbox.sendTemplate")}
                 </Button>
               </div>
+
+              {selectedTemplate && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <p className="text-sm font-medium">{i18n.t("inbox.personalizeYourTemplate")}</p>
+                  {Array.from({ length: parameterCount }, (_, index) => (
+                    <label key={index} className="block text-sm">
+                      {i18n.tr("inbox.variable", { value: index + 1 })}
+                      <Input
+                        maxLength={500}
+                        value={templateVariables[index] ?? ""}
+                        onChange={(event) =>
+                          setTemplateVariables((previous) =>
+                            Array.from({ length: parameterCount }, (_, i) =>
+                              i === index ? event.target.value : (previous[i] ?? ""),
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                  {templateProblem ? (
+                    <p role="status" className="text-sm text-destructive">
+                      {templateProblem}
+                    </p>
+                  ) : (
+                    <p
+                      className="whitespace-pre-wrap text-sm"
+                      aria-label={i18n.t("inbox.messagePreview")}
+                    >
+                      {templatePreview}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    {i18n.t("inbox.reviewTheMessageBeforePressing")}
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Package className="size-4 text-muted-foreground" />
-                  <Input aria-label="Search products" className="h-8 w-48" placeholder="Search products"
+
+                  <Input
+                    className="h-8 w-48"
+                    placeholder={i18n.t("inbox.searchProducts")}
+                    aria-label={i18n.t("inbox.searchCatalogProducts")}
+
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                   />
@@ -843,7 +1255,7 @@ function InboxPage() {
                     ) : (
                       <Send className="size-4" />
                     )}
-                    Insert catalog message
+                    {i18n.t("inbox.insertCatalogMessage")}
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -889,14 +1301,21 @@ function InboxPage() {
                       );
                     })}
                   {(products.data ?? []).length === 0 && (
-                    <p className="text-xs text-muted-foreground">No products in catalog yet.</p>
+                    <p className="text-xs text-muted-foreground">
+                      {i18n.t("inbox.noProductsInCatalogYet")}
+                    </p>
                   )}
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <Bell className="size-4 text-muted-foreground" />
-                <Input aria-label="Follow-up note" className="h-8 w-56" placeholder="Follow-up note"
+
+                <Input
+                  className="h-8 w-56"
+                  placeholder={i18n.t("inbox.followUpNote")}
+                  aria-label={i18n.t("inbox.followUpNote")}
+
                   value={reminderNote}
                   onChange={(e) => setReminderNote(e.target.value)}
                 />
@@ -910,7 +1329,7 @@ function InboxPage() {
                   disabled={!reminderDue || addReminder.isPending}
                   onClick={() => addReminder.mutate()}
                 >
-                  Set reminder
+                  {i18n.t("inbox.setReminder")}
                 </Button>
               </div>
 
@@ -926,13 +1345,14 @@ function InboxPage() {
                     >
                       <span className="truncate">
                         {r.note} · {new Date(r.due_at).toLocaleString()}
-                        {!r.done && new Date(r.due_at) < new Date() ? " · overdue" : ""}
+                        {!r.done && new Date(r.due_at) < new Date() ? i18n.t("inbox.overdue") : ""}
                       </span>
                       <button
                         className="flex items-center gap-1 font-medium text-brand"
                         onClick={() => void toggleReminderDone(r.id, !r.done)}
                       >
-                        <Check className="size-3" /> {r.done ? "Reopen" : "Done"}
+                        <Check className="size-3" />{" "}
+                        {r.done ? i18n.t("inbox.reopen") : i18n.t("inbox.done")}
                       </button>
                     </li>
                   ))}
@@ -941,7 +1361,20 @@ function InboxPage() {
             </div>
 
             <div className="chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-              {(messages.data ?? []).map((m) => {
+              {messages.hasNextPage && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadOlder(messages)}
+                    disabled={messages.isFetchingNextPage}
+                  >
+                    {messages.isFetchingNextPage && <Loader2 className="size-4 animate-spin" />}
+                    {i18n.t("inbox.loadEarlierMessages")}
+                  </Button>
+                </div>
+              )}
+              {thread.map((m) => {
                 const showTranslation = expandedTranslations.has(m.id);
                 const hasTranslation = Boolean(m.translated_body);
                 return (
@@ -962,7 +1395,7 @@ function InboxPage() {
                     >
                       {m.sender === "bot" && (
                         <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                          <Bot className="size-3" /> Assistant
+                          <Bot className="size-3" /> {i18n.t("inbox.assistant")}
                         </span>
                       )}
                       <p className="whitespace-pre-wrap break-words">{m.body}</p>
@@ -970,8 +1403,10 @@ function InboxPage() {
                         <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
                           <p className="mb-1 font-semibold opacity-70">
                             {m.detected_language
-                              ? `Translated from ${m.detected_language}`
-                              : "Translation"}
+                              ? i18n.t("inbox.translatedFrom", {
+                                  detectedlanguage: m.detected_language,
+                                })
+                              : i18n.t("inbox.translation")}
                           </p>
                           <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
                         </div>
@@ -995,10 +1430,10 @@ function InboxPage() {
                         >
                           <Languages className="size-3" />
                           {showTranslation
-                            ? "Hide"
+                            ? i18n.t("inbox.hide")
                             : hasTranslation
-                              ? "Show translation"
-                              : "Translate"}
+                              ? i18n.t("inbox.showTranslation")
+                              : i18n.t("inbox.translate")}
                         </button>
                         <span className="inline-flex items-center gap-1 text-[10px] opacity-60">
                           {new Date(m.created_at).toLocaleTimeString([], {
@@ -1009,6 +1444,13 @@ function InboxPage() {
                             <MessageDeliveryStatus status={m.status} />
                           )}
                         </span>
+                        {m.direction === "outbound" && (
+                          <DeliveryState
+                            status={m.status}
+                            createdAt={m.created_at}
+                            failureReason={m.failure_reason}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1018,18 +1460,63 @@ function InboxPage() {
             </div>
 
             <div className="space-y-2 border-t bg-card p-4">
+              {active.channel === "whatsapp" && sendContext.data?.sendingNumber && (
+                <p className="text-xs text-muted-foreground" data-testid="sending-from">
+                  {(() => {
+                    const line = sendContext.data.sendingNumber;
+                    const number = line.displayPhone
+                      ? `${line.label} · ${line.displayPhone}`
+                      : line.label;
+                    return sendContext.data.recipient
+                      ? i18n.tr("inbox.sendingFromTo", {
+                          number: <bdi>{number}</bdi>,
+                          recipient: <bdi dir="ltr">{sendContext.data.recipient}</bdi>,
+                        })
+                      : i18n.tr("inbox.sendingFrom", { number: <bdi>{number}</bdi> });
+                  })()}
+                </p>
+              )}
+              {sendBlocks.length > 0 && (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
+                >
+                  <p className="flex items-center gap-1.5 font-semibold text-destructive">
+                    <AlertTriangle className="size-4 shrink-0" /> {i18n.t("inbox.cannotSendYet")}
+                  </p>
+                  <ul className="mt-1 space-y-1 text-muted-foreground">
+                    {sendBlocks.map((b) => (
+                      <li key={b.code}>{i18n.tx(`inbox.block.${b.code}`, b.message)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <Textarea
                 rows={2}
-                placeholder="Write a reply…"
+                aria-label={i18n.t("inbox.replyToConversation")}
+                placeholder={
+                  whatsappReplyWindowOpen
+                    ? i18n.t("inbox.writeAReply")
+                    : i18n.t("inbox.useAnApprovedTemplateTo")
+                }
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && draft.trim()) {
+                  if (e.key === "Enter" && !e.shiftKey && draft.trim() && whatsappReplyWindowOpen) {
                     e.preventDefault();
-                    sendMutation.mutate(draft.trim());
+                    // A second Enter while the first is still on its way is the
+                    // same message; the server would refuse the copy anyway.
+                    if (!sendMutation.isPending && sendBlocks.length === 0) {
+                      sendMutation.mutate(draft.trim());
+                    }
                   }
                 }}
               />
+              {!whatsappReplyWindowOpen && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {i18n.t("inbox.thisCustomerHasNotMessaged")}
+                </p>
+              )}
               <div className="flex items-center justify-between">
                 <Button
                   variant="outline"
@@ -1042,14 +1529,19 @@ function InboxPage() {
                   ) : (
                     <Sparkles className="size-4" />
                   )}
-                  Suggest reply
+                  {i18n.t("inbox.suggestReply")}
                 </Button>
                 <Button
                   onClick={() => draft.trim() && sendMutation.mutate(draft.trim())}
-                  disabled={sendMutation.isPending || !draft.trim()}
+                  disabled={
+                    sendMutation.isPending ||
+                    !draft.trim() ||
+                    !whatsappReplyWindowOpen ||
+                    sendBlocks.length > 0
+                  }
                 >
                   <Send className="size-4" />
-                  Send
+                  {i18n.t("inbox.send")}
                 </Button>
               </div>
             </div>
@@ -1058,6 +1550,90 @@ function InboxPage() {
       </div>
     </div>
   );
+}
+
+/** A send is settled within seconds; one still "sending" after this never got its answer recorded. */
+const SENDING_GOES_STALE_MS = 2 * 60 * 1000;
+
+/** Shows what Meta has actually reported for an outbound WhatsApp message. */
+function DeliveryState({
+  status,
+  createdAt,
+  failureReason,
+}: {
+  status: string | null | undefined;
+  createdAt?: string | null;
+  /** Why it was not delivered, when that was recorded. */
+  failureReason?: string | null | undefined;
+}) {
+  const i18n = useI18n();
+  // Look again at the moment a "sending" message goes stale. The label was
+  // only worked out when something else changed, so a message whose answer was
+  // never recorded could go on saying "Sending" for as long as the thread
+  // stayed quiet.
+  const [, lookAgain] = useState(0);
+  useEffect(() => {
+    if (status !== "sending" || !createdAt) return;
+    const remaining = new Date(createdAt).getTime() + SENDING_GOES_STALE_MS - Date.now();
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(() => lookAgain(Date.now()), remaining + 250);
+    return () => window.clearTimeout(timer);
+  }, [status, createdAt]);
+  const stale =
+    status === "sending" &&
+    !!createdAt &&
+    Date.now() - new Date(createdAt).getTime() > SENDING_GOES_STALE_MS;
+  if (status === "unconfirmed" || stale) {
+    // Neither sent nor failed: WhatsApp never answered. Said plainly, so
+    // nobody resends a message the customer may already have.
+    return (
+      <span
+        className="flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+        title={i18n.t("inbox.unconfirmedHint")}
+      >
+        <AlertTriangle className="size-3" /> {i18n.t("inbox.status.unconfirmed")}
+      </span>
+    );
+  }
+  if (status === "sending") {
+    return <span className="text-[10px] text-muted-foreground">{i18n.t("inbox.sending")}</span>;
+  }
+  if (status === "failed") {
+    // The reason stays with the message. It used to be shown once, in a toast,
+    // to whoever happened to be sending.
+    const why = failureReason ? i18n.tx(`inbox.sendFailure.${failureReason}`, "") : "";
+    return (
+      <span
+        className="flex items-center gap-1 text-[10px] font-semibold text-destructive"
+        title={why || undefined}
+      >
+        <AlertTriangle className="size-3 shrink-0" /> {i18n.t("inbox.notDelivered")}
+        {why && <span className="font-normal">· {why}</span>}
+      </span>
+    );
+  }
+  if (status === "read") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold text-brand">
+        <CheckCheck className="size-3" /> {i18n.t("inbox.read")}
+      </span>
+    );
+  }
+  if (status === "delivered") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold opacity-70">
+        <CheckCheck className="size-3" /> {i18n.t("inbox.delivered")}
+      </span>
+    );
+  }
+  if (status === "sent") {
+    return (
+      <span className="flex items-center gap-1 text-[10px] font-semibold opacity-70">
+        <Check className="size-3" /> {i18n.t("inbox.sent")}
+      </span>
+    );
+  }
+  return null;
 }
 
 /** Toggle between WhatsApp/website chats and social DMs & comments. */

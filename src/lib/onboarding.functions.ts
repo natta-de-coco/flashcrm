@@ -316,12 +316,35 @@ export const setStaffRole = createServerFn({ method: "POST" })
       }
     }
 
-    const { error } = await context.supabase
+    // Written with the service role, not the caller's session. The browser role
+    // held table-wide UPDATE on profiles and a policy allowing a user to update
+    // their own row, so staff_role -- which is what makes someone platform
+    // super admin -- was writable by anyone with a login. The permission to
+    // change a role is decided above, in code; the write itself is the
+    // server's. See 20260926090000_profiles_privilege_columns_are_server_only.
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
       .from("profiles")
       .update({ staff_role: data.staffRole })
       .eq("id", data.userId)
       .eq("tenant_id", me.tenant_id);
     if (error) throw error;
+
+    // This app carries two role systems, and is_tenant_admin() accepts either.
+    // A demotion that rewrote only staff_role left the legacy user_roles.admin
+    // row in place -- which has no tenant column, so the person kept admin
+    // rights here and carried them into the next workspace they joined.
+    if (data.staffRole === "company_admin") {
+      await supabaseAdmin
+        .from("user_roles")
+        .upsert({ user_id: data.userId, role: "admin" }, { onConflict: "user_id,role" });
+    } else {
+      await supabaseAdmin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", data.userId)
+        .eq("role", "admin");
+    }
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -362,7 +385,9 @@ export const removeStaff = createServerFn({ method: "POST" })
         .eq("tenant_id", me.tenant_id)
         .eq("staff_role", "company_admin");
       if ((count ?? 0) <= 1) {
-        throw new Error("This is the only company admin — promote someone else before removing them.");
+        throw new Error(
+          "This is the only company admin — promote someone else before removing them.",
+        );
       }
     }
 
@@ -373,6 +398,11 @@ export const removeStaff = createServerFn({ method: "POST" })
       .eq("id", data.userId)
       .eq("tenant_id", me.tenant_id);
     if (error) throw error;
+
+    // Removing someone has to revoke both role systems. The legacy
+    // user_roles.admin row is global -- it survived removal and made them an
+    // admin of whichever workspace they joined next.
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId).eq("role", "admin");
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -438,7 +468,8 @@ export const claimInvites = createServerFn({ method: "POST" })
     // has_role()-gated policy silently refused them (WhatsApp templates, bot
     // settings, SMTP keys, connected-app credentials...). Granting the legacy
     // role here puts invited admins on the same footing as the founder.
-    const isAdminRole = invite.staff_role === "company_admin" || invite.staff_role === "super_admin";
+    const isAdminRole =
+      invite.staff_role === "company_admin" || invite.staff_role === "super_admin";
     await supabaseAdmin
       .from("user_roles")
       .upsert(

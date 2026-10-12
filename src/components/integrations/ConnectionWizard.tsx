@@ -17,6 +17,7 @@ import { troubleshooting, type ConnectionStatus } from "@/lib/connection-status"
 import { CredentialsStep } from "@/components/integrations/CredentialsStep";
 import { credentialSpec, OAUTH_REDIRECT_PATH, setupGuide } from "@/lib/connection-setup";
 import { CONNECTORS } from "@/lib/connections-catalog";
+import { providerSetup } from "@/lib/provider-setup-links";
 import {
   CAPABILITY_LABELS,
   advertisableCapabilities,
@@ -29,8 +30,12 @@ import {
   Clock,
   ExternalLink,
   ShieldCheck,
+  UserRoundCog,
+  UsersRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 type Step = "prepare" | "verify" | "credentials" | "permissions" | "connect" | "errors";
 
@@ -66,10 +71,16 @@ export function ConnectionWizard({
    *  page one of a guide the user has to click through. */
   openAt?: Step;
 }) {
+  const { t, tr } = useI18n();
+  const stepTitle = (step: Step) =>
+    hasMessage(`connectionWizard.step.${step}`)
+      ? t(`connectionWizard.step.${step}` as MessageKey)
+      : STEP_TITLE[step];
   const meta = connector(platformId);
   const guide = setupGuide(platformId);
   const definition = connectorDefinition(platformId);
   const trouble = troubleshooting(platformId);
+  const provider = providerSetup(meta?.provider);
   const [step, setStep] = useState<Step>(openAt ?? "prepare");
   useEffect(() => {
     if (open) setStep(openAt ?? "prepare");
@@ -115,21 +126,42 @@ export function ConnectionWizard({
       <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {meta?.name ?? platformId} setup wizard
-            <Badge
-              variant={
-                status.tone === "good"
-                  ? "default"
-                  : status.tone === "bad"
-                    ? "destructive"
-                    : "secondary"
-              }
-            >
-              {status.label}
-            </Badge>
+            {tr("connectionWizard.setupWizard", {
+              value: meta?.name ?? platformId,
+              badge: (
+                <Badge
+                  variant={
+                    status.tone === "good"
+                      ? "default"
+                      : status.tone === "bad"
+                        ? "destructive"
+                        : "secondary"
+                  }
+                >
+                  {status.label}
+                </Badge>
+              ),
+            })}
           </DialogTitle>
           <DialogDescription>{status.reason}</DialogDescription>
         </DialogHeader>
+
+        {provider ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                <UserRoundCog className="size-3.5" /> {t("connectionWizard.ownerAdminOneTime")}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{provider.ownerTask}</p>
+            </div>
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
+                <UsersRound className="size-3.5" /> {t("connectionWizard.smmTeamPerClientChannel")}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{provider.connectionTask}</p>
+            </div>
+          </div>
+        ) : null}
 
         <Progress value={progress} className="h-1.5" />
 
@@ -142,7 +174,7 @@ export function ConnectionWizard({
               className="h-7 px-2 text-xs"
               onClick={() => setStep(s)}
             >
-              {s === "errors" ? STEP_TITLE[s] : `${i + 1}. ${STEP_TITLE[s]}`}
+              {s === "errors" ? stepTitle(s) : `${i + 1}. ${stepTitle(s)}`}
             </Button>
           ))}
         </div>
@@ -150,9 +182,7 @@ export function ConnectionWizard({
         <div className="space-y-4 text-sm">
           {step === "prepare" && (
             <section className="space-y-3">
-              <p className="text-muted-foreground">
-                Get these in place first — most failed connections are missing one of them.
-              </p>
+              <p className="text-muted-foreground">{t("connectionWizard.getTheseInPlaceFirst")}</p>
               <ul className="space-y-2">
                 {(guide?.requires ?? ["No special requirements for this platform."]).map((item) => (
                   <li key={item} className="flex gap-2">
@@ -161,10 +191,40 @@ export function ConnectionWizard({
                   </li>
                 ))}
               </ul>
+
+              {provider ? (
+                <div className="rounded-md border p-3">
+                  <p className="font-medium">{t("connectionWizard.officialSetupShortcuts")}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("connectionWizard.noTreasureHuntTheseOpen")}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {provider.links.map((link) => (
+                      <Button
+                        key={link.id}
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1 text-xs"
+                      >
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          title={link.description}
+                        >
+                          {link.label} <ExternalLink className="size-3" />
+                        </a>
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               {guide?.steps ? (
                 <div className="rounded-md border bg-muted/40 p-3">
-                  <p className="mb-1 font-medium">What happens, in order</p>
-                  <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
+                  <p className="mb-1 font-medium">{t("connectionWizard.whatHappensInOrder")}</p>
+                  <ol className="ms-4 list-decimal space-y-1 text-muted-foreground">
                     {guide.steps.map((s) => (
                       <li key={s}>{s}</li>
                     ))}
@@ -177,11 +237,18 @@ export function ConnectionWizard({
           {step === "verify" && (
             <section className="space-y-3">
               <p className="text-muted-foreground">
-                Tick each line once it is true.{" "}
-                {checklist.length > 0 ? `${doneCount}/${checklist.length} confirmed.` : ""}
+                {tr("connectionWizard.tickEachLineOnceIt", {
+                  value:
+                    checklist.length > 0
+                      ? t("connectionWizard.confirmed", {
+                          doneCount: doneCount,
+                          length: checklist.length,
+                        })
+                      : "",
+                })}
               </p>
               {checklist.length === 0 ? (
-                <p>Nothing to verify for this platform — continue to permissions.</p>
+                <p>{t("connectionWizard.nothingToVerifyForThis")}</p>
               ) : (
                 <ul className="space-y-2">
                   {checklist.map((item) => (
@@ -202,23 +269,49 @@ export function ConnectionWizard({
           )}
 
           {step === "credentials" && spec && (
-            <CredentialsStep
-              spec={spec}
-              platformName={meta?.name ?? platformId}
-              redirectUri={origin ? `${origin}${OAUTH_REDIRECT_PATH}` : ""}
-              onSaved={next}
-            />
+            <section className="space-y-3">
+              {provider ? (
+                <div className="rounded-md border bg-muted/40 p-3 text-xs">
+                  <p className="font-medium">{t("connectionWizard.whereAreTheKeys")}</p>
+                  <p className="mt-1 text-muted-foreground">
+                    {t("connectionWizard.openTheOfficialProviderPage")}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {provider.links
+                      .filter((link) => link.id === "apps" || link.id === "credentials")
+                      .map((link) => (
+                        <Button
+                          key={link.id}
+                          asChild
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1 text-xs"
+                        >
+                          <a href={link.url} target="_blank" rel="noreferrer noopener">
+                            {link.label} <ExternalLink className="size-3" />
+                          </a>
+                        </Button>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
+              <CredentialsStep
+                spec={spec}
+                platformName={meta?.name ?? platformId}
+                redirectUri={origin ? `${origin}${OAUTH_REDIRECT_PATH}` : ""}
+                onSaved={next}
+              />
+            </section>
           )}
 
           {step === "permissions" && (
             <section className="space-y-3">
               <div>
-                <p className="mb-1 font-medium">Permissions Flas will request</p>
+                <p className="mb-1 font-medium">
+                  {t("connectionWizard.permissionsFlasWillRequest")}
+                </p>
                 {/* Straight from the registry, which is the same list
-                    oauth.server.ts puts in the authorization URL. The wizard
-                    used to keep its own copy and it had drifted -- it promised
-                    instagram_manage_messages and tiktok video.publish, neither
-                    of which was ever requested. */}
+                    oauth.server.ts puts in the authorization URL. */}
                 {definition && definition.requestedScopes.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
                     {definition.requestedScopes.map((scope) => (
@@ -229,68 +322,109 @@ export function ConnectionWizard({
                   </div>
                 ) : (
                   <p className="text-muted-foreground">
-                    This platform is configured manually inside Flas — no OAuth permissions needed.
+                    {t("connectionWizard.thisPlatformIsConfiguredManually")}
                   </p>
                 )}
-                {/* Provider-specific, never generic. The previous copy warned
-                    every connector that "DMs stop arriving", including the
-                    nine that have no direct-message API at all. */}
                 {definition && definition.requestedScopes.length > 0 && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Keep every toggle on. Declining one disables exactly the feature it covers:{" "}
-                    {advertisableCapabilities(definition)
-                      .map((cap) => CAPABILITY_LABELS[cap.key].toLowerCase())
-                      .join(", ") || "profile access"}
-                    .
-                  </p>
+                  <div className="mt-2 rounded-md border bg-muted/40 p-3 text-xs">
+                    <p className="font-medium">
+                      {t("connectionWizard.grantTheFullFlasPermission")}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      {t("connectionWizard.approveEveryPermissionFlasRequests")}
+                    </p>
+                    <p className="mt-2 text-muted-foreground">
+                      {tr("connectionWizard.thesePermissionsPower", {
+                        value:
+                          advertisableCapabilities(definition)
+                            .map((cap) => CAPABILITY_LABELS[cap.key].toLowerCase())
+                            .join(", ") || t("connectionWizard.profileAccess"),
+                      })}
+                    </p>
+                  </div>
                 )}
               </div>
+
+              {provider ? (
+                <div className="flex flex-wrap gap-2">
+                  {provider.links
+                    .filter(
+                      (link) =>
+                        link.id === "permissions" || link.id === "review" || link.id === "api",
+                    )
+                    .map((link) => (
+                      <Button
+                        key={link.id}
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1 text-xs"
+                      >
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          title={link.description}
+                        >
+                          {link.label} <ExternalLink className="size-3" />
+                        </a>
+                      </Button>
+                    ))}
+                </div>
+              ) : null}
+
               {trouble?.reviewTimeline ? (
                 <div className="flex gap-2 rounded-md border bg-muted/40 p-3">
                   <Clock className="mt-0.5 size-4 shrink-0" />
                   <div>
-                    <p className="font-medium">Expected review timeline</p>
+                    <p className="font-medium">{t("connectionWizard.expectedReviewTimeline")}</p>
                     <p className="text-muted-foreground">{trouble.reviewTimeline}</p>
                   </div>
                 </div>
               ) : null}
               <p className="text-xs text-muted-foreground">
-                Redirect URI to whitelist in your provider app:{" "}
-                <span className="break-all font-mono">
-                  https://flas.mobidigisol.com{OAUTH_REDIRECT_PATH}
-                </span>
+                {tr("connectionWizard.redirectUriToWhitelistIn", {
+                  span: (
+                    <span className="break-all font-mono">
+                      {origin
+                        ? `${origin}${OAUTH_REDIRECT_PATH}`
+                        : `https://flas.mobidigisol.com${OAUTH_REDIRECT_PATH}`}
+                    </span>
+                  ),
+                })}
               </p>
             </section>
           )}
 
           {step === "connect" && (
             <section className="space-y-3">
-              <p className="text-muted-foreground">
-                Flas opens the platform's official login in a new browser tab — providers such as
-                Meta and Google refuse to load inside embedded frames, so this is expected.
-              </p>
-              <ol className="ml-4 list-decimal space-y-1 text-muted-foreground">
-                <li>Press Connect below; approve everything on the platform screen.</li>
-                <li>Return to this tab — the card flips to Connected within a few seconds.</li>
-                <li>If it still says Not connected, open “Common errors” for the exact cause.</li>
+              <p className="text-muted-foreground">{t("connectionWizard.flasOpensThePlatformS")}</p>
+              <ol className="ms-4 list-decimal space-y-1 text-muted-foreground">
+                <li>{t("connectionWizard.pressConnectBelowAndSign")}</li>
+                <li>{t("connectionWizard.approveEveryPermissionFlasShows")}</li>
+                <li>{t("connectionWizard.returnToFlasTheConnection")}</li>
+                <li>{t("connectionWizard.ifSomethingIsMissingFlas")}</li>
               </ol>
               <div className="flex flex-wrap gap-2">
                 {meta?.oauth ? (
                   <Button disabled={connecting} onClick={onConnect}>
-                    {connecting ? "Opening…" : "Connect securely"}{" "}
-                    <ArrowRight className="ml-1 size-4" />
+                    {connecting
+                      ? t("connectionWizard.opening")
+                      : t("connectionWizard.connectSecurely")}{" "}
+                    <ArrowRight className="ms-1 size-4" />
                   </Button>
                 ) : null}
                 {meta?.manageUrl ? (
                   <Button asChild variant="outline">
                     <a href={meta.manageUrl} target="_blank" rel="noreferrer noopener">
-                      Platform settings <ExternalLink className="ml-1 size-3" />
+                      {t("connectionWizard.platformSettings")}{" "}
+                      <ExternalLink className="ms-1 size-3" />
                     </a>
                   </Button>
                 ) : null}
               </div>
               <div className="rounded-md border p-3">
-                <p className="font-medium">Current status</p>
+                <p className="font-medium">{t("connectionWizard.currentStatus")}</p>
                 <p className="text-muted-foreground">{status.reason}</p>
                 <p className="mt-1 flex gap-1.5">
                   <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
@@ -303,7 +437,9 @@ export function ConnectionWizard({
           {step === "errors" && (
             <section className="space-y-3">
               {(trouble?.errors ?? []).length === 0 ? (
-                <p className="text-muted-foreground">No known platform errors recorded yet.</p>
+                <p className="text-muted-foreground">
+                  {t("connectionWizard.noKnownPlatformErrorsRecorded")}
+                </p>
               ) : (
                 trouble?.errors.map((entry) => (
                   <div key={entry.error} className="rounded-md border p-3">
@@ -312,14 +448,18 @@ export function ConnectionWizard({
                       {entry.error}
                     </p>
                     <p className="mt-1.5 text-muted-foreground">{entry.means}</p>
-                    <p className="mt-1 font-medium">Fix: {entry.fix}</p>
+                    <p className="mt-1 font-medium">
+                      {tr("connectionWizard.fix", { fix: entry.fix })}
+                    </p>
                   </div>
                 ))
               )}
               {guide?.gotchas?.length ? (
                 <div className="rounded-md border bg-muted/40 p-3">
-                  <p className="mb-1 font-medium">Platform limits worth knowing</p>
-                  <ul className="ml-4 list-disc space-y-1 text-muted-foreground">
+                  <p className="mb-1 font-medium">
+                    {t("connectionWizard.platformLimitsWorthKnowing")}
+                  </p>
+                  <ul className="ms-4 list-disc space-y-1 text-muted-foreground">
                     {guide.gotchas.map((g) => (
                       <li key={g}>{g}</li>
                     ))}
@@ -336,10 +476,10 @@ export function ConnectionWizard({
             onClick={() => setStep(STEP_ORDER[Math.max(STEP_ORDER.indexOf(step) - 1, 0)] as Step)}
             disabled={step === "prepare"}
           >
-            Back
+            {t("connectionWizard.back")}
           </Button>
           <Button variant="outline" onClick={next} disabled={step === "errors"}>
-            Next step
+            {t("connectionWizard.nextStep")}
           </Button>
         </div>
       </DialogContent>

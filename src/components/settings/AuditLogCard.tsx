@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { listAuditLog } from "@/lib/audit.functions";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
 
 const ACTION_LABELS: Record<string, string> = {
   "consent.capture": "Consent captured",
@@ -27,6 +29,7 @@ const ACTION_LABELS: Record<string, string> = {
 
 /** Append-only compliance trail for this workspace, newest first. */
 export function AuditLogCard() {
+  const { t } = useI18n();
   const listFn = useServerFn(listAuditLog);
   const entries = useQuery({
     queryKey: ["audit-log"],
@@ -37,15 +40,12 @@ export function AuditLogCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Audit log</CardTitle>
-        <CardDescription>
-          Every consent capture, routing decision, import/export and message action — kept for
-          compliance and troubleshooting. Entries cannot be edited or deleted.
-        </CardDescription>
+        <CardTitle className="text-base">{t("settings.audit.title")}</CardTitle>
+        <CardDescription>{t("settings.audit.desc")}</CardDescription>
       </CardHeader>
       <CardContent>
         {(entries.data ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">No events recorded yet.</p>
+          <p className="text-sm text-muted-foreground">{t("settings.audit.empty")}</p>
         ) : (
           <div className="max-h-96 space-y-1.5 overflow-y-auto">
             {(entries.data ?? []).map((e) => (
@@ -54,13 +54,15 @@ export function AuditLogCard() {
                 className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
               >
                 <Badge variant="secondary" className="text-[10px]">
-                  {ACTION_LABELS[e.action] ?? e.action}
+                  {hasMessage(`settings.audit.action.${e.action}`)
+                    ? t(`settings.audit.action.${e.action}` as MessageKey)
+                    : (ACTION_LABELS[e.action] ?? e.action)}
                 </Badge>
                 <span className="text-muted-foreground">
-                  {e.actor_label ?? "system"}
+                  {e.actor_label ?? t("settings.audit.system")}
                   {e.entity_id ? ` · ${e.entity_id.slice(0, 18)}` : ""}
                 </span>
-                <span className="ml-auto shrink-0 text-muted-foreground">
+                <span className="ms-auto shrink-0 text-muted-foreground">
                   {new Date(e.created_at).toLocaleString()}
                 </span>
                 {e.action === "message.blocked" && (
