@@ -254,6 +254,17 @@ function ContactsPage() {
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (contacts.data ?? []).filter(
+      (c) =>
+        !q ||
+        c.name.toLowerCase().includes(q) ||
+        (c.phone ?? "").includes(q) ||
+        (c.company ?? "").toLowerCase().includes(q),
+    );
+  }, [contacts.data, search]);
+
   if (contacts.isLoading)
     return (
       <div className="space-y-3 p-6">
@@ -268,17 +279,6 @@ function ContactsPage() {
         ))}
       </div>
     );
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return (contacts.data ?? []).filter(
-      (c) =>
-        !q ||
-        c.name.toLowerCase().includes(q) ||
-        (c.phone ?? "").includes(q) ||
-        (c.company ?? "").toLowerCase().includes(q),
-    );
-  }, [contacts.data, search]);
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
