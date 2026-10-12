@@ -9,7 +9,8 @@
 import { BUILT_IN_EMAIL_TEMPLATES, substituteMergeTags } from "./email-templates.ts";
 import crypto from "node:crypto";
 
-const UNSUBSCRIBE_SECRET = process.env["EMAIL_UNSUBSCRIBE_SECRET"] || "flas_email_marketing_unsub_secret_2026";
+const UNSUBSCRIBE_SECRET =
+  process.env["EMAIL_UNSUBSCRIBE_SECRET"] || "flas_email_marketing_unsub_secret_2026";
 
 export interface IngestLeadOptions {
   tenantId: string;
@@ -24,7 +25,11 @@ export interface IngestLeadOptions {
 /**
  * Creates an HMAC-SHA256 signed unsubscribe token containing email, tenantId and timestamp.
  */
-export function generateUnsubscribeToken(email: string, tenantId: string, ttlSeconds = 60 * 60 * 24 * 365): string {
+export function generateUnsubscribeToken(
+  email: string,
+  tenantId: string,
+  ttlSeconds = 60 * 60 * 24 * 365,
+): string {
   const payload = {
     email: email.toLowerCase().trim(),
     tenantId,
@@ -51,11 +56,17 @@ export function verifyUnsubscribeToken(token: string): {
     }
     const data = parts[0];
     const sig = parts[1];
-    const expectedSig = crypto.createHmac("sha256", UNSUBSCRIBE_SECRET).update(data).digest("base64url");
+    const expectedSig = crypto
+      .createHmac("sha256", UNSUBSCRIBE_SECRET)
+      .update(data)
+      .digest("base64url");
 
     const sigBuf = Buffer.from(sig);
     const expectedSigBuf = Buffer.from(expectedSig);
-    if (sigBuf.length !== expectedSigBuf.length || !crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
+    if (
+      sigBuf.length !== expectedSigBuf.length ||
+      !crypto.timingSafeEqual(sigBuf, expectedSigBuf)
+    ) {
       return { valid: false, error: "Invalid signature" };
     }
 
@@ -78,7 +89,15 @@ export function verifyUnsubscribeToken(token: string): {
  * Ingest a lead from widget or website, enforcing consent gating and triggering welcome automation.
  */
 export async function ingestLead(options: IngestLeadOptions) {
-  const { tenantId, email, name, phone, source = "website_widget", sourceUrl, consentGiven = false } = options;
+  const {
+    tenantId,
+    email,
+    name,
+    phone,
+    source = "website_widget",
+    sourceUrl,
+    consentGiven = false,
+  } = options;
   const cleanEmail = email.toLowerCase().trim();
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

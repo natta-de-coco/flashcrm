@@ -103,11 +103,13 @@ function UnsubscribePage() {
         <CardContent className="space-y-4 text-center">
           {data.ok ? (
             <p className="text-sm text-muted-foreground">
-              Your preferences have been updated immediately across our systems. You may still receive critical transactional notices regarding your active account or orders.
+              Your preferences have been updated immediately across our systems. You may still
+              receive critical transactional notices regarding your active account or orders.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              If you wish to manage your email preferences, please contact support or reply to the email you received.
+              If you wish to manage your email preferences, please contact support or reply to the
+              email you received.
             </p>
           )}
 

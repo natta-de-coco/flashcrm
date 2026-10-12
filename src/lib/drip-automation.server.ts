@@ -65,7 +65,8 @@ export async function getOrCreateDefaultSequence(tenantId: string): Promise<stri
     .insert({
       tenant_id: tenantId,
       name: "New Lead Welcome & 7-Day Growth Nurture",
-      description: "Automated 3-step funnel: Day 0 Welcome Discount -> Day 3 Showcase -> Day 7 Expiry",
+      description:
+        "Automated 3-step funnel: Day 0 Welcome Discount -> Day 3 Showcase -> Day 7 Expiry",
       trigger_event: "lead_consented_intake",
       active: true,
     })
@@ -199,7 +200,11 @@ export async function dispatchDripStepForEnrollment(args: {
 
   // 2. Fetch tenant company and SMTP configuration
   const [{ data: company }, { data: smtp }] = await Promise.all([
-    (db as any).from("business_profiles").select("business_name").eq("tenant_id", tenantId).maybeSingle(),
+    (db as any)
+      .from("business_profiles")
+      .select("business_name")
+      .eq("tenant_id", tenantId)
+      .maybeSingle(),
     (db as any).from("tenant_smtp_config").select("*").eq("tenant_id", tenantId).maybeSingle(),
   ]);
 
@@ -293,7 +298,10 @@ export async function dispatchDripStepForEnrollment(args: {
 /**
  * Instantly cancels all active drip enrollments when a user clicks unsubscribe.
  */
-export async function cancelDripEnrollmentsForEmail(tenantId: string, email: string): Promise<number> {
+export async function cancelDripEnrollmentsForEmail(
+  tenantId: string,
+  email: string,
+): Promise<number> {
   const cleanEmail = email.toLowerCase().trim();
   const { data, error } = await (db as any)
     .from("drip_enrollments")
@@ -313,4 +321,3 @@ export async function cancelDripEnrollmentsForEmail(tenantId: string, email: str
 
   return data?.length ?? 0;
 }
-

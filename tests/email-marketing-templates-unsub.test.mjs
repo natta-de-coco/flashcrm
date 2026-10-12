@@ -38,12 +38,17 @@ describe("Email Marketing: Template Presets & Standards", () => {
       assert.ok(tpl.subject.length > 5, "Template must have subject");
       assert.ok(tpl.htmlContent.length > 100, "Template must contain HTML body");
       assert.ok(tpl.defaultImageUrl, "Template must provide default hero image");
-      assert.match(tpl.htmlContent, /\{\{unsubscribe_url\}\}/, "Template must have unsubscribe placeholder");
+      assert.match(
+        tpl.htmlContent,
+        /\{\{unsubscribe_url\}\}/,
+        "Template must have unsubscribe placeholder",
+      );
     }
   });
 
   test("Dynamic merge tags substitution replaces all placeholders", () => {
-    const raw = "Hello {{name}}! Welcome to {{company}}. Your code is {{discount_code}}. Unsub: {{unsubscribe_url}}";
+    const raw =
+      "Hello {{name}}! Welcome to {{company}}. Your code is {{discount_code}}. Unsub: {{unsubscribe_url}}";
     const rendered = substituteMergeTags(raw, {
       name: "Fatima",
       company: "Acme UAE",
@@ -53,7 +58,7 @@ describe("Email Marketing: Template Presets & Standards", () => {
 
     assert.equal(
       rendered,
-      "Hello Fatima! Welcome to Acme UAE. Your code is SPECIAL50. Unsub: https://flas.app/unsubscribe?token=xyz"
+      "Hello Fatima! Welcome to Acme UAE. Your code is SPECIAL50. Unsub: https://flas.app/unsubscribe?token=xyz",
     );
     assert.equal(rendered.includes("{{"), false, "All tags must be substituted");
   });
