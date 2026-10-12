@@ -9,7 +9,8 @@
 import { BUILT_IN_EMAIL_TEMPLATES, substituteMergeTags } from "./email-templates.ts";
 import crypto from "node:crypto";
 
-const UNSUBSCRIBE_SECRET = process.env["EMAIL_UNSUBSCRIBE_SECRET"] || "flas_email_marketing_unsub_secret_2026";
+const UNSUBSCRIBE_SECRET =
+  process.env["EMAIL_UNSUBSCRIBE_SECRET"] || "flas_email_marketing_unsub_secret_2026";
 
 export interface IngestLeadOptions {
   tenantId: string;
@@ -24,7 +25,11 @@ export interface IngestLeadOptions {
 /**
  * Creates an HMAC-SHA256 signed unsubscribe token containing email, tenantId and timestamp.
  */
-export function generateUnsubscribeToken(email: string, tenantId: string, ttlSeconds = 60 * 60 * 24 * 365): string {
+export function generateUnsubscribeToken(
+  email: string,
+  tenantId: string,
+  ttlSeconds = 60 * 60 * 24 * 365,
+): string {
   const payload = {
     email: email.toLowerCase().trim(),
     tenantId,
@@ -51,11 +56,17 @@ export function verifyUnsubscribeToken(token: string): {
     }
     const data = parts[0];
     const sig = parts[1];
-    const expectedSig = crypto.createHmac("sha256", UNSUBSCRIBE_SECRET).update(data).digest("base64url");
+    const expectedSig = crypto
+      .createHmac("sha256", UNSUBSCRIBE_SECRET)
+      .update(data)
+      .digest("base64url");
 
     const sigBuf = Buffer.from(sig);
     const expectedSigBuf = Buffer.from(expectedSig);
-    if (sigBuf.length !== expectedSigBuf.length || !crypto.timingSafeEqual(sigBuf, expectedSigBuf)) {
+    if (
+      sigBuf.length !== expectedSigBuf.length ||
+      !crypto.timingSafeEqual(sigBuf, expectedSigBuf)
+    ) {
       return { valid: false, error: "Invalid signature" };
     }
 
@@ -78,7 +89,15 @@ export function verifyUnsubscribeToken(token: string): {
  * Ingest a lead from widget or website, enforcing consent gating and triggering welcome automation.
  */
 export async function ingestLead(options: IngestLeadOptions) {
-  const { tenantId, email, name, phone, source = "website_widget", sourceUrl, consentGiven = false } = options;
+  const {
+    tenantId,
+    email,
+    name,
+    phone,
+    source = "website_widget",
+    sourceUrl,
+    consentGiven = false,
+  } = options;
   const cleanEmail = email.toLowerCase().trim();
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -94,7 +113,7 @@ export async function ingestLead(options: IngestLeadOptions) {
   const finalConsent = existing?.consent_given ? true : Boolean(consentGiven);
   const isNewlyConsented = !existing?.consent_given && Boolean(consentGiven);
 
-  const payload: Record<string, any> = {
+  const payload: Record<string, string | boolean | null | undefined> = {
     email: cleanEmail,
     name: name || undefined,
     phone: phone || undefined,
@@ -111,7 +130,7 @@ export async function ingestLead(options: IngestLeadOptions) {
 
   const { data: savedLead, error } = await supabaseAdmin
     .from("leads")
-    .upsert(payload, { onConflict: "email" })
+    .upsert(payload as never, { onConflict: "email" })
     .select()
     .single();
 
@@ -179,7 +198,19 @@ export async function triggerLeadWelcomeAutomation(params: {
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
-  const r = config as any;
+  interface TenantSmtpConfigRow {
+    from_name?: string | null;
+    from_email?: string | null;
+    smtp_host?: string | null;
+    smtp_user?: string | null;
+    smtp_pass_enc?: string | null;
+    verified?: boolean | null;
+    welcome_email_enabled?: boolean | null;
+    welcome_discount_code?: string | null;
+    welcome_discount_percent?: number | null;
+    welcome_subject?: string | null;
+  }
+  const r = config as TenantSmtpConfigRow | null;
   if (!r || r.welcome_email_enabled === false) {
     return { skipped: true, reason: "Welcome automation disabled" };
   }
@@ -209,7 +240,7 @@ export async function triggerLeadWelcomeAutomation(params: {
     try {
       await supabaseAdmin.rpc("log_email_delivery", {
         _tenant_id: tenantId,
-        _user_id: undefined as any,
+        _user_id: null,
         _recipient: email,
         _from_address: r.from_email || "no-reply@mobidigisol.com",
         _subject: subject,
@@ -219,8 +250,10 @@ export async function triggerLeadWelcomeAutomation(params: {
         _status: "failed",
         _error: "Tenant SMTP unverified",
         _meta: { error: "Tenant SMTP unverified", discount_code: discountCode },
-      });
-    } catch {}
+      } as never);
+    } catch (rpcErr) {
+      console.warn("[welcome-automation] Failed to log unverified SMTP attempt", rpcErr);
+    }
 
     return { ok: false, error: "Tenant SMTP is unverified" };
   }
@@ -237,26 +270,29 @@ export async function triggerLeadWelcomeAutomation(params: {
     try {
       await supabaseAdmin.rpc("log_email_delivery", {
         _tenant_id: tenantId,
-        _user_id: undefined as any,
+        _user_id: null,
         _recipient: email,
-        _from_address: r.from_email || r.smtp_user,
+        _from_address: r.from_email || r.smtp_user || "no-reply@mobidigisol.com",
         _subject: subject,
         _template: "welcome_discount",
         _provider: "smtp_relay",
         _provider_msg_id: `welcome_${Date.now()}`,
         _status: "delivered",
-        _error: undefined as any,
+        _error: null,
         _meta: { discount_code: discountCode, discount_percent: discountPercent },
-      });
-    } catch {}
+      } as never);
+    } catch (rpcErr) {
+      console.warn("[welcome-automation] Failed to log delivery", rpcErr);
+    }
 
     return { ok: true, discountCode };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
     console.error("[welcome-automation] Dispatch error", err);
     try {
       await supabaseAdmin.rpc("log_email_delivery", {
         _tenant_id: tenantId,
-        _user_id: undefined as any,
+        _user_id: null,
         _recipient: email,
         _from_address: r.from_email || "no-reply@mobidigisol.com",
         _subject: subject,
@@ -264,11 +300,13 @@ export async function triggerLeadWelcomeAutomation(params: {
         _provider: "smtp_relay",
         _provider_msg_id: `welcome_${Date.now()}`,
         _status: "failed",
-        _error: err.message,
-        _meta: { error: err.message },
-      });
-    } catch {}
+        _error: errorMsg,
+        _meta: { error: errorMsg },
+      } as never);
+    } catch (rpcErr) {
+      console.warn("[welcome-automation] Failed to log dispatch failure", rpcErr);
+    }
 
-    return { ok: false, error: err.message };
+    return { ok: false, error: errorMsg };
   }
 }

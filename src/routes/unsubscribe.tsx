@@ -52,17 +52,28 @@ const processUnsubscribeFn = createServerFn({ method: "POST" })
     };
   });
 
-export const Route = (createFileRoute as any)("/unsubscribe")({
-  validateSearch: (search: Record<string, unknown>) => ({
+type UnsubscribeLoaderData =
+  { ok: true; email: string; error?: never } | { ok: false; error: string; email?: never };
+
+interface UnsubscribeSearch {
+  token?: string;
+}
+
+export const Route = createFileRoute("/unsubscribe")({
+  validateSearch: (search: Record<string, unknown>): UnsubscribeSearch => ({
     token: typeof search["token"] === "string" ? (search["token"] as string) : "",
   }),
-  loaderDeps: ({ search }: { search: Record<string, any> }) => ({ token: search["token"] }),
-  loader: async ({ deps }: { deps: Record<string, any> }) => {
-    const token = deps["token"];
+  loaderDeps: ({ search }) => ({ token: search.token }),
+  loader: async ({ deps }): Promise<UnsubscribeLoaderData> => {
+    const token = deps.token;
     if (!token) {
       return { ok: false, error: "No unsubscribe token provided" };
     }
-    return await processUnsubscribeFn({ data: { token } });
+    const res = await processUnsubscribeFn({ data: { token } });
+    if (!res.ok) {
+      return { ok: false, error: res.error || "Failed to process unsubscribe" };
+    }
+    return { ok: true, email: res.email || "" };
   },
   head: () => ({
     meta: [
@@ -103,11 +114,13 @@ function UnsubscribePage() {
         <CardContent className="space-y-4 text-center">
           {data.ok ? (
             <p className="text-sm text-muted-foreground">
-              Your preferences have been updated immediately across our systems. You may still receive critical transactional notices regarding your active account or orders.
+              Your preferences have been updated immediately across our systems. You may still
+              receive critical transactional notices regarding your active account or orders.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              If you wish to manage your email preferences, please contact support or reply to the email you received.
+              If you wish to manage your email preferences, please contact support or reply to the
+              email you received.
             </p>
           )}
 
