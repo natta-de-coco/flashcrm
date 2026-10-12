@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -2429,12 +2429,20 @@ export type Database = {
           body: string
           conversation_id: string
           created_at: string
+          delivered_at: string | null
           detected_language: string | null
           direction: Database["public"]["Enums"]["msg_direction"]
+          failed_at: string | null
+          failure_code: number | null
+          failure_reason: string | null
           id: string
+          media: Json | null
           media_url: string | null
+          origin: string | null
+          read_at: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id: string | null
+          sent_at: string | null
           status: string
           tenant_id: string
           translated_body: string | null
@@ -2444,12 +2452,20 @@ export type Database = {
           body?: string
           conversation_id: string
           created_at?: string
+          delivered_at?: string | null
           detected_language?: string | null
           direction: Database["public"]["Enums"]["msg_direction"]
+          failed_at?: string | null
+          failure_code?: number | null
+          failure_reason?: string | null
           id?: string
+          media?: Json | null
           media_url?: string | null
+          origin?: string | null
+          read_at?: string | null
           sender: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
+          sent_at?: string | null
           status?: string
           tenant_id?: string
           translated_body?: string | null
@@ -2459,12 +2475,20 @@ export type Database = {
           body?: string
           conversation_id?: string
           created_at?: string
+          delivered_at?: string | null
           detected_language?: string | null
           direction?: Database["public"]["Enums"]["msg_direction"]
+          failed_at?: string | null
+          failure_code?: number | null
+          failure_reason?: string | null
           id?: string
+          media?: Json | null
           media_url?: string | null
+          origin?: string | null
+          read_at?: string | null
           sender?: Database["public"]["Enums"]["msg_sender"]
           sender_id?: string | null
+          sent_at?: string | null
           status?: string
           tenant_id?: string
           translated_body?: string | null
@@ -4257,8 +4281,51 @@ export type Database = {
           },
         ]
       }
+      tenant_ai_settings: {
+        Row: {
+          fallback_enabled: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          fallback_enabled?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          fallback_enabled?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_ai_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_ai_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_ai_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
       tenant_bot_settings: {
         Row: {
+          auto_enroll_new_chats: boolean
+          automation_changed_at: string | null
+          automation_changed_by: string | null
           bot_name: string
           business_hours_only: boolean
           enabled: boolean
@@ -4270,6 +4337,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_enroll_new_chats?: boolean
+          automation_changed_at?: string | null
+          automation_changed_by?: string | null
           bot_name?: string
           business_hours_only?: boolean
           enabled?: boolean
@@ -4281,6 +4351,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_enroll_new_chats?: boolean
+          automation_changed_at?: string | null
+          automation_changed_by?: string | null
           bot_name?: string
           business_hours_only?: boolean
           enabled?: boolean
@@ -4791,6 +4864,180 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_campaign_recipients: {
+        Row: {
+          campaign_id: string
+          consent_recorded_at: string | null
+          contact_id: string | null
+          created_at: string
+          delivered_at: string | null
+          failure_reason: string | null
+          id: string
+          marketing_kind: string
+          opt_in_source: string | null
+          read_at: string | null
+          recipient_name: string | null
+          recipient_phone: string
+          replied_at: string | null
+          sent_at: string | null
+          status: string
+          template_language: string
+          template_name: string
+          tenant_id: string
+          updated_at: string
+          wa_message_id: string | null
+          wa_number_id: string | null
+        }
+        Insert: {
+          campaign_id: string
+          consent_recorded_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          failure_reason?: string | null
+          id?: string
+          marketing_kind?: string
+          opt_in_source?: string | null
+          read_at?: string | null
+          recipient_name?: string | null
+          recipient_phone: string
+          replied_at?: string | null
+          sent_at?: string | null
+          status?: string
+          template_language: string
+          template_name: string
+          tenant_id: string
+          updated_at?: string
+          wa_message_id?: string | null
+          wa_number_id?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          consent_recorded_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          failure_reason?: string | null
+          id?: string
+          marketing_kind?: string
+          opt_in_source?: string | null
+          read_at?: string | null
+          recipient_name?: string | null
+          recipient_phone?: string
+          replied_at?: string | null
+          sent_at?: string | null
+          status?: string
+          template_language?: string
+          template_name?: string
+          tenant_id?: string
+          updated_at?: string
+          wa_message_id?: string | null
+          wa_number_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_campaign_recipients_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_campaign_recipients_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_campaign_recipients_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_campaign_recipients_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_campaign_recipients_wa_number_id_fkey"
+            columns: ["wa_number_id"]
+            isOneToOne: false
+            referencedRelation: "wa_numbers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_marketing_suppressions: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          id: string
+          normalized_phone: string
+          note: string | null
+          reason: string
+          tenant_id: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          normalized_phone: string
+          note?: string | null
+          reason: string
+          tenant_id: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          normalized_phone?: string
+          note?: string | null
+          reason?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_marketing_suppressions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_marketing_suppressions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_marketing_suppressions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_marketing_suppressions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
       wordpress_sites: {
         Row: {
           app_password: string
@@ -5051,6 +5298,10 @@ export type Database = {
           provider: string
         }[]
       }
+      get_tenant_ai_resilience: {
+        Args: { _tenant_id: string }
+        Returns: boolean
+      }
       get_tenant_smtp_api_key: { Args: { _tenant_id: string }; Returns: string }
       has_active_subscription: {
         Args: { check_env?: string; user_uuid: string }
@@ -5200,6 +5451,10 @@ export type Database = {
       rotate_wa_number_app_secret: {
         Args: { _new_secret: string; _wa_number_id: string }
         Returns: boolean
+      }
+      set_tenant_ai_resilience: {
+        Args: { _enabled: boolean; _tenant_id: string }
+        Returns: undefined
       }
       set_tenant_smtp_api_key: {
         Args: { _api_key: string }

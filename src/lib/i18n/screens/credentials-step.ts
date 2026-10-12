@@ -7,10 +7,11 @@ export default screen({
   en: {
     "credentialsStep.appDetailsSavedProviderSign":
       "App details saved. Provider sign-in is still needed to connect your account.",
-    "credentialsStep.numberConnected": "Number connected.",
+    "credentialsStep.numberConnected": "Number saved. Meta access verified.",
     "credentialsStep.saved": "Saved",
     "credentialsStep.moveOnToTheLast": "Move on to the last step to run the secure login.",
-    "credentialsStep.flasCanNowSendAnd": "Flas can now send and receive on this number.",
+    "credentialsStep.flasCanNowSendAnd":
+      "Number access is verified. Finish the Meta webhook setup, then test sending and receiving before using this number with customers.",
     "credentialsStep.theseAreYourOwnApp":
       "These are your own app keys, so {platformName} talks to your business rather than to Flas. You enter them once.",
     "credentialsStep.theSameKeysAlsoConnect":
@@ -25,10 +26,11 @@ export default screen({
   ar: {
     "credentialsStep.appDetailsSavedProviderSign":
       "حُفظت تفاصيل التطبيق. ما زال تسجيل الدخول لدى المزوّد مطلوبًا لربط حسابك.",
-    "credentialsStep.numberConnected": "رُبط الرقم.",
+    "credentialsStep.numberConnected": "تم حفظ الرقم والتحقق من الوصول إلى Meta.",
     "credentialsStep.saved": "حُفظ",
     "credentialsStep.moveOnToTheLast": "انتقل إلى الخطوة الأخيرة لتشغيل تسجيل الدخول الآمن.",
-    "credentialsStep.flasCanNowSendAnd": "يستطيع Flas الآن الإرسال والاستقبال على هذا الرقم.",
+    "credentialsStep.flasCanNowSendAnd":
+      "تم التحقق من الوصول إلى الرقم. أكمل إعداد webhook في Meta، ثم اختبر الإرسال والاستقبال قبل استخدام الرقم مع العملاء.",
     "credentialsStep.theseAreYourOwnApp":
       "هذه مفاتيح تطبيقك أنت، فيتعامل {platformName} مع نشاطك التجاري لا مع Flas. تدخلها مرة واحدة.",
     "credentialsStep.theSameKeysAlsoConnect":
@@ -44,11 +46,12 @@ export default screen({
   ms: {
     "credentialsStep.appDetailsSavedProviderSign":
       "Butiran aplikasi disimpan. Log masuk pembekal masih diperlukan untuk menyambungkan akaun anda.",
-    "credentialsStep.numberConnected": "Nombor disambungkan.",
+    "credentialsStep.numberConnected": "Nombor disimpan. Akses Meta disahkan.",
     "credentialsStep.saved": "Disimpan",
     "credentialsStep.moveOnToTheLast":
       "Teruskan ke langkah terakhir untuk menjalankan log masuk selamat.",
-    "credentialsStep.flasCanNowSendAnd": "Flas kini boleh menghantar dan menerima pada nombor ini.",
+    "credentialsStep.flasCanNowSendAnd":
+      "Akses nombor disahkan. Lengkapkan persediaan webhook Meta, kemudian uji penghantaran dan penerimaan sebelum menggunakan nombor ini dengan pelanggan.",
     "credentialsStep.theseAreYourOwnApp":
       "Ini kunci aplikasi anda sendiri, jadi {platformName} berurusan dengan perniagaan anda dan bukan dengan Flas. Anda memasukkannya sekali sahaja.",
     "credentialsStep.theSameKeysAlsoConnect":
@@ -64,12 +67,12 @@ export default screen({
   fil: {
     "credentialsStep.appDetailsSavedProviderSign":
       "Na-save ang mga detalye ng app. Kailangan pa rin ng sign-in sa provider para maikonekta ang iyong account.",
-    "credentialsStep.numberConnected": "Nakakonekta na ang numero.",
+    "credentialsStep.numberConnected": "Na-save ang numero. Naberipika ang access sa Meta.",
     "credentialsStep.saved": "Na-save",
     "credentialsStep.moveOnToTheLast":
       "Pumunta sa huling hakbang para patakbuhin ang secure na login.",
     "credentialsStep.flasCanNowSendAnd":
-      "Makakapagpadala at makakatanggap na ang Flas sa numerong ito.",
+      "Naberipika ang access sa numero. Kumpletuhin ang Meta webhook setup, pagkatapos ay subukan ang pagpapadala at pagtanggap bago gamitin sa mga customer.",
     "credentialsStep.theseAreYourOwnApp":
       "Sarili mong mga app key ang mga ito, kaya ang negosyo mo ang kausap ng {platformName} at hindi ang Flas. Isang beses mo lang itong ilalagay.",
     "credentialsStep.theSameKeysAlsoConnect":
@@ -85,10 +88,11 @@ export default screen({
   sw: {
     "credentialsStep.appDetailsSavedProviderSign":
       "Maelezo ya programu yamehifadhiwa. Bado unahitaji kuingia kwa mtoa huduma ili kuunganisha akaunti yako.",
-    "credentialsStep.numberConnected": "Namba imeunganishwa.",
+    "credentialsStep.numberConnected": "Namba imehifadhiwa. Ufikiaji wa Meta umethibitishwa.",
     "credentialsStep.saved": "Imehifadhiwa",
     "credentialsStep.moveOnToTheLast": "Nenda hatua ya mwisho ili kuendesha uingiaji salama.",
-    "credentialsStep.flasCanNowSendAnd": "Flas sasa inaweza kutuma na kupokea kwenye namba hii.",
+    "credentialsStep.flasCanNowSendAnd":
+      "Ufikiaji wa namba umethibitishwa. Kamilisha usanidi wa webhook ya Meta, kisha jaribu kutuma na kupokea kabla ya kutumia namba hii kwa wateja.",
     "credentialsStep.theseAreYourOwnApp":
       "Hizi ni funguo za programu yako mwenyewe, kwa hiyo {platformName} huzungumza na biashara yako badala ya Flas. Unaziweka mara moja.",
     "credentialsStep.theSameKeysAlsoConnect":

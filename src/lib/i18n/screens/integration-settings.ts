@@ -5,7 +5,7 @@ import { screen } from "../define";
 
 export default screen({
   en: {
-    "integrationSettings.numberConnected": "Number connected",
+    "integrationSettings.numberConnected": "Number saved. Meta access verified.",
     "integrationSettings.defaultNumberUpdated": "Default number updated",
     "integrationSettings.numberRemoved": "Number removed",
     "integrationSettings.templateAdded": "Template added",
@@ -81,7 +81,7 @@ export default screen({
     "integrationSettings.rejected": "rejected",
   },
   ar: {
-    "integrationSettings.numberConnected": "رُبط الرقم",
+    "integrationSettings.numberConnected": "تم حفظ الرقم والتحقق من الوصول إلى Meta.",
     "integrationSettings.defaultNumberUpdated": "حُدّث الرقم الافتراضي",
     "integrationSettings.numberRemoved": "أُزيل الرقم",
     "integrationSettings.templateAdded": "أُضيف القالب",
@@ -156,7 +156,7 @@ export default screen({
     "integrationSettings.rejected": "مرفوض",
   },
   ms: {
-    "integrationSettings.numberConnected": "Nombor disambungkan",
+    "integrationSettings.numberConnected": "Nombor disimpan. Akses Meta disahkan.",
     "integrationSettings.defaultNumberUpdated": "Nombor lalai dikemas kini",
     "integrationSettings.numberRemoved": "Nombor dibuang",
     "integrationSettings.templateAdded": "Templat ditambah",
@@ -233,7 +233,7 @@ export default screen({
     "integrationSettings.rejected": "ditolak",
   },
   fil: {
-    "integrationSettings.numberConnected": "Nakakonekta na ang numero",
+    "integrationSettings.numberConnected": "Na-save ang numero. Naberipika ang access sa Meta.",
     "integrationSettings.defaultNumberUpdated": "Na-update ang default na numero",
     "integrationSettings.numberRemoved": "Inalis ang numero",
     "integrationSettings.templateAdded": "Naidagdag ang template",
@@ -311,7 +311,7 @@ export default screen({
     "integrationSettings.rejected": "tinanggihan",
   },
   sw: {
-    "integrationSettings.numberConnected": "Namba imeunganishwa",
+    "integrationSettings.numberConnected": "Namba imehifadhiwa. Ufikiaji wa Meta umethibitishwa.",
     "integrationSettings.defaultNumberUpdated": "Namba chaguo-msingi imesasishwa",
     "integrationSettings.numberRemoved": "Namba imeondolewa",
     "integrationSettings.templateAdded": "Kiolezo kimeongezwa",
