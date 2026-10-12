@@ -1,4 +1,5 @@
 import { EmailMarketingCard } from "@/components/settings/EmailMarketingCard";
+import { MultiMailboxManagerCard } from "@/components/settings/MultiMailboxManagerCard";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 
@@ -36,7 +37,8 @@ function EmailSettingsPage() {
         </p>
       </header>
 
-      <div className="max-w-4xl">
+      <div className="max-w-4xl space-y-6">
+        <MultiMailboxManagerCard />
         <EmailMarketingCard />
       </div>
     </main>
