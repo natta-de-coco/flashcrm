@@ -8,17 +8,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connector, CONNECTORS } from "./connections-catalog";
 import type { AccountPlatform } from "./connections-catalog";
 import { connectionStatus } from "./connection-status";
-import {
-  CONNECTION_STATE_INFO,
-  classifyHealthObservation,
-  missingScopesFor,
-  type ConnectionState as LifecycleState,
-} from "./connection-state";
-import { redactSecrets } from "./integration-errors.server";
-import { encryptTokensForStorage, readStoredTokens } from "./social-token-store.server";
-import { readTokensForAccount, refreshAuthorization } from "./social-authorizations.server";
-import { declinedScopes } from "./social-channel-capabilities";
-import { connectorDefinition } from "./social-connector-definitions";
+import { missingScopesFor } from "./connection-state";
 import type { ConnectionState } from "./connection-status";
 import type { HealthReport, HealthRow } from "./integration-health";
 import { refreshAccessToken } from "./oauth.server";
@@ -46,22 +36,10 @@ type AccountRow = {
   next_retry_at: string | null;
   external_id: string | null;
   connect_method: string | null;
-  access_token_enc: string | null;
-  refresh_token_enc: string | null;
-  token_key_id: string | null;
-  connection_state: string;
-  last_validation_success_at: string | null;
-  legacy_manual_connection: boolean;
-  /** Batch 2A: set when the token lives on a shared social_authorizations row. */
-  authorization_id: string | null;
 };
 
 const ACCOUNT_COLUMNS =
-  "id, tenant_id, platform, label, active, access_token, refresh_token, access_token_enc, refresh_token_enc, token_key_id, token_expires_at, granted_scopes, permissions, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, authorization_id";
-
-/** The report shows status only; it never selects a token column. */
-const REPORT_COLUMNS =
-  "id, tenant_id, platform, label, active, token_expires_at, granted_scopes, permissions, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, authorization_id";
+  "id, tenant_id, platform, label, active, access_token, refresh_token, token_expires_at, granted_scopes, permissions, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method";
 
 function grantedScopes(row: AccountRow): string[] {
   if (row.granted_scopes?.length) return row.granted_scopes;
@@ -104,7 +82,7 @@ function nextStepFor(state: ConnectionState, row: AccountRow | undefined): strin
 export async function buildHealthReport(tenantId: string): Promise<HealthReport> {
   const [{ data: org }, { data: accounts }, { data: retries }] = await Promise.all([
     supabaseAdmin.from("organizations").select("name").eq("id", tenantId).maybeSingle(),
-    supabaseAdmin.from("social_accounts").select(REPORT_COLUMNS).eq("tenant_id", tenantId),
+    supabaseAdmin.from("social_accounts").select(ACCOUNT_COLUMNS).eq("tenant_id", tenantId),
     supabaseAdmin
       .from("connection_retry_log")
       .select("id, platform, outcome, reason, trigger, created_at")
@@ -114,7 +92,7 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
   ]);
 
   const byPlatform = new Map<string, AccountRow>();
-  for (const row of (accounts ?? []) as unknown as AccountRow[]) byPlatform.set(row.platform, row);
+  for (const row of (accounts ?? []) as AccountRow[]) byPlatform.set(row.platform, row);
 
   const totals: Record<ConnectionState, number> = {
     connected: 0,
@@ -140,7 +118,225 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
             external_id: row.external_id,
             connect_method: row.connect_method,
             label: row.label,
+            renews: Boolean(row.refresh_token),
+          }
+        : undefined,
+    );
+    totals[status.state] += 1;
+    return {
+      platform: c.id,
+      platform_name: c.name,
+      group: c.group,
+      account_label: row?.label ?? null,
+      state: status.state,
+      state_label: status.label,
+      reason: row?.status_reason ?? status.reason,
+      fix: status.fix,
+      last_error: row?.last_error ?? null,
+      last_error_at: row?.last_error_at ?? null,
+      last_synced_at: row?.last_synced_at ?? null,
+      token_expires_at: row?.token_expires_at ?? null,
+      granted_permissions: row ? grantedScopes(row) : [],
+      missing_permissions: row ? missingScopes(row) : [],
+      retry_count: row?.retry_count ?? 0,
+      next_retry_at: row?.next_retry_at ?? null,
+      next_step: nextStepFor(status.state, row),
+    };
+  });
 
+  // A dry run: it only counts, so opening the report never rewrites anything.
+  const sealing = await sealTenantSecrets(tenantId, { dryRun: true });
+
+  return {
+    organization: org?.name ?? "Your workspace",
+    generated_at: new Date().toISOString(),
+    totals,
+    connected: totals.connected,
+    needs_attention:
+      totals.needs_verification + totals.pending_review + totals.expired + totals.failing,
+    not_connected: totals.not_connected,
+    rows,
+    credentials: {
+      configured: sealing.configured,
+      plaintext: sealing.plaintext,
+      sealed: sealing.alreadySealed,
+    },
+    retries: retries ?? [],
+  };
+}
+
+export type RetryOutcome = {
+  platform: string;
+  outcome: "recovered" | "refreshed" | "healthy" | "failed" | "needs_reconnect" | "in_progress";
+  reason: string;
+};
+
+const BACKOFF_MINUTES = [15, 60, 240, 720, 1440];
+
+function backoffFrom(count: number): string {
+  const minutes = BACKOFF_MINUTES[Math.min(count, BACKOFF_MINUTES.length - 1)] ?? 1440;
+  return new Date(Date.now() + minutes * 60_000).toISOString();
+}
+
+/** Live permission probe — proves the token still works right now. */
+async function probeToken(
+  platform: string,
+  token: string,
+): Promise<{ ok: boolean; reason: string; scopes?: string[] }> {
+  const provider = connector(platform)?.provider;
+  try {
+    if (provider === "meta") {
+      // Validity is asked of /me, which answers for user and Page tokens
+      // alike. /me/permissions is a user-token edge; making it the test meant
+      // a connected Facebook Page, which holds a Page token, could fail the
+      // check and be marked broken while working. Permissions are read only
+      // when that edge answers.
+      const who = await fetch("https://graph.facebook.com/v21.0/me?fields=id", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const whoJson: any = await who.json().catch(() => ({}));
+      if (!who.ok || whoJson?.error) {
+        return {
+          ok: false,
+          reason: whoJson?.error?.message ?? `Meta rejected the token (HTTP ${who.status}).`,
+        };
+      }
+      const res = await fetch("https://graph.facebook.com/v21.0/me/permissions", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json: any = await res.json().catch(() => ({}));
+      const scopes: string[] | undefined =
+        res.ok && Array.isArray(json?.data)
+          ? json.data
+              .filter((p: any) => p.status === "granted")
+              .map((p: any) => String(p.permission))
+          : undefined;
+      return {
+        ok: true,
+        reason: "Meta confirmed the token is valid.",
+        ...(scopes ? { scopes } : {}),
+      };
+    }
+    if (provider === "google") {
+      const res = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`,
+      );
+      const json: any = await res.json();
+      if (!res.ok)
+        return { ok: false, reason: json?.error_description ?? "Google rejected the token." };
+      return {
+        ok: true,
+        reason: "Google confirmed the token is valid.",
+        scopes: String(json?.scope ?? "")
+          .split(" ")
+          .filter(Boolean),
+      };
+    }
+    if (provider === "linkedin") {
+      // /v2/userinfo needs the openid/profile scopes, which Flas never
+      // requests, so it answered 403 -- and the retry logic then marked a
+      // working connection "revoked". Ask something the granted scopes cover.
+      const res = await fetch(
+        "https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=1",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "LinkedIn-Version": LINKEDIN_API_VERSION,
+            "X-Restli-Protocol-Version": "2.0.0",
+          },
+        },
+      );
+      return res.ok
+        ? { ok: true, reason: "LinkedIn confirmed the token is valid." }
+        : { ok: false, reason: `LinkedIn rejected the token (HTTP ${res.status}).` };
+    }
+    if (provider === "tiktok") {
+      const res = await fetch("https://open.tiktokapis.com/v2/user/info/?fields=open_id", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.ok
+        ? { ok: true, reason: "TikTok confirmed the token is valid." }
+        : { ok: false, reason: `TikTok rejected the token (HTTP ${res.status}).` };
+    }
+    if (provider === "twitter") {
+      const res = await fetch("https://api.x.com/2/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.ok
+        ? { ok: true, reason: "X confirmed the token is valid." }
+        : { ok: false, reason: `X rejected the token (HTTP ${res.status}).` };
+    }
+    if (provider === "pinterest") {
+      const res = await fetch("https://api.pinterest.com/v5/user_account", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.ok
+        ? { ok: true, reason: "Pinterest confirmed the token is valid." }
+        : { ok: false, reason: `Pinterest rejected the token (HTTP ${res.status}).` };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : "The platform did not respond.",
+    };
+  }
+  return { ok: true, reason: "No live check available for this platform — status left unchanged." };
+}
+
+/**
+ * Re-checks one connection: probe → refresh on failure → probe again, then
+ * persist the newest state, reason and next retry time.
+ */
+export async function retryConnection(args: {
+  accountId: string;
+  tenantId: string;
+  trigger: "manual" | "auto";
+  actorId?: string | null;
+}): Promise<RetryOutcome> {
+  const { data } = await supabaseAdmin
+    .from("social_accounts")
+    .select(ACCOUNT_COLUMNS)
+    .eq("id", args.accountId)
+    .eq("tenant_id", args.tenantId)
+    .maybeSingle();
+  const row = data as AccountRow | null;
+  if (!row) return { platform: "unknown", outcome: "failed", reason: "Connection not found." };
+
+  // Tokens are stored sealed. Everything below works on plaintext and the
+  // write at the end seals again. A failed open stops here WITHOUT writing:
+  // with a missing or mistyped key, carrying on would overwrite every stored
+  // credential with nothing.
+  try {
+    row.access_token = await openSecret(row.access_token);
+    row.refresh_token = await openSecret(row.refresh_token);
+  } catch (error) {
+    return {
+      platform: row.platform,
+      outcome: "failed",
+      reason: error instanceof Error ? error.message : "Stored credentials could not be read.",
+    };
+  }
+
+  const provider = connector(row.platform)?.provider;
+  const now = new Date().toISOString();
+  let outcome: RetryOutcome["outcome"] = "failed";
+  let reason = "";
+  let scopes: string[] | undefined;
+  let token = row.access_token;
+  let refreshToken = row.refresh_token;
+  let expiresAt = row.token_expires_at;
+
+  const expired = row.token_expires_at
+    ? new Date(row.token_expires_at).getTime() < Date.now() + 60_000
+    : false;
+
+  const probe =
+    !token || expired
+      ? { ok: false, reason: "Stored token is missing or expired." }
+      : await probeToken(row.platform, token);
+
+  if (probe.ok) {
+    outcome = row.active ? "healthy" : "recovered";
     reason = probe.reason;
     scopes = probe.scopes;
   } else if (provider) {
@@ -167,30 +363,20 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
         outcome: "in_progress",
         reason:
           "A refresh for this connection is already running; this check was skipped rather than refreshing twice.",
-
       };
     }
+
     try {
       const set = await refreshAccessToken({
         provider,
-        refreshToken: stored.refresh,
-        currentToken: stored.access,
+        refreshToken: row.refresh_token,
+        currentToken: row.access_token,
         tenantId: row.tenant_id,
       });
-      tokenPatch = await encryptTokensForStorage({
-        tenantId: row.tenant_id,
-        platform: row.platform,
-        accessToken: set.token,
-        // Kept when the provider does not rotate it.
-        refreshToken: set.refreshToken ?? stored.refresh,
-      });
+      token = set.token;
+      refreshToken = set.refreshToken ?? row.refresh_token;
       expiresAt = set.expiresAt;
-      refreshPatch = {
-        last_refresh_success_at: new Date().toISOString(),
-        refresh_failure_reason: null,
-      };
       const verify = await probeToken(row.platform, set.token);
-      validated = verify.ok;
       if (verify.ok) {
         outcome = "refreshed";
         reason = `Token refreshed automatically. ${verify.reason}`;
@@ -204,7 +390,6 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
       reason = `${probe.reason} Automatic refresh failed: ${
         error instanceof Error ? error.message : "unknown error"
       }`;
-
     } finally {
       // Release early so the next check need not wait out the lease. A
       // failure here is harmless: the lease expires on its own.
@@ -214,12 +399,11 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
           () => undefined,
           () => undefined,
         );
-
     }
   } else {
     outcome = "needs_reconnect";
+    reason = probe.reason;
   }
-
 
   const recovered = outcome === "healthy" || outcome === "recovered" || outcome === "refreshed";
 
@@ -231,68 +415,58 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
     /\b5\d\d\b|rate limit|too many requests|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable/i.test(
       reason,
     );
-
   const retryCount = recovered ? 0 : row.retry_count + 1;
 
-  const { error: writeError } = await supabaseAdmin
+  await supabaseAdmin
     .from("social_accounts")
     .update({
-
       access_token: await sealSecret(token),
       refresh_token: await sealSecret(refreshToken),
-
       token_expires_at: expiresAt,
       ...(scopes?.length ? { granted_scopes: scopes } : {}),
-      missing_scopes: missing,
-      last_validation_attempt_at: now,
-      ...(validated ? { last_validation_success_at: now } : {}),
-      active: observed.active,
-      health: recovered || observed.code === "rate_limited" ? "connected" : "disconnected",
-      connection_state: observed.state,
-      state_reason: `${observed.code}: ${safeReason}`.slice(0, 500),
-      status_reason: safeReason,
-      last_error: recovered ? null : safeReason,
+      // `active` is deliberately NOT cleared on a provider outage. Setting it
+      // false during an hour of Meta 5xx would sign every customer out of a
+      // connection that is perfectly valid, and they would all reconnect for
+      // nothing.
+      active: recovered || providerDown,
+      health: recovered ? "connected" : "disconnected",
+      // Four different failures used to write the single word "disconnected".
+      // They need different messages and different owners: a revoked grant is
+      // the customer's to fix, a failed refresh is ours to retry, and a
+      // provider outage is nobody's to fix here.
+      connection_state: recovered
+        ? "connected"
+        : providerDown
+          ? "provider_unavailable"
+          : /revok|invalid[_ ]grant|reauthor|\b190\b|\b401\b|\b403\b/i.test(reason)
+            ? "revoked"
+            : "refresh_failed",
+      state_reason: reason.slice(0, 500),
+      status_reason: reason,
+      last_error: recovered ? null : reason,
       last_error_at: recovered ? null : now,
       retry_count: retryCount,
       last_retry_at: now,
-      // Revoked gets no retry: that is the refresh loop Phase 38 forbids.
-      next_retry_at: retryLater ? backoffFrom(retryCount) : null,
+      next_retry_at: recovered ? null : backoffFrom(retryCount),
     })
-    .eq("id", row.id)
-    .eq("tenant_id", row.tenant_id);
-  if (writeError) {
-    console.error(
-      "[integration-health] could not record the check:",
-      redactSecrets(writeError.message),
-    );
-  }
+    .eq("id", row.id);
 
   await supabaseAdmin.from("connection_retry_log").insert({
     tenant_id: row.tenant_id,
     account_id: row.id,
     platform: row.platform,
     outcome,
-    reason: safeReason.slice(0, 1000),
+    reason: reason.slice(0, 1000),
     trigger: args.trigger,
     details: {
-      code: observed.code,
       retry_count: retryCount,
       granted_scopes: scopes ?? grantedScopes(row),
-      missing_permissions: missing,
+      missing_permissions: missingScopes({ ...row, granted_scopes: scopes ?? row.granted_scopes }),
     } as never,
   });
 
-  return { platform: row.platform, outcome, reason: safeReason };
+  return { platform: row.platform, outcome, reason };
 }
-
-/** States a health check never touches: only a new authorization moves them. */
-const NO_AUTOMATIC_RETRY: readonly LifecycleState[] = [
-  "revoked",
-  "disconnected",
-  "authorization_started",
-  "authorization_cancelled",
-  "callback_error",
-];
 
 /** Retries every connection of a workspace that is currently unhealthy or due. */
 export async function retryDueConnections(args: {
@@ -301,12 +475,10 @@ export async function retryDueConnections(args: {
 }): Promise<RetryOutcome[]> {
   const { data } = await supabaseAdmin
     .from("social_accounts")
-    .select("id, active, token_expires_at, next_retry_at, connection_state")
+    .select("id, active, token_expires_at, next_retry_at")
     .eq("tenant_id", args.tenantId);
 
   const due = (data ?? []).filter((row) => {
-    // Never retried automatically: only a new authorization brings these back.
-    if (NO_AUTOMATIC_RETRY.includes(row.connection_state as LifecycleState)) return false;
     const expiringSoon = row.token_expires_at
       ? new Date(row.token_expires_at).getTime() - Date.now() < 1000 * 60 * 60 * 24 * 3
       : false;

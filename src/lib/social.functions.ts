@@ -3,15 +3,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { ConnectSchema, PLATFORMS } from "@/lib/social-schema";
 import { z } from "zod";
 
-const PLATFORMS = [
-  "instagram",
-  "facebook",
-  "youtube",
-  "twitter",
-  "linkedin",
-  "tiktok",
-  "google_business",
-] as const;
 const IdSchema = z.object({ id: z.string().uuid() });
 
 const ReplySchema = z.object({ id: z.string().uuid(), reply: z.string().min(1).max(2000) });
@@ -43,7 +34,7 @@ export const getSocialHub = createServerFn({ method: "GET" })
       supabase
         .from("social_accounts")
         .select(
-          "id, tenant_id, platform, label, external_id, active, last_synced_at, created_at, stats, connect_method",
+          "id, tenant_id, platform, label, external_id, active, last_synced_at, created_at, stats",
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -62,7 +53,6 @@ export const getSocialHub = createServerFn({ method: "GET" })
     if (posts.error) throw posts.error;
     return { accounts: accounts.data, interactions: interactions.data, posts: posts.data };
   });
-
 
 /** Connect an Instagram professional account or Facebook Page (admin only via RLS). */
 export const connectSocialAccount = createServerFn({ method: "POST" })
@@ -88,28 +78,20 @@ export const connectSocialAccount = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-
 export const deleteSocialAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
   .handler(async ({ data, context }) => {
-    // Was a hard DELETE through the client, which took the account's posts,
-    // comments and analytics with it and left no revoke attempt. It is now the
-    // same safe disconnect as the Connect screen: tokens removed, history kept.
-    const { data: visible } = await context.supabase
-      .from("social_accounts")
-      .select("id, tenant_id")
-      .eq("id", data.id)
-      .maybeSingle();
-    if (!visible) throw new Error("Account not found in this workspace.");
+    const { error } = await context.supabase.from("social_accounts").delete().eq("id", data.id);
+    if (error) throw error;
 
-    const { disconnectSocialAccount } = await import("@/lib/social-disconnect.server");
-    const result = await disconnectSocialAccount({
-      accountId: visible.id,
-      tenantId: visible.tenant_id,
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "social.account_deleted",
       actorId: context.userId,
+      entityType: "social_account",
+      entityId: data.id,
     });
-    if (!result.ok) throw new Error("The account could not be disconnected. Try again.");
     return { ok: true };
   });
 
@@ -128,7 +110,6 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
     type SocialPlatform = import("@/lib/social.server").SocialPlatform;
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
     const { openSecret } = await import("@/lib/secret-box.server");
     const readSecret = async () => {
       const { data: stored } = await supabaseAdmin
@@ -171,7 +152,6 @@ export const syncSocialAccountFn = createServerFn({ method: "POST" })
       },
       !account.last_synced_at,
     );
-
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -233,12 +213,8 @@ export const sendSocialReply = createServerFn({ method: "POST" })
     let metaDelivered = false;
     if (row.kind === "comment" && row.external_id) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { TOKEN_READ_COLUMNS, readStoredTokens } = await import(
-        "@/lib/social-token-store.server"
-      );
       const { data: secret } = await supabaseAdmin
         .from("social_accounts")
-
         .select("access_token, platform")
         .eq("id", row.account_id)
         .eq("tenant_id", row.tenant_id)
@@ -264,7 +240,6 @@ export const sendSocialReply = createServerFn({ method: "POST" })
             `${replyPlatform === "facebook" ? "Facebook" : "Instagram"} did not accept the reply, so it was not sent. Check the connection's permissions and try again.`,
           );
         }
-
       }
     }
 

@@ -19,26 +19,21 @@ export const testSocialConnection = createServerFn({ method: "POST" })
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { TOKEN_READ_COLUMNS, readStoredTokens } = await import(
-      "@/lib/social-token-store.server"
-    );
     const { data: account } = await supabaseAdmin
       .from("social_accounts")
       .select(
-        `id, tenant_id, platform, label, external_id, token_expires_at, granted_scopes, ${TOKEN_READ_COLUMNS}`,
+        "id, tenant_id, platform, label, external_id, access_token, token_expires_at, granted_scopes",
       )
       .eq("id", data.accountId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!account) throw new Error("Account not found in this workspace.");
-
     const { openSecret } = await import("@/lib/secret-box.server");
     account.access_token = await openSecret(account.access_token);
 
-
     const { runConnectionTest } = await import("@/lib/social-doctor.server");
     const report = await runConnectionTest({
-      account: { ...account, access_token: tokens.access },
+      account,
       triggeredBy: context.userId,
       trigger: "manual",
     });
@@ -65,29 +60,24 @@ export const getMetaTargets = createServerFn({ method: "POST" })
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { TOKEN_READ_COLUMNS, readStoredTokens } = await import(
-      "@/lib/social-token-store.server"
-    );
     const { data: account } = await supabaseAdmin
       .from("social_accounts")
-      .select(`id, tenant_id, platform, external_id, ${TOKEN_READ_COLUMNS}`)
+      .select("id, platform, access_token, external_id")
       .eq("id", data.accountId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
-
     if (account) {
       const { openSecret } = await import("@/lib/secret-box.server");
       account.access_token = await openSecret(account.access_token);
     }
     if (!account?.access_token) throw new Error("This account has no stored authorization.");
-
     if (account.platform !== "facebook" && account.platform !== "instagram") {
       throw new Error("Page selection only applies to Facebook and Instagram.");
     }
 
     const { discoverMetaTargets, diagnoseMetaConnection } =
       await import("@/lib/meta-discovery.server");
-    const discovery = await discoverMetaTargets(token);
+    const discovery = await discoverMetaTargets(account.access_token);
     const platform = account.platform as "facebook" | "instagram";
     const diagnosis = diagnoseMetaConnection(discovery, platform);
     const relevant = platform === "instagram" ? discovery.pagesWithInstagram : discovery.pages;
@@ -133,25 +123,20 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
     if (!tenantId) throw new Error("Your workspace is still being set up.");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { TOKEN_READ_COLUMNS, encryptTokensForStorage, readStoredTokens } = await import(
-      "@/lib/social-token-store.server"
-    );
     const { data: account } = await supabaseAdmin
       .from("social_accounts")
       .select(
-        `id, tenant_id, platform, label, token_expires_at, granted_scopes, external_id, ${TOKEN_READ_COLUMNS}`,
+        "id, tenant_id, platform, label, access_token, token_expires_at, granted_scopes, external_id",
       )
       .eq("id", data.accountId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
-
     if (!account?.access_token) throw new Error("This account has no stored authorization.");
     const { openSecret } = await import("@/lib/secret-box.server");
     account.access_token = await openSecret(account.access_token);
     // Checked again after opening: a stored value can open to nothing, and that
     // is "no authorization", not a null handed to discovery.
     if (!account.access_token) throw new Error("This account has no stored authorization.");
-
 
     if (account.platform !== "facebook" && account.platform !== "instagram")
       throw new Error("Page selection only applies to Facebook and Instagram.");
@@ -166,7 +151,7 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
       );
     }
     const { discoverMetaTargets } = await import("@/lib/meta-discovery.server");
-    const discovery = await discoverMetaTargets(userToken);
+    const discovery = await discoverMetaTargets(account.access_token);
     const page = discovery.pages.find((p) => p.id === data.pageId);
     if (!page) throw new Error("That Page is no longer available to this login.");
 
@@ -184,7 +169,6 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
       picture: platform === "instagram" ? page.instagram?.picture : page.picture,
       followers: platform === "instagram" ? page.instagram?.followers : page.followers,
     };
-
 
     // A connection already linked to a channel is never re-pointed at a
     // different one: that is how a record, with its posts and comments, came
@@ -238,7 +222,6 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
         .is("external_id", null);
     }
 
-
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
       action: "connection.target_selected",
@@ -257,7 +240,10 @@ export const selectMetaTarget = createServerFn({ method: "POST" })
         id: keepId,
         token_expires_at: selectedExpiry,
         external_id: targetId,
-        access_token: usePageToken ? (page.pageAccessToken ?? userToken) : userToken,
+        access_token:
+          page.pageAccessToken && platform === "facebook"
+            ? page.pageAccessToken
+            : account.access_token,
       },
       triggeredBy: context.userId,
       trigger: "post_oauth",

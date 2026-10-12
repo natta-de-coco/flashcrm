@@ -159,7 +159,7 @@ export function RegionCard() {
                 <Label>
                   {t("regionCard.companyLanguage") || "Interface Language"}
                   <span className="ms-2 text-xs font-normal text-muted-foreground">
-                    — {t("regionCard.changesSiteDirection") || "changes site direction & date formatting"}
+                    — changes site direction &amp; date formatting
                   </span>
                 </Label>
                 <Select value={locale} onValueChange={setLocale}>

@@ -28,7 +28,7 @@ export const getConnections = createServerFn({ method: "GET" })
       supabase
         .from("social_accounts")
         .select(
-"id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method, connection_state, last_validation_success_at, legacy_manual_connection, missing_scopes, authorization_id, granted_scopes",
+          "id, platform, label, external_id, active, last_synced_at, created_at, stats, profile, permissions, token_expires_at, profile_url, last_post_at, last_analytics_sync_at, health, connect_method, granted_scopes",
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -64,32 +64,16 @@ export const getConnections = createServerFn({ method: "GET" })
     }
 
     const { computeHealth } = await import("@/lib/connections.server");
-    // Whether each account actually holds a token, reduced to a boolean on the
-    // server. The token itself never leaves this function. The previous
-    // version passed the literal "set" from both branches of a ternary, so
-    // every account was scored as holding a token whether it did or not.
-    const withToken = new Set<string>();
-    if (tenantId) {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { hasStoredToken } = await import("@/lib/social-token-store.server");
-      const { data: tokenRows } = await supabaseAdmin
-        .from("social_accounts")
-        .select("id, tenant_id, platform, access_token_enc, access_token")
-        .eq("tenant_id", tenantId);
-      for (const r of tokenRows ?? []) if (hasStoredToken(r)) withToken.add(r.id);
-    }
     const enriched = (accounts.data ?? []).map((a) => ({
       ...a,
       renews: renewing.has(a.id),
       health: computeHealth({
         active: a.active,
-
         renews: renewing.has(a.id),
         // Both branches of this were "set", so health could never report a
         // missing credential -- an account saved without a token showed as
         // healthy right up until its first sync failed.
         access_token: tokened.has(a.id) ? "set" : null,
-
         token_expires_at: a.token_expires_at,
         last_synced_at: a.last_synced_at,
       }),
@@ -108,15 +92,7 @@ export const getConnections = createServerFn({ method: "GET" })
 export const startConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z
-      .object({
-        platform: PlatformSchema,
-        origin: z.string().url(),
-        purpose: z.enum(["connect", "reconnect", "upgrade"]).optional(),
-        tierIds: z.array(z.string().max(40)).max(10).optional(),
-        accountId: z.string().uuid().optional(),
-      })
-      .parse(input),
+    z.object({ platform: PlatformSchema, origin: z.string().url() }).parse(input),
   )
   .handler(async ({ data, context }) => {
     const { data: profile } = await context.supabase
@@ -126,56 +102,12 @@ export const startConnect = createServerFn({ method: "POST" })
       .maybeSingle();
     const tenantId = profile?.tenant_id ?? null;
     if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
-
     // Connecting a social account changes the whole workspace, so the server
     // must enforce the same company-admin boundary that the screen shows.
     // A hidden button is not an authorization control.
     if (!["company_admin", "super_admin"].includes(profile?.staff_role ?? "")) {
       throw new Error("Only a company admin can connect Facebook, Google, or another channel.");
     }
-
-
-
-    // A reconnect or upgrade names a channel. It must be visible to the caller
-    // through RLS -- i.e. in their own workspace -- and on the same platform.
-    let tierIds = data.tierIds;
-    if (data.accountId) {
-      const { data: account } = await context.supabase
-        .from("social_accounts")
-        .select("id, platform, authorization_id")
-        .eq("id", data.accountId)
-        .maybeSingle();
-      if (!account || account.platform !== data.platform) {
-        throw new Error("That channel was not found in this workspace.");
-      }
-      // An upgrade keeps every tier already granted and adds the new one, so
-      // the new authorization is a superset rather than a replacement.
-      if (data.purpose === "upgrade" && account.authorization_id) {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data: auth } = await supabaseAdmin
-          .from("social_authorizations")
-          .select("granted_scopes")
-          .eq("id", account.authorization_id)
-          .eq("tenant_id", tenantId)
-          .maybeSingle();
-        const { connectorDefinition, tierScopes } = await import(
-          "@/lib/social-connector-definitions"
-        );
-        const def = connectorDefinition(data.platform);
-        const granted = new Set(auth?.granted_scopes ?? []);
-        const already = def
-          ? (def.authorizationTiers ?? [])
-              .filter((t) => {
-                const scopes = tierScopes(def, t);
-                return scopes.length > 0 && scopes.every((sc) => granted.has(sc));
-              })
-              .map((t) => t.id)
-          : [];
-        tierIds = [...new Set([...already, ...(data.tierIds ?? [])])];
-      }
-    }
-
-
     const { startAuthorization } = await import("@/lib/oauth.server");
     const { logAudit } = await import("@/lib/audit.server");
 
@@ -191,9 +123,6 @@ export const startConnect = createServerFn({ method: "POST" })
       origin: data.origin.replace(/\/$/, ""),
       tenantId,
       userId: context.userId,
-      purpose: data.purpose ?? "connect",
-      ...(tierIds?.length ? { tierIds } : {}),
-      targetAccountId: data.accountId ?? null,
     });
 
     await logAudit({
@@ -341,7 +270,6 @@ export const disconnectConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
   .handler(async ({ data, context }) => {
-
     // The update runs as the caller, so RLS decides who may disconnect. It
     // returns the row so a refusal is visible: an RLS-blocked UPDATE affects
     // zero rows without raising, which previously reported success while
@@ -368,13 +296,23 @@ export const disconnectConnection = createServerFn({ method: "POST" })
       platform: disconnected.platform,
     });
 
-
-    const { disconnectSocialAccount } = await import("@/lib/social-disconnect.server");
-    const result = await disconnectSocialAccount({
-      accountId: visible.id,
-      tenantId: visible.tenant_id,
+    // Recorded as a deliberate disconnect rather than lumped in with expiry,
+    // revocation and failed refresh, which all used to read "disconnected".
+    const tenantId = await callerTenantId(context.supabase, context.userId);
+    if (tenantId) {
+      const { transitionConnection } = await import("@/lib/connection-state.server");
+      await transitionConnection({
+        accountId: data.id,
+        tenantId,
+        to: "disconnected",
+        reason: "Disconnected by a user in this workspace",
+        actorId: context.userId,
+      });
+    }
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "connection.disconnected",
       actorId: context.userId,
-
       entityType: "social_account",
       entityId: data.id,
       details: {
@@ -384,7 +322,6 @@ export const disconnectConnection = createServerFn({ method: "POST" })
       },
     });
     return { ok: true, providerRevoked: revocation.revoked, note: revocation.reason };
-
   });
 
 /** Exportable Integration Health Report for the signed-in workspace. */

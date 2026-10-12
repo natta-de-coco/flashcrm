@@ -6,7 +6,6 @@ import { openSecret } from "@/lib/secret-box.server";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { aiOptionsFor, callFlashAi, getBusinessContext } from "./flash-ai.server";
-import { LINKEDIN_API_VERSION } from "@/lib/linkedin-api";
 
 type RlsClient = {
   from: (table: string) => never;
@@ -21,10 +20,8 @@ export type SocialAccountSecret = {
   platform: SocialPlatform;
   external_id: string | null;
   access_token: string | null;
-
   /** "oauth" for a connection made through the provider login; otherwise pasted. */
   connect_method: string | null;
-
 };
 
 import type { SkippedSection } from "@/lib/sync-report";
@@ -47,12 +44,8 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 async function graphGet(path: string, token: string): Promise<any> {
-  // The token travels in the Authorization header, never the URL. URLs end up
-  // in proxy, CDN and provider access logs, where a token outlives its own
-  // expiry. Meta's access-token guide says to pass tokens in headers, and the
-  // Graph API parses a Bearer header (verified: a bad token in the header
-  // returns error 190, "Invalid OAuth access token", not 2500 "no token").
-  const res = await fetch(`${GRAPH}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  const sep = path.includes("?") ? "&" : "?";
+  const res = await fetch(`${GRAPH}${path}${sep}access_token=${encodeURIComponent(token)}`);
   const json: any = await res.json().catch(() => ({}));
   if (json?.error) throw new Error(json.error.message ?? "Meta API error");
   if (!res.ok) throw new Error(`Meta API returned HTTP ${res.status}`);
@@ -107,7 +100,6 @@ async function saveInteraction(
     status?: "open" | "replied" | "archived";
   },
 ): Promise<boolean> {
-
   const row = {
     tenant_id: account.tenant_id,
     account_id: account.id,
@@ -133,20 +125,16 @@ async function saveInteraction(
     return !retry.error;
   }
   return false;
-
 }
 
-async function finishSync(account: SocialAccountSecret, stats?: Record<string, number>) {
-  // supabaseAdmin bypasses RLS, so the tenant filter is the only thing
-  // keeping this write inside the account's own workspace.
+async function finishSync(accountId: string, stats?: Record<string, number>) {
   await supabaseAdmin
     .from("social_accounts")
     .update({
       last_synced_at: new Date().toISOString(),
       ...(stats ? { stats } : {}),
     })
-    .eq("id", account.id)
-    .eq("tenant_id", account.tenant_id);
+    .eq("id", accountId);
 }
 
 function missingCreds(message: string): SyncResult {
@@ -445,10 +433,8 @@ async function syncMeta(account: SocialAccountSecret, firstSync = false): Promis
     }
   }
 
-
   await finishSync(account.id, stats);
   return { ok: true, posts, interactions, ...(skipped.length ? { skipped } : {}) };
-
 }
 
 /* ---------- YouTube (Data API v3 — API key + channel ID) ---------- */
@@ -456,7 +442,6 @@ async function syncMeta(account: SocialAccountSecret, firstSync = false): Promis
 async function syncYouTube(account: SocialAccountSecret): Promise<SyncResult> {
   const credential = account.access_token?.trim();
   const channelId = account.external_id?.trim();
-
   // Two kinds of credential share this column. A connection made through
   // Google's login holds an OAuth access token, which is a credential for a
   // person and belongs in the Authorization header. A pasted connection holds
@@ -474,13 +459,7 @@ async function syncYouTube(account: SocialAccountSecret): Promise<SyncResult> {
         ? "Reconnect YouTube: this connection has no usable token or channel."
         : "Add the channel ID (starts with UC…) and a YouTube Data API key first.",
     );
-
   }
-  // OAuth-connected channels authenticate as the user, with a Bearer token.
-  // `key=` is Google's API-key mechanism for public data only; it survives for
-  // legacy rows added with a pasted API key before Batch 1, which are marked
-  // unverified. An API key is never treated as a user authorization.
-  const oauth = account.connect_method === "oauth";
   const yt = async (path: string): Promise<any> => {
     const sep = path.includes("?") ? "&" : "?";
     const res = oauth
@@ -537,21 +516,14 @@ async function syncYouTube(account: SocialAccountSecret): Promise<SyncResult> {
             comments_count: Number(v.statistics?.commentCount ?? 0),
             reach: Number(v.statistics?.viewCount ?? 0),
           })
-          .eq("tenant_id", account.tenant_id)
           .eq("account_id", account.id)
           .eq("external_id", v.id);
       }
     }
   }
 
-  // Latest comments on the 5 most recent uploads. An OAuth channel reads them
-  // only if the comments permission (youtube.force-ssl) was actually granted;
-  // otherwise every call would fail with 403 and be swallowed below. Legacy
-  // API-key rows read public comments the way they always did.
-  const canReadComments =
-    !oauth ||
-    (account.granted_scopes ?? []).includes("https://www.googleapis.com/auth/youtube.force-ssl");
-  for (const vid of canReadComments ? videoIds.slice(0, 5) : []) {
+  // Latest comments on the 5 most recent uploads (works with an API key).
+  for (const vid of videoIds.slice(0, 5)) {
     try {
       const threads = await yt(
         `/commentThreads?part=snippet&videoId=${vid}&maxResults=20&order=time`,
@@ -575,7 +547,7 @@ async function syncYouTube(account: SocialAccountSecret): Promise<SyncResult> {
     }
   }
 
-  await finishSync(account, stats);
+  await finishSync(account.id, stats);
   return { ok: true, posts, interactions };
 }
 
@@ -655,7 +627,7 @@ async function syncTwitter(account: SocialAccountSecret): Promise<SyncResult> {
     // Mentions need a paid access tier — posts and stats still synced.
   }
 
-  await finishSync(account, stats);
+  await finishSync(account.id, stats);
   return { ok: true, posts, interactions };
 }
 
@@ -718,7 +690,7 @@ async function syncLinkedIn(account: SocialAccountSecret): Promise<SyncResult> {
       posts++;
   }
 
-  await finishSync(account, stats);
+  await finishSync(account.id, stats);
   return { ok: true, posts, interactions: 0 };
 }
 
@@ -777,7 +749,7 @@ async function syncTikTok(account: SocialAccountSecret): Promise<SyncResult> {
       posts++;
   }
 
-  await finishSync(account, stats);
+  await finishSync(account.id, stats);
   return { ok: true, posts, interactions: 0 };
 }
 
@@ -828,7 +800,7 @@ async function syncGoogleBusiness(account: SocialAccountSecret): Promise<SyncRes
     averageRating: Math.round(Number(json.averageRating ?? 0) * 10) / 10,
   };
 
-  await finishSync(account, stats);
+  await finishSync(account.id, stats);
   return { ok: true, posts: 0, interactions };
 }
 

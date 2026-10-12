@@ -2,6 +2,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { getDashboardOverview } from "@/lib/dashboard.functions";
@@ -16,7 +24,7 @@ import { logWidgetError } from "@/lib/widget-error-log";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { Suspense, lazy, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -38,9 +46,7 @@ import {
   Youtube,
   type LucideIcon,
 } from "lucide-react";
-// The chart loads after the numbers: recharts is most of this page's
-// JavaScript, and the stat cards and lists should not wait for it.
-const ActivityChart = lazy(() => import("@/components/dashboard/ActivityChart"));
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -70,7 +76,6 @@ const PLATFORM_ICONS: Record<string, LucideIcon> = {
   google_business: Store,
 };
 
-
 /** The grade the server computes, as the key it is shown under. */
 const GRADE_KEY: Record<string, MessageKey> = {
   Excellent: "dashboard.health.grade.excellent",
@@ -78,7 +83,6 @@ const GRADE_KEY: Record<string, MessageKey> = {
   "Needs work": "dashboard.health.grade.needsWork",
   "At risk": "dashboard.health.grade.atRisk",
 };
-
 
 /** Helpful inline error state with a retry button — never a blank widget. */
 function WidgetError({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -517,9 +521,25 @@ function DashboardPage() {
             ) : overview.isError ? (
               <WidgetError message={overview.error.message} onRetry={() => overview.refetch()} />
             ) : (
-              <Suspense fallback={<ChartSkeleton />}>
-                <ActivityChart buckets={data?.activity.buckets ?? []} />
-              </Suspense>
+              <ChartContainer config={activityConfig} className="h-56 w-full aspect-auto">
+                <BarChart
+                  data={data?.activity.buckets ?? []}
+                  margin={{ top: 8, right: 8, bottom: 0, left: -18 }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} />
+                  <YAxis tickLine={false} axisLine={false} allowDecimals={false} width={36} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartLegend content={<ChartLegendContent />} />
+                  <Bar dataKey="received" stackId="msgs" fill="var(--color-received)" />
+                  <Bar
+                    dataKey="sent"
+                    stackId="msgs"
+                    fill="var(--color-sent)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ChartContainer>
             )}
           </CardContent>
         </Card>

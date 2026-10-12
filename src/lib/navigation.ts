@@ -29,7 +29,6 @@ import {
   Package,
   Plug,
   Receipt,
-  Share2,
   Settings,
   Sparkles,
   Target,
@@ -89,13 +88,6 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         desc: "IG, FB, YouTube, X & more",
         icon: Megaphone,
         keywords: "instagram facebook youtube twitter x tiktok linkedin posts accounts connect",
-      },
-      {
-        to: "/channels",
-        label: "Social Channels",
-        desc: "Connect & manage channels",
-        icon: Share2,
-        keywords: "add channel connect youtube facebook instagram reconnect permissions accounts",
       },
       {
         to: "/content",
@@ -193,13 +185,6 @@ export const MANAGER_SECTION: NavSection = {
       icon: Building2,
       keywords:
         "tenants workspaces clients organizations subscriptions billing payments paid renew suspend plans",
-    },
-    {
-      to: "/companies/email-settings",
-      label: "Platform Email",
-      desc: "SMTP/IMAP system mail config",
-      icon: Mail,
-      keywords: "email smtp imap system platform flas mobidigisol transactional",
     },
     {
       to: "/companies/errors",

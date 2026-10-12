@@ -292,6 +292,7 @@ async function postWhatsAppMessage(
   }
 }
 
+export const sendWhatsAppText = deliverWhatsAppText;
 export function deliverWhatsAppText(
   to: string,
   body: string,
@@ -728,7 +729,6 @@ export async function ingestInboundMessage(args: IngestArgs) {
         } catch (assignErr) {
           console.error("[chat-assignment] Auto-assignment error:", assignErr);
         }
-      }
       }
     }
   }

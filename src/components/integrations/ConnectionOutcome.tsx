@@ -39,7 +39,6 @@ export type ConnectionOutcomeSearch = {
   connect_detail?: string;
   connect_help?: string;
   select_target?: string;
-
   /** The platform whose sign-in the person cancelled. */
   connect_cancelled?: string;
   /** Why sign-in did not finish: expired, incomplete or provider_refused. */
@@ -93,7 +92,6 @@ type Account = {
   label: string | null;
   external_id?: string | null;
 };
-
 
 export function ConnectionOutcome({
   search,
@@ -208,7 +206,7 @@ export function ConnectionOutcome({
           {outcomeCopy(search.connect_code, platformName(search.connect_platform)).title}
         </AlertTitle>
         <AlertDescription className="space-y-3">
-<p>{outcomeCopy(search.connect_code, platformName(search.connect_platform)).message}</p>
+          <p>{outcomeCopy(search.connect_code, platformName(search.connect_platform)).message}</p>
           <Button size="sm" variant="outline" onClick={onDismiss}>
             {i18n.t("connectionOutcome.dismiss")}
           </Button>

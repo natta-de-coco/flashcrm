@@ -86,10 +86,8 @@ const trimmedCompany = companyName.trim();
       toast.error("Please enter a valid, real business name (generic or test names are not allowed)");
       return;
     }
-    if (trimmedFull.length < 2) {
-      toast.error(t("onboardingModal.pleaseEnterYourFullName") || "Please enter your full name");
-      return;
-    }
+    if (trimmedFull.length < 3) {
+      toast.error(t("onboardingModal.pleaseEnterYourFullName") || "Please enter your real full name (at least 3 characters)");
       return;
     }
 

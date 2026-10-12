@@ -9,12 +9,6 @@ import { deriveConnectionState } from "@/lib/connection-state.server";
 import type { AccountPlatform } from "./connections-catalog";
 import { connector } from "./connections-catalog";
 import { callFlashAi } from "./flash-ai.server";
-import {
-  TOKEN_READ_COLUMNS,
-  encryptTokensForStorage,
-  readStoredTokens,
-} from "@/lib/social-token-store.server";
-import { missingScopesFor } from "@/lib/connection-state";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -42,8 +36,7 @@ export async function discoverProfile(
     if (meta?.provider === "meta") {
       if (platform === "facebook" || platform === "instagram") {
         const res = await fetch(
-          `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,username,link,category,picture{url},fan_count,instagram_business_account{id,username,name,profile_picture_url,biography,website,followers_count}`,
-          { headers: { Authorization: `Bearer ${token}` } },
+          `https://graph.facebook.com/v21.0/me/accounts?fields=id,name,username,link,category,picture{url},fan_count,instagram_business_account{id,username,name,profile_picture_url,biography,website,followers_count}&access_token=${encodeURIComponent(token)}`,
         );
         const json: any = await res.json();
         const page = json?.data?.[0];
@@ -73,16 +66,6 @@ export async function discoverProfile(
           profile_url: ig.username ? `https://instagram.com/${ig.username}` : undefined,
         };
       }
-
-      if (platform === "meta_ads") {
-        const res = await fetch("https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const json: any = await res.json();
-        const list: string[] = (json?.data ?? []).map((a: any) => `${a.name} (${a.id})`);
-        return { name: list[0] ?? "Meta Ads", ad_accounts: list, external_id: json?.data?.[0]?.id };
-      }
-
     }
     if (platform === "youtube") {
       const res = await fetch(
@@ -211,7 +194,6 @@ export async function saveAuthorizedConnection(args: {
 }) {
   const meta = connector(args.platform);
   const label = args.profile.name ?? meta?.name ?? args.platform;
-
   // The existing connection is the one for THIS provider account. It used to
   // be looked up by tenant and platform alone, so connecting a second channel
   // updated the first one's row -- its posts and comments were then attached
@@ -243,52 +225,18 @@ export async function saveAuthorizedConnection(args: {
     ? await sealSecret(args.refreshToken)
     : await sealSecret(existing?.refresh_token);
 
-
-  // Providers omit the refresh token on re-consent -- keep the one we hold.
-  let keptRefresh: string | null = null;
-  if (!args.refreshToken && existing) {
-    try {
-      keptRefresh = (await readStoredTokens(existing)).refresh;
-    } catch {
-      keptRefresh = null;
-    }
-  }
-
-  // Encrypted before anything is written. Throws when the key ring is not
-  // configured, so a token is never stored in plaintext as a fallback.
-  const tokenColumns = await encryptTokensForStorage({
-    tenantId: args.tenantId,
-    platform: args.platform,
-    accessToken: args.token,
-    refreshToken: args.refreshToken ?? keptRefresh,
-  });
-
-  // Derived rather than assumed "connected": a consent screen where the
-  // customer unticked a permission lands in scope_incomplete.
-  const derived = deriveConnectionState({
-    active: true,
-    access_token: args.token,
-    token_expires_at: args.expiresAt,
-    granted_scopes: args.grantedScopes ?? null,
-    platform: args.platform,
-  });
-
   const payload = {
     tenant_id: args.tenantId,
     platform: args.platform,
     label,
     external_id: args.profile.external_id ?? null,
-
     access_token: sealedToken,
     // Providers omit the refresh token on re-consent — keep the one we hold.
     refresh_token: sealedRefresh,
-
     token_expires_at: args.expiresAt,
     granted_scopes: args.grantedScopes?.length ? args.grantedScopes : null,
-    missing_scopes: missingScopesFor(args.platform, args.grantedScopes ?? []),
     active: true,
     health: "connected",
-
     // The state model is authoritative; `health` is retained for one release
     // so existing readers keep working through the deploy. Derived rather than
     // assumed "connected": a consent screen where the customer unticked a
@@ -309,25 +257,18 @@ export async function saveAuthorizedConnection(args: {
       platform: args.platform,
       refresh_token: args.refreshToken ?? existing?.refresh_token ?? null,
     }).reason,
-
     status_reason: null,
     last_error: null,
     last_error_at: null,
     retry_count: 0,
     next_retry_at: null,
-    refresh_failure_reason: null,
     connect_method: "oauth",
-    legacy_manual_connection: false,
     profile: args.profile as unknown as never,
     permissions: { granted: args.permissions } as unknown as never,
     profile_url: args.profile.profile_url ?? meta?.manageUrl ?? null,
   };
 
-  // Both writes are checked. They used to be fire-and-forget, so a save the
-  // database refused -- an illegal state transition, say -- still reported a
-  // connected account to the customer.
   if (existing) {
-
     // A revoked or disconnected connection may only move to certain states
     // (the trigger in 20260908100000 enforces it). Re-authorizing passes
     // through ready_to_authorize first, which is legal from both and leads to
@@ -347,17 +288,14 @@ export async function saveAuthorizedConnection(args: {
       if (transitionError) throw new Error("Could not prepare the account for reconnect.");
     }
     const { error: updateError } = await supabaseAdmin
-
       .from("social_accounts")
       .update(payload)
       .eq("id", existing.id)
       .eq("tenant_id", args.tenantId);
-
     // Ignoring this error is how a reconnect "succeeded" while the row stayed
     // revoked with its dead token: the state trigger rejected the change and
     // nothing said so.
     if (updateError) throw new Error(`Could not save the connection: ${updateError.message}`);
-
     return existing.id;
   }
   const { data, error } = await supabaseAdmin
@@ -365,7 +303,6 @@ export async function saveAuthorizedConnection(args: {
     .insert(payload)
     .select("id")
     .single();
-
   // Two callbacks for the same channel racing each other: the unique index
   // (20260911110000) lets one insert win, and the other refreshes that row.
   if (error?.code === "23505") {
@@ -383,7 +320,6 @@ export async function saveAuthorizedConnection(args: {
       return winner.id;
     }
   }
-
   if (error) throw new Error(`Could not save the connection: ${error.message}`);
   return data?.id ?? null;
 }

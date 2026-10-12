@@ -3,13 +3,7 @@
 // is required, and no code is trusted without a matching live state.
 import { isUserCancellation } from "@/lib/oauth-outcome";
 import { createFileRoute } from "@tanstack/react-router";
-import { capabilityCeiling, usesChannelModel } from "@/lib/social-connector-definitions";
-
-/** Redirects to any in-app path. Params are fixed codes and opaque ids only. */
-function backTo(origin: string, path: string, params: Record<string, string>) {
-  const qs = new URLSearchParams(params).toString();
-  return new Response(null, { status: 302, headers: { Location: `${origin}${path}?${qs}` } });
-}
+import { capabilityCeiling } from "@/lib/social-connector-definitions";
 
 function back(origin: string, params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString();
@@ -27,25 +21,14 @@ function back(origin: string, params: Record<string, string>) {
  *  tokens, IDs, internal paths from leaking into the browser URL bar / referer
  *  logs (the whole `Location: /social?connect_error=...` shows up there). */
 function sanitizeError(raw: unknown): string {
-  // A provider that answered 5xx is down, not refusing. Different message,
-  // different owner -- and retrying later can work, which it cannot for a
-  // wrong secret.
-  const status = (raw as { httpStatus?: unknown } | null)?.httpStatus;
-  if (typeof status === "number" && status >= 500) return "provider_unavailable";
-  if ((raw as { code?: unknown } | null)?.code === "not_configured") return "token_storage_unavailable";
   const msg = raw instanceof Error ? raw.message : String(raw ?? "");
   const low = msg.toLowerCase();
   if (low.includes("credentials are missing")) return "platform_app_missing";
-  if (low.includes("pkce") || low.includes("code_verifier")) return "callback_invalid";
-  if (low.includes("scope")) return "scope_incomplete";
-  if (
-    low.includes("token exchange failed") ||
-    low.includes("expired") ||
-    low.includes("invalid_grant")
-  ) {
-    return "token_exchange_failed";
-  }
-  return "callback_error";
+  if (low.includes("token exchange failed")) return "token_exchange_failed";
+  if (low.includes("pkce") || low.includes("code_verifier")) return "pkce_error";
+  if (low.includes("scope")) return "scope_rejected";
+  if (low.includes("expired") || low.includes("invalid_grant")) return "grant_expired";
+  return "connect_failed";
 }
 
 export const Route = createFileRoute("/api/public/oauth-callback")({
@@ -79,13 +62,7 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
               details: { reason },
             });
           } catch (e) {
-            // Never the raw object: an error thrown here can carry the request
-            // that failed, and the request carried the token.
-            const { redactSecrets } = await import("@/lib/integration-errors.server");
-            console.error(
-              "[oauth-callback] could not audit outcome:",
-              redactSecrets(e instanceof Error ? e.message : String(e)),
-            );
+            console.error("[oauth-callback] could not audit outcome", e);
           }
         };
 
@@ -111,7 +88,6 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
         const origin = url.origin;
         const state = url.searchParams.get("state") ?? "";
         const code = url.searchParams.get("code") ?? "";
-
         const providerError = url.searchParams.get("error");
         const denied = url.searchParams.get("error_description") ?? providerError;
 
@@ -121,7 +97,6 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             connect_error: "Authorization response was incomplete.",
             connect_code: "incomplete",
           });
-
         }
 
         const {
@@ -141,40 +116,23 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             "State was already used or older than its expiry — start the connection again",
           );
           return back(origin, {
-
             connect_error: "This authorization link expired. Please start the connection again.",
             connect_code: "expired",
-
           });
         }
-        /** Moves a connection waiting on this authorization to how it ended. */
-        const endAuth = async (to: "authorization_cancelled" | "callback_error", reason: string) => {
-          try {
-            const { endAuthorization } = await import("@/lib/connection-state.server");
-            await endAuthorization({
-              tenantId: row.tenant_id,
-              platform: row.platform,
-              to,
-              reason,
-              actorId: row.user_id ?? null,
-            });
-          } catch {
-            /* state bookkeeping must never break the redirect */
-          }
-        };
-
         if (denied || !code) {
           await markAttemptState(
             "cancelled",
             "The provider refused the request or the person declined it",
           );
-          await endAuth("authorization_cancelled", "authorization_cancelled");
           await auditOutcome(
             "cancelled",
             row.platform,
             row.tenant_id,
             row.user_id ?? null,
-            denied ? `authorization_cancelled (${denied})` : "authorization_cancelled (no_code)",
+            denied
+              ? `Provider refused or the user declined: ${String(denied).slice(0, 200)}`
+              : "Provider returned no authorization code",
           );
           // Pressing Cancel is a choice, not a failure: it gets its own calm
           // outcome instead of "Connection failed -- ask an administrator".
@@ -182,11 +140,9 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             return back(origin, { connect_cancelled: row.platform });
           }
           return back(origin, {
-
             connect_error: `Authorization was not completed for ${row.platform.replace(/_/g, " ")}.`,
             connect_code: denied ? "provider_refused" : "incomplete",
             connect_platform: row.platform,
-
           });
         }
 
@@ -200,20 +156,17 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             row.user_id ?? null,
             "No OAuth provider is configured for this platform",
           );
-          return back(origin, { connect_error: "unsupported_platform" });
+          return back(origin, { connect_error: "Unsupported platform." });
         }
 
         try {
-
           let tokens = await exchangeCode({
-
             provider: meta.provider,
             code,
             redirectUri: row.redirect_uri,
             tenantId: row.tenant_id,
-            codeVerifier,
+            codeVerifier: row.code_verifier, // real PKCE for twitter/X
           });
-
 
           if (meta.provider === "meta") {
             // Meta's code exchange yields a short-lived user token (1-2 hours).
@@ -233,7 +186,6 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             const granted = await metaGrantedScopes(tokens.token);
             if (granted) tokens = { ...tokens, scopes: granted };
           }
-
           const { discoverProfile, saveAuthorizedConnection } =
             await import("@/lib/connections.server");
           const platform = row.platform as Parameters<typeof discoverProfile>[0];
@@ -248,7 +200,6 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
             const discovery = await discoverMetaTargets(tokens.token);
             const diagnosis = diagnoseMetaConnection(discovery, platform);
             if (diagnosis) {
-
               await markAttemptState("callback_error", diagnosis.title);
               await auditOutcome(
                 "blocked",
@@ -257,7 +208,6 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                 row.user_id ?? null,
                 diagnosis.title,
               );
-
               // Stop here rather than storing a connection that cannot work.
               // Pass the explanation through, not just the headline -- the
               // user lands on a page that has no other way to learn what went
@@ -401,19 +351,11 @@ export const Route = createFileRoute("/api/public/oauth-callback")({
                   : normalizeProviderError({ platform: row.platform, thrown: e }),
             });
           } catch (recordError) {
-            // Reporting must never turn a failed connection into a 500. Logged
-            // redacted: this path runs precisely when a provider error was
-            // being handled, so the object may still hold its payload.
-            console.error(
-              "[oauth-callback] could not record error:",
-              redactSecrets(
-                recordError instanceof Error ? recordError.message : String(recordError),
-              ),
-            );
+            // Reporting must never turn a failed connection into a 500.
+            console.error("[oauth-callback] could not record error", recordError);
           }
 
           await markAttemptState("callback_error", safeMessage.slice(0, 200));
-          await endAuth("callback_error", sanitizeError(e));
           await auditOutcome(
             "failed",
             row.platform,

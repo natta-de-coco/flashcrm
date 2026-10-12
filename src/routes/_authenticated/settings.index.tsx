@@ -9,7 +9,6 @@ import { EmailMarketingCard } from "@/components/settings/EmailMarketingCard";
 import { LeadAlertsSettingsCard } from "@/components/settings/LeadAlertsSettingsCard";
 
 import { InvoiceBrandingCard } from "@/components/settings/InvoiceBrandingCard";
-:src/routes/_authenticated/settings.index.tsx
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
 import { isCompanyManager } from "@/lib/permissions";
