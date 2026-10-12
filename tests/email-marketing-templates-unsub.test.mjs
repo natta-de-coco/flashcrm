@@ -9,17 +9,18 @@
  * 5. HMAC-SHA256 one-click unsubscribe token generation & expiry
  */
 
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import {
   BUILT_IN_EMAIL_TEMPLATES,
   substituteMergeTags,
   validateEmailMarketingHtml,
-} from "../src/lib/email-templates.ts";
+} from "../node_modules/.cache/flas-email-templates.mjs";
 import {
   generateUnsubscribeToken,
   verifyUnsubscribeToken,
-} from "../src/lib/lead-automation.server.ts";
+} from "../node_modules/.cache/flas-lead-automation.mjs";
 
 describe("Email Marketing: Template Presets & Standards", () => {
   test("All 4 built-in responsive templates exist with complete metadata", () => {
@@ -109,6 +110,18 @@ describe("Email Marketing: Deliverability Preflight & Validation", () => {
 });
 
 describe("Email Marketing: One-Click Unsubscribe HMAC Security", () => {
+  // The signing key comes from the setting only; there is no built-in value.
+  // This suite sets its own, made fresh on every run, and puts back what it found.
+  let previous;
+  before(() => {
+    previous = process.env["EMAIL_UNSUBSCRIBE_SECRET"];
+    process.env["EMAIL_UNSUBSCRIBE_SECRET"] = crypto.randomBytes(32).toString("hex");
+  });
+  after(() => {
+    if (previous === undefined) delete process.env["EMAIL_UNSUBSCRIBE_SECRET"];
+    else process.env["EMAIL_UNSUBSCRIBE_SECRET"] = previous;
+  });
+
   test("Generates valid HMAC signed token and verifies payload", () => {
     const token = generateUnsubscribeToken("customer@example.com", "tenant_123");
     assert.ok(token.includes("."));

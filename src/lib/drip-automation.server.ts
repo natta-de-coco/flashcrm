@@ -12,7 +12,7 @@
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { BUILT_IN_EMAIL_TEMPLATES, substituteMergeTags } from "./email-templates.ts";
-import { generateUnsubscribeToken } from "./lead-automation.server.ts";
+import { UNSUBSCRIBE_NOT_SENT_REASON, generateUnsubscribeToken } from "./lead-automation.server.ts";
 
 const db = supabaseAdmin as any;
 
@@ -211,18 +211,45 @@ export async function dispatchDripStepForEnrollment(args: {
   const companyName = company?.business_name || "Flas CRM";
   const discountCode = step.discount_code || "WELCOME20";
   const appUrl = process.env["PUBLIC_APP_URL"] || "https://flas.mobidigisol.com";
-  const unsubToken = generateUnsubscribeToken(email, tenantId);
-  const unsubUrl = `${appUrl}/unsubscribe?token=${encodeURIComponent(unsubToken)}`;
-
-  // 3. Render template
-  const template =
-    BUILT_IN_EMAIL_TEMPLATES.find((t) => t.id === step.template_id) || BUILT_IN_EMAIL_TEMPLATES[0]!;
 
   const renderedSubject = substituteMergeTags(step.subject, {
     name: name || "there",
     company: companyName,
     discount_code: discountCode,
   });
+
+  // A marketing email never goes out without a working unsubscribe link. If the link cannot be
+  // made, record the email as not sent, with the reason, and leave the enrollment where it is so
+  // this step can still go out once unsubscribe links are set up.
+  let unsubToken: string;
+  try {
+    unsubToken = generateUnsubscribeToken(email, tenantId);
+  } catch {
+    console.error("[drip] Step not sent: unsubscribe links are not set up");
+    try {
+      const { error: logError } = await db.rpc("log_email_delivery", {
+        _tenant_id: tenantId,
+        _recipient: email,
+        _from_address: smtp?.from_email || `noreply@${smtp?.domain || "flas.mobidigisol.com"}`,
+        _subject: renderedSubject,
+        _template: `drip_step_${stepNumber}`,
+        _provider: "tenant_smtp",
+        _provider_msg_id: `drip_${enrollmentId}_s${stepNumber}_unsent`,
+        _status: "failed",
+        _error: UNSUBSCRIBE_NOT_SENT_REASON,
+        _meta: { step_number: stepNumber, enrollment_id: enrollmentId },
+      });
+      if (logError) console.error("[drip] Could not record the unsent step");
+    } catch {
+      console.error("[drip] Could not record the unsent step");
+    }
+    return false;
+  }
+  const unsubUrl = `${appUrl}/unsubscribe?token=${encodeURIComponent(unsubToken)}`;
+
+  // 3. Render template
+  const template =
+    BUILT_IN_EMAIL_TEMPLATES.find((t) => t.id === step.template_id) || BUILT_IN_EMAIL_TEMPLATES[0]!;
 
   const renderedHtml = substituteMergeTags(template.htmlContent, {
     name: name || "there",
@@ -297,6 +324,7 @@ export async function dispatchDripStepForEnrollment(args: {
 
 /**
  * Instantly cancels all active drip enrollments when a user clicks unsubscribe.
+ * Throws if the database refuses, so the caller cannot report the withdrawal as done.
  */
 export async function cancelDripEnrollmentsForEmail(
   tenantId: string,
@@ -315,8 +343,12 @@ export async function cancelDripEnrollmentsForEmail(
     .select("id");
 
   if (error) {
-    console.error("[drip] Failed to cancel enrollments on unsubscribe:", error);
-    return 0;
+    // "Nothing to cancel" (0) and "could not cancel" are different answers: the caller is
+    // finishing a withdrawal of consent and must not report it done. The database's own message
+    // is not passed on, because it can quote the address.
+    throw Object.assign(new Error("Could not cancel drip enrollments"), {
+      code: error.code ?? "error",
+    });
   }
 
   return data?.length ?? 0;

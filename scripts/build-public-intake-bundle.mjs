@@ -1,9 +1,8 @@
 // Bundles the code that runs for requests nobody signed in for: the WhatsApp
-// send gate, the lead intake pipeline, and the website-plugin activation
-// endpoint, and the unsubscribe link every marketing email carries. The database,
-// the audit log and the email provider are doubles the
-// test drives through globalThis.publicIntake; everything between them is the
-// code production runs.
+// send gate, the lead intake pipeline, the website-plugin activation endpoint,
+// and the unsubscribe link every marketing email carries. The database, the
+// audit log and the email provider are doubles the test drives through
+// globalThis.publicIntake; everything between them is the code production runs.
 import { build } from "esbuild";
 import { mkdirSync } from "node:fs";
 
