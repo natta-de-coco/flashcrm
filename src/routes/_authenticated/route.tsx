@@ -80,7 +80,7 @@ function NavMenu({
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => section.title === "Manager" || canReach(staffRole, item.to),
+        (item) => section.id === "platform" || canReach(staffRole, item.to),
       ),
     }))
     .filter((section) => section.items.length > 0);
@@ -92,7 +92,7 @@ function NavMenu({
       {visible.map((section) => (
         <div key={section.title}>
           <p className="mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
-            {text(`nav.section.${section.title.toLowerCase()}`, section.title)}
+            {text(`nav.section.${section.id}`, section.title)}
           </p>
           <div className="flex flex-col gap-0.5">
             {section.items.map((item) => (

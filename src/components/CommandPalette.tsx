@@ -7,7 +7,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
-import { NAV_SECTIONS } from "@/lib/navigation";
+import { PALETTE_PAGES } from "@/lib/navigation";
 import { useNavigate } from "@tanstack/react-router";
 import { FileText, Package, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -26,21 +26,20 @@ type Hit = {
 };
 
 /**
- * Pages come from the one nav definition, so search can no longer fall behind
- * the sidebar. It previously held its own copy and had drifted: Quotes &
+ * Pages come from the one nav definition (PALETTE_PAGES is the sidebar's own
+ * entries), so search can no longer fall behind the sidebar or call a page
+ * something else. It previously held its own copy and had drifted: Quotes &
  * Invoices, Chatbot, Campaign Planner and Integrations were all reachable from
  * the sidebar but unfindable here.
  */
-const PAGES: Hit[] = NAV_SECTIONS.flatMap((section) =>
-  section.items.map((item) => ({
-    id: `p-${item.to}`,
-    label: item.label,
-    sub: item.desc,
-    to: item.to,
-    keywords: item.keywords,
-    icon: item.icon,
-  })),
-);
+const PAGES: Hit[] = PALETTE_PAGES.map((item) => ({
+  id: `p-${item.to}`,
+  label: item.label,
+  sub: item.desc,
+  to: item.to,
+  keywords: item.keywords,
+  icon: item.icon,
+}));
 
 /**
  * Universal search (Cmd/Ctrl + K). Jumps to any page and searches live

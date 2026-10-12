@@ -1,45 +1,45 @@
 import { useI18n } from "@/hooks/useI18n";
+import { navMessageKey } from "@/lib/i18n";
+import { MOBILE_BAR_ITEMS } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { Inbox, LayoutDashboard, Megaphone, Menu, Users } from "lucide-react";
-
-const ITEMS = [
-  { to: "/dashboard", label: "bottomNav.dashboard", icon: LayoutDashboard },
-  { to: "/inbox", label: "bottomNav.inbox", icon: Inbox },
-  { to: "/marketing", label: "bottomNav.marketing", icon: Users },
-  { to: "/social", label: "bottomNav.social", icon: Megaphone },
-] as const;
+import { Menu } from "lucide-react";
 
 /**
- * Phone/tablet bottom navigation for the five things people actually do on
- * the move. "More" opens the same drawer as the header hamburger.
+ * Phone/tablet bottom navigation for the things people actually do on the
+ * move. The tabs are entries from the menu itself (lib/navigation.ts) and are
+ * named with the menu's own translation keys, so this bar can never call a
+ * screen something the sidebar does not. "More" opens the same drawer as the
+ * header hamburger.
  */
 export function MobileBottomNav({ onMore }: { onMore: () => void }) {
-  const { t } = useI18n();
+  const { t, tx } = useI18n();
   return (
     <nav
       aria-label={t("shell.primaryNav")}
       className="sticky bottom-0 z-40 flex items-stretch border-t border-sidebar-border bg-sidebar text-sidebar-foreground lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {ITEMS.map((item) => (
+      {MOBILE_BAR_ITEMS.map((item) => (
         <Link
           key={item.to}
           to={item.to}
-          className="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium text-sidebar-foreground/60 transition-colors"
+          className="flex min-h-[3.25rem] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[11px] font-medium text-sidebar-foreground/60 transition-colors"
           activeProps={{ className: cn("text-sidebar-accent-foreground") }}
         >
           <item.icon className="size-5" />
-          {t(item.label)}
+          <span className="line-clamp-2 text-center leading-tight">
+            {tx(navMessageKey(item.to, "label"), item.label)}
+          </span>
         </Link>
       ))}
       <button
         type="button"
         onClick={onMore}
-        className="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-0.5 py-1.5 text-[11px] font-medium text-sidebar-foreground/60"
+        className="flex min-h-[3.25rem] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[11px] font-medium text-sidebar-foreground/60"
       >
         <Menu className="size-5" />
-        {t("shell.more")}
+        <span className="line-clamp-2 text-center leading-tight">{t("shell.more")}</span>
       </button>
     </nav>
   );

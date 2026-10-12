@@ -98,6 +98,6 @@ export const ROLE_LABELS: Record<
   },
   seo_editor: {
     label: "SEO editor",
-    hint: "Content and SEO Studio only. No inbox, no customer data.",
+    hint: "Website & SEO and saved drafts only. No inbox, no customer data.",
   },
 };

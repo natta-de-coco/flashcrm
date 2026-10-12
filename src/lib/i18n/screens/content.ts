@@ -8,7 +8,7 @@ export default screen({
     "content.postScheduled": "Post scheduled",
     "content.draftSaved": "Draft saved",
     "content.postDeleted": "Post deleted",
-    "content.contentSeo": "Content & SEO",
+    "content.contentSeo": "Saved drafts",
     "content.writeOnceScheduleToMultiple":
       "Write once, schedule to multiple platforms, and keep SEO metadata attached to every post.",
     "content.newPost": "New post",
@@ -50,7 +50,7 @@ export default screen({
     "content.postScheduled": "جُدول المنشور",
     "content.draftSaved": "حُفظت المسودة",
     "content.postDeleted": "حُذف المنشور",
-    "content.contentSeo": "المحتوى وتحسين محركات البحث",
+    "content.contentSeo": "المسودات المحفوظة",
     "content.writeOnceScheduleToMultiple":
       "اكتب مرة واحدة، وجدول على عدة منصات، وأبقِ بيانات SEO مرفقة بكل منشور.",
     "content.newPost": "منشور جديد",
@@ -92,7 +92,7 @@ export default screen({
     "content.postScheduled": "Hantaran dijadualkan",
     "content.draftSaved": "Draf disimpan",
     "content.postDeleted": "Hantaran dipadam",
-    "content.contentSeo": "Kandungan & SEO",
+    "content.contentSeo": "Draf tersimpan",
     "content.writeOnceScheduleToMultiple":
       "Tulis sekali, jadualkan ke pelbagai platform, dan kekalkan metadata SEO pada setiap hantaran.",
     "content.newPost": "Hantaran baharu",
@@ -135,7 +135,7 @@ export default screen({
     "content.postScheduled": "Na-schedule ang post",
     "content.draftSaved": "Na-save ang draft",
     "content.postDeleted": "Na-delete ang post",
-    "content.contentSeo": "Content at SEO",
+    "content.contentSeo": "Mga naka-save na draft",
     "content.writeOnceScheduleToMultiple":
       "Sumulat nang isang beses, i-schedule sa maraming platform, at panatilihing nakakabit ang SEO metadata sa bawat post.",
     "content.newPost": "Bagong post",
@@ -179,7 +179,7 @@ export default screen({
     "content.postScheduled": "Chapisho limeratibiwa",
     "content.draftSaved": "Rasimu imehifadhiwa",
     "content.postDeleted": "Chapisho limefutwa",
-    "content.contentSeo": "Maudhui na SEO",
+    "content.contentSeo": "Rasimu zilizohifadhiwa",
     "content.writeOnceScheduleToMultiple":
       "Andika mara moja, ratibu kwenye majukwaa mengi, na uweke data za SEO zikiwa zimeambatishwa kwenye kila chapisho.",
     "content.newPost": "Chapisho jipya",
