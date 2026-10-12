@@ -20,7 +20,6 @@ import { CampaignBoard, type CampaignItem } from "@/components/marketing/Campaig
 import { DripSequenceBuilder } from "@/components/marketing/DripSequenceBuilder";
 import { getTenantSmtpConfig } from "@/lib/tenant-smtp.functions";
 
-
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({
     meta: [
@@ -323,19 +322,26 @@ function MarketingPage() {
     toast.success("Copied to clipboard");
   }
 
-  if (leads.isLoading || sites.isLoading || campaigns.isLoading || routingRules.isLoading || waNumbers.isLoading) return (
-  <div className="space-y-3 p-6">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
-        <Skeleton className="h-10 w-10 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-3 w-2/3" />
-        </div>
+  if (
+    leads.isLoading ||
+    sites.isLoading ||
+    campaigns.isLoading ||
+    routingRules.isLoading ||
+    waNumbers.isLoading
+  )
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
       </div>
-    ))}
-  </div>
-);
+    );
 
   const activeSite =
     (sites.data ?? []).find((s) => s.id === selectedSite) ?? sites.data?.[0] ?? null;
@@ -849,7 +855,7 @@ function MarketingPage() {
         <DripSequenceBuilder />
 
         <CampaignBoard
-          campaigns={((campaigns.data ?? []) as unknown) as CampaignItem[]}
+          campaigns={(campaigns.data ?? []) as unknown as CampaignItem[]}
           isSmtpVerified={isSmtpVerified}
           audienceCount={(leads.data ?? []).filter((l) => l.subscribed).length}
         />
