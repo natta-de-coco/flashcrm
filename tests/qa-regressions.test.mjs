@@ -246,9 +246,12 @@ describe("the app does not offer what it cannot do", () => {
     const dead = CONNECTOR_DEFINITIONS.filter((c) => !implementsAnything(c)).map(
       (c) => c.displayName,
     );
-    // Google Analytics 4 left this list when its property picker and 28-day
-    // traffic report were built.
-    assert.deepEqual(dead.sort(), ["Google Ads", "LinkedIn Ads", "Threads"]);
+    assert.deepEqual(dead.sort(), [
+      "Google Ads",
+      "LinkedIn Ads",
+      "Threads",
+      "TikTok Ads",
+    ]);
   });
 
   it("never advertises a capability it has not implemented", () => {

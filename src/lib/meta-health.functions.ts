@@ -74,6 +74,7 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
       let token: string | null = null;
       if (n.active && n.access_token && n.phone_number_id) {
         try {
+
           const { openSecret } = await import("@/lib/secret-box.server");
           token = await openSecret(n.access_token);
         } catch {
@@ -88,6 +89,7 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
             `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
               `?fields=verified_name,quality_rating`,
             auth,
+
           );
           const json = (await res.json()) as {
             quality_rating?: string;
@@ -102,6 +104,7 @@ export const getMetaSyncHealth = createServerFn({ method: "GET" })
         } catch (e) {
           apiError = e instanceof Error ? e.message : "Meta API unreachable";
         }
+
       }
 
       results.push({

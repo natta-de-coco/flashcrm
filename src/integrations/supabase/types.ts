@@ -2510,9 +2510,13 @@ export type Database = {
           expires_at: string
           id: string
           platform: string
+          provider: string | null
+          purpose: string
           redirect_uri: string
+          requested_scopes: string[] | null
           state: string | null
           state_hash: string | null
+          target_account_id: string | null
           tenant_id: string
           used_at: string | null
           user_id: string
@@ -2525,9 +2529,13 @@ export type Database = {
           expires_at?: string
           id?: string
           platform: string
+          provider?: string | null
+          purpose?: string
           redirect_uri: string
+          requested_scopes?: string[] | null
           state?: string | null
           state_hash?: string | null
+          target_account_id?: string | null
           tenant_id?: string
           used_at?: string | null
           user_id?: string
@@ -2540,9 +2548,13 @@ export type Database = {
           expires_at?: string
           id?: string
           platform?: string
+          provider?: string | null
+          purpose?: string
           redirect_uri?: string
+          requested_scopes?: string[] | null
           state?: string | null
           state_hash?: string | null
+          target_account_id?: string | null
           tenant_id?: string
           used_at?: string | null
           user_id?: string
@@ -2855,6 +2867,83 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "super_admin_subscribers"
             referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
+      platform_email_config: {
+        Row: {
+          created_at: string
+          from_email: string
+          from_name: string
+          id: string
+          imap_host: string | null
+          imap_pass_enc: string | null
+          imap_port: number | null
+          imap_secure: boolean
+          imap_user: string | null
+          last_test_at: string | null
+          last_test_error: string | null
+          last_test_ok: boolean | null
+          smtp_host: string | null
+          smtp_pass_enc: string | null
+          smtp_port: number
+          smtp_secure: boolean
+          smtp_user: string | null
+          updated_at: string
+          updated_by: string | null
+          verified: boolean
+        }
+        Insert: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          id?: string
+          imap_host?: string | null
+          imap_pass_enc?: string | null
+          imap_port?: number | null
+          imap_secure?: boolean
+          imap_user?: string | null
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_ok?: boolean | null
+          smtp_host?: string | null
+          smtp_pass_enc?: string | null
+          smtp_port?: number
+          smtp_secure?: boolean
+          smtp_user?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verified?: boolean
+        }
+        Update: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          id?: string
+          imap_host?: string | null
+          imap_pass_enc?: string | null
+          imap_port?: number | null
+          imap_secure?: boolean
+          imap_user?: string | null
+          last_test_at?: string | null
+          last_test_error?: string | null
+          last_test_ok?: boolean | null
+          smtp_host?: string | null
+          smtp_pass_enc?: string | null
+          smtp_port?: number
+          smtp_secure?: boolean
+          smtp_user?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          verified?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_email_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -3620,7 +3709,10 @@ export type Database = {
       social_accounts: {
         Row: {
           access_token: string | null
+          access_token_enc: string | null
+          account_type: string | null
           active: boolean
+          authorization_id: string | null
           connect_method: string
           connection_state: string
           created_at: string
@@ -3633,15 +3725,28 @@ export type Database = {
           last_error: string | null
           last_error_at: string | null
           last_post_at: string | null
+          last_refresh_attempt_at: string | null
+          last_refresh_success_at: string | null
           last_retry_at: string | null
+          last_sync_attempt_at: string | null
+          last_sync_success_at: string | null
           last_synced_at: string | null
+          last_validation_attempt_at: string | null
+          last_validation_success_at: string | null
+          legacy_manual_connection: boolean
+          missing_scopes: string[] | null
           next_retry_at: string | null
           permissions: Json
           platform: string
           profile: Json
           profile_url: string | null
-          refresh_locked_until: string | null
+refresh_failure_reason: string | null
+          refresh_lease_id: string | null
+          refresh_leased_until: string | null
+refresh_locked_until: string | null
+
           refresh_token: string | null
+          refresh_token_enc: string | null
           retry_count: number
           state_changed_at: string
           state_reason: string | null
@@ -3649,10 +3754,14 @@ export type Database = {
           status_reason: string | null
           tenant_id: string
           token_expires_at: string | null
+          token_key_id: string | null
         }
         Insert: {
           access_token?: string | null
+          access_token_enc?: string | null
+          account_type?: string | null
           active?: boolean
+          authorization_id?: string | null
           connect_method?: string
           connection_state?: string
           created_at?: string
@@ -3665,15 +3774,28 @@ export type Database = {
           last_error?: string | null
           last_error_at?: string | null
           last_post_at?: string | null
+          last_refresh_attempt_at?: string | null
+          last_refresh_success_at?: string | null
           last_retry_at?: string | null
+          last_sync_attempt_at?: string | null
+          last_sync_success_at?: string | null
           last_synced_at?: string | null
+          last_validation_attempt_at?: string | null
+          last_validation_success_at?: string | null
+          legacy_manual_connection?: boolean
+          missing_scopes?: string[] | null
           next_retry_at?: string | null
           permissions?: Json
           platform: string
           profile?: Json
           profile_url?: string | null
-          refresh_locked_until?: string | null
+refresh_failure_reason?: string | null
+          refresh_lease_id?: string | null
+          refresh_leased_until?: string | null
+refresh_locked_until?: string | null
+
           refresh_token?: string | null
+          refresh_token_enc?: string | null
           retry_count?: number
           state_changed_at?: string
           state_reason?: string | null
@@ -3681,10 +3803,14 @@ export type Database = {
           status_reason?: string | null
           tenant_id?: string
           token_expires_at?: string | null
+          token_key_id?: string | null
         }
         Update: {
           access_token?: string | null
+          access_token_enc?: string | null
+          account_type?: string | null
           active?: boolean
+          authorization_id?: string | null
           connect_method?: string
           connection_state?: string
           created_at?: string
@@ -3697,15 +3823,28 @@ export type Database = {
           last_error?: string | null
           last_error_at?: string | null
           last_post_at?: string | null
+          last_refresh_attempt_at?: string | null
+          last_refresh_success_at?: string | null
           last_retry_at?: string | null
+          last_sync_attempt_at?: string | null
+          last_sync_success_at?: string | null
           last_synced_at?: string | null
+          last_validation_attempt_at?: string | null
+          last_validation_success_at?: string | null
+          legacy_manual_connection?: boolean
+          missing_scopes?: string[] | null
           next_retry_at?: string | null
           permissions?: Json
           platform?: string
           profile?: Json
           profile_url?: string | null
-          refresh_locked_until?: string | null
+refresh_failure_reason?: string | null
+          refresh_lease_id?: string | null
+          refresh_leased_until?: string | null
+refresh_locked_until?: string | null
+
           refresh_token?: string | null
+          refresh_token_enc?: string | null
           retry_count?: number
           state_changed_at?: string
           state_reason?: string | null
@@ -3713,6 +3852,85 @@ export type Database = {
           status_reason?: string | null
           tenant_id?: string
           token_expires_at?: string | null
+          token_key_id?: string | null
+        }
+        Relationships: []
+      }
+      social_authorizations: {
+        Row: {
+          access_token_enc: string | null
+          authorization_state: string
+          authorized_by: string | null
+          created_at: string
+          discovered_assets: Json
+          discovered_at: string | null
+          expires_at: string | null
+          granted_scopes: string[]
+          id: string
+          last_refreshed_at: string | null
+          last_validation_success_at: string | null
+          platform: string
+          provider: string
+          provider_email_hint: string | null
+          provider_user_id: string | null
+          refresh_lease_id: string | null
+          refresh_leased_until: string | null
+          refresh_token_enc: string | null
+          requested_scopes: string[]
+          state_reason: string | null
+          tenant_id: string
+          token_key_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token_enc?: string | null
+          authorization_state?: string
+          authorized_by?: string | null
+          created_at?: string
+          discovered_assets?: Json
+          discovered_at?: string | null
+          expires_at?: string | null
+          granted_scopes?: string[]
+          id?: string
+          last_refreshed_at?: string | null
+          last_validation_success_at?: string | null
+          platform: string
+          provider: string
+          provider_email_hint?: string | null
+          provider_user_id?: string | null
+          refresh_lease_id?: string | null
+          refresh_leased_until?: string | null
+          refresh_token_enc?: string | null
+          requested_scopes?: string[]
+          state_reason?: string | null
+          tenant_id: string
+          token_key_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token_enc?: string | null
+          authorization_state?: string
+          authorized_by?: string | null
+          created_at?: string
+          discovered_assets?: Json
+          discovered_at?: string | null
+          expires_at?: string | null
+          granted_scopes?: string[]
+          id?: string
+          last_refreshed_at?: string | null
+          last_validation_success_at?: string | null
+          platform?: string
+          provider?: string
+          provider_email_hint?: string | null
+          provider_user_id?: string | null
+          refresh_lease_id?: string | null
+          refresh_leased_until?: string | null
+          refresh_token_enc?: string | null
+          requested_scopes?: string[]
+          state_reason?: string | null
+          tenant_id?: string
+          token_key_id?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -5190,6 +5408,22 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_authorization_refresh_lease: {
+        Args: { _authorization_id: string; _lease_seconds?: number; _tenant_id: string }
+        Returns: string | null
+      }
+      release_authorization_refresh_lease: {
+        Args: { _authorization_id: string; _lease_id: string; _tenant_id: string }
+        Returns: boolean
+      }
+      acquire_connection_refresh_lease: {
+        Args: { _account_id: string; _lease_seconds?: number; _tenant_id: string }
+        Returns: string | null
+      }
+      release_connection_refresh_lease: {
+        Args: { _account_id: string; _lease_id: string; _tenant_id: string }
+        Returns: boolean
+      }
       _is_locked_super_admin_email: {
         Args: { _email: string }
         Returns: boolean
@@ -5254,6 +5488,7 @@ export type Database = {
       expire_abandoned_oauth_attempts: {
         Args: never
         Returns: {
+          cancelled_count: number
           deleted_count: number
           expired_count: number
         }[]
@@ -5426,10 +5661,6 @@ export type Database = {
       set_tenant_smtp_api_key: {
         Args: { _api_key: string }
         Returns: undefined
-      }
-      try_lock_connection_refresh: {
-        Args: { _account_id: string }
-        Returns: boolean
       }
       update_email_delivery: {
         Args: {

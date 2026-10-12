@@ -164,6 +164,34 @@ export type ConnectorDefinition = {
   lastVerified: string;
   knownLimitations: readonly string[];
   capabilities: Readonly<Record<CapabilityKey, CapabilityFacts>>;
+  /**
+   * Scopes needed only to identify WHO authorized ("Signed in as"), never tied
+   * to a channel capability. Requested with every authorization.
+   */
+  identityScopes?: readonly string[];
+  /**
+   * Progressive authorization (Batch 2A). The first connection asks only for
+   * the `initial` tiers; everything else is an upgrade the user turns on later.
+   * A tier's scopes are DERIVED from its capabilities' requiredScopes -- never
+   * listed separately -- so the registry stays the only place scopes live.
+   * Absent: the connector still requests all of requestedScopes at once.
+   */
+  authorizationTiers?: readonly AuthorizationTier[];
+};
+
+export type AuthorizationTier = {
+  id: string;
+  /** Short name on the Manage screen: "Read public comments". */
+  label: string;
+  /** Plain-language request shown before the provider's consent screen. */
+  purpose: string;
+  capabilities: readonly CapabilityKey[];
+  /** Asked for on first connection. Everything else is an upgrade. */
+  initial: boolean;
+  /** Provider-specific reassurance: what Flas will not do with this. */
+  wontDo?: readonly string[];
+  /** Provider-specific warning when the provider bundles more power into the scope than Flas uses. */
+  scopeCaveat?: string;
 };
 
 /** Shorthand for a capability the provider does not offer at all. */
@@ -239,6 +267,48 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     knownLimitations: [
       "Advanced Access requires Meta app review before the connector works for anyone outside your own Business.",
       "Conversations older than the Page's retention window are not returned.",
+    ],
+    identityScopes: ["public_profile"],
+    // Batch 2B. pages_manage_posts is never requested: publishing is not built.
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Pages, posts, comments and statistics",
+        purpose:
+          "Flas would like permission to see the Facebook Pages you choose, their posts and comments, and the Page statistics Facebook shares.",
+        capabilities: ["profile", "comments_read", "analytics"],
+        initial: true,
+        wontDo: [
+          "post, edit or delete anything on your Pages",
+          "see your Facebook password",
+          "read your personal profile, friends or private messages",
+        ],
+      },
+      {
+        id: "messages",
+        label: "Read Messenger conversations",
+        purpose:
+          "Flas would like permission to read Messenger conversations people start with your Page.",
+        capabilities: ["direct_messages_read"],
+        initial: false,
+        wontDo: ["send messages as your Page"],
+      },
+      {
+        id: "replies",
+        label: "Reply to comments",
+        purpose:
+          "Flas would like permission to post replies to comments on your Page, when you send one from Flas.",
+        capabilities: ["comments_reply"],
+        initial: false,
+        wontDo: ["publish new posts", "delete comments"],
+      },
+      {
+        id: "publishing",
+        label: "Publish posts",
+        purpose: "Flas would like permission to publish posts to your Page.",
+        capabilities: ["publish"],
+        initial: false,
+      },
     ],
     capabilities: caps({
       profile: {
@@ -325,11 +395,50 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "Personal Instagram accounts cannot be connected — the API is Professional-only.",
       "Instagram DMs are a separate permission (instagram_manage_messages) that Flas does not request.",
     ],
+    identityScopes: ["public_profile"],
+    // Batch 2B. instagram_content_publish is never requested: publishing is not built.
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Profile, posts and statistics",
+        purpose:
+          "Flas would like permission to see the Instagram professional accounts linked to your Facebook Pages, their posts, and the account statistics Instagram shares.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        wontDo: [
+          "post, edit or delete anything on your account",
+          "see your Instagram or Facebook password",
+          "read your direct messages",
+        ],
+      },
+      {
+        id: "comments",
+        label: "Read and reply to comments",
+        purpose:
+          "Flas would like permission to read comments on your posts and post the replies you send from Flas.",
+        capabilities: ["comments_read", "comments_reply"],
+        initial: false,
+        // instagram_manage_comments covers reading AND replying; Instagram
+        // does not offer a read-only comment permission.
+        scopeCaveat:
+          "Instagram grants reading and replying to comments as one permission. Flas replies only when you send a reply yourself.",
+        wontDo: ["delete comments", "publish new posts"],
+      },
+      {
+        id: "publishing",
+        label: "Publish posts",
+        purpose: "Flas would like permission to publish posts to your Instagram account.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     capabilities: caps({
       profile: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["instagram_basic"],
+        // pages_show_list: an Instagram professional account is reached through
+        // the Facebook Page it is linked to, so listing Pages is part of it.
+        requiredScopes: ["instagram_basic", "pages_show_list"],
         reviewRequired: false,
         accountTypeLimited: true,
         note: "Business or Creator accounts only.",
@@ -408,6 +517,7 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["LinkedIn Company Page (organization admin)"],
     authMethod: "oauth2",
+// w_organization_social (posting) is not requested: Flas has no publish code.
     requestedScopes: ["r_organization_social", "rw_organization_admin"],
     optionalScopes: ["w_organization_social"],
     providerReviewRequired: true,
@@ -420,19 +530,53 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     docs: [
       "https://learn.microsoft.com/en-us/linkedin/marketing/community-management/community-management-overview",
     ],
-    lastVerified: "2026-09-08",
+    lastVerified: "2026-09-11",
+    // No identity scopes: LinkedIn shares a member's name or email only
+    // through its separate OpenID product, which Flas does not request.
+    identityScopes: [],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Company Pages, posts and follower statistics",
+        purpose:
+          "Flas would like permission to list the LinkedIn Pages you administer, read their posts and read their follower statistics.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        // Verified 2026-09-11: LinkedIn's organization lookup and follower
+        // statistics APIs list rw_organization_admin, described as "Manage
+        // organization pages and retrieve reporting data".
+        scopeCaveat:
+          "LinkedIn only lets apps read a Page's details and statistics under a permission it describes as managing your organization's pages. Flas uses it to read, and changes nothing on your Pages.",
+        wontDo: [
+          "post on your Pages",
+          "change Page details or admins",
+          "read your private messages",
+        ],
+      },
+      {
+        id: "publishing",
+        label: "Publish posts",
+        purpose: "Flas would like permission to publish posts on your LinkedIn Pages.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "LinkedIn member-to-member inbox messaging is not available through these organization scopes; it requires a separate partner-only messaging product.",
       "The Community Management API product must be approved before organization scopes are granted.",
+      "Only a Page's Super admins can connect it; LinkedIn shares Page statistics with no other role.",
     ],
     capabilities: caps({
       profile: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["r_organization_social"],
+        requiredScopes: ["rw_organization_admin"],
         reviewRequired: true,
       },
-      publish: notBuilt(["w_organization_social"], "Scope requested; no publish code exists."),
+      publish: notBuilt(
+        ["w_organization_social"],
+        "Not built; w_organization_social is not requested.",
+      ),
       comments_read: notBuilt(
         ["r_organization_social"],
         "Comments on organization posts are readable, but Flas syncs only posts and follower statistics.",
@@ -447,9 +591,9 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       analytics: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["r_organization_social"],
+        requiredScopes: ["r_organization_social", "rw_organization_admin"],
         reviewRequired: true,
-        note: "Follower statistics only.",
+        note: "Posts and follower statistics.",
       },
     }),
   },
@@ -470,7 +614,30 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "https://developers.tiktok.com/doc/login-kit-web",
       "https://developers.tiktok.com/doc/display-api-overview",
     ],
-    lastVerified: "2026-09-08",
+    lastVerified: "2026-09-11",
+    identityScopes: ["user.info.basic"],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Profile, videos and statistics",
+        purpose:
+          "Flas would like permission to see your TikTok profile, your public videos and the follower, like and video counts TikTok shares.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        wontDo: [
+          "post, edit or delete videos",
+          "read your messages",
+          "change your account settings",
+        ],
+      },
+      {
+        id: "publishing",
+        label: "Publish videos",
+        purpose: "Flas would like permission to publish videos to your TikTok account.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "TikTok exposes no direct-message API to third-party applications.",
       "Publishing needs video.publish, which Flas does not request.",
@@ -479,7 +646,7 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       profile: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["user.info.basic"],
+        requiredScopes: ["user.info.basic", "user.info.profile"],
         reviewRequired: false,
       },
       publish: notBuilt(
@@ -529,6 +696,45 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       "https://developers.google.com/youtube/v3/guides/auth/installed-apps",
     ],
     lastVerified: "2026-09-08",
+    identityScopes: ["openid", "https://www.googleapis.com/auth/userinfo.email"],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Channel, videos and statistics",
+        purpose:
+          "Flas would like permission to view your YouTube channel, its videos and the channel statistics YouTube shares, and to see which Google account you signed in with.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        wontDo: [
+          "change or delete anything on your channel",
+          "see your Google password",
+          "access Gmail, Drive or other Google services",
+        ],
+      },
+      {
+        id: "comments",
+        label: "Read public comments",
+        purpose:
+          "Flas would like permission to read the public comments on your videos so they appear in your Flas inbox.",
+        capabilities: ["comments_read"],
+        initial: false,
+        // Verified 2026-09-11 against Google's scope list: youtube.force-ssl is
+        // "See, edit, and permanently delete your YouTube videos, ratings,
+        // comments and captions". It is the only scope that grants comment
+        // access to an OAuth client, so the customer is told what it covers.
+        scopeCaveat:
+          "Google only grants comment access together with permission to edit and delete videos and comments. Flas uses it to read comments and does not edit or delete anything.",
+        wontDo: ["delete or edit videos, comments or captions", "change your channel settings"],
+      },
+      {
+        id: "replies",
+        label: "Reply to comments",
+        purpose:
+          "Flas would like permission to post replies to comments on behalf of your channel.",
+        capabilities: ["comments_reply"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "YouTube has no private direct-message API. Comments are public.",
       "Uploading needs youtube.upload, which Flas does not request.",
@@ -574,13 +780,39 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["X account on a plan whose API tier permits the endpoints used"],
     authMethod: "oauth2_pkce",
-    requestedScopes: ["tweet.read", "users.read", "offline.access"],
+requestedScopes: ["tweet.read", "users.read", "offline.access"],
     optionalScopes: ["dm.read", "dm.write", "tweet.write"],
     providerReviewRequired: false,
     sandboxAvailable: false,
     setupRequirements: ["X developer account", "Paid API tier for meaningful read volume"],
     docs: ["https://docs.x.com/x-api/introduction"],
-    lastVerified: "2026-09-08",
+    lastVerified: "2026-09-11",
+    // Verified 2026-09-11: GET /2/users/me needs tweet.read and users.read.
+    // offline.access is what makes X return a refresh token; without it the
+    // access token dies after two hours and the channel with it.
+    identityScopes: ["tweet.read", "users.read", "offline.access"],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Profile, posts and public metrics",
+        purpose:
+          "Flas would like permission to see your X profile, your posts and their public metrics, and to stay connected without asking you to sign in every two hours.",
+        capabilities: ["profile", "analytics"],
+        initial: true,
+        wontDo: [
+          "post, like or repost",
+          "read or send direct messages",
+          "follow or unfollow anyone",
+        ],
+      },
+      {
+        id: "publishing",
+        label: "Publish posts",
+        purpose: "Flas would like permission to publish posts on your X account.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "Direct messages need dm.read and dm.write, which Flas does not request.",
       "Read volume on the free tier is too low for practical monitoring.",
@@ -589,13 +821,10 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
       profile: {
         providerSupports: true,
         flasImplements: true,
-        requiredScopes: ["users.read"],
+        requiredScopes: ["tweet.read", "users.read"],
         reviewRequired: false,
       },
-      publish: notBuilt(
-        ["tweet.write"],
-        "The scope is requested, but Flas has no code that posts to X.",
-      ),
+      publish: notBuilt(["tweet.write"], "Not built; tweet.write is not requested."),
       comments_read: notBuilt(
         ["tweet.read"],
         "Replies are readable, but Flas syncs only the account's own posts and their metrics.",
@@ -683,13 +912,32 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["Pinterest business account"],
     authMethod: "oauth2",
-    requestedScopes: ["boards:read", "pins:read", "user_accounts:read"],
+requestedScopes: ["boards:read", "pins:read", "user_accounts:read"],
     optionalScopes: ["pins:write"],
     providerReviewRequired: true,
     sandboxAvailable: true,
     setupRequirements: ["Pinterest developer app", "Standard access approval for production"],
     docs: ["https://developers.pinterest.com/docs/api/v5/introduction/"],
-    lastVerified: "2026-09-08",
+    lastVerified: "2026-09-11",
+    identityScopes: ["user_accounts:read"],
+    authorizationTiers: [
+      {
+        id: "basic",
+        label: "Account profile",
+        purpose:
+          "Flas would like permission to see your Pinterest account name, picture and follower count.",
+        capabilities: ["profile"],
+        initial: true,
+        wontDo: ["create, edit or delete Pins or boards", "see your secret boards"],
+      },
+      {
+        id: "publishing",
+        label: "Create Pins",
+        purpose: "Flas would like permission to create Pins on your boards.",
+        capabilities: ["publish"],
+        initial: false,
+      },
+    ],
     knownLimitations: [
       "No direct-message capability is available under the scopes Flas requests.",
       "Flas performs no Pinterest content sync — connecting validates the account only.",
@@ -702,7 +950,7 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
         reviewRequired: false,
         note: "The account is validated on connect; no content is synced.",
       },
-      publish: notBuilt(["pins:write"], "Scope requested; no pin-creation code exists."),
+      publish: notBuilt(["pins:write"], "Not built; pins:write is not requested."),
       comments_read: notBuilt(["pins:read"], "Not built."),
       analytics: notBuilt(["user_accounts:read"], "Not built."),
       direct_messages_read: unsupported(
@@ -870,11 +1118,11 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     displayName: "TikTok Ads",
     category: "ads",
     accountTypes: ["TikTok for Business advertiser account"],
-    authMethod: "oauth2_pkce",
-    requestedScopes: ["user.info.basic"],
-    // TikTok's Marketing API uses its own advertiser scopes, none of which are
-    // requested today -- which is why every ads capability below is
-    // unreachable rather than merely unbuilt.
+    // TikTok for Business / Marketing API: a separate product from the consumer
+    // Login Kit, with its own advertiser authorization. It must not reuse the
+    // TikTok Login Kit flow, and requests nothing until an adapter exists.
+    authMethod: "oauth2",
+    requestedScopes: [],
     optionalScopes: ["advertiser.read", "advertiser.write"],
     providerReviewRequired: true,
     sandboxAvailable: true,
@@ -882,15 +1130,13 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     docs: ["https://business-api.tiktok.com/portal/docs"],
     lastVerified: "2026-09-08",
     knownLimitations: [
-      "Only user.info.basic is requested — no advertising scope at all, so no ads data can be read.",
+      "Not implemented. Connect is disabled until a TikTok for Business Marketing API adapter exists.",
     ],
     capabilities: caps({
-      profile: {
-        providerSupports: true,
-        flasImplements: true,
-        requiredScopes: ["user.info.basic"],
-        reviewRequired: false,
-      },
+      profile: notBuilt(
+        ["advertiser.read"],
+        "Advertiser identity needs the Marketing API; not built.",
+      ),
       ads_read: notBuilt(
         ["advertiser.read"],
         "No advertising scope is requested, so no ads data is reachable.",
@@ -1090,6 +1336,92 @@ export function resolveAllCapabilities(connector: ConnectorDefinition): Resolved
 }
 
 /**
+ * Connectors that use the Batch 2A authorization/channel model: one stored
+ * authorization, channels discovered from it and chosen by the user. Others
+ * still use the one-account-per-platform flow until their batch migrates them.
+ */
+export const CHANNEL_MODEL_CONNECTORS: readonly string[] = [
+  "youtube",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "tiktok",
+  "twitter",
+  "pinterest",
+];
+
+/**
+ * Connectors whose single sign-in also discovers channels of a sibling
+ * platform. One Meta login finds both Facebook Pages and the Instagram
+ * professional accounts linked to them, so neither needs a second login.
+ */
+export const DISCOVERY_FAMILY: Readonly<Record<string, readonly string[]>> = {
+  facebook: ["facebook", "instagram"],
+  instagram: ["facebook", "instagram"],
+  youtube: ["youtube"],
+  linkedin: ["linkedin"],
+  tiktok: ["tiktok"],
+  twitter: ["twitter"],
+  pinterest: ["pinterest"],
+};
+
+export function usesChannelModel(connectorId: string): boolean {
+  return CHANNEL_MODEL_CONNECTORS.includes(connectorId);
+}
+
+/** A tier can be offered only if every capability in it works in Flas today. */
+export function tierAvailability(
+  connector: ConnectorDefinition,
+  tier: AuthorizationTier,
+): { offerable: boolean; reason: string | null } {
+  for (const key of tier.capabilities) {
+    const facts = connector.capabilities[key];
+    if (!facts.providerSupports)
+      return { offerable: false, reason: facts.note ?? "Not offered by this provider." };
+    if (!facts.flasImplements) return { offerable: false, reason: "Not available in Flas yet." };
+  }
+  return { offerable: true, reason: null };
+}
+
+/** The scopes one tier needs, derived from its capabilities. */
+export function tierScopes(connector: ConnectorDefinition, tier: AuthorizationTier): string[] {
+  const out = new Set<string>();
+  for (const key of tier.capabilities) {
+    for (const scope of connector.capabilities[key].requiredScopes) out.add(scope);
+  }
+  return [...out];
+}
+
+/**
+ * The exact scope list for an authorization asking for these tiers. Identity
+ * scopes are always included; unofferable tiers are refused, not quietly
+ * dropped, so a caller cannot request a permission for code that does not exist.
+ */
+export function scopesForTiers(
+  connector: ConnectorDefinition,
+  tierIds: readonly string[],
+): string[] {
+  const tiers = connector.authorizationTiers ?? [];
+  const out = new Set<string>(connector.identityScopes ?? []);
+  for (const id of tierIds) {
+    const tier = tiers.find((t) => t.id === id);
+    if (!tier) throw new Error(`Unknown authorization tier "${id}" for ${connector.id}.`);
+    if (!tierAvailability(connector, tier).offerable) {
+      throw new Error(`Tier "${id}" for ${connector.id} cannot be requested: it is not available.`);
+    }
+    for (const scope of tierScopes(connector, tier)) out.add(scope);
+  }
+  return [...out];
+}
+
+/** Tier ids a first connection asks for. */
+export function initialTierIds(connector: ConnectorDefinition): string[] {
+  return (connector.authorizationTiers ?? [])
+    .filter((t) => t.initial && tierAvailability(connector, t).offerable)
+    .map((t) => t.id);
+}
+
+/**
  * Capabilities safe to advertise on a connector card.
  *
  * Anything a customer cannot use today is excluded — the point of the registry
@@ -1113,6 +1445,7 @@ export function capabilityCeiling(connectorId: string): Set<CapabilityKey> {
     CAPABILITY_KEYS.filter(
       (k) => def.capabilities[k].providerSupports && def.capabilities[k].flasImplements,
     ),
+
   );
 }
 
@@ -1131,6 +1464,7 @@ export function capabilityCeiling(connectorId: string): Set<CapabilityKey> {
 export function implementsAnything(connector: ConnectorDefinition): boolean {
   return CAPABILITY_KEYS.some(
     (k) => connector.capabilities[k].providerSupports && connector.capabilities[k].flasImplements,
+
   );
 }
 

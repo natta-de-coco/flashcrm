@@ -19,11 +19,13 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as WhatsappBusinessApiRouteImport } from './routes/whatsapp-business-api'
 import { Route as WidgetDemoRouteImport } from './routes/widget-demo'
 import { Route as AuthenticatedAdvisorRouteImport } from './routes/_authenticated/advisor'
 import { Route as AuthenticatedCampaignPlannerRouteImport } from './routes/_authenticated/campaign-planner'
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
+import { Route as AuthenticatedChannelsRouteImport } from './routes/_authenticated/channels'
 import { Route as AuthenticatedChatbotRouteImport } from './routes/_authenticated/chatbot'
 import { Route as AuthenticatedConnectRouteImport } from './routes/_authenticated/connect'
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated/contacts'
@@ -41,6 +43,7 @@ import { Route as PayTokenRouteImport } from './routes/pay.$token'
 import { Route as VerifyTokenRouteImport } from './routes/verify.$token'
 import { Route as AuthenticatedCompaniesIndexRouteImport } from './routes/_authenticated/companies.index'
 import { Route as AuthenticatedCompaniesOrgIdRouteImport } from './routes/_authenticated/companies.$orgId'
+import { Route as AuthenticatedCompaniesEmailSettingsRouteImport } from './routes/_authenticated/companies.email-settings'
 import { Route as AuthenticatedCompaniesEmailsRouteImport } from './routes/_authenticated/companies.emails'
 import { Route as AuthenticatedCompaniesErrorsRouteImport } from './routes/_authenticated/companies.errors'
 import { Route as AuthenticatedSeoBlogIndexRouteImport } from './routes/_authenticated/seo-blog.index'
@@ -111,6 +114,11 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WhatsappBusinessApiRoute = WhatsappBusinessApiRouteImport.update({
   id: '/whatsapp-business-api',
   path: '/whatsapp-business-api',
@@ -135,6 +143,11 @@ const AuthenticatedCampaignPlannerRoute =
 const AuthenticatedCatalogRoute = AuthenticatedCatalogRouteImport.update({
   id: '/catalog',
   path: '/catalog',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedChannelsRoute = AuthenticatedChannelsRouteImport.update({
+  id: '/channels',
+  path: '/channels',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedChatbotRoute = AuthenticatedChatbotRouteImport.update({
@@ -222,6 +235,12 @@ const AuthenticatedCompaniesOrgIdRoute =
   AuthenticatedCompaniesOrgIdRouteImport.update({
     id: '/companies/$orgId',
     path: '/companies/$orgId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedCompaniesEmailSettingsRoute =
+  AuthenticatedCompaniesEmailSettingsRouteImport.update({
+    id: '/companies/email-settings',
+    path: '/companies/email-settings',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedCompaniesEmailsRoute =
@@ -345,11 +364,13 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/widget-demo': typeof WidgetDemoRoute
   '/advisor': typeof AuthenticatedAdvisorRoute
   '/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/catalog': typeof AuthenticatedCatalogRoute
+  '/channels': typeof AuthenticatedChannelsRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
   '/connect': typeof AuthenticatedConnectRoute
   '/contacts': typeof AuthenticatedContactsRoute
@@ -366,6 +387,7 @@ export interface FileRoutesByFullPath {
   '/verify/$token': typeof VerifyTokenRoute
   '/blog/': typeof BlogIndexRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/companies/email-settings': typeof AuthenticatedCompaniesEmailSettingsRoute
   '/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
@@ -397,11 +419,13 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/widget-demo': typeof WidgetDemoRoute
   '/advisor': typeof AuthenticatedAdvisorRoute
   '/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/catalog': typeof AuthenticatedCatalogRoute
+  '/channels': typeof AuthenticatedChannelsRoute
   '/chatbot': typeof AuthenticatedChatbotRoute
   '/connect': typeof AuthenticatedConnectRoute
   '/contacts': typeof AuthenticatedContactsRoute
@@ -417,6 +441,7 @@ export interface FileRoutesByTo {
   '/verify/$token': typeof VerifyTokenRoute
   '/blog': typeof BlogIndexRoute
   '/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/companies/email-settings': typeof AuthenticatedCompaniesEmailSettingsRoute
   '/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
@@ -451,11 +476,13 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/whatsapp-business-api': typeof WhatsappBusinessApiRoute
   '/widget-demo': typeof WidgetDemoRoute
   '/_authenticated/advisor': typeof AuthenticatedAdvisorRoute
   '/_authenticated/campaign-planner': typeof AuthenticatedCampaignPlannerRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
+  '/_authenticated/channels': typeof AuthenticatedChannelsRoute
   '/_authenticated/chatbot': typeof AuthenticatedChatbotRoute
   '/_authenticated/connect': typeof AuthenticatedConnectRoute
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
@@ -472,6 +499,7 @@ export interface FileRoutesById {
   '/verify/$token': typeof VerifyTokenRoute
   '/blog/': typeof BlogIndexRoute
   '/_authenticated/companies/$orgId': typeof AuthenticatedCompaniesOrgIdRoute
+  '/_authenticated/companies/email-settings': typeof AuthenticatedCompaniesEmailSettingsRoute
   '/_authenticated/companies/emails': typeof AuthenticatedCompaniesEmailsRoute
   '/_authenticated/companies/errors': typeof AuthenticatedCompaniesErrorsRoute
   '/_authenticated/seo-blog/studio': typeof AuthenticatedSeoBlogStudioRoute
@@ -506,11 +534,13 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/unsubscribe'
     | '/whatsapp-business-api'
     | '/widget-demo'
     | '/advisor'
     | '/campaign-planner'
     | '/catalog'
+    | '/channels'
     | '/chatbot'
     | '/connect'
     | '/contacts'
@@ -527,6 +557,7 @@ export interface FileRouteTypes {
     | '/verify/$token'
     | '/blog/'
     | '/companies/$orgId'
+    | '/companies/email-settings'
     | '/companies/emails'
     | '/companies/errors'
     | '/seo-blog/studio'
@@ -558,11 +589,13 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/unsubscribe'
     | '/whatsapp-business-api'
     | '/widget-demo'
     | '/advisor'
     | '/campaign-planner'
     | '/catalog'
+    | '/channels'
     | '/chatbot'
     | '/connect'
     | '/contacts'
@@ -578,6 +611,7 @@ export interface FileRouteTypes {
     | '/verify/$token'
     | '/blog'
     | '/companies/$orgId'
+    | '/companies/email-settings'
     | '/companies/emails'
     | '/companies/errors'
     | '/seo-blog/studio'
@@ -611,11 +645,13 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/sitemap.xml'
     | '/terms'
+    | '/unsubscribe'
     | '/whatsapp-business-api'
     | '/widget-demo'
     | '/_authenticated/advisor'
     | '/_authenticated/campaign-planner'
     | '/_authenticated/catalog'
+    | '/_authenticated/channels'
     | '/_authenticated/chatbot'
     | '/_authenticated/connect'
     | '/_authenticated/contacts'
@@ -632,6 +668,7 @@ export interface FileRouteTypes {
     | '/verify/$token'
     | '/blog/'
     | '/_authenticated/companies/$orgId'
+    | '/_authenticated/companies/email-settings'
     | '/_authenticated/companies/emails'
     | '/_authenticated/companies/errors'
     | '/_authenticated/seo-blog/studio'
@@ -666,6 +703,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
+  UnsubscribeRoute: typeof UnsubscribeRoute
   WhatsappBusinessApiRoute: typeof WhatsappBusinessApiRoute
   WidgetDemoRoute: typeof WidgetDemoRoute
   PayTokenRoute: typeof PayTokenRoute
@@ -758,6 +796,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/whatsapp-business-api': {
       id: '/whatsapp-business-api'
       path: '/whatsapp-business-api'
@@ -791,6 +836,13 @@ declare module '@tanstack/react-router' {
       path: '/catalog'
       fullPath: '/catalog'
       preLoaderRoute: typeof AuthenticatedCatalogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/channels': {
+      id: '/_authenticated/channels'
+      path: '/channels'
+      fullPath: '/channels'
+      preLoaderRoute: typeof AuthenticatedChannelsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/chatbot': {
@@ -910,6 +962,13 @@ declare module '@tanstack/react-router' {
       path: '/companies/$orgId'
       fullPath: '/companies/$orgId'
       preLoaderRoute: typeof AuthenticatedCompaniesOrgIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/companies/email-settings': {
+      id: '/_authenticated/companies/email-settings'
+      path: '/companies/email-settings'
+      fullPath: '/companies/email-settings'
+      preLoaderRoute: typeof AuthenticatedCompaniesEmailSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/companies/emails': {
@@ -1072,6 +1131,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdvisorRoute: typeof AuthenticatedAdvisorRoute
   AuthenticatedCampaignPlannerRoute: typeof AuthenticatedCampaignPlannerRoute
   AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
+  AuthenticatedChannelsRoute: typeof AuthenticatedChannelsRoute
   AuthenticatedChatbotRoute: typeof AuthenticatedChatbotRoute
   AuthenticatedConnectRoute: typeof AuthenticatedConnectRoute
   AuthenticatedContactsRoute: typeof AuthenticatedContactsRoute
@@ -1084,6 +1144,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSeoBlogRoute: typeof AuthenticatedSeoBlogRouteWithChildren
   AuthenticatedSocialRoute: typeof AuthenticatedSocialRoute
   AuthenticatedCompaniesOrgIdRoute: typeof AuthenticatedCompaniesOrgIdRoute
+  AuthenticatedCompaniesEmailSettingsRoute: typeof AuthenticatedCompaniesEmailSettingsRoute
   AuthenticatedCompaniesEmailsRoute: typeof AuthenticatedCompaniesEmailsRoute
   AuthenticatedCompaniesErrorsRoute: typeof AuthenticatedCompaniesErrorsRoute
   AuthenticatedSettingsEmailRoute: typeof AuthenticatedSettingsEmailRoute
@@ -1095,6 +1156,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdvisorRoute: AuthenticatedAdvisorRoute,
   AuthenticatedCampaignPlannerRoute: AuthenticatedCampaignPlannerRoute,
   AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
+  AuthenticatedChannelsRoute: AuthenticatedChannelsRoute,
   AuthenticatedChatbotRoute: AuthenticatedChatbotRoute,
   AuthenticatedConnectRoute: AuthenticatedConnectRoute,
   AuthenticatedContactsRoute: AuthenticatedContactsRoute,
@@ -1107,6 +1169,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSeoBlogRoute: AuthenticatedSeoBlogRouteWithChildren,
   AuthenticatedSocialRoute: AuthenticatedSocialRoute,
   AuthenticatedCompaniesOrgIdRoute: AuthenticatedCompaniesOrgIdRoute,
+  AuthenticatedCompaniesEmailSettingsRoute:
+    AuthenticatedCompaniesEmailSettingsRoute,
   AuthenticatedCompaniesEmailsRoute: AuthenticatedCompaniesEmailsRoute,
   AuthenticatedCompaniesErrorsRoute: AuthenticatedCompaniesErrorsRoute,
   AuthenticatedSettingsEmailRoute: AuthenticatedSettingsEmailRoute,
@@ -1140,6 +1204,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
+  UnsubscribeRoute: UnsubscribeRoute,
   WhatsappBusinessApiRoute: WhatsappBusinessApiRoute,
   WidgetDemoRoute: WidgetDemoRoute,
   PayTokenRoute: PayTokenRoute,
