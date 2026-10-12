@@ -53,6 +53,14 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "ابدأ شهري المجاني",
     "onboardingModal.youLlBeTheCompany":
       "ستكون مسؤول الشركة. يمكنك دعوة فريقك لاحقًا من «الفريق والموظفون».",
+    "onboardingModal.chatbotSection": "روبوت الدردشة (اختياري)",
+    "onboardingModal.chatbotGreeting": "التحية",
+    "onboardingModal.chatbotGreetingPh": "مرحبًا! أهلًا بك. كيف يمكننا مساعدتك اليوم؟",
+    "onboardingModal.chatbotDetails": "عن نشاطك التجاري",
+    "onboardingModal.chatbotDetailsPh": "ما تبيعه، الموقع، ساعات العمل، التوصيل، الأسعار…",
+    "onboardingModal.chatbotDetailsShort": "أضف 20 حرفًا على الأقل عن نشاطك، أو اترك حقلي الروبوت فارغين.",
+    "onboardingModal.chatbotTurnOn": "تشغيل روبوت الدردشة الآن",
+    "onboardingModal.chatbotHint": "يجيب الروبوت فقط مما تكتبه هنا. يمكنك تغييره في أي وقت من صفحة روبوت الدردشة.",
   },
   ms: {
     "onboardingModal.pleaseEnterYourCompanyName": "Sila masukkan nama syarikat anda",
@@ -74,6 +82,14 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Mulakan bulan percuma saya",
     "onboardingModal.youLlBeTheCompany":
       "Anda akan menjadi pentadbir syarikat. Anda boleh menjemput pasukan anda kemudian dari Pasukan & Staf.",
+    "onboardingModal.chatbotSection": "Chatbot anda (pilihan)",
+    "onboardingModal.chatbotGreeting": "Ucapan aluan",
+    "onboardingModal.chatbotGreetingPh": "Hai! Selamat datang. Bagaimana kami boleh bantu?",
+    "onboardingModal.chatbotDetails": "Tentang perniagaan anda",
+    "onboardingModal.chatbotDetailsPh": "Apa yang anda jual, lokasi, waktu operasi, penghantaran, harga…",
+    "onboardingModal.chatbotDetailsShort": "Tambah sekurang-kurangnya 20 aksara tentang perniagaan anda, atau biarkan kedua-dua medan kosong.",
+    "onboardingModal.chatbotTurnOn": "Hidupkan chatbot sekarang",
+    "onboardingModal.chatbotHint": "Chatbot hanya menjawab berdasarkan apa yang anda tulis di sini. Anda boleh ubah bila-bila masa.",
   },
   fil: {
     "onboardingModal.pleaseEnterYourCompanyName": "Pakilagay ang pangalan ng iyong kumpanya",
@@ -96,6 +112,14 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Simulan ang libreng buwan ko",
     "onboardingModal.youLlBeTheCompany":
       "Ikaw ang magiging company admin. Maaari mong imbitahan ang iyong team mamaya mula sa Team at Staff.",
+    "onboardingModal.chatbotSection": "Ang iyong chatbot (opsyonal)",
+    "onboardingModal.chatbotGreeting": "Pagbati",
+    "onboardingModal.chatbotGreetingPh": "Hi! Maligayang pagdating. Paano kami makakatulong?",
+    "onboardingModal.chatbotDetails": "Tungkol sa iyong negosyo",
+    "onboardingModal.chatbotDetailsPh": "Ano ang ibinebenta mo, lokasyon, oras, delivery, presyo…",
+    "onboardingModal.chatbotDetailsShort": "Magdagdag ng hindi bababa sa 20 character tungkol sa negosyo mo, o iwanang blangko ang dalawa.",
+    "onboardingModal.chatbotTurnOn": "I-on ang chatbot ngayon",
+    "onboardingModal.chatbotHint": "Sumasagot lang ang chatbot mula sa isinulat mo rito. Mababago mo ito anumang oras.",
   },
   sw: {
     "onboardingModal.pleaseEnterYourCompanyName": "Tafadhali weka jina la kampuni yako",
@@ -118,5 +142,13 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Anza mwezi wangu wa bure",
     "onboardingModal.youLlBeTheCompany":
       "Utakuwa msimamizi wa kampuni. Unaweza kualika timu yako baadaye kutoka Timu na Wafanyakazi.",
+    "onboardingModal.chatbotSection": "Chatbot yako (si lazima)",
+    "onboardingModal.chatbotGreeting": "Salamu",
+    "onboardingModal.chatbotGreetingPh": "Habari! Karibu. Tunaweza kukusaidiaje leo?",
+    "onboardingModal.chatbotDetails": "Kuhusu biashara yako",
+    "onboardingModal.chatbotDetailsPh": "Unachouza, mahali, saa za kazi, usafirishaji, bei…",
+    "onboardingModal.chatbotDetailsShort": "Ongeza angalau herufi 20 kuhusu biashara yako, au acha sehemu zote mbili wazi.",
+    "onboardingModal.chatbotTurnOn": "Washa chatbot sasa",
+    "onboardingModal.chatbotHint": "Chatbot hujibu tu kutokana na unachoandika hapa. Unaweza kubadilisha wakati wowote.",
   },
 });
