@@ -9,7 +9,6 @@
 // Safety rule: a connection test never creates public content. Publishing is
 // probed with read-only or validation endpoints only. A real test post
 // requires explicit, separate user confirmation.
-import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
 import { openSecret } from "@/lib/secret-box.server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
@@ -216,56 +215,41 @@ async function probe(
 
 const GRAPH = `https://graph.facebook.com/${META_API_VERSION}`;
 
-/**
- * Required scopes per doctor capability, derived from the connector registry.
- * The previous hand-written map listed instagram_manage_messages and
- * instagram_content_publish, which Flas does not request, so the doctor
- * reported permissions as missing that no feature needs.
- *
- * posts_read has no registry key of its own; it is checked against the
- * profile scopes, and the live probe below is what actually decides it.
- */
-const DOCTOR_TO_REGISTRY = {
-  profile_read: "profile",
-  posts_read: "profile",
-  comments_read: "comments_read",
-  messages_read: "direct_messages_read",
-  publish: "publish",
-  analytics: "analytics",
-  ads_read: "ads_read",
-} as const;
-
-function registryScopes(platform: string): Partial<Record<DoctorCapability, string[]>> {
-  const def = connectorDefinition(platform as never);
-  if (!def) return {};
-  const out: Partial<Record<DoctorCapability, string[]>> = {};
-  for (const [cap, key] of Object.entries(DOCTOR_TO_REGISTRY) as [DoctorCapability, (typeof DOCTOR_TO_REGISTRY)[DoctorCapability]][]) {
-    const r = resolveCapability(def, key);
-    if (r.providerSupports && r.flasImplements) out[cap] = [...r.requiredScopes];
-  }
-  return out;
-}
-
 function metaAdapter(platform: "facebook" | "instagram"): ProviderAdapter {
   const ctx: ProbeContext = { platform, feature: "meta", apiVersion: META_API_VERSION };
-  // Token in the Authorization header, never the URL -- see graphGet() in
-  // social.server.ts for why and for how header support was verified.
-  const get = (path: string, token: string) =>
-    fetch(`${GRAPH}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  const q = (token: string) => `access_token=${encodeURIComponent(token)}`;
 
   return {
     platform,
-    requiredScopes: registryScopes(platform),
+    requiredScopes:
+      platform === "instagram"
+        ? {
+            profile_read: ["instagram_basic"],
+            posts_read: ["instagram_basic"],
+            comments_read: ["instagram_manage_comments"],
+            messages_read: ["instagram_manage_messages"],
+            publish: ["instagram_content_publish"],
+            analytics: ["instagram_manage_insights"],
+          }
+        : {
+            profile_read: ["pages_show_list"],
+            posts_read: ["pages_read_engagement"],
+            comments_read: ["pages_read_engagement"],
+            messages_read: ["pages_messaging"],
+            publish: ["pages_manage_posts"],
+            analytics: ["read_insights"],
+            ads_read: ["ads_read"],
+          },
 
     authenticate: async (account) => {
       const token = account.access_token ?? "";
       const result = await probe(ctx, "Authentication", "authentication", () =>
-        get("/me/permissions", token),
+        fetch(`${GRAPH}/me/permissions?${q(token)}`),
       );
       let scopes: string[] = [];
       if (result.outcome === "pass") {
         try {
-          const res = await get("/me/permissions", token);
+          const res = await fetch(`${GRAPH}/me/permissions?${q(token)}`);
           const json = (await res.json()) as {
             data?: Array<{ permission: string; status: string }>;
           };
@@ -282,11 +266,11 @@ function metaAdapter(platform: "facebook" | "instagram"): ProviderAdapter {
       const fields = platform === "instagram" ? "id,username,name" : "id,name";
       const target = account.external_id ? encodeURIComponent(account.external_id) : "me";
       const check = await probe(ctx, "Account identity", "identity", () =>
-        get(`/${target}?fields=${fields}`, token),
+        fetch(`${GRAPH}/${target}?fields=${fields}&${q(token)}`),
       );
       if (check.outcome !== "pass") return { id: null, name: null, username: null, check };
       try {
-        const res = await get(`/${target}?fields=${fields}`, token);
+        const res = await fetch(`${GRAPH}/${target}?fields=${fields}&${q(token)}`);
         const json = (await res.json()) as { id?: string; name?: string; username?: string };
         return {
           id: json.id ?? null,
@@ -305,7 +289,7 @@ function metaAdapter(platform: "facebook" | "instagram"): ProviderAdapter {
         const target = account.external_id ? encodeURIComponent(account.external_id) : "me";
         const fields = platform === "instagram" ? "id,username" : "id,name";
         return probe(ctx, "Read profile", "capability:profile_read", () =>
-          get(`/${target}?fields=${fields}`, token),
+          fetch(`${GRAPH}/${target}?fields=${fields}&${q(token)}`),
         );
       },
       posts_read: async (account) => {
@@ -320,7 +304,7 @@ function metaAdapter(platform: "facebook" | "instagram"): ProviderAdapter {
         }
         const edge = platform === "instagram" ? "media" : "feed";
         return probe(ctx, "Read posts", "capability:posts_read", () =>
-          get(`/${encodeURIComponent(account.external_id!)}/${edge}?limit=1`, token),
+          fetch(`${GRAPH}/${encodeURIComponent(account.external_id!)}/${edge}?limit=1&${q(token)}`),
         );
       },
       analytics: async (account) => {
@@ -336,16 +320,15 @@ function metaAdapter(platform: "facebook" | "instagram"): ProviderAdapter {
         // Reading one lightweight metric proves insights access without cost.
         const metric = platform === "instagram" ? "impressions" : "page_impressions";
         return probe(ctx, "Read analytics", "capability:analytics", () =>
-          get(
-            `/${encodeURIComponent(account.external_id!)}/insights?metric=${metric}&period=day`,
-            token,
+          fetch(
+            `${GRAPH}/${encodeURIComponent(account.external_id!)}/insights?metric=${metric}&period=day&${q(token)}`,
           ),
         );
       },
       ads_read: async (account) => {
         const token = account.access_token ?? "";
         return probe(ctx, "Read ad accounts", "capability:ads_read", () =>
-          get("/me/adaccounts?limit=1&fields=id", token),
+          fetch(`${GRAPH}/me/adaccounts?limit=1&fields=id&${q(token)}`),
         );
       },
       // publish is deliberately NOT probed with a write. Presence of the

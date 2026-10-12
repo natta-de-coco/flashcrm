@@ -52,14 +52,7 @@ export async function ensureBillingSettings(supabase: AnyClient, tenantId: strin
     .select("*")
     .eq("tenant_id", tenantId)
     .maybeSingle();
-  if (data) {
-    const { data: profile } = await supabase
-      .from("business_profiles")
-      .select("tax_registration_number")
-      .eq("tenant_id", tenantId)
-      .maybeSingle();
-    return { ...data, tax_registration_number: profile?.tax_registration_number };
-  }
+  if (data) return data;
 
   const { data: org } = await supabase
     .from("organizations")
@@ -68,7 +61,7 @@ export async function ensureBillingSettings(supabase: AnyClient, tenantId: strin
     .maybeSingle();
   const { data: profile } = await supabase
     .from("business_profiles")
-    .select("business_name, city, country, contact_details, website_url, tax_registration_number")
+    .select("business_name, city, country, contact_details, website_url")
     .eq("tenant_id", tenantId)
     .maybeSingle();
 
@@ -84,13 +77,8 @@ export async function ensureBillingSettings(supabase: AnyClient, tenantId: strin
     })
     .select("*")
     .maybeSingle();
-  return created ? { ...created, tax_registration_number: profile?.tax_registration_number } : null;
+  return created;
 }
-
-/* eslint-disable @typescript-eslint/no-explicit-any -- untyped billing row shapes
-   (settings, documents, bank, templates). Typing them properly means changing
-   the invoice PDF pipeline, which is outside the social Batch 1 scope. Same
-   convention as social.server.ts. */
 
 /** Company snapshot frozen onto every document at finalization time. */
 export function companySnapshot(
@@ -107,7 +95,6 @@ export function companySnapshot(
     website: settings?.website ?? null,
     vat_number: settings?.vat_number ?? null,
     registration_number: settings?.registration_number ?? null,
-    tax_registration_number: (settings as any)?.tax_registration_number ?? null,
     logo_url: logoUrl ?? settings?.logo_url ?? null,
     signatory_name: settings?.signatory_name ?? null,
     signatory_position: settings?.signatory_position ?? null,
@@ -437,7 +424,6 @@ function toPdfInput(
       website: company.website ?? settings?.website ?? null,
       vat_number: company.vat_number ?? settings?.vat_number ?? null,
       registration_number: company.registration_number ?? settings?.registration_number ?? null,
-      tax_registration_number: (company as any).tax_registration_number ?? (settings as any)?.tax_registration_number ?? null,
       logo_url: company.logo_url ?? settings?.logo_url ?? null,
       signatory_name: company.signatory_name ?? settings?.signatory_name ?? null,
       signatory_position: company.signatory_position ?? settings?.signatory_position ?? null,

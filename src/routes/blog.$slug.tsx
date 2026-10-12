@@ -1,4 +1,5 @@
 import { MarketingShell } from "@/components/marketing/MarketingShell";
+import { POSTS_BY_DATE, findPost } from "@/content/blog";
 import { useReveal } from "@/hooks/useReveal";
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
@@ -9,17 +10,10 @@ export const Route = createFileRoute("/blog/$slug")({
   // Resolved during the route load so the <head> tags below are rendered on the
   // server. A crawler must receive the real title and description in the HTML,
   // not after a client render.
-  //
-  // Imported dynamically: a top-level import put every post into the main
-  // bundle of every page (see blog.index.tsx).
-  loader: async ({ params }) => {
-    const { POSTS_BY_DATE, findPost } = await import("@/content/blog");
+  loader: ({ params }) => {
     const post = findPost(params.slug);
     if (!post) throw notFound();
-    const related = POSTS_BY_DATE.filter((p) => p.slug !== post.slug)
-      .slice(0, 2)
-      .map((p) => ({ slug: p.slug, title: p.title, category: p.category }));
-    return { post, related };
+    return { post };
   },
 
   head: ({ loaderData }) => {
@@ -97,9 +91,10 @@ export const Route = createFileRoute("/blog/$slug")({
 });
 
 function Article() {
-  const { post, related } = Route.useLoaderData();
+  const { post } = Route.useLoaderData();
   useReveal();
 
+  const related = POSTS_BY_DATE.filter((p) => p.slug !== post.slug).slice(0, 2);
   const date = new Date(post.published).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "long",
