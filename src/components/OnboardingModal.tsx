@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, Globe2, Phone, Receipt, User } from "lucide-react";
+import { Bot, Building2, Globe2, Phone, Receipt, User } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -54,6 +56,11 @@ export function OnboardingModal() {
   const [landlinePhone, setLandlinePhone] = useState("");
   const [taxRegistrationNumber, setTaxRegistrationNumber] = useState("");
   const [busy, setBusy] = useState(false);
+  const [botGreeting, setBotGreeting] = useState("");
+  const [botDetails, setBotDetails] = useState("");
+  const [botEnabled, setBotEnabled] = useState(false);
+  const botTouched = botGreeting.trim().length > 0 || botDetails.trim().length > 0;
+  const botReady = botGreeting.trim().length > 0 && botDetails.trim().length >= 20;
 
   // Whatever sign-up already knows about this person.
   const knownName =
@@ -86,13 +93,8 @@ const trimmedCompany = companyName.trim();
       toast.error("Please enter a valid, real business name (generic or test names are not allowed)");
       return;
     }
-    if (trimmedFull.length < 3) {
-      toast.error(t("onboardingModal.pleaseEnterYourFullName") || "Please enter your real full name (at least 3 characters)");
-      return;
-    }
-
-    if (trimmedFull.length < 3) {
-      toast.error("Please enter your real full name (at least 3 characters)");
+    if (trimmedFull.length < 2) {
+      toast.error(t("onboardingModal.pleaseEnterYourFullName") || "Please enter your real full name (at least 2 characters)");
       return;
     }
     if (isDisallowedName(trimmedFull)) {
@@ -108,6 +110,10 @@ const trimmedCompany = companyName.trim();
       }
     }
 
+    if (botTouched && !botReady) {
+      toast.error(t("onboardingModal.chatbotDetailsShort"));
+      return;
+    }
     setBusy(true);
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -122,7 +128,7 @@ const trimmedCompany = companyName.trim();
         window.location.href = "/auth";
         return;
       }
-await runOnboarding({
+      await runOnboarding({
         data: {
           companyName: trimmedCompany,
           fullName: trimmedFull,
@@ -132,6 +138,9 @@ await runOnboarding({
           whatsappNumber: whatsappNumber.trim() || undefined,
           landlinePhone: landlinePhone.trim() || undefined,
           taxRegistrationNumber: taxRegistrationNumber.trim() || undefined,
+          botGreeting: botGreeting.trim(),
+          botDetails: botDetails.trim(),
+          botEnabled: botReady && botEnabled,
         },
       });
 
@@ -291,6 +300,38 @@ await runOnboarding({
             </p>
           </div>
 
+          {/* Optional Chatbot Setup */}
+          <div className="space-y-3 rounded-lg border p-3 bg-muted/20">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+              <Bot className="h-3.5 w-3.5 text-primary" /> {t("onboardingModal.chatbotSection") || "Automated WhatsApp & Web Chatbot"}
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="ob-greeting" className="text-xs">{t("onboardingModal.chatbotGreeting") || "Greeting Message"}</Label>
+              <Input
+                id="ob-greeting"
+                maxLength={500}
+                placeholder={t("onboardingModal.chatbotGreetingPh") || "e.g. Hello! Welcome to our store. How can we assist you today?"}
+                value={botGreeting}
+                onChange={(e) => setBotGreeting(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ob-details" className="text-xs">{t("onboardingModal.chatbotDetails") || "Business Instructions & Details"}</Label>
+              <Textarea
+                id="ob-details"
+                rows={3}
+                maxLength={4000}
+                placeholder={t("onboardingModal.chatbotDetailsPh") || "Briefly describe your working hours, main offerings, and policies..."}
+                value={botDetails}
+                onChange={(e) => setBotDetails(e.target.value)}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs">
+              <Switch checked={botReady && botEnabled} disabled={!botReady} onCheckedChange={setBotEnabled} />
+              {t("onboardingModal.chatbotTurnOn") || "Enable chatbot immediately"}
+            </label>
+            <p className="text-[11px] text-muted-foreground">{t("onboardingModal.chatbotHint") || "You can customize knowledge, auto-replies, and triggers anytime in Chatbot settings."}</p>
+          </div>
           <Button className="w-full" onClick={submit} disabled={busy}>
 {busy ? (t("onboardingModal.creatingYourWorkspace") || "Setting up your workspace…") : (t("onboardingModal.startMyFreeMonth") || "Complete Setup & Start Free Month")}
           </Button>

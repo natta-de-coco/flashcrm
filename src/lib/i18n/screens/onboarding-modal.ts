@@ -24,6 +24,14 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Start my free month",
     "onboardingModal.youLlBeTheCompany":
       "You'll be the company admin. You can invite your team later from Team & Staff.",
+    "onboardingModal.chatbotSection": "Your chatbot (optional)",
+    "onboardingModal.chatbotGreeting": "Greeting",
+    "onboardingModal.chatbotGreetingPh": "Hi! Welcome to Acme. How can we help today?",
+    "onboardingModal.chatbotDetails": "About your business",
+    "onboardingModal.chatbotDetailsPh": "What you sell, location, opening hours, delivery, prices customers often ask about…",
+    "onboardingModal.chatbotDetailsShort": "Add at least 20 characters about your business, or leave both chatbot fields empty.",
+    "onboardingModal.chatbotTurnOn": "Turn the chatbot on now",
+    "onboardingModal.chatbotHint": "The chatbot only answers from what you write here. You can change it any time in Chatbot.",
   },
   ar: {
     "onboardingModal.pleaseEnterYourCompanyName": "يُرجى إدخال اسم شركتك",
@@ -45,6 +53,14 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "ابدأ شهري المجاني",
     "onboardingModal.youLlBeTheCompany":
       "ستكون مسؤول الشركة. يمكنك دعوة فريقك لاحقًا من «الفريق والموظفون».",
+    "onboardingModal.chatbotSection": "روبوت الدردشة الخاص بك (اختياري)",
+    "onboardingModal.chatbotGreeting": "رسالة الترحيب",
+    "onboardingModal.chatbotGreetingPh": "مرحبًا! أهلاً بك. كيف يمكننا مساعدتك اليوم؟",
+    "onboardingModal.chatbotDetails": "نبذة عن نشاطك التجاري",
+    "onboardingModal.chatbotDetailsPh": "ما تقدمه، الموقع، ساعات العمل، التوصيل، الأسعار الشائعة...",
+    "onboardingModal.chatbotDetailsShort": "أضف ما لا يقل عن 20 حرفًا حول نشاطك، أو اترك الحقلين فارغين.",
+    "onboardingModal.chatbotTurnOn": "تفعيل روبوت الدردشة الآن",
+    "onboardingModal.chatbotHint": "يجيب الروبوت فقط بناءً على ما تكتبه هنا. يمكنك تعديله في أي وقت من إعدادات الروبوت.",
   },
   ms: {
     "onboardingModal.pleaseEnterYourCompanyName": "Sila masukkan nama syarikat anda",
@@ -66,6 +82,14 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Mulakan bulan percuma saya",
     "onboardingModal.youLlBeTheCompany":
       "Anda akan menjadi pentadbir syarikat. Anda boleh menjemput pasukan anda kemudian dari Pasukan & Staf.",
+    "onboardingModal.chatbotSection": "Bot sembang anda (pilihan)",
+    "onboardingModal.chatbotGreeting": "Ucapan",
+    "onboardingModal.chatbotGreetingPh": "Hai! Selamat datang. Bagaimana kami boleh membantu hari ini?",
+    "onboardingModal.chatbotDetails": "Mengenai perniagaan anda",
+    "onboardingModal.chatbotDetailsPh": "Apa yang anda jual, lokasi, waktu operasi, penghantaran, harga biasa...",
+    "onboardingModal.chatbotDetailsShort": "Tambah sekurang-kurangnya 20 aksara mengenai perniagaan anda, atau biarkan kedua-duanya kosong.",
+    "onboardingModal.chatbotTurnOn": "Hidupkan bot sembang sekarang",
+    "onboardingModal.chatbotHint": "Bot sembang hanya menjawab dari apa yang anda tulis di sini. Anda boleh mengubahnya pada bila-bila masa.",
   },
   fil: {
     "onboardingModal.pleaseEnterYourCompanyName": "Pakilagay ang pangalan ng iyong kumpanya",
@@ -88,6 +112,14 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Simulan ang libreng buwan ko",
     "onboardingModal.youLlBeTheCompany":
       "Ikaw ang magiging company admin. Maaari mong imbitahan ang iyong team mamaya mula sa Team at Staff.",
+    "onboardingModal.chatbotSection": "Ang iyong chatbot (opsyonal)",
+    "onboardingModal.chatbotGreeting": "Pagbati",
+    "onboardingModal.chatbotGreetingPh": "Kumusta! Maligayang pagdating. Paano kami makakatulong ngayon?",
+    "onboardingModal.chatbotDetails": "Tungkol sa iyong negosyo",
+    "onboardingModal.chatbotDetailsPh": "Ano ang iyong ibinebenta, lokasyon, oras, delivery, presyo...",
+    "onboardingModal.chatbotDetailsShort": "Maglagay ng hindi bababa sa 20 character tungkol sa negosyo, o iwang blangko.",
+    "onboardingModal.chatbotTurnOn": "I-on ang chatbot ngayon",
+    "onboardingModal.chatbotHint": "Sumasagot lang ang chatbot batay sa isusulat mo dito. Maaari mo itong baguhin anumang oras.",
   },
   sw: {
     "onboardingModal.pleaseEnterYourCompanyName": "Tafadhali weka jina la kampuni yako",
@@ -110,5 +142,13 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Anza mwezi wangu wa bure",
     "onboardingModal.youLlBeTheCompany":
       "Utakuwa msimamizi wa kampuni. Unaweza kualika timu yako baadaye kutoka Timu na Wafanyakazi.",
+    "onboardingModal.chatbotSection": "Chatbot yako (hiari)",
+    "onboardingModal.chatbotGreeting": "Salamu",
+    "onboardingModal.chatbotGreetingPh": "Hujambo! Karibu. Tunawezaje kukusaidia leo?",
+    "onboardingModal.chatbotDetails": "Kuhusu biashara yako",
+    "onboardingModal.chatbotDetailsPh": "Unachouza, eneo, saa za kazi, uwasilishaji, bei za kawaida...",
+    "onboardingModal.chatbotDetailsShort": "Ongeza angalau herufi 20 kuhusu biashara, au acha sehemu zote mbili wazi.",
+    "onboardingModal.chatbotTurnOn": "Washa chatbot sasa",
+    "onboardingModal.chatbotHint": "Chatbot hujibu tu kutokana na kile unachoandika hapa. Unaweza kubadilisha wakati wowote.",
   },
 });

@@ -27,14 +27,18 @@ function isLikelyFake(val: string): boolean {
 const PHONE_REGEX = /^\+?[1-9]\d{6,15}$/;
 
 const OnboardingSchema = z.object({
-  companyName: z.string().trim().min(3, "Company name must be at least 3 characters").max(120),
-  fullName: z.string().trim().min(3, "Full name must be at least 3 characters").max(120),
+  companyName: z.string().trim().min(2, "Company name must be at least 2 characters").max(120),
+  fullName: z.string().trim().min(2, "Full name must be at least 2 characters").max(120),
   mobilePhone: z.string().trim().optional(),
   whatsappNumber: z.string().trim().optional(),
   landlinePhone: z.string().trim().optional(),
   taxRegistrationNumber: z.string().trim().optional(),
   country: z.string().trim().default("AE"),
   language: z.string().trim().default("en"),
+  // Optional chatbot setup, written by the company itself at sign-up.
+  botGreeting: z.string().trim().max(500).optional().default(""),
+  botDetails: z.string().trim().max(4000).optional().default(""),
+  botEnabled: z.boolean().optional().default(false),
 }).refine((d) => !isLikelyFake(d.companyName), {
   message: "Please enter a real business name (test and generic names are not allowed)",
   path: ["companyName"],
@@ -155,6 +159,23 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       // Non-blocking: profile can always be updated later from Advisor/Settings
     }
 
+    // Chatbot: only saved when the company gave both a greeting and real
+    // business details (same gate wa.server.ts uses before replying). It is
+    // switched on only if the admin explicitly chose to.
+    const botReady = Boolean(data.botGreeting && data.botGreeting.length > 0 && data.botDetails && data.botDetails.length >= 20);
+    if (botReady) {
+      await supabaseAdmin.from("tenant_bot_settings").upsert(
+        {
+          tenant_id: org.id,
+          enabled: data.botEnabled ?? false,
+          bot_name: data.companyName,
+          greeting: data.botGreeting,
+          instructions: data.botDetails,
+        },
+        { onConflict: "tenant_id" },
+      );
+    }
+
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
       action: "onboarding.company_created",
@@ -162,7 +183,7 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       actorId: userId,
       entityType: "organization",
       entityId: org.id,
-      details: { companyName: data.companyName, trialEnds: trialEnd },
+      details: { companyName: data.companyName, trialEnds: trialEnd, chatbotSaved: botReady, chatbotOn: botReady && data.botEnabled },
     });
 
     return { ok: true, alreadyDone: false };
