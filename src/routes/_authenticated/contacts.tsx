@@ -1,4 +1,7 @@
+import { Skeleton } from "@/components/ui/skeleton";
+
 import { ContactDetailDialog } from "@/components/contacts/ContactDetailDialog";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,9 +34,11 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertCircle, Download, Plus, Search, Upload } from "lucide-react";
+import { AlertCircle, Download, Plus, Search, Upload, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendly-error";
+
 
 export const Route = createFileRoute("/_authenticated/contacts")({
   head: () => ({
@@ -132,7 +137,7 @@ function ContactsPage() {
       toast.success(t("contacts.added"));
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const move = useMutation({
@@ -141,7 +146,7 @@ function ContactsPage() {
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["contacts"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const grantConsent = useMutation({
@@ -159,7 +164,7 @@ function ContactsPage() {
       toast.success(t("contacts.consentRecorded"));
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   function exportContacts() {
@@ -247,8 +252,22 @@ function ContactsPage() {
       );
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
+
+  if (contacts.isLoading) return (
+  <div className="space-y-3 p-6">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -272,10 +291,12 @@ function ContactsPage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
+
             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="w-56 ps-9"
               placeholder={t("contacts.search")}
+
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -315,9 +336,7 @@ function ContactsPage() {
                   }}
                 />
               </div>
-              <Textarea
-                rows={6}
-                placeholder={"+971501234567\nSara Ahmed, +971559876543, sara@example.com"}
+              <Textarea aria-label="Paste contacts or CSV content" rows={6} placeholder={"+971501234567\nSara Ahmed, +971559876543, sara@example.com"}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
               />
@@ -490,7 +509,20 @@ function ContactsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {STAGES.map((stage) => {
+        {!contacts.isPending && (contacts.data ?? []).length === 0 ? (
+          <div className="col-span-full">
+            <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
+              <Users className="mx-auto mb-4 size-12 text-muted-foreground" />
+              <h2 className="mb-2 text-xl font-bold">No contacts yet</h2>
+              <p className="mb-4 max-w-sm text-sm text-muted-foreground">
+                Track every WhatsApp lead through your sales pipeline stages.
+              </p>
+              <Button onClick={() => setOpen(true)}>
+                <Plus className="mr-2 size-4" /> Add your first contact
+              </Button>
+            </Card>
+          </div>
+        ) : STAGES.map((stage) => {
           const rows = filtered.filter((c) => c.stage === stage.id);
           // L1: the column showed a card count and nothing else, so the only way
           // to answer "how much is sitting in Negotiation?" was to add the cards
@@ -598,3 +630,4 @@ function ContactsPage() {
     </main>
   );
 }
+

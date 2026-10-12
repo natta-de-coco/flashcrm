@@ -11,13 +11,47 @@ function slugify(name: string): string {
   return `${base || "company"}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+import { countryOption } from "@/lib/locale";
+
+const BLOCKED_FAKE_NAMES = [
+  "test", "testing", "admin", "administrator", "fake", "user", "company",
+  "my company", "mycompany", "abc", "asdf", "qwerty", "none", "n/a", "na",
+  "sample", "demo", "null", "undefined", "xyz", "owner", "customer"
+];
+
+function isLikelyFake(val: string): boolean {
+  const norm = val.toLowerCase().replace(/[^a-z0-9]/g, "");
+  return BLOCKED_FAKE_NAMES.some((blocked) => norm === blocked || norm.startsWith("testcompany") || norm.startsWith("fakecompany"));
+}
+
+const PHONE_REGEX = /^\+?[1-9]\d{6,15}$/;
+
 const OnboardingSchema = z.object({
-  companyName: z.string().trim().min(2).max(120),
-  fullName: z.string().trim().min(2).max(120),
+  companyName: z.string().trim().min(2, "Company name must be at least 2 characters").max(120),
+  fullName: z.string().trim().min(2, "Full name must be at least 2 characters").max(120),
+  mobilePhone: z.string().trim().optional(),
+  whatsappNumber: z.string().trim().optional(),
+  landlinePhone: z.string().trim().optional(),
+  taxRegistrationNumber: z.string().trim().optional(),
+  country: z.string().trim().default("AE"),
+  language: z.string().trim().default("en"),
   // Optional chatbot setup, written by the company itself at sign-up.
   botGreeting: z.string().trim().max(500).optional().default(""),
   botDetails: z.string().trim().max(4000).optional().default(""),
   botEnabled: z.boolean().optional().default(false),
+}).refine((d) => !isLikelyFake(d.companyName), {
+  message: "Please enter a real business name (test and generic names are not allowed)",
+  path: ["companyName"],
+}).refine((d) => !isLikelyFake(d.fullName), {
+  message: "Please enter a real full name",
+  path: ["fullName"],
+}).refine((d) => {
+  if (!d.mobilePhone) return true;
+  const digits = d.mobilePhone.replace(/[^\d+]/g, "");
+  return PHONE_REGEX.test(digits);
+}, {
+  message: "Mobile phone must be in valid international format (e.g. +971 50 123 4567)",
+  path: ["mobilePhone"],
 });
 
 /**
@@ -42,6 +76,8 @@ export const completeOnboarding = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const trialEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const countryCfg = countryOption(data.country);
+
     const { data: org, error: orgError } = await supabaseAdmin
       .from("organizations")
       .insert({
@@ -50,6 +86,10 @@ export const completeOnboarding = createServerFn({ method: "POST" })
         plan: "flash_whatsapp_tool",
         subscription_status: "trial",
         subscription_renews_at: trialEnd,
+        country: data.country,
+        currency: countryCfg?.currency ?? "AED",
+        timezone: countryCfg?.timezone ?? "Asia/Dubai",
+        locale: data.language,
       })
       .select("id")
       .single();
@@ -100,15 +140,34 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       .from("user_roles")
       .upsert({ user_id: userId, role: "admin" }, { onConflict: "user_id,role" });
 
+    // Seed the company's business profile with contact and tax registration details
+    try {
+      await supabaseAdmin.from("business_profiles").upsert(
+        {
+          tenant_id: org.id,
+          business_name: data.companyName,
+          mobile_phone: data.mobilePhone || null,
+          whatsapp_number: data.whatsappNumber || data.mobilePhone || null,
+          landline_phone: data.landlinePhone || null,
+          tax_registration_number: data.taxRegistrationNumber || null,
+          country: data.country,
+          language: data.language,
+        } as never,
+        { onConflict: "tenant_id" },
+      );
+    } catch {
+      // Non-blocking: profile can always be updated later from Advisor/Settings
+    }
+
     // Chatbot: only saved when the company gave both a greeting and real
     // business details (same gate wa.server.ts uses before replying). It is
     // switched on only if the admin explicitly chose to.
-    const botReady = data.botGreeting.length > 0 && data.botDetails.length >= 20;
+    const botReady = Boolean(data.botGreeting && data.botGreeting.length > 0 && data.botDetails && data.botDetails.length >= 20);
     if (botReady) {
       await supabaseAdmin.from("tenant_bot_settings").upsert(
         {
           tenant_id: org.id,
-          enabled: data.botEnabled,
+          enabled: data.botEnabled ?? false,
           bot_name: data.companyName,
           greeting: data.botGreeting,
           instructions: data.botDetails,
@@ -171,6 +230,40 @@ export const inviteStaff = createServerFn({ method: "POST" })
       entityId: data.email,
       details: { staffRole: data.staffRole },
     });
+
+    // Trigger platform invite transactional email from flas@mobidigisol.com
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const origin = process.env["SITE_URL"] ?? "https://flas.mobidigisol.com";
+    try {
+      await supabaseAdmin.auth.admin.inviteUserByEmail(data.email.toLowerCase(), {
+        redirectTo: `${origin}/auth`,
+        data: {
+          invited_to_tenant: me.tenant_id,
+          assigned_role: data.staffRole,
+        },
+      });
+    } catch (inviteErr) {
+      console.warn("inviteUserByEmail notice:", inviteErr);
+    }
+
+    try {
+      await supabaseAdmin.rpc("log_email_delivery", {
+        _tenant_id: me.tenant_id,
+        _user_id: context.userId,
+        _recipient: data.email.toLowerCase(),
+        _from_address: "flas@mobidigisol.com",
+        _subject: "You've been invited to Flas CRM",
+        _template: "invite",
+        _provider: "platform",
+        _provider_msg_id: null,
+        _status: "sent",
+        _error: null,
+        _meta: { staff_role: data.staffRole },
+      } as never);
+    } catch {
+      // Best-effort delivery audit
+    }
+
     return { ok: true };
   });
 
