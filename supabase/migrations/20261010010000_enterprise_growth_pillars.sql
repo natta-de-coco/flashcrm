@@ -141,17 +141,22 @@ ALTER TABLE public.tenant_alert_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lead_alerts_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_chat_routing_settings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "drip_sequences_tenant_isolation" ON public.drip_sequences;
 CREATE POLICY "drip_sequences_tenant_isolation" ON public.drip_sequences
   FOR ALL USING (tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid()));
 
+DROP POLICY IF EXISTS "drip_enrollments_tenant_isolation" ON public.drip_enrollments;
 CREATE POLICY "drip_enrollments_tenant_isolation" ON public.drip_enrollments
   FOR ALL USING (tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid()));
 
+DROP POLICY IF EXISTS "tenant_alert_settings_isolation" ON public.tenant_alert_settings;
 CREATE POLICY "tenant_alert_settings_isolation" ON public.tenant_alert_settings
   FOR ALL USING (tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid()));
 
+DROP POLICY IF EXISTS "lead_alerts_log_isolation" ON public.lead_alerts_log;
 CREATE POLICY "lead_alerts_log_isolation" ON public.lead_alerts_log
   FOR ALL USING (tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid()));
 
+DROP POLICY IF EXISTS "tenant_chat_routing_settings_isolation" ON public.tenant_chat_routing_settings;
 CREATE POLICY "tenant_chat_routing_settings_isolation" ON public.tenant_chat_routing_settings
   FOR ALL USING (tenant_id = (SELECT tenant_id FROM public.profiles WHERE id = auth.uid()));

@@ -50,7 +50,95 @@ export interface StorageBudgetReport {
   purgedCount: number;
 }
 
-const dbAny = (client: any) => client as any;
+interface AnyRow {
+  id?: string;
+  user_id?: string;
+  tenant_id?: string;
+  account_type?: "personal" | "shared" | "marketing";
+  label?: string;
+  from_name?: string;
+  from_email?: string;
+  reply_to?: string | null;
+  smtp_host?: string | null;
+  smtp_port?: number | null;
+  smtp_secure?: boolean | null;
+  smtp_user?: string | null;
+  smtp_pass_enc?: string | null;
+  imap_host?: string | null;
+  imap_port?: number | null;
+  imap_secure?: boolean | null;
+  imap_user?: string | null;
+  imap_pass_enc?: string | null;
+  imap_enabled?: boolean | null;
+  signature_html?: string | null;
+  verified?: boolean | null;
+  is_default?: boolean | null;
+  last_test_at?: string | null;
+  last_test_ok?: boolean | null;
+  last_test_error?: string | null;
+  used_bytes?: number;
+  max_cap_bytes?: number;
+  usage_percent?: number;
+  is_critical?: boolean;
+  purged_count?: number;
+  status?: string;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+interface UntypedDbResult<T = AnyRow> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+interface UntypedDbQuery {
+  select: (cols?: string) => UntypedDbQuery;
+  insert: (values: unknown) => UntypedDbQuery;
+  update: (values: unknown) => UntypedDbQuery;
+  delete: () => UntypedDbQuery;
+  eq: (col: string, val: unknown) => UntypedDbQuery;
+  in: (col: string, vals: unknown[]) => UntypedDbQuery;
+  order: (col: string, opts?: unknown) => UntypedDbQuery;
+  limit: (count: number) => UntypedDbQuery;
+  single: <T = AnyRow>() => Promise<UntypedDbResult<T>>;
+  maybeSingle: <T = AnyRow>() => Promise<UntypedDbResult<T>>;
+  then: <T = AnyRow>(resolve: (val: UntypedDbResult<T>) => void) => Promise<unknown>;
+}
+
+interface UntypedDbClient {
+  from: (table: string) => UntypedDbQuery;
+  rpc: (fn: string, args?: unknown) => Promise<UntypedDbResult<AnyRow>>;
+}
+
+const dbAny = (client: unknown): UntypedDbClient => client as unknown as UntypedDbClient;
+
+interface UserEmailAccountRow {
+  id: string;
+  user_id: string;
+  account_type: "personal" | "shared";
+  label: string;
+  from_name: string;
+  from_email: string;
+  reply_to?: string | null;
+  smtp_host?: string | null;
+  smtp_port?: number | null;
+  smtp_secure?: boolean | null;
+  smtp_user?: string | null;
+  smtp_pass_enc?: string | null;
+  imap_host?: string | null;
+  imap_port?: number | null;
+  imap_secure?: boolean | null;
+  imap_user?: string | null;
+  imap_pass_enc?: string | null;
+  imap_enabled?: boolean | null;
+  signature_html?: string | null;
+  verified?: boolean | null;
+  is_default?: boolean | null;
+  last_test_at?: string | null;
+  last_test_ok?: boolean | null;
+  last_test_error?: string | null;
+  created_at: string;
+}
 
 /**
  * List all email accounts available to the current user (their own + shared workspace accounts)
@@ -74,31 +162,31 @@ export const listUserEmailAccounts = createServerFn({ method: "GET" })
 
     if (error || !accounts) return [];
 
-    return accounts.map((acc: any) => ({
+    return (accounts as unknown as UserEmailAccountRow[]).map((acc) => ({
       id: acc.id,
       userId: acc.user_id,
       accountType: acc.account_type,
       label: acc.label,
       fromName: acc.from_name,
       fromEmail: acc.from_email,
-      replyTo: acc.reply_to,
-      smtpHost: acc.smtp_host,
-      smtpPort: acc.smtp_port,
-      smtpSecure: acc.smtp_secure,
-      smtpUser: acc.smtp_user,
+      replyTo: acc.reply_to ?? null,
+      smtpHost: acc.smtp_host || "",
+      smtpPort: acc.smtp_port || 465,
+      smtpSecure: acc.smtp_secure ?? true,
+      smtpUser: acc.smtp_user || "",
       hasSmtpPassword: Boolean(acc.smtp_pass_enc),
-      imapHost: acc.imap_host,
-      imapPort: acc.imap_port,
-      imapSecure: acc.imap_secure,
-      imapUser: acc.imap_user,
+      imapHost: acc.imap_host ?? null,
+      imapPort: acc.imap_port || 993,
+      imapSecure: acc.imap_secure ?? true,
+      imapUser: acc.imap_user ?? null,
       hasImapPassword: Boolean(acc.imap_pass_enc),
-      imapEnabled: acc.imap_enabled,
+      imapEnabled: acc.imap_enabled ?? false,
       signatureHtml: acc.signature_html || "",
-      verified: acc.verified,
-      isDefault: acc.is_default,
-      lastTestAt: acc.last_test_at,
-      lastTestOk: acc.last_test_ok,
-      lastTestError: acc.last_test_error,
+      verified: acc.verified ?? false,
+      isDefault: acc.is_default ?? false,
+      lastTestAt: acc.last_test_at ?? null,
+      lastTestOk: acc.last_test_ok ?? null,
+      lastTestError: acc.last_test_error ?? null,
       createdAt: acc.created_at,
     }));
   });
@@ -216,7 +304,7 @@ export const saveUserEmailAccount = createServerFn({ method: "POST" })
         .select("id")
         .single();
       if (error) throw error;
-      savedId = created.id;
+      savedId = created?.id;
     }
 
     return { ok: true, accountId: savedId };
@@ -228,7 +316,7 @@ export const saveUserEmailAccount = createServerFn({ method: "POST" })
 export const testUserEmailAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ accountId: z.string().uuid(), testType: z.enum(["smtp", "imap"]) }).parse(input)
+    z.object({ accountId: z.string().uuid(), testType: z.enum(["smtp", "imap"]) }).parse(input),
   )
   .handler(async ({ data, context }) => {
     const { data: profile } = await context.supabase
@@ -251,14 +339,17 @@ export const testUserEmailAccount = createServerFn({ method: "POST" })
     if (!acc) throw new Error("Email account not found.");
 
     if (data.testType === "smtp") {
+      if (!acc.smtp_host || !acc.smtp_user || !acc.smtp_pass_enc) {
+        throw new Error("SMTP is not fully configured for this account.");
+      }
       const pass = await decryptEmailSecret(acc.smtp_pass_enc);
       const res = await testSmtpSocket({
         host: acc.smtp_host,
-        port: acc.smtp_port,
-        secure: acc.smtp_secure,
+        port: acc.smtp_port ?? 465,
+        secure: acc.smtp_secure ?? true,
         user: acc.smtp_user,
         password: pass,
-        fromEmail: acc.from_email,
+        fromEmail: acc.from_email || "",
         timeoutMs: 8000,
       });
 
@@ -280,8 +371,8 @@ export const testUserEmailAccount = createServerFn({ method: "POST" })
       const pass = await decryptEmailSecret(acc.imap_pass_enc);
       const res = await testImapSocket({
         host: acc.imap_host,
-        port: acc.imap_port,
-        secure: acc.imap_secure,
+        port: acc.imap_port ?? 993,
+        secure: acc.imap_secure ?? true,
         user: acc.imap_user,
         password: pass,
         timeoutMs: 8000,
@@ -319,10 +410,9 @@ export const getStorageBudgetReport = createServerFn({ method: "GET" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Invoke automated pruning RPC
-    const { data: res } = await dbAny(supabaseAdmin).rpc(
-      "check_and_prune_tenant_email_storage",
-      { target_tenant_id: profile.tenant_id }
-    );
+    const { data: res } = await dbAny(supabaseAdmin).rpc("check_and_prune_tenant_email_storage", {
+      target_tenant_id: profile.tenant_id,
+    });
 
     const used = res?.used_bytes || 0;
     const max = res?.max_cap_bytes || 1073741824;
@@ -356,7 +446,7 @@ export const sendPortalEmailReply = createServerFn({ method: "POST" })
       bodyText: z.string().min(1),
       bodyHtml: z.string().optional(),
       inReplyTo: z.string().optional(),
-    })
+    }),
   )
   .handler(async ({ data, context }) => {
     const { data: profile } = await context.supabase
@@ -416,5 +506,5 @@ export const sendPortalEmailReply = createServerFn({ method: "POST" })
       target_tenant_id: profile.tenant_id,
     });
 
-    return { ok: true, messageId: messageRecord.id };
+    return { ok: true, messageId: messageRecord?.id || "" };
   });
