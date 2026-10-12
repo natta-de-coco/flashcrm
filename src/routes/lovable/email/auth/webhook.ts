@@ -43,7 +43,7 @@ export const Route = createFileRoute("/lovable/email/auth/webhook")({
         const auditRequest = request.clone();
         const handler = createAuthEmailHandler({
           apiKey: process.env["LOVABLE_API_KEY"]!,
-          from: `${SITE_NAME} <flas@mobidigisol.com>`,
+          from: `${SITE_NAME} <noreply@${FROM_DOMAIN}>`,
           senderDomain: SENDER_DOMAIN,
           sendUrl: process.env["LOVABLE_SEND_URL"],
           emails: {

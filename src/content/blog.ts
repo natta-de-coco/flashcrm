@@ -805,7 +805,6 @@ export const POSTS: Post[] = [
   ...COMPARISON_POSTS,
   ...BUYING_POSTS,
   ...LEAD_CAPTURE_POSTS,
-  ...SALES_POSTS,
   ...AI_POSTS,
 ];
 

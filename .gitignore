@@ -37,4 +37,3 @@ dist-ssr
 # Disposable local database verification artifacts
 supabase/verify/.pgdata*/
 supabase/verify/result*.json
-

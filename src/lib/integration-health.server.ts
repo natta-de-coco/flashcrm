@@ -96,7 +96,6 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
 
   const totals: Record<ConnectionState, number> = {
     connected: 0,
-    unverified: 0,
     needs_verification: 0,
     pending_review: 0,
     expired: 0,
