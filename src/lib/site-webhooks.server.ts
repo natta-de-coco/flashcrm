@@ -3,6 +3,7 @@
 // into the lead engine so contacts/leads, consent and assignment stay uniform.
 import { createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
+import { hostMatchesPin } from "@/lib/domain-pin";
 
 export const siteLeadSchema = z.object({
   name: z.string().max(200).optional(),
@@ -58,11 +59,7 @@ export async function resolveSite(siteKey: string, req: Request) {
     const host = extractHost(req);
     // Shopify calls come from the shop domain server-side (no Origin header) —
     // when there's no origin to check, the HMAC signature is the auth.
-    if (
-      host &&
-      host !== site.domain.toLowerCase() &&
-      !host.endsWith(`.${site.domain.toLowerCase()}`)
-    ) {
+    if (host && !hostMatchesPin(host, site.domain)) {
       return { site: null as null, error: "Domain not allowed for this site key" };
     }
   }

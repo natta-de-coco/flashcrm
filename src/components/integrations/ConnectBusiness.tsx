@@ -627,8 +627,8 @@ function ConnectorCard({
               </Link>
             </Button>
           ) : connector.unavailableReason ? (
-            <Badge variant="outline" className="text-[10px]">
-              {t("connectBusiness.notAvailableYet")}
+<Badge variant="outline" className="text-[10px]">
+              {t("connectBusiness.notAvailableYet") || "Not available"}
             </Badge>
           ) : connector.oauth ? (
             // Readiness is known before the click. When the keys are missing,

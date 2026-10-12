@@ -292,6 +292,7 @@ async function postWhatsAppMessage(
   }
 }
 
+export const sendWhatsAppText = deliverWhatsAppText;
 export function deliverWhatsAppText(
   to: string,
   body: string,
@@ -671,6 +672,13 @@ export async function ingestInboundMessage(args: IngestArgs) {
         .single();
       if (error) throw error;
       conversation = created;
+
+      try {
+        const { assignConversationToNextAgent } = await import("./chat-assignment.server");
+        await assignConversationToNextAgent(tenantId, created.id);
+      } catch (assignErr) {
+        console.error("[chat-assignment] Auto-assignment error:", assignErr);
+      }
     }
   } else {
     const { data } = await supabaseAdmin
@@ -714,6 +722,13 @@ export async function ingestInboundMessage(args: IngestArgs) {
       } else {
         if (error) throw error;
         conversation = created;
+
+        try {
+          const { assignConversationToNextAgent } = await import("./chat-assignment.server");
+          await assignConversationToNextAgent(tenantId, created.id);
+        } catch (assignErr) {
+          console.error("[chat-assignment] Auto-assignment error:", assignErr);
+        }
       }
     }
   }

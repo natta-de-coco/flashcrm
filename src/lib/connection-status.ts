@@ -6,7 +6,13 @@ import { missingScopesFor } from "./connection-state";
 import type { ConnectorId } from "./connections-catalog";
 
 export type ConnectionState =
-  "connected" | "needs_verification" | "pending_review" | "expired" | "failing" | "not_connected";
+  | "connected"
+  | "unverified"
+  | "needs_verification"
+  | "pending_review"
+  | "expired"
+  | "failing"
+  | "not_connected";
 
 export type ConnectionStatus = {
   state: ConnectionState;
@@ -30,16 +36,20 @@ export type AccountLike = {
   external_id?: string | null;
   connect_method?: string | null;
   label?: string | null;
-  /**
-   * True when a refresh token is stored, so the access token renews itself.
-   * Computed on the server: the refresh token is unreadable from a browser
-   * session, and only this yes/no is sent.
-   */
+/** Last live provider call that proved the token works. */
+  last_validation_success_at?: string | null;
+  legacy_manual_connection?: boolean | null;
+  /** Batch 2A: set for channels on a shared authorization. */
+  authorization_id?: string | null;
+  /** Batch 2A: scopes the authorization asked for and was not granted. */
+  missing_scopes?: string[] | null;
+  /** True when a refresh token is stored, so the access token renews itself. */
   renews?: boolean | null | undefined;
 };
 
 const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatus["tone"] }> = {
   connected: { label: "Connected", tone: "good" },
+  unverified: { label: "Not yet verified", tone: "warn" },
   needs_verification: { label: "Needs verification", tone: "warn" },
   pending_review: { label: "Pending platform review", tone: "warn" },
   expired: { label: "Token expired", tone: "bad" },
@@ -110,7 +120,11 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   // capabilities Flas has actually implemented, so a customer is never asked
   // to re-authorize for a permission that unlocks nothing.
   {
-    const missing = missingScopesFor(account.platform, account.granted_scopes ?? []);
+    // Channels on an authorization are judged against what was asked for; an
+    // optional tier nobody turned on is an upgrade, not a missing permission.
+    const missing = account.authorization_id
+      ? (account.missing_scopes ?? [])
+      : missingScopesFor(account.platform, account.granted_scopes ?? []);
     if (missing.length > 0) {
       return build(
         "needs_verification",
@@ -118,6 +132,24 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
         "Reconnect and leave every permission toggle ON on the platform's consent screen.",
       );
     }
+  }
+
+  // Batch 1, Phase 20: "Healthy" needs a live provider check that succeeded.
+  // A recent sync proves the database was written, not that the token works,
+  // and a pasted token was never checked by anyone.
+  if (account.legacy_manual_connection || account.connect_method === "manual") {
+    return build(
+      "unverified",
+      "Added with a pasted token before Batch 1, and never verified against the platform.",
+      "Reconnect it through Connect & setup so Flas can verify it.",
+    );
+  }
+  if (!account.last_validation_success_at) {
+    return build(
+      "unverified",
+      "Authorized, but no live check against the platform has succeeded yet.",
+      "Open the Health report and press Retry, or wait for the next automatic check.",
+    );
   }
 
   if (!account.last_synced_at) {
@@ -139,7 +171,7 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
 
   return build(
     "connected",
-    `Healthy — last synced ${new Date(account.last_synced_at).toLocaleString()}.`,
+    `Healthy — verified ${new Date(account.last_validation_success_at).toLocaleString()}, last synced ${new Date(account.last_synced_at).toLocaleString()}.`,
     "Nothing to do. Run a Flas Account Scan any time for growth suggestions.",
   );
 }

@@ -157,6 +157,27 @@ export function ConnectionOutcome({
     : null;
 
   if (blocked) {
+    const localizedReason = (() => {
+      const r = search.connect_reason;
+      if (!r) return i18n.t("connectionOutcome.thePlatformDidNotReturn");
+      if (r.includes("YouTube Data API v3 is not enabled")) {
+        return i18n.t("connectionOutcome.youtubeApiNotEnabled");
+      }
+      if (r.includes("YouTube API quota has been exceeded")) {
+        return i18n.t("connectionOutcome.youtubeQuotaExceeded");
+      }
+      if (r.includes("did not grant channel access")) {
+        return i18n.t("connectionOutcome.youtubePermissionsMissing");
+      }
+      if (r.includes("No active YouTube channel was found")) {
+        return i18n.t("connectionOutcome.youtubeNoChannel");
+      }
+      if (r.includes("refused access to your YouTube channels (HTTP 403)")) {
+        return i18n.t("connectionOutcome.youtubeGeneric403");
+      }
+      return r;
+    })();
+
     return (
       <Alert variant="destructive" className="mt-4">
         <XCircle className="size-4" />
@@ -166,9 +187,7 @@ export function ConnectionOutcome({
           })}
         </AlertTitle>
         <AlertDescription className="space-y-3">
-          <p className="font-medium">
-            {search.connect_reason ?? i18n.t("connectionOutcome.thePlatformDidNotReturn")}
-          </p>
+          <p className="font-medium">{localizedReason}</p>
 
           <p className="text-xs opacity-80">{i18n.t("connectionOutcome.nothingWasSavedSoThere")}</p>
           <Button size="sm" variant="outline" onClick={onDismiss}>
