@@ -39,7 +39,6 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
 
-
 export const Route = createFileRoute("/_authenticated/contacts")({
   head: () => ({
     meta: [
@@ -255,19 +254,20 @@ function ContactsPage() {
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
-  if (contacts.isLoading) return (
-  <div className="space-y-3 p-6">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
-        <Skeleton className="h-10 w-10 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-3 w-2/3" />
-        </div>
+  if (contacts.isLoading)
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
       </div>
-    ))}
-  </div>
-);
+    );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -291,7 +291,6 @@ function ContactsPage() {
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-
             <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="w-56 ps-9"
@@ -336,7 +335,10 @@ function ContactsPage() {
                   }}
                 />
               </div>
-              <Textarea aria-label="Paste contacts or CSV content" rows={6} placeholder={"+971501234567\nSara Ahmed, +971559876543, sara@example.com"}
+              <Textarea
+                aria-label="Paste contacts or CSV content"
+                rows={6}
+                placeholder={"+971501234567\nSara Ahmed, +971559876543, sara@example.com"}
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
               />
@@ -522,112 +524,113 @@ function ContactsPage() {
               </Button>
             </Card>
           </div>
-        ) : STAGES.map((stage) => {
-          const rows = filtered.filter((c) => c.stage === stage.id);
-          // L1: the column showed a card count and nothing else, so the only way
-          // to answer "how much is sitting in Negotiation?" was to add the cards
-          // up by eye. Totalled over the filtered rows, not all contacts, so the
-          // figure always matches the cards actually on screen.
-          const { total } = stageTotal(rows, stage.id);
-          return (
-            <section key={stage.id} className="rounded-xl bg-muted/50 p-3">
-              <div className="mb-3 flex items-center justify-between gap-2 px-1">
-                <h2 className="text-sm font-semibold">{t(`stage.${stage.id}`)}</h2>
-                <div className="flex items-center gap-2">
-                  {rows.length > 0 && (
-                    <span className="text-xs font-semibold text-brand">
-                      {formatStageMoney(total, tenant?.currency)}
-                    </span>
-                  )}
-                  <Badge variant="secondary" className="text-[10px]">
-                    {rows.length}
-                  </Badge>
+        ) : (
+          STAGES.map((stage) => {
+            const rows = filtered.filter((c) => c.stage === stage.id);
+            // L1: the column showed a card count and nothing else, so the only way
+            // to answer "how much is sitting in Negotiation?" was to add the cards
+            // up by eye. Totalled over the filtered rows, not all contacts, so the
+            // figure always matches the cards actually on screen.
+            const { total } = stageTotal(rows, stage.id);
+            return (
+              <section key={stage.id} className="rounded-xl bg-muted/50 p-3">
+                <div className="mb-3 flex items-center justify-between gap-2 px-1">
+                  <h2 className="text-sm font-semibold">{t(`stage.${stage.id}`)}</h2>
+                  <div className="flex items-center gap-2">
+                    {rows.length > 0 && (
+                      <span className="text-xs font-semibold text-brand">
+                        {formatStageMoney(total, tenant?.currency)}
+                      </span>
+                    )}
+                    <Badge variant="secondary" className="text-[10px]">
+                      {rows.length}
+                    </Badge>
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-2">
-                {rows.length === 0 && (
-                  <p className="px-1 text-xs text-muted-foreground">{t("contacts.emptyStage")}</p>
-                )}
-                {rows.map((c) => (
-                  <Card key={c.id}>
-                    <CardContent className="space-y-2 p-3">
-                      <div>
-                        {/* H13: the card was not openable at all — only the small
+                <div className="space-y-2">
+                  {rows.length === 0 && (
+                    <p className="px-1 text-xs text-muted-foreground">{t("contacts.emptyStage")}</p>
+                  )}
+                  {rows.map((c) => (
+                    <Card key={c.id}>
+                      <CardContent className="space-y-2 p-3">
+                        <div>
+                          {/* H13: the card was not openable at all — only the small
                             "Numbers & branches" link below it was, which nobody
                             found. The name is the button now, so clicking the
                             contact opens the contact. Kept as a button rather
                             than wrapping the whole card, because the card also
                             holds a stage select and a consent action that must
                             stay independently clickable. */}
-                        <button
-                          type="button"
-                          onClick={() => setDetailFor({ id: c.id, name: c.name })}
-                          className="text-start text-sm font-semibold underline-offset-2 hover:underline"
-                        >
-                          {c.name}
-                        </button>
-                        <p className="text-xs text-muted-foreground">
-                          {c.phone ?? c.email ?? t("contacts.noDetails")}
-                          {c.company ? ` · ${c.company}` : ""}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setDetailFor({ id: c.id, name: c.name })}
-                          className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                        >
-                          {t("contacts.open")}
-                        </button>
-                        {c.consent_given ? (
-                          <Badge variant="outline" className="mt-1 text-[10px]">
-                            {t("contacts.consented")}
-                            {c.consent_at
-                              ? ` · ${new Date(c.consent_at).toLocaleDateString()}`
-                              : ""}
-                          </Badge>
-                        ) : (
                           <button
                             type="button"
-                            onClick={() => grantConsent.mutate(c.id)}
-                            disabled={grantConsent.isPending}
-                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
-                            title={t("contacts.needsConsentTitle")}
+                            onClick={() => setDetailFor({ id: c.id, name: c.name })}
+                            className="text-start text-sm font-semibold underline-offset-2 hover:underline"
                           >
-                            {t("contacts.needsConsent")}
+                            {c.name}
                           </button>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        {/* Same formatter as the column total, so a card and the
+                          <p className="text-xs text-muted-foreground">
+                            {c.phone ?? c.email ?? t("contacts.noDetails")}
+                            {c.company ? ` · ${c.company}` : ""}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setDetailFor({ id: c.id, name: c.name })}
+                            className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          >
+                            {t("contacts.open")}
+                          </button>
+                          {c.consent_given ? (
+                            <Badge variant="outline" className="mt-1 text-[10px]">
+                              {t("contacts.consented")}
+                              {c.consent_at
+                                ? ` · ${new Date(c.consent_at).toLocaleDateString()}`
+                                : ""}
+                            </Badge>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => grantConsent.mutate(c.id)}
+                              disabled={grantConsent.isPending}
+                              className="mt-1 inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
+                              title={t("contacts.needsConsentTitle")}
+                            >
+                              {t("contacts.needsConsent")}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          {/* Same formatter as the column total, so a card and the
                             heading above it can never disagree about currency
                             or rounding. */}
-                        <span className="text-xs font-semibold text-brand">
-                          {formatStageMoney(Number(c.value ?? 0), tenant?.currency)}
-                        </span>
-                        <Select
-                          value={c.stage}
-                          onValueChange={(v) => move.mutate({ id: c.id, stage: v as LeadStage })}
-                        >
-                          <SelectTrigger className="h-8 w-32 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {STAGES.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>
-                                {t(`stage.${s.id}`)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </section>
-          );
-        })}
+                          <span className="text-xs font-semibold text-brand">
+                            {formatStageMoney(Number(c.value ?? 0), tenant?.currency)}
+                          </span>
+                          <Select
+                            value={c.stage}
+                            onValueChange={(v) => move.mutate({ id: c.id, stage: v as LeadStage })}
+                          >
+                            <SelectTrigger className="h-8 w-32 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {STAGES.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {t(`stage.${s.id}`)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </section>
+            );
+          })
+        )}
       </div>
     </main>
   );
 }
-
