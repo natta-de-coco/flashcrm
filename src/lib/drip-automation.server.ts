@@ -14,7 +14,48 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { BUILT_IN_EMAIL_TEMPLATES, substituteMergeTags } from "./email-templates.ts";
 import { generateUnsubscribeToken } from "./lead-automation.server.ts";
 
-const db = supabaseAdmin as any;
+interface UntypedDbResult<T = UntypedRow> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+interface UntypedRow {
+  id?: string;
+  sequence_id?: string;
+  step_number?: number;
+  delay_days?: number;
+  template_id?: string;
+  subject?: string;
+  discount_code?: string | null;
+  business_name?: string | null;
+  verified?: boolean | null;
+  smtp_host?: string | null;
+  from_email?: string | null;
+  domain?: string | null;
+  status?: string;
+  [key: string]: unknown;
+}
+
+interface UntypedDbQuery {
+  select: (cols?: string) => UntypedDbQuery;
+  insert: (values: unknown) => UntypedDbQuery;
+  update: (values: unknown) => UntypedDbQuery;
+  delete: () => UntypedDbQuery;
+  eq: (col: string, val: unknown) => UntypedDbQuery;
+  in: (col: string, vals: unknown[]) => UntypedDbQuery;
+  order: (col: string, opts?: unknown) => UntypedDbQuery;
+  limit: (count: number) => UntypedDbQuery;
+  single: <T = UntypedRow>() => Promise<UntypedDbResult<T>>;
+  maybeSingle: <T = UntypedRow>() => Promise<UntypedDbResult<T>>;
+  then: <T = UntypedRow>(resolve: (val: UntypedDbResult<T>) => void) => Promise<unknown>;
+}
+
+interface UntypedDbClient {
+  from: (table: string) => UntypedDbQuery;
+  rpc: (fn: string, args?: unknown) => Promise<UntypedDbResult<unknown>>;
+}
+
+const db = supabaseAdmin as unknown as UntypedDbClient;
 
 export interface DripSequenceStep {
   stepNumber: number;
@@ -65,7 +106,8 @@ export async function getOrCreateDefaultSequence(tenantId: string): Promise<stri
     .insert({
       tenant_id: tenantId,
       name: "New Lead Welcome & 7-Day Growth Nurture",
-      description: "Automated 3-step funnel: Day 0 Welcome Discount -> Day 3 Showcase -> Day 7 Expiry",
+      description:
+        "Automated 3-step funnel: Day 0 Welcome Discount -> Day 3 Showcase -> Day 7 Expiry",
       trigger_event: "lead_consented_intake",
       active: true,
     })
@@ -78,7 +120,7 @@ export async function getOrCreateDefaultSequence(tenantId: string): Promise<stri
 
   // Insert default steps
   for (const step of DEFAULT_DRIP_STEPS) {
-    await (db as any).from("drip_steps").insert({
+    await db.from("drip_steps").insert({
       sequence_id: created.id,
       step_number: step.stepNumber,
       delay_days: step.delayDays,
@@ -86,6 +128,10 @@ export async function getOrCreateDefaultSequence(tenantId: string): Promise<stri
       subject: step.subject,
       discount_code: step.discountCode ?? null,
     });
+  }
+
+  if (!created?.id) {
+    throw new Error("Created sequence missing id");
   }
 
   return created.id;
@@ -117,7 +163,11 @@ export async function enrollLeadInDripSequence(args: {
       .maybeSingle();
 
     if (activeEnrollment) {
-      return { enrolled: false, sequenceId, enrollmentId: activeEnrollment.id };
+      return {
+        enrolled: false,
+        sequenceId,
+        ...(activeEnrollment.id ? { enrollmentId: activeEnrollment.id } : {}),
+      };
     }
 
     // Insert new enrollment
@@ -137,7 +187,7 @@ export async function enrollLeadInDripSequence(args: {
       .select("id")
       .single();
 
-    if (error || !enrollment) {
+    if (error || !enrollment?.id) {
       console.error("[drip] Error enrolling lead:", error);
       return { enrolled: false };
     }
@@ -165,7 +215,7 @@ export async function dispatchDripStepForEnrollment(args: {
   enrollmentId: string;
   tenantId: string;
   email: string;
-  name?: string | null;
+  name: string | null;
   stepNumber: number;
 }): Promise<boolean> {
   const { enrollmentId, tenantId, email, name, stepNumber } = args;
@@ -199,8 +249,8 @@ export async function dispatchDripStepForEnrollment(args: {
 
   // 2. Fetch tenant company and SMTP configuration
   const [{ data: company }, { data: smtp }] = await Promise.all([
-    (db as any).from("business_profiles").select("business_name").eq("tenant_id", tenantId).maybeSingle(),
-    (db as any).from("tenant_smtp_config").select("*").eq("tenant_id", tenantId).maybeSingle(),
+    db.from("business_profiles").select("business_name").eq("tenant_id", tenantId).maybeSingle(),
+    db.from("tenant_smtp_config").select("*").eq("tenant_id", tenantId).maybeSingle(),
   ]);
 
   const companyName = company?.business_name || "Flas CRM";
@@ -213,7 +263,7 @@ export async function dispatchDripStepForEnrollment(args: {
   const template =
     BUILT_IN_EMAIL_TEMPLATES.find((t) => t.id === step.template_id) || BUILT_IN_EMAIL_TEMPLATES[0]!;
 
-  const renderedSubject = substituteMergeTags(step.subject, {
+  const renderedSubject = substituteMergeTags(step.subject || "", {
     name: name || "there",
     company: companyName,
     discount_code: discountCode,
@@ -234,7 +284,7 @@ export async function dispatchDripStepForEnrollment(args: {
     try {
       // In production, dispatch via native nodemailer or verified transport
       dispatchSuccess = true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[drip] SMTP dispatch failed:", err);
     }
   } else {
@@ -254,10 +304,10 @@ export async function dispatchDripStepForEnrollment(args: {
     _status: dispatchSuccess ? "sent" : "failed",
     _error: dispatchSuccess ? null : "Tenant SMTP not configured",
     _meta: { step_number: stepNumber, enrollment_id: enrollmentId, discount_code: discountCode },
-  } as any);
+  } as never);
 
   // 5. Look up next step and compute next_run_at
-  const { data: nextStep } = await (db as any)
+  const { data: nextStep } = await db
     .from("drip_steps")
     .select("step_number, delay_days")
     .eq("sequence_id", enrollment.sequence_id)
@@ -265,8 +315,8 @@ export async function dispatchDripStepForEnrollment(args: {
     .maybeSingle();
 
   if (nextStep) {
-    const nextRun = new Date(Date.now() + nextStep.delay_days * 24 * 60 * 60 * 1000);
-    await (db as any)
+    const nextRun = new Date(Date.now() + (nextStep.delay_days ?? 0) * 24 * 60 * 60 * 1000);
+    await db
       .from("drip_enrollments")
       .update({
         current_step: nextStep.step_number,
@@ -277,7 +327,7 @@ export async function dispatchDripStepForEnrollment(args: {
       })
       .eq("id", enrollmentId);
   } else {
-    await (db as any)
+    await db
       .from("drip_enrollments")
       .update({
         status: "completed",
@@ -293,9 +343,12 @@ export async function dispatchDripStepForEnrollment(args: {
 /**
  * Instantly cancels all active drip enrollments when a user clicks unsubscribe.
  */
-export async function cancelDripEnrollmentsForEmail(tenantId: string, email: string): Promise<number> {
+export async function cancelDripEnrollmentsForEmail(
+  tenantId: string,
+  email: string,
+): Promise<number> {
   const cleanEmail = email.toLowerCase().trim();
-  const { data, error } = await (db as any)
+  const { data, error } = await db
     .from("drip_enrollments")
     .update({
       status: "unsubscribed",
@@ -311,6 +364,5 @@ export async function cancelDripEnrollmentsForEmail(tenantId: string, email: str
     return 0;
   }
 
-  return data?.length ?? 0;
+  return (data as unknown[] | null)?.length ?? 0;
 }
-

@@ -17,14 +17,14 @@ export function ProfileBanner() {
     queryKey: ["missing_profile_data", session?.user?.id, tenant?.id],
     enabled: !!session && !!tenant,
     queryFn: async () => {
-      // @ts-ignore - DB types might not include newer fields yet
-      const { data } = await supabase
+      const { data } = (await supabase
         .from("business_profiles")
         .select("mobile_phone, tax_registration_number")
         .eq("tenant_id", tenant!.id)
-        .maybeSingle();
+        .maybeSingle()) as {
+        data: { mobile_phone?: string | null; tax_registration_number?: string | null } | null;
+      };
       if (!data) return true;
-      // @ts-ignore
       return !data.mobile_phone || !data.tax_registration_number;
     },
   });
@@ -33,10 +33,13 @@ export function ProfileBanner() {
 
   return (
     <div className="relative mx-4 mt-4 sm:mx-6 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 pr-8 text-sm text-amber-700 dark:text-amber-300">
-      <strong>Complete your business profile</strong> — add your phone number and tax registration so your invoices are legally compliant.
-      <Button variant="link" size="sm" onClick={() => navigate({ to: '/advisor' })}>Update now</Button>
-      <button 
-        type="button" 
+      <strong>Complete your business profile</strong> — add your phone number and tax registration
+      so your invoices are legally compliant.
+      <Button variant="link" size="sm" onClick={() => navigate({ to: "/advisor" })}>
+        Update now
+      </Button>
+      <button
+        type="button"
         onClick={() => setDismissed(true)}
         className="absolute right-2 top-2 rounded-md p-1 opacity-70 hover:opacity-100"
         aria-label="Dismiss banner"

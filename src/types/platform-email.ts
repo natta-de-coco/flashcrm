@@ -1,7 +1,6 @@
 import type { Database } from "@/integrations/supabase/types";
 
-export type PlatformEmailConfigRow =
-  Database["public"]["Tables"]["platform_email_config"]["Row"];
+export type PlatformEmailConfigRow = Database["public"]["Tables"]["platform_email_config"]["Row"];
 export type PlatformEmailConfigInsert =
   Database["public"]["Tables"]["platform_email_config"]["Insert"];
 export type PlatformEmailConfigUpdate =

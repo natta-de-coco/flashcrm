@@ -33,7 +33,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
 
-
 export const Route = createFileRoute("/_authenticated/campaign-planner")({
   head: () => ({
     meta: [

@@ -239,7 +239,10 @@ function registryScopes(platform: string): Partial<Record<DoctorCapability, stri
   const def = connectorDefinition(platform as never);
   if (!def) return {};
   const out: Partial<Record<DoctorCapability, string[]>> = {};
-  for (const [cap, key] of Object.entries(DOCTOR_TO_REGISTRY) as [DoctorCapability, (typeof DOCTOR_TO_REGISTRY)[DoctorCapability]][]) {
+  for (const [cap, key] of Object.entries(DOCTOR_TO_REGISTRY) as [
+    DoctorCapability,
+    (typeof DOCTOR_TO_REGISTRY)[DoctorCapability],
+  ][]) {
     const r = resolveCapability(def, key);
     if (r.providerSupports && r.flasImplements) out[cap] = [...r.requiredScopes];
   }

@@ -60,7 +60,12 @@ export const getAuthorizationDiscovery = createServerFn({ method: "GET" })
           .select("id, platform, external_id, active")
           .in("external_id", ids)
       : {
-          data: [] as Array<{ id: string; platform: string; external_id: string | null; active: boolean }>,
+          data: [] as Array<{
+            id: string;
+            platform: string;
+            external_id: string | null;
+            active: boolean;
+          }>,
         };
 
     const expired =
@@ -115,9 +120,8 @@ export const connectChannels = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!visible) throw new Error("That sign-in was not found in this workspace.");
 
-    const { connectDiscoveredChannels, readTokensForAccount } = await import(
-      "@/lib/social-authorizations.server"
-    );
+    const { connectDiscoveredChannels, readTokensForAccount } =
+      await import("@/lib/social-authorizations.server");
     const result = await connectDiscoveredChannels({
       tenantId: visible.tenant_id,
       userId: context.userId,
@@ -154,5 +158,7 @@ export const connectChannels = createServerFn({ method: "POST" })
         /* the channel is connected; the next scheduled sync will retry */
       }
     }
-    return { connected: result.connected.map((c) => ({ accountId: c.accountId, rebound: c.rebound })) };
+    return {
+      connected: result.connected.map((c) => ({ accountId: c.accountId, rebound: c.rebound })),
+    };
   });

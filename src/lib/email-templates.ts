@@ -16,7 +16,8 @@ export const BUILT_IN_EMAIL_TEMPLATES: EmailTemplate[] = [
     description: "Personalized welcome email with a stylized discount coupon box and hero image.",
     subject: "Welcome to {{company}}! Here is your exclusive {{discount_code}} voucher",
     previewText: "Claim your special discount inside. Thank you for joining {{company}}!",
-    defaultImageUrl: "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1200&auto=format&fit=crop&q=80",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1200&auto=format&fit=crop&q=80",
     htmlContent: `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -118,16 +119,18 @@ export const BUILT_IN_EMAIL_TEMPLATES: EmailTemplate[] = [
     <!--[if mso]></td></tr></table><![endif]-->
   </center>
 </body>
-</html>`
+</html>`,
   },
   {
     id: "product_showcase",
     name: "Product Announcement & Feature Launch",
     category: "announcement",
-    description: "Modern promotional layout with hero image slot, benefit bullets, and call to action.",
+    description:
+      "Modern promotional layout with hero image slot, benefit bullets, and call to action.",
     subject: "Introducing something new from {{company}} 🚀",
     previewText: "See what we just launched! Read full details inside.",
-    defaultImageUrl: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&auto=format&fit=crop&q=80",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&auto=format&fit=crop&q=80",
     htmlContent: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -175,16 +178,18 @@ export const BUILT_IN_EMAIL_TEMPLATES: EmailTemplate[] = [
     </table>
   </center>
 </body>
-</html>`
+</html>`,
   },
   {
     id: "flash_sale",
     name: "Flash Sale & Limited Time Offer",
     category: "promotion",
-    description: "High-urgency promotional template for seasonal sales, discounts, and flash promotions.",
+    description:
+      "High-urgency promotional template for seasonal sales, discounts, and flash promotions.",
     subject: "⚡ Flash Sale: Save big today at {{company}}",
     previewText: "Don't miss out! Limited time promotional discount expires soon.",
-    defaultImageUrl: "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1200&auto=format&fit=crop&q=80",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=1200&auto=format&fit=crop&q=80",
     htmlContent: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -230,16 +235,18 @@ export const BUILT_IN_EMAIL_TEMPLATES: EmailTemplate[] = [
     </table>
   </center>
 </body>
-</html>`
+</html>`,
   },
   {
     id: "newsletter_digest",
     name: "Newsletter & Company Digest",
     category: "newsletter",
-    description: "Clean editorial layout for monthly updates, tips, articles, and community digests.",
+    description:
+      "Clean editorial layout for monthly updates, tips, articles, and community digests.",
     subject: "{{company}} Monthly Digest: Tips, stories & updates",
     previewText: "Your monthly digest is here. Check out what happened this month.",
-    defaultImageUrl: "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=1200&auto=format&fit=crop&q=80",
+    defaultImageUrl:
+      "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=1200&auto=format&fit=crop&q=80",
     htmlContent: `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -280,8 +287,8 @@ export const BUILT_IN_EMAIL_TEMPLATES: EmailTemplate[] = [
     </table>
   </center>
 </body>
-</html>`
-  }
+</html>`,
+  },
 ];
 
 /**
@@ -297,7 +304,8 @@ export function substituteMergeTags(content: string, variables: Record<string, s
     discount_code: "WELCOME20",
     unsubscribe_url: "/unsubscribe",
     company_url: "https://flas.mobidigisol.com",
-    image_url: "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1200&auto=format&fit=crop&q=80",
+    image_url:
+      "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1200&auto=format&fit=crop&q=80",
     ...variables,
   };
 
@@ -322,24 +330,32 @@ export function validateEmailMarketingHtml(html: string): {
 
   // 1. Mandatory Unsubscribe Check (CAN-SPAM / GDPR / RFC 8058)
   if (!html.includes("{{unsubscribe_url}}") && !/unsubscribe/i.test(html)) {
-    errors.push("Missing mandatory unsubscribe link (required by CAN-SPAM and GDPR). Include {{unsubscribe_url}}.");
+    errors.push(
+      "Missing mandatory unsubscribe link (required by CAN-SPAM and GDPR). Include {{unsubscribe_url}}.",
+    );
   }
 
   // 2. Unsafe Script Tags
   if (/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi.test(html)) {
-    errors.push("Unsafe <script> tag detected. Email clients strictly prohibit JavaScript execution.");
+    errors.push(
+      "Unsafe <script> tag detected. Email clients strictly prohibit JavaScript execution.",
+    );
   }
 
   // 3. Excessively Large Inline Data URIs (Gmail clipping warning > 100KB)
   const dataUriMatch = html.match(/src=["']data:image\/[^;]+;base64,[^"']+["']/gi);
   if (dataUriMatch && dataUriMatch.length > 0) {
-    warnings.push("Inline base64 image detected. Some email clients (e.g. Gmail) block inline data URIs or clip large messages. Prefer hosted image URLs.");
+    warnings.push(
+      "Inline base64 image detected. Some email clients (e.g. Gmail) block inline data URIs or clip large messages. Prefer hosted image URLs.",
+    );
   }
 
   // 4. Missing Alt Text on Images
   const imgWithoutAlt = /<img(?![^>]*\balt=)[^>]*>/gi;
   if (imgWithoutAlt.test(html)) {
-    warnings.push("One or more images are missing alt text. Adding descriptive alt attributes improves accessibility and spam scores.");
+    warnings.push(
+      "One or more images are missing alt text. Adding descriptive alt attributes improves accessibility and spam scores.",
+    );
   }
 
   return {

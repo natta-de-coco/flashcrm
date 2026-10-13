@@ -9,7 +9,15 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -102,7 +110,13 @@ export function MultiMailboxManagerCard() {
   });
 
   const testMutation = useMutation({
-    mutationFn: async ({ accountId, testType }: { accountId: string; testType: "smtp" | "imap" }) => {
+    mutationFn: async ({
+      accountId,
+      testType,
+    }: {
+      accountId: string;
+      testType: "smtp" | "imap";
+    }) => {
       return await testAccountFn({ data: { accountId, testType } });
     },
     onSuccess: (res, vars) => {
@@ -178,7 +192,8 @@ export function MultiMailboxManagerCard() {
               <Mail className="size-5 text-brand" /> Team Mailboxes & 1 GB Storage Guard
             </CardTitle>
             <CardDescription className="text-xs">
-              Connect dedicated email logins for each representative (Sales, Support, Marketing) with automatic 1 GB storage pruning.
+              Connect dedicated email logins for each representative (Sales, Support, Marketing)
+              with automatic 1 GB storage pruning.
             </CardDescription>
           </div>
           <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
@@ -196,14 +211,16 @@ export function MultiMailboxManagerCard() {
               <span>Workspace Mail Storage Cap</span>
             </div>
             <span className="font-mono text-muted-foreground">
-              {storage?.usedFormatted || "0 MB"} / {storage?.maxCapFormatted || "1 GB"} ({storage?.usagePercent || 0}%)
+              {storage?.usedFormatted || "0 MB"} / {storage?.maxCapFormatted || "1 GB"} (
+              {storage?.usagePercent || 0}%)
             </span>
           </div>
 
           <Progress value={storage?.usagePercent || 0} className="h-2" />
 
           <p className="text-[11px] text-muted-foreground">
-            Strict 1 GB hard-cap enforced. Ephemeral raw bodies older than 60 days are auto-pruned once usage exceeds 85% to ensure zero server bloat.
+            Strict 1 GB hard-cap enforced. Ephemeral raw bodies older than 60 days are auto-pruned
+            once usage exceeds 85% to ensure zero server bloat.
           </p>
         </div>
 
@@ -219,7 +236,8 @@ export function MultiMailboxManagerCard() {
 
           {!accountsQuery.isLoading && accounts.length === 0 && (
             <div className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
-              No personal mailboxes configured yet. Click "Add Mailbox" so each representative can send and reply with their own authenticated email address.
+              No personal mailboxes configured yet. Click "Add Mailbox" so each representative can
+              send and reply with their own authenticated email address.
             </div>
           )}
 
@@ -240,8 +258,14 @@ export function MultiMailboxManagerCard() {
                     {acc.fromName} &lt;{acc.fromEmail}&gt;
                   </p>
                   <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground">
-                    <span className="font-mono">{acc.smtpHost}:{acc.smtpPort}</span>
-                    {acc.isDefault && <Badge variant="outline" className="text-[9px]">Default</Badge>}
+                    <span className="font-mono">
+                      {acc.smtpHost}:{acc.smtpPort}
+                    </span>
+                    {acc.isDefault && (
+                      <Badge variant="outline" className="text-[9px]">
+                        Default
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
@@ -263,7 +287,11 @@ export function MultiMailboxManagerCard() {
                       disabled={testMutation.isPending}
                       onClick={() => testMutation.mutate({ accountId: acc.id, testType: "smtp" })}
                     >
-                      {testMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : "Test SMTP"}
+                      {testMutation.isPending ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        "Test SMTP"
+                      )}
                     </Button>
                     {acc.imapEnabled && (
                       <Button
@@ -292,7 +320,8 @@ export function MultiMailboxManagerCard() {
               {editingAccount ? "Configure Mailbox" : "Add Representative Mailbox"}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Connect authenticated SMTP and IMAP credentials so this user can send and reply directly from the portal.
+              Connect authenticated SMTP and IMAP credentials so this user can send and reply
+              directly from the portal.
             </DialogDescription>
           </DialogHeader>
 
@@ -311,7 +340,12 @@ export function MultiMailboxManagerCard() {
                 <select
                   className="w-full h-9 rounded-md border bg-background px-3 text-xs"
                   value={formData.accountType}
-                  onChange={(e) => setFormData({ ...formData, accountType: e.target.value as any })}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      accountType: e.target.value as "personal" | "shared" | "marketing",
+                    })
+                  }
                 >
                   <option value="personal">Personal (Only Me)</option>
                   <option value="shared">Shared (Team Desk)</option>
@@ -359,7 +393,9 @@ export function MultiMailboxManagerCard() {
                   <Input
                     type="number"
                     value={formData.smtpPort}
-                    onChange={(e) => setFormData({ ...formData, smtpPort: parseInt(e.target.value) || 465 })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, smtpPort: parseInt(e.target.value) || 465 })
+                    }
                   />
                 </div>
               </div>
@@ -436,8 +472,16 @@ export function MultiMailboxManagerCard() {
             <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-              {saveMutation.isPending ? <Loader2 className="size-4 animate-spin" /> : "Save Mailbox"}
+            <Button
+              size="sm"
+              disabled={saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}
+            >
+              {saveMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Save Mailbox"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

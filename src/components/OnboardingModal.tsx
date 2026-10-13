@@ -31,14 +31,35 @@ import { Label } from "@/components/ui/label";
 import { useI18n } from "@/hooks/useI18n";
 
 const BLOCKED_NAMES = [
-  "test", "testing", "admin", "administrator", "fake", "user", "company",
-  "my company", "mycompany", "abc", "asdf", "qwerty", "none", "n/a", "na",
-  "sample", "demo", "null", "undefined", "xyz", "owner", "customer"
+  "test",
+  "testing",
+  "admin",
+  "administrator",
+  "fake",
+  "user",
+  "company",
+  "my company",
+  "mycompany",
+  "abc",
+  "asdf",
+  "qwerty",
+  "none",
+  "n/a",
+  "na",
+  "sample",
+  "demo",
+  "null",
+  "undefined",
+  "xyz",
+  "owner",
+  "customer",
 ];
 
 function isDisallowedName(val: string): boolean {
   const norm = val.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return BLOCKED_NAMES.some((b) => norm === b || norm.startsWith("testcompany") || norm.startsWith("fakecompany"));
+  return BLOCKED_NAMES.some(
+    (b) => norm === b || norm.startsWith("testcompany") || norm.startsWith("fakecompany"),
+  );
 }
 
 export function OnboardingModal() {
@@ -81,20 +102,28 @@ export function OnboardingModal() {
   };
 
   const submit = async () => {
-const trimmedCompany = companyName.trim();
+    const trimmedCompany = companyName.trim();
     const trimmedFull = fullName.trim();
     const trimmedMobile = mobilePhone.trim();
 
     if (trimmedCompany.length < 3) {
-      toast.error(t("onboardingModal.pleaseEnterYourCompanyName") || "Please enter your real company name (at least 3 characters)");
+      toast.error(
+        t("onboardingModal.pleaseEnterYourCompanyName") ||
+          "Please enter your real company name (at least 3 characters)",
+      );
       return;
     }
     if (isDisallowedName(trimmedCompany)) {
-      toast.error("Please enter a valid, real business name (generic or test names are not allowed)");
+      toast.error(
+        "Please enter a valid, real business name (generic or test names are not allowed)",
+      );
       return;
     }
     if (trimmedFull.length < 2) {
-      toast.error(t("onboardingModal.pleaseEnterYourFullName") || "Please enter your real full name (at least 2 characters)");
+      toast.error(
+        t("onboardingModal.pleaseEnterYourFullName") ||
+          "Please enter your real full name (at least 2 characters)",
+      );
       return;
     }
     if (isDisallowedName(trimmedFull)) {
@@ -144,7 +173,10 @@ const trimmedCompany = companyName.trim();
         },
       });
 
-      toast.success(t("onboardingModal.welcomeToFlasYour1", { trim: trimmedFull }) || `Welcome to Flas, ${trimmedFull}! Your 1-month free trial has started.`);
+      toast.success(
+        t("onboardingModal.welcomeToFlasYour1", { trim: trimmedFull }) ||
+          `Welcome to Flas, ${trimmedFull}! Your 1-month free trial has started.`,
+      );
       await refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("onboardingModal.couldNotFinishSetup"));
@@ -154,10 +186,15 @@ const trimmedCompany = companyName.trim();
 
   return (
     <Dialog open>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent
+        className="max-h-[92vh] overflow-y-auto sm:max-w-lg"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader className="items-center text-center">
           <FlashLogoBadge className="mb-2 size-12" />
-<DialogTitle>{t("onboardingModal.nameYourCompany") || "Set up your company workspace"}</DialogTitle>
+          <DialogTitle>
+            {t("onboardingModal.nameYourCompany") || "Set up your company workspace"}
+          </DialogTitle>
           <DialogDescription>
             {knownName
               ? `Welcome, ${knownName.split(" ")[0]}. Please provide your real business details so invoices, messaging and currency are set up correctly.`
@@ -166,11 +203,15 @@ const trimmedCompany = companyName.trim();
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
-{/* Company & Owner */}
+          {/* Company & Owner */}
           <div className="space-y-3 rounded-lg border p-3 bg-muted/20">
             <div className="space-y-1.5">
-              <Label htmlFor="ob-company" className="flex items-center gap-1.5 text-xs font-semibold">
-                <Building2 className="h-3.5 w-3.5 text-primary" /> {t("onboardingModal.companyName") || "Company name"} *
+              <Label
+                htmlFor="ob-company"
+                className="flex items-center gap-1.5 text-xs font-semibold"
+              >
+                <Building2 className="h-3.5 w-3.5 text-primary" />{" "}
+                {t("onboardingModal.companyName") || "Company name"} *
               </Label>
               <Input
                 id="ob-company"
@@ -183,7 +224,8 @@ const trimmedCompany = companyName.trim();
 
             <div className="space-y-1.5">
               <Label htmlFor="ob-name" className="flex items-center gap-1.5 text-xs font-semibold">
-                <User className="h-3.5 w-3.5 text-primary" /> {t("onboardingModal.yourFullName") || "Business owner's full name"} *
+                <User className="h-3.5 w-3.5 text-primary" />{" "}
+                {t("onboardingModal.yourFullName") || "Business owner's full name"} *
               </Label>
               <Input
                 id="ob-name"
@@ -201,7 +243,9 @@ const trimmedCompany = companyName.trim();
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label htmlFor="ob-country" className="text-xs">Country</Label>
+                <Label htmlFor="ob-country" className="text-xs">
+                  Country
+                </Label>
                 <Select value={country} onValueChange={setCountry}>
                   <SelectTrigger id="ob-country">
                     <SelectValue />
@@ -217,7 +261,9 @@ const trimmedCompany = companyName.trim();
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="ob-lang" className="text-xs">Language</Label>
+                <Label htmlFor="ob-lang" className="text-xs">
+                  Language
+                </Label>
                 <Select value={language} onValueChange={setLanguage}>
                   <SelectTrigger id="ob-lang">
                     <SelectValue />
@@ -253,7 +299,9 @@ const trimmedCompany = companyName.trim();
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label htmlFor="ob-mobile" className="text-xs">Mobile phone (Owner)</Label>
+                <Label htmlFor="ob-mobile" className="text-xs">
+                  Mobile phone (Owner)
+                </Label>
                 <Input
                   id="ob-mobile"
                   placeholder="+971 50 123 4567"
@@ -263,7 +311,9 @@ const trimmedCompany = companyName.trim();
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="ob-wa" className="text-xs">WhatsApp number</Label>
+                <Label htmlFor="ob-wa" className="text-xs">
+                  WhatsApp number
+                </Label>
                 <Input
                   id="ob-wa"
                   placeholder="+971 50 123 4567"
@@ -274,7 +324,9 @@ const trimmedCompany = companyName.trim();
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="ob-landline" className="text-xs">Office landline (optional)</Label>
+              <Label htmlFor="ob-landline" className="text-xs">
+                Office landline (optional)
+              </Label>
               <Input
                 id="ob-landline"
                 placeholder="+971 4 123 4567"
@@ -296,48 +348,69 @@ const trimmedCompany = companyName.trim();
               onChange={(e) => setTaxRegistrationNumber(e.target.value)}
             />
             <p className="text-[11px] text-muted-foreground">
-              This will automatically be printed on all your quotations and invoices. You can also add or update this anytime in Settings / Business Profile.
+              This will automatically be printed on all your quotations and invoices. You can also
+              add or update this anytime in Settings / Business Profile.
             </p>
           </div>
 
           {/* Optional Chatbot Setup */}
           <div className="space-y-3 rounded-lg border p-3 bg-muted/20">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Bot className="h-3.5 w-3.5 text-primary" /> {t("onboardingModal.chatbotSection") || "Automated WhatsApp & Web Chatbot"}
+              <Bot className="h-3.5 w-3.5 text-primary" />{" "}
+              {t("onboardingModal.chatbotSection") || "Automated WhatsApp & Web Chatbot"}
             </p>
             <div className="space-y-1.5">
-              <Label htmlFor="ob-greeting" className="text-xs">{t("onboardingModal.chatbotGreeting") || "Greeting Message"}</Label>
+              <Label htmlFor="ob-greeting" className="text-xs">
+                {t("onboardingModal.chatbotGreeting") || "Greeting Message"}
+              </Label>
               <Input
                 id="ob-greeting"
                 maxLength={500}
-                placeholder={t("onboardingModal.chatbotGreetingPh") || "e.g. Hello! Welcome to our store. How can we assist you today?"}
+                placeholder={
+                  t("onboardingModal.chatbotGreetingPh") ||
+                  "e.g. Hello! Welcome to our store. How can we assist you today?"
+                }
                 value={botGreeting}
                 onChange={(e) => setBotGreeting(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="ob-details" className="text-xs">{t("onboardingModal.chatbotDetails") || "Business Instructions & Details"}</Label>
+              <Label htmlFor="ob-details" className="text-xs">
+                {t("onboardingModal.chatbotDetails") || "Business Instructions & Details"}
+              </Label>
               <Textarea
                 id="ob-details"
                 rows={3}
                 maxLength={4000}
-                placeholder={t("onboardingModal.chatbotDetailsPh") || "Briefly describe your working hours, main offerings, and policies..."}
+                placeholder={
+                  t("onboardingModal.chatbotDetailsPh") ||
+                  "Briefly describe your working hours, main offerings, and policies..."
+                }
                 value={botDetails}
                 onChange={(e) => setBotDetails(e.target.value)}
               />
             </div>
             <label className="flex items-center gap-2 text-xs">
-              <Switch checked={botReady && botEnabled} disabled={!botReady} onCheckedChange={setBotEnabled} />
+              <Switch
+                checked={botReady && botEnabled}
+                disabled={!botReady}
+                onCheckedChange={setBotEnabled}
+              />
               {t("onboardingModal.chatbotTurnOn") || "Enable chatbot immediately"}
             </label>
-            <p className="text-[11px] text-muted-foreground">{t("onboardingModal.chatbotHint") || "You can customize knowledge, auto-replies, and triggers anytime in Chatbot settings."}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {t("onboardingModal.chatbotHint") ||
+                "You can customize knowledge, auto-replies, and triggers anytime in Chatbot settings."}
+            </p>
           </div>
           <Button className="w-full" onClick={submit} disabled={busy}>
-{busy ? (t("onboardingModal.creatingYourWorkspace") || "Setting up your workspace…") : (t("onboardingModal.startMyFreeMonth") || "Complete Setup & Start Free Month")}
+            {busy
+              ? t("onboardingModal.creatingYourWorkspace") || "Setting up your workspace…"
+              : t("onboardingModal.startMyFreeMonth") || "Complete Setup & Start Free Month"}
           </Button>
 
           <p className="text-center text-xs text-muted-foreground">
-All details can be updated anytime from Settings &amp; Business Profile.
+            All details can be updated anytime from Settings &amp; Business Profile.
           </p>
         </div>
       </DialogContent>

@@ -74,9 +74,11 @@ export function CampaignComposerModal({
   const [body, setBody] = useState(initialData?.body || defaultTpl.htmlContent);
   const [templateId, setTemplateId] = useState(initialData?.templateId || defaultTpl.id);
   const [imageUrl, setImageUrl] = useState(
-    initialData?.imageUrl || defaultTpl.defaultImageUrl || ""
+    initialData?.imageUrl || defaultTpl.defaultImageUrl || "",
   );
-  const [attachments, setAttachments] = useState<CampaignAttachment[]>(initialData?.attachments || []);
+  const [attachments, setAttachments] = useState<CampaignAttachment[]>(
+    initialData?.attachments || [],
+  );
   const [newAttachmentName, setNewAttachmentName] = useState("");
   const [newAttachmentUrl, setNewAttachmentUrl] = useState("");
 
@@ -122,7 +124,9 @@ export function CampaignComposerModal({
     name: "Alex Smith",
     company: "Flas CRM",
     discount_code: "WELCOME20",
-    image_url: imageUrl || "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1200&auto=format&fit=crop&q=80",
+    image_url:
+      imageUrl ||
+      "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=1200&auto=format&fit=crop&q=80",
     unsubscribe_url: "#",
     company_url: "#",
   });
@@ -154,7 +158,7 @@ export function CampaignComposerModal({
           imageUrl,
           attachments,
         },
-        schedule
+        schedule,
       );
       onOpenChange(false);
     } finally {
@@ -170,11 +174,15 @@ export function CampaignComposerModal({
             <div>
               <DialogTitle className="text-xl">Email Campaign Composer</DialogTitle>
               <DialogDescription>
-                Design responsive, mobile-ready emails with templates, image attachments, and dynamic merge tags.
+                Design responsive, mobile-ready emails with templates, image attachments, and
+                dynamic merge tags.
               </DialogDescription>
             </div>
             {!isSmtpVerified && (
-              <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-300">
+              <Badge
+                variant="outline"
+                className="border-amber-500 text-amber-700 dark:text-amber-300"
+              >
                 <AlertTriangle className="mr-1 h-3 w-3" />
                 SMTP Unverified
               </Badge>
@@ -182,7 +190,11 @@ export function CampaignComposerModal({
           </div>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "composer" | "preview")}
+          className="w-full"
+        >
           <TabsList className="grid grid-cols-2 mb-4">
             <TabsTrigger value="composer">Edit Campaign & Content</TabsTrigger>
             <TabsTrigger value="preview">Live Preview & Validation</TabsTrigger>
@@ -208,7 +220,9 @@ export function CampaignComposerModal({
                     }`}
                   >
                     <p className="font-semibold truncate">{tpl.name}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 capitalize">{tpl.category}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5 capitalize">
+                      {tpl.category}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -255,19 +269,21 @@ export function CampaignComposerModal({
               <div className="space-y-1.5">
                 <Label className="text-xs">Dynamic Merge Tags (Click to Insert)</Label>
                 <div className="flex flex-wrap gap-1.5">
-                  {["{{name}}", "{{company}}", "{{discount_code}}", "{{unsubscribe_url}}"].map((tag) => (
-                    <Button
-                      key={tag}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs font-mono"
-                      onClick={() => insertMergeTag(tag)}
-                    >
-                      <Plus className="mr-1 h-2.5 w-2.5" />
-                      {tag}
-                    </Button>
-                  ))}
+                  {["{{name}}", "{{company}}", "{{discount_code}}", "{{unsubscribe_url}}"].map(
+                    (tag) => (
+                      <Button
+                        key={tag}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs font-mono"
+                        onClick={() => insertMergeTag(tag)}
+                      >
+                        <Plus className="mr-1 h-2.5 w-2.5" />
+                        {tag}
+                      </Button>
+                    ),
+                  )}
                 </div>
               </div>
             </div>
@@ -299,7 +315,11 @@ export function CampaignComposerModal({
               {attachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 pt-1">
                   {attachments.map((att) => (
-                    <Badge key={att.id} variant="secondary" className="flex items-center gap-1 text-xs py-1">
+                    <Badge
+                      key={att.id}
+                      variant="secondary"
+                      className="flex items-center gap-1 text-xs py-1"
+                    >
                       <FileImage className="h-3 w-3" />
                       <span>{att.name}</span>
                       <button
@@ -356,7 +376,14 @@ export function CampaignComposerModal({
               </div>
 
               <div className="text-xs text-muted-foreground">
-                Subject: <span className="font-semibold text-foreground">{substituteMergeTags(subject, { name: "Alex", company: "Flas CRM", discount_code: "WELCOME20" })}</span>
+                Subject:{" "}
+                <span className="font-semibold text-foreground">
+                  {substituteMergeTags(subject, {
+                    name: "Alex",
+                    company: "Flas CRM",
+                    discount_code: "WELCOME20",
+                  })}
+                </span>
               </div>
             </div>
 

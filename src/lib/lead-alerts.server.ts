@@ -18,6 +18,39 @@ export interface SalesLeadAlertArgs {
   isQuoteRequest?: boolean;
 }
 
+interface TenantAlertSettingsRecord {
+  lead_alerts_enabled?: boolean | null;
+  alert_email_addresses?: string[] | null;
+  alert_whatsapp_enabled?: boolean | null;
+  alert_whatsapp_phone?: string | null;
+}
+
+interface ProfileEmailRecord {
+  email?: string | null;
+}
+
+interface UntypedDbResult<T = unknown> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+interface UntypedDbQuery {
+  select: (cols?: string) => UntypedDbQuery;
+  insert: (values: unknown) => UntypedDbQuery;
+  eq: (col: string, val: unknown) => UntypedDbQuery;
+  in: (col: string, vals: unknown[]) => UntypedDbQuery;
+  limit: (count: number) => UntypedDbQuery;
+  maybeSingle: <T = unknown>() => Promise<UntypedDbResult<T>>;
+  then: <T = unknown>(resolve: (val: UntypedDbResult<T>) => void) => Promise<unknown>;
+}
+
+interface UntypedDbClient {
+  from: (table: string) => UntypedDbQuery;
+  rpc: (fn: string, args?: unknown) => Promise<UntypedDbResult<unknown>>;
+}
+
+const db = (client: unknown): UntypedDbClient => client as unknown as UntypedDbClient;
+
 export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<{
   notifiedEmails: number;
   notifiedWhatsApp: boolean;
@@ -25,13 +58,13 @@ export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<
   const { tenantId, leadId, email, name, phone, sourceUrl, isQuoteRequest = false } = args;
 
   // 1. Fetch workspace alert configuration
-  const { data: rawSettings } = await (supabaseAdmin as any)
+  const { data: rawSettings } = await db(supabaseAdmin)
     .from("tenant_alert_settings")
     .select("*")
     .eq("tenant_id", tenantId)
-    .maybeSingle();
+    .maybeSingle<TenantAlertSettingsRecord>();
 
-  const settings = rawSettings as any;
+  const settings = rawSettings;
 
   // If no settings exist yet, default to enabled for workspace owner
   const alertsEnabled = settings ? settings.lead_alerts_enabled : true;
@@ -43,14 +76,16 @@ export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<
   let targetEmails: string[] = settings?.alert_email_addresses || [];
   if (targetEmails.length === 0) {
     // Fall back to workspace profile owners
-    const { data: owners } = await (supabaseAdmin as any)
+    const { data: owners } = await db(supabaseAdmin)
       .from("profiles")
       .select("email")
       .eq("tenant_id", tenantId)
       .in("role", ["admin", "owner", "agent"])
       .limit(5);
 
-    targetEmails = (owners || []).map((o: any) => o.email).filter(Boolean);
+    targetEmails = ((owners as ProfileEmailRecord[]) || [])
+      .map((o) => o.email)
+      .filter((e): e is string => Boolean(e));
   }
 
   const subject = isQuoteRequest
@@ -63,7 +98,7 @@ export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<
   // 2. Dispatch Email Alerts
   for (const recipient of targetEmails) {
     try {
-      await (supabaseAdmin as any).rpc("log_email_delivery", {
+      await db(supabaseAdmin).rpc("log_email_delivery", {
         _tenant_id: tenantId,
         _recipient: recipient,
         _from_address: "flas@mobidigisol.com",
@@ -76,14 +111,16 @@ export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<
         _meta: { lead_email: email, name, sourceUrl },
       });
 
-      await (supabaseAdmin as any).from("lead_alerts_log").insert({
-        tenant_id: tenantId,
-        lead_id: leadId || null,
-        alert_channel: "email",
-        recipient,
-        subject,
-        status: "sent",
-      });
+      await db(supabaseAdmin)
+        .from("lead_alerts_log")
+        .insert({
+          tenant_id: tenantId,
+          lead_id: leadId || null,
+          alert_channel: "email",
+          recipient,
+          subject,
+          status: "sent",
+        });
 
       notifiedEmails++;
     } catch (e) {
@@ -107,14 +144,16 @@ export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<
 
         await sendWhatsAppText(settings.alert_whatsapp_phone, waText, creds);
 
-        await (supabaseAdmin as any).from("lead_alerts_log").insert({
-          tenant_id: tenantId,
-          lead_id: leadId || null,
-          alert_channel: "whatsapp",
-          recipient: settings.alert_whatsapp_phone,
-          subject: "WhatsApp Alert",
-          status: "sent",
-        });
+        await db(supabaseAdmin)
+          .from("lead_alerts_log")
+          .insert({
+            tenant_id: tenantId,
+            lead_id: leadId || null,
+            alert_channel: "whatsapp",
+            recipient: settings.alert_whatsapp_phone,
+            subject: "WhatsApp Alert",
+            status: "sent",
+          });
 
         notifiedWhatsApp = true;
       }
@@ -125,15 +164,17 @@ export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<
 
   // 4. In-App Notification (Database table)
   try {
-    await (supabaseAdmin as any).from("notifications").insert({
-      tenant_id: tenantId,
-      type: "new_lead",
-      title: subject,
-      message: `${name || email} submitted their contact details via website widget.`,
-      link: "/marketing",
-    });
-  } catch {
-    // Best-effort in-app notification
+    await db(supabaseAdmin)
+      .from("notifications")
+      .insert({
+        tenant_id: tenantId,
+        type: "new_lead",
+        title: subject,
+        message: `${name || email} submitted their contact details via website widget.`,
+        link: "/marketing",
+      });
+  } catch (notifErr: unknown) {
+    console.warn("[lead-alerts] Failed to insert in-app notification:", notifErr);
   }
 
   return { notifiedEmails, notifiedWhatsApp };

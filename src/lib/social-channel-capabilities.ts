@@ -70,14 +70,27 @@ export function channelCapabilities(
     const note = facts.note && facts.note !== GENERIC_UNSUPPORTED ? facts.note : null;
 
     if (!facts.providerSupports) {
-      if (note) out.push({ key, label: CAPABILITY_LABELS[key], state: "not_supported", tierId: null, note });
+      if (note)
+        out.push({
+          key,
+          label: CAPABILITY_LABELS[key],
+          state: "not_supported",
+          tierId: null,
+          note,
+        });
       continue;
     }
     if (!facts.flasImplements) {
       // Shown only if it belongs to a tier or has something specific to say;
       // otherwise the card would list every API the provider has.
       if (tier || note) {
-        out.push({ key, label: CAPABILITY_LABELS[key], state: "not_implemented", tierId: null, note });
+        out.push({
+          key,
+          label: CAPABILITY_LABELS[key],
+          state: "not_implemented",
+          tierId: null,
+          note,
+        });
       }
       continue;
     }

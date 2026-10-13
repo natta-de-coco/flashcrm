@@ -37,12 +37,13 @@ import {
 import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { useServerFn } from "@tanstack/react-start";
 import {
-AlertCircle, AlertTriangle,
+  AlertCircle,
+  AlertTriangle,
   Bell,
   Bot,
   Check,
   CheckCheck,
-Clock,
+  Clock,
   Download,
   Globe,
   Languages,
@@ -425,25 +426,11 @@ function InboxPage() {
     }
   }, [activeId, autoTranslate, thread, qc, translate]);
 
-  if (team.isLoading || templates.isLoading || products.isLoading || conversations.isLoading) return (
-  <div className="space-y-3 p-6">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
-        <Skeleton className="h-10 w-10 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-3 w-2/3" />
-        </div>
-      </div>
-    ))}
-  </div>
-);
-
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
     const matching = loadedConversations.filter((c) => {
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
-const matchesAssignment =
+      const matchesAssignment =
         assignmentFilter === "all" ||
         (assignmentFilter === "mine" && c.assigned_to === user?.id) ||
         (assignmentFilter === "unassigned" && !c.assigned_to);
@@ -466,8 +453,14 @@ const matchesAssignment =
       : [...matching, ...older].sort((a, b) =>
           (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""),
         );
-  }, [loadedConversations, foundConversations.data, statusFilter, search]);
-
+  }, [
+    loadedConversations,
+    foundConversations.data,
+    statusFilter,
+    search,
+    assignmentFilter,
+    user?.id,
+  ]);
 
   const active = list.find((c) => c.id === activeId) ?? null;
 
@@ -582,7 +575,6 @@ const matchesAssignment =
     // again asks the server about the same message: if the first copy did get
     // through, the server says so instead of sending another.
     onError: (e: Error) => toast.error(e.message),
-
   });
 
   const suggestMutation = useMutation({
@@ -697,7 +689,6 @@ const matchesAssignment =
 
     // Kept for the retry, as for a reply.
     onError: (e: Error) => toast.error(e.message),
-
   });
 
   const translateMutation = useMutation({
@@ -838,12 +829,28 @@ const matchesAssignment =
     );
   }
 
+  if (team.isLoading || templates.isLoading || products.isLoading || conversations.isLoading) {
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 lg:h-[100dvh]">
       {/* Conversation list */}
       <div
         className={cn(
-"w-full shrink-0 flex-col border-e bg-card lg:flex lg:max-w-sm",
+          "w-full shrink-0 flex-col border-e bg-card lg:flex lg:max-w-sm",
           active ? "hidden" : "flex",
         )}
       >
@@ -899,7 +906,7 @@ const matchesAssignment =
             </Button>
           </div>
           <div className="relative">
-<Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="ps-9"
               placeholder={i18n.t("inbox.searchChats")}
@@ -933,7 +940,7 @@ const matchesAssignment =
             ].map((af) => (
               <button
                 key={af.id}
-                onClick={() => setAssignmentFilter(af.id as any)}
+                onClick={() => setAssignmentFilter(af.id as "all" | "mine" | "unassigned")}
                 className={cn(
                   "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
                   assignmentFilter === af.id
@@ -1040,7 +1047,7 @@ const matchesAssignment =
                 <Button
                   variant="ghost"
                   size="icon"
-className="-ms-2 shrink-0 lg:hidden"
+                  className="-ms-2 shrink-0 lg:hidden"
                   onClick={() => setActiveId(null)}
                   aria-label={i18n.t("inbox.backToConversations")}
                 >
@@ -1319,7 +1326,10 @@ className="-ms-2 shrink-0 lg:hidden"
                   value={reminderNote}
                   onChange={(e) => setReminderNote(e.target.value)}
                 />
-                <Input aria-label="Reminder time" type="datetime-local" className="h-8 w-52"
+                <Input
+                  aria-label="Reminder time"
+                  type="datetime-local"
+                  className="h-8 w-52"
                   value={reminderDue}
                   onChange={(e) => setReminderDue(e.target.value)}
                 />
@@ -1382,7 +1392,9 @@ className="-ms-2 shrink-0 lg:hidden"
                     key={m.id}
                     className={cn(
                       "flex",
-                      m.direction === "outbound" ? "justify-end rtl:justify-start" : "justify-start rtl:justify-end",
+                      m.direction === "outbound"
+                        ? "justify-end rtl:justify-start"
+                        : "justify-start rtl:justify-end",
                     )}
                   >
                     <div
@@ -1668,5 +1680,3 @@ function ChannelSwitch({
     </div>
   );
 }
-
-

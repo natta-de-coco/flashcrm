@@ -33,7 +33,8 @@ function EmailSettingsPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Workspace Email Configuration</h1>
         <p className="text-sm text-muted-foreground">
-          Connect your custom SMTP and IMAP servers for marketing campaigns, automated welcome vouchers, and inbox reply ingestion.
+          Connect your custom SMTP and IMAP servers for marketing campaigns, automated welcome
+          vouchers, and inbox reply ingestion.
         </p>
       </header>
 

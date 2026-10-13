@@ -8,7 +8,55 @@
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-const db = supabaseAdmin as any;
+interface UntypedDbResult<T = unknown> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+interface UntypedDbQuery {
+  select: (cols?: string) => UntypedDbQuery;
+  insert: (values: unknown) => UntypedDbQuery;
+  update: (values: unknown) => UntypedDbQuery;
+  upsert: (values: unknown, opts?: unknown) => UntypedDbQuery;
+  delete: () => UntypedDbQuery;
+  eq: (col: string, val: unknown) => UntypedDbQuery;
+  in: (col: string, vals: unknown[]) => UntypedDbQuery;
+  order: (col: string, opts?: unknown) => UntypedDbQuery;
+  limit: (count: number) => UntypedDbQuery;
+  single: <T = unknown>() => Promise<UntypedDbResult<T>>;
+  maybeSingle: <T = unknown>() => Promise<UntypedDbResult<T>>;
+  then: <T = unknown>(resolve: (val: UntypedDbResult<T>) => void) => Promise<unknown>;
+}
+
+interface UntypedDbClient {
+  from: (table: string) => UntypedDbQuery;
+}
+
+const db = supabaseAdmin as unknown as UntypedDbClient;
+
+interface ProfileRecord {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+}
+
+interface RoutingSettingsRecord {
+  auto_assignment_enabled?: boolean | null;
+  assignment_mode?: string | null;
+  default_sla_minutes?: number | null;
+  active_agent_ids?: string[] | null;
+  last_assigned_agent_id?: string | null;
+}
+
+interface ConversationRecord {
+  id?: string;
+  assigned_to?: string | null;
+  assigned_at?: string | null;
+  first_response_at?: string | null;
+  sla_minutes?: number | null;
+  sla_breached?: boolean | null;
+}
 
 export interface AssignmentResult {
   assigned: boolean;
@@ -22,7 +70,7 @@ export interface AssignmentResult {
  */
 export async function assignConversationToNextAgent(
   tenantId: string,
-  conversationId: string
+  conversationId: string,
 ): Promise<AssignmentResult> {
   try {
     // 1. Fetch routing settings
@@ -30,7 +78,7 @@ export async function assignConversationToNextAgent(
       .from("tenant_chat_routing_settings")
       .select("*")
       .eq("tenant_id", tenantId)
-      .maybeSingle();
+      .maybeSingle<RoutingSettingsRecord>();
 
     const enabled = routingSettings ? routingSettings.auto_assignment_enabled : true;
     if (!enabled) {
@@ -48,7 +96,8 @@ export async function assignConversationToNextAgent(
       .in("role", ["agent", "admin", "owner"])
       .order("created_at", { ascending: true });
 
-    if (profErr || !profiles || profiles.length === 0) {
+    const profileList = (profiles as ProfileRecord[] | null) ?? [];
+    if (profErr || profileList.length === 0) {
       return { assigned: false, agentId: null, slaMinutes };
     }
 
@@ -56,8 +105,8 @@ export async function assignConversationToNextAgent(
     const activeFilter = routingSettings?.active_agent_ids || [];
     const candidates =
       activeFilter.length > 0
-        ? profiles.filter((p: any) => activeFilter.includes(p.id))
-        : profiles;
+        ? profileList.filter((p) => activeFilter.includes(p.id))
+        : profileList;
 
     if (candidates.length === 0) {
       return { assigned: false, agentId: null, slaMinutes };
@@ -67,7 +116,7 @@ export async function assignConversationToNextAgent(
 
     if (mode === "least_active" && candidates.length > 1) {
       // Find candidate with lowest number of currently open assigned conversations
-      const candidateIds = candidates.map((c: any) => c.id);
+      const candidateIds = candidates.map((c) => c.id);
       const { data: openConvs } = await db
         .from("conversations")
         .select("assigned_to")
@@ -75,21 +124,24 @@ export async function assignConversationToNextAgent(
         .eq("status", "open")
         .in("assigned_to", candidateIds);
 
+      const convList = (openConvs as ConversationRecord[] | null) ?? [];
       const counts: Record<string, number> = {};
-      candidateIds.forEach((id: string) => (counts[id] = 0));
-      (openConvs || []).forEach((c: any) => {
+      candidateIds.forEach((id: string) => {
+        counts[id] = 0;
+      });
+      convList.forEach((c) => {
         if (c.assigned_to && counts[c.assigned_to] !== undefined) {
           counts[c.assigned_to] = (counts[c.assigned_to] || 0) + 1;
         }
       });
 
       // Sort candidate by count ascending
-      candidates.sort((a: any, b: any) => (counts[a.id] || 0) - (counts[b.id] || 0));
+      candidates.sort((a, b) => (counts[a.id] || 0) - (counts[b.id] || 0));
       selectedAgent = candidates[0]!;
     } else if (candidates.length > 1) {
       // Deterministic Round-Robin
       const lastAssignedId = routingSettings?.last_assigned_agent_id;
-      const lastIdx = lastAssignedId ? candidates.findIndex((c: any) => c.id === lastAssignedId) : -1;
+      const lastIdx = lastAssignedId ? candidates.findIndex((c) => c.id === lastAssignedId) : -1;
       const nextIdx = (lastIdx + 1) % candidates.length;
       selectedAgent = candidates[nextIdx]!;
     }
@@ -109,23 +161,21 @@ export async function assignConversationToNextAgent(
       .eq("tenant_id", tenantId);
 
     // 4. Update last_assigned_agent_id in settings
-    await db
-      .from("tenant_chat_routing_settings")
-      .upsert(
-        {
-          tenant_id: tenantId,
-          last_assigned_agent_id: selectedAgent.id,
-          auto_assignment_enabled: true,
-          default_sla_minutes: slaMinutes,
-          updated_at: now,
-        },
-        { onConflict: "tenant_id" }
-      );
+    await db.from("tenant_chat_routing_settings").upsert(
+      {
+        tenant_id: tenantId,
+        last_assigned_agent_id: selectedAgent.id,
+        auto_assignment_enabled: true,
+        default_sla_minutes: slaMinutes,
+        updated_at: now,
+      },
+      { onConflict: "tenant_id" },
+    );
 
     return {
       assigned: true,
       agentId: selectedAgent.id,
-      agentName: (selectedAgent as any).name || (selectedAgent as any).email,
+      agentName: selectedAgent.name || selectedAgent.email || null,
       slaMinutes,
     };
   } catch (e) {
@@ -149,9 +199,9 @@ export async function recordFirstResponseSla(args: {
     .select("assigned_at, first_response_at, sla_minutes, sla_breached")
     .eq("id", conversationId)
     .eq("tenant_id", tenantId)
-    .single();
+    .single<ConversationRecord>();
 
-  const c = conv as any;
+  const c = conv;
   if (!c || c.first_response_at || !c.assigned_at) {
     return { recorded: false, breached: false, responseMinutes: 0 };
   }

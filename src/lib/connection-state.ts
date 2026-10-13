@@ -256,7 +256,9 @@ export function classifyHealthObservation(o: {
   } else if (/\b429\b|rate[ -]?limit|too many requests/i.test(o.reason)) {
     code = "rate_limited";
     proposed = isUsable(o.from) ? o.from : "provider_unavailable";
-  } else if (/\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(o.reason)) {
+  } else if (
+    /\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(o.reason)
+  ) {
     code = "provider_unavailable";
     proposed = "provider_unavailable";
   } else if (/revok|invalid[_ ]grant|reauthori|\b190\b|\b401\b/i.test(o.reason)) {

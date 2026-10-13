@@ -33,17 +33,43 @@ export interface LeadAlertSettingsData {
   alertWhatsappPhone: string | null;
 }
 
+interface TenantAlertSettingsRecord {
+  lead_alerts_enabled?: boolean | null;
+  alert_email_addresses?: string[] | null;
+  alert_whatsapp_enabled?: boolean | null;
+  alert_whatsapp_phone?: string | null;
+}
+
+interface UntypedDbResult<T = unknown> {
+  data: T | null;
+  error: { message: string } | null;
+}
+
+interface UntypedDbQuery {
+  select: (cols?: string) => UntypedDbQuery;
+  upsert: (values: unknown, opts?: unknown) => UntypedDbQuery;
+  eq: (col: string, val: unknown) => UntypedDbQuery;
+  maybeSingle: <T = unknown>() => Promise<UntypedDbResult<T>>;
+  then: <T = unknown>(resolve: (val: UntypedDbResult<T>) => void) => Promise<unknown>;
+}
+
+interface UntypedDbClient {
+  from: (table: string) => UntypedDbQuery;
+}
+
+const db = (client: unknown): UntypedDbClient => client as unknown as UntypedDbClient;
+
 export const getLeadAlertSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<LeadAlertSettingsData> => {
     const tenantId = await resolveTenant(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data } = await (supabaseAdmin as any)
+    const { data } = await db(supabaseAdmin)
       .from("tenant_alert_settings")
       .select("*")
       .eq("tenant_id", tenantId)
-      .maybeSingle();
+      .maybeSingle<TenantAlertSettingsRecord>();
 
     return {
       leadAlertsEnabled: data?.lead_alerts_enabled ?? true,
@@ -76,7 +102,7 @@ export const saveLeadAlertSettings = createServerFn({ method: "POST" })
       updated_at: new Date().toISOString(),
     };
 
-    const { error } = await (supabaseAdmin as any)
+    const { error } = await db(supabaseAdmin)
       .from("tenant_alert_settings")
       .upsert(payload, { onConflict: "tenant_id" });
 

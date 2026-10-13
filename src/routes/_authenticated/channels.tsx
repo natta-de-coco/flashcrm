@@ -46,8 +46,12 @@ export const Route = createFileRoute("/_authenticated/channels")({
     ...(typeof s["authorization"] === "string" && UUID.test(s["authorization"])
       ? { authorization: s["authorization"] }
       : {}),
-    ...(typeof s["step"] === "string" && /^[a-z_]{1,20}$/.test(s["step"]) ? { step: s["step"] } : {}),
-    ...(typeof s["reason"] === "string" && /^[a-z_]{1,40}$/.test(s["reason"]) ? { reason: s["reason"] } : {}),
+    ...(typeof s["step"] === "string" && /^[a-z_]{1,20}$/.test(s["step"])
+      ? { step: s["step"] }
+      : {}),
+    ...(typeof s["reason"] === "string" && /^[a-z_]{1,40}$/.test(s["reason"])
+      ? { reason: s["reason"] }
+      : {}),
     ...(typeof s["reconnected"] === "string" && /^[a-z_]{1,32}$/.test(s["reconnected"])
       ? { reconnected: s["reconnected"] }
       : {}),
@@ -78,7 +82,12 @@ type Authorization = {
   authorization_state: string;
 };
 
-const NEEDS_RECONNECT = new Set(["revoked", "refresh_failed", "authorization_cancelled", "callback_error"]);
+const NEEDS_RECONNECT = new Set([
+  "revoked",
+  "refresh_failed",
+  "authorization_cancelled",
+  "callback_error",
+]);
 
 function timeAgo(iso: string | null) {
   if (!iso) return "never";
@@ -114,7 +123,9 @@ function SocialChannelsPage() {
 
   const counts = {
     connected: rows.length,
-    healthy: rows.filter((r) => r.a.connection_state === "connected" && r.a.last_validation_success_at).length,
+    healthy: rows.filter(
+      (r) => r.a.connection_state === "connected" && r.a.last_validation_success_at,
+    ).length,
     needPermission: rows.filter((r) => r.caps.some((c) => c.state === "declined")).length,
     reconnect: rows.filter((r) => NEEDS_RECONNECT.has(r.a.connection_state)).length,
   };
@@ -132,8 +143,12 @@ function SocialChannelsPage() {
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Badge variant="secondary">{counts.connected} channels connected</Badge>
         <Badge variant="secondary">{counts.healthy} verified and working</Badge>
-        {counts.needPermission > 0 && <Badge variant="outline">{counts.needPermission} need permission</Badge>}
-        {counts.reconnect > 0 && <Badge variant="destructive">{counts.reconnect} need reconnection</Badge>}
+        {counts.needPermission > 0 && (
+          <Badge variant="outline">{counts.needPermission} need permission</Badge>
+        )}
+        {counts.reconnect > 0 && (
+          <Badge variant="destructive">{counts.reconnect} need reconnection</Badge>
+        )}
         <Button className="ml-auto" onClick={() => setWizard({ kind: "add" })}>
           <Plus className="size-4" /> Add Channel
         </Button>
@@ -193,10 +208,21 @@ function SocialChannelsPage() {
                   key={r.a.id}
                   row={r}
                   onReconnect={() =>
-                    setWizard({ kind: "reconnect", platform, accountId: r.a.id, channelName: r.a.label })
+                    setWizard({
+                      kind: "reconnect",
+                      platform,
+                      accountId: r.a.id,
+                      channelName: r.a.label,
+                    })
                   }
                   onEnable={(tierId) =>
-                    setWizard({ kind: "upgrade", platform, accountId: r.a.id, channelName: r.a.label, tierId })
+                    setWizard({
+                      kind: "upgrade",
+                      platform,
+                      accountId: r.a.id,
+                      channelName: r.a.label,
+                      tierId,
+                    })
                   }
                   onChanged={refresh}
                 />
@@ -272,7 +298,9 @@ function ChannelCard({
             {a.account_type ?? def?.accountTypes[0] ?? ""}
           </p>
           {auth?.provider_email_hint && (
-            <p className="text-xs text-muted-foreground">Authorized by {auth.provider_email_hint}</p>
+            <p className="text-xs text-muted-foreground">
+              Authorized by {auth.provider_email_hint}
+            </p>
           )}
         </div>
         <Badge variant={reconnectNeeded ? "destructive" : unverified ? "outline" : "secondary"}>
@@ -294,7 +322,9 @@ function ChannelCard({
               ) : (
                 <Minus className="size-3 text-muted-foreground" />
               )}
-              <span className={c.state === "available" ? "" : "text-muted-foreground"}>{c.label}</span>
+              <span className={c.state === "available" ? "" : "text-muted-foreground"}>
+                {c.label}
+              </span>
               {c.state === "declined" && <span className="text-destructive">declined</span>}
             </li>
           ))}
@@ -304,7 +334,9 @@ function ChannelCard({
           <div className="rounded-lg border p-3 text-sm">
             <p className="mb-2 font-medium">Optional access</p>
             {upgrades.length === 0 && (
-              <p className="text-xs text-muted-foreground">Nothing more to enable for this channel.</p>
+              <p className="text-xs text-muted-foreground">
+                Nothing more to enable for this channel.
+              </p>
             )}
             {upgrades.map((u) => (
               <div key={u.tier.id} className="flex items-center justify-between gap-2 py-1">

@@ -83,7 +83,6 @@ export async function discoverMetaTargets(token: string): Promise<MetaDiscovery>
   let httpStatus: number | null = null;
 
   try {
-
     const data = await providerPages<Record<string, unknown>>({
       url: `${GRAPH}/me/accounts?fields=${fields}&limit=100`,
       token,
@@ -92,7 +91,6 @@ export async function discoverMetaTargets(token: string): Promise<MetaDiscovery>
     });
     httpStatus = 200;
     json = { data };
-
   } catch (thrown) {
     const error = normalizeProviderError({
       platform: "facebook",
