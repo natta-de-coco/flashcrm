@@ -190,7 +190,11 @@ export function CampaignComposerModal({
           </div>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "composer" | "preview")}
+          className="w-full"
+        >
           <TabsList className="grid grid-cols-2 mb-4">
             <TabsTrigger value="composer">Edit Campaign & Content</TabsTrigger>
             <TabsTrigger value="preview">Live Preview & Validation</TabsTrigger>
