@@ -172,7 +172,12 @@ export function verifyUnsubscribeToken(token: string): {
     }
 
     const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf8"));
-    if (payload.exp && Math.floor(Date.now() / 1000) > payload.exp) {
+    // Every link we make carries a number for when it stops working. One without it (or with
+    // 0, or with text) is not one of ours, so it is refused rather than treated as for ever.
+    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+      return { valid: false, error: "Link has no expiry" };
+    }
+    if (Math.floor(Date.now() / 1000) > payload.exp) {
       return { valid: false, error: "Token expired" };
     }
     if (typeof payload.email !== "string" || !payload.email.trim()) {

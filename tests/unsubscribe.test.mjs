@@ -679,3 +679,32 @@ describe("a database without the drip tables", () => {
     assert.deepEqual(await applyUnsubscribe(link()), { ok: false, error: COULD_NOT_UPDATE });
   });
 });
+
+describe("a link is only valid with an expiry that has not passed", () => {
+  it("refuses a signed link with no expiry, a zero expiry, or an expiry that is not a number", async () => {
+    const before = snapshot();
+    const payloads = [
+      { email: EMAIL, tenantId: A },
+      { email: EMAIL, tenantId: A, exp: 0 },
+      { email: EMAIL, tenantId: A, exp: null },
+      { email: EMAIL, tenantId: A, exp: "soon" },
+      { email: EMAIL, tenantId: A, exp: String(inAnHour()) },
+      { email: EMAIL, tenantId: A, exp: [inAnHour()] },
+      { email: EMAIL, tenantId: A, exp: { at: inAnHour() } },
+      { email: EMAIL, tenantId: A, exp: true },
+    ];
+    for (const payload of payloads) {
+      const token = link(payload);
+      assert.equal(verifyUnsubscribeToken(token).valid, false, JSON.stringify(payload));
+      assert.deepEqual(await applyUnsubscribe(token), { ok: false, error: REFUSED });
+      assert.equal(snapshot(), before);
+    }
+  });
+
+  it("still accepts a link whose expiry is a number that has not passed", () => {
+    assert.equal(
+      verifyUnsubscribeToken(link({ email: EMAIL, tenantId: A, exp: inAnHour() })).valid,
+      true,
+    );
+  });
+});
