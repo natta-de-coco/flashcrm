@@ -42,6 +42,11 @@ class Query {
     this.filters.push((r) => r[column] === value);
     return this;
   }
+  // The inbound resolver looks a number up in each form it may be stored in.
+  in(column, values) {
+    this.filters.push((r) => values.includes(r[column]));
+    return this;
+  }
   not(column, operator, value) {
     if (operator === "is" && value === null) this.filters.push((r) => r[column] != null);
     return this;
