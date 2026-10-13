@@ -11,7 +11,11 @@ import { describe, it } from "node:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
 import * as app from "../node_modules/.cache/flas-i18n.mjs";
+import * as navHook from "../node_modules/.cache/flas-nav-access-hook.mjs";
 
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
@@ -24,6 +28,8 @@ const sections = [...NAV_SECTIONS, MANAGER_SECTION];
 const items = sections.flatMap((section) => [...section.items]);
 const menuRoutes = items.map((item) => item.to);
 const label = (language, to) => MESSAGES[language][navMessageKey(to, "label")];
+// Source without its comments, so a sentence that mentions a function does not count as a call.
+const strip = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/.*$/gm, "$1");
 const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
 /* ───────────────────────────── the menu itself ───────────────────────────── */
@@ -225,18 +231,56 @@ describe("the sidebar, the phone bar and the search palette agree", () => {
     assert.ok(inMenuOrder(routes), "the bar is out of the menu's order");
   });
 
-  it("every search, bar and Create surface reads its role from the one shared rule", () => {
-    const bar = read("src/components/MobileBottomNav.tsx");
-    const palette = read("src/components/CommandPalette.tsx");
-    const create = read("src/components/QuickCreate.tsx");
-    assert.ok(bar.includes("mobileBarFor("), "the bar filters by role");
-    assert.ok(palette.includes("paletteFor("), "search filters its pages by role");
-    assert.ok(palette.includes("searchRecords("), "search asks only for allowed records");
-    assert.ok(create.includes("quickCreateFor("), "Create filters by role");
-    for (const source of [bar, palette, create]) {
-      assert.ok(source.includes("useNavAccess"), "the role comes from one hook");
-    }
+  it("every surface takes its finished list from the one hook, so none of them can pick a role", () => {
+    const bar = strip(read("src/components/MobileBottomNav.tsx"));
+    const palette = strip(read("src/components/CommandPalette.tsx"));
+    const create = strip(read("src/components/QuickCreate.tsx"));
+    const menu = strip(read("src/routes/_authenticated/route.tsx"));
+    assert.match(menu, /\{[^}]*\bsections\b[^}]*\}\s*=\s*useNavAccess\(\)/, "sidebar: sections");
+    assert.match(bar, /\{[^}]*\bmobileBar\b[^}]*\}\s*=\s*useNavAccess\(\)/, "phone bar: mobileBar");
+    assert.match(
+      create,
+      /\{[^}]*\bquickCreate\b[^}]*\}\s*=\s*useNavAccess\(\)/,
+      "Create: quickCreate",
+    );
+    assert.match(
+      palette,
+      /\{[^}]*\bpalette\b[^}]*\bfindRecords\b[^}]*\}\s*=\s*useNavAccess\(\)/,
+      "search: palette and findRecords",
+    );
+    // The effect that searches records must re-run when the role changes, and the
+    // role reaches it only as findRecords.
+    assert.match(palette, /\[\s*q\s*,\s*findRecords\b/, "the search effect depends on findRecords");
   });
+
+  const SURFACES = [
+    ["the sidebar", "src/routes/_authenticated/route.tsx"],
+    ["the phone bar", "src/components/MobileBottomNav.tsx"],
+    ["search", "src/components/CommandPalette.tsx"],
+    ["Create", "src/components/QuickCreate.tsx"],
+  ];
+  const ROLE_WORDS = "super_admin|company_admin|marketing_manager|staff|seo_editor";
+
+  for (const [name, file] of SURFACES) {
+    it(`${name} (${file}) never names a role, filters by one, or reads the unfiltered menu`, () => {
+      const source = strip(read(file));
+      assert.match(source, /useNavAccess\(\)/, "the lists come from the hook");
+      // Not the unfiltered menu...
+      assert.doesNotMatch(
+        source,
+        /\b(NAV_SECTIONS|MANAGER_SECTION|PALETTE_PAGES|MOBILE_BAR_ITEMS|MOBILE_BAR_ROUTES|QUICK_CREATE_ACTIONS)\b/,
+      );
+      // ...no filter of its own, so no role argument to get wrong...
+      assert.doesNotMatch(
+        source,
+        /\b(navSectionsFor|paletteFor|mobileBarFor|quickCreateFor|searchRecords|canOpen|canReach|routesFor|searchableRecords|isCompanyManager)\b/,
+      );
+      // ...no role written down, and no role read from anywhere else.
+      assert.doesNotMatch(source, new RegExp(`["'\`](${ROLE_WORDS})["'\`]`));
+      assert.doesNotMatch(source, /\bstaffRole\b/);
+      assert.doesNotMatch(source, /\{[^}]*\brole\b[^}]*\}\s*=\s*useNavAccess/);
+    });
+  }
 
   it("the phone bar entries are the menu's own entries, so they carry the menu's names", () => {
     for (const tab of app.MOBILE_BAR_ITEMS) {
@@ -269,12 +313,12 @@ describe("the sidebar, the phone bar and the search palette agree", () => {
       }
     }
     const bar = read("src/components/MobileBottomNav.tsx");
-    assert.ok(bar.includes("mobileBarFor"), "the bar builds its tabs from the menu");
+    assert.match(bar, /\bmobileBar\b/, "the bar builds its tabs from the menu");
     assert.ok(bar.includes("navMessageKey"), "the bar names its tabs with the menu's keys");
     assert.equal(bar.includes("bottomNav."), false, "the bar must not keep names of its own");
 
     const palette = read("src/components/CommandPalette.tsx");
-    assert.ok(palette.includes("paletteFor"), "the palette builds its pages from the menu");
+    assert.match(palette, /\bpalette\b/, "the palette builds its pages from the menu");
     assert.ok(palette.includes("navMessageKey"), "the palette names pages with the menu's keys");
 
     const menu = read("src/routes/_authenticated/route.tsx");
@@ -286,8 +330,142 @@ describe("the sidebar, the phone bar and the search palette agree", () => {
     assert.equal(menu.includes('section.title === "Manager"'), false);
     // The platform section is no longer special-cased here: the same rule that
     // filters every other entry (canOpen) keeps it for platform staff only.
-    assert.ok(menu.includes("navSectionsFor("), "the sidebar asks the shared rule");
+    assert.match(menu, /\bsections\b/, "the sidebar takes the shared, filtered sections");
     assert.equal(menu.includes("isSuperAdmin"), false, "no second, separate platform check");
+  });
+});
+
+/* ──────── the one hook: each surface is handed the lists of the CALLER's role ──────── */
+
+describe("useNavAccess hands every surface the lists of the signed-in role", () => {
+  // The real hook, with hooks/useTenant swapped for tests/support/tenant-double.mjs,
+  // rendered once per "signed-in person". Whatever it returns is what the sidebar,
+  // phone bar, search and Create get, because they take their lists from here.
+  const accessFor = (tenant) => {
+    globalThis.__tenantDouble = tenant;
+    let seen;
+    const Probe = () => {
+      seen = navHook.useNavAccess();
+      return null;
+    };
+    try {
+      renderToStaticMarkup(createElement(Probe));
+    } finally {
+      delete globalThis.__tenantDouble;
+    }
+    return seen;
+  };
+  const asRole = (staffRole) => accessFor({ staffRole, loading: false });
+  const sidebarOf = (access) =>
+    access.sections.flatMap((section) => section.items.map((item) => item.to));
+  const paletteOf = (access) => access.palette.map((page) => page.to);
+  const barOf = (access) => access.mobileBar.map((item) => item.to);
+  const createOf = (access) => access.quickCreate.map(({ action }) => action.to);
+  const tablesAsked = async (access) => {
+    const asked = [];
+    const client = {
+      from(table) {
+        asked.push(table);
+        const query = {
+          select: () => query,
+          or: () => query,
+          ilike: () => query,
+          limit: async () => ({ data: [], error: null }),
+        };
+        return query;
+      },
+    };
+    await access.findRecords(client, "ada");
+    return asked.sort();
+  };
+
+  const EXPECTED = {
+    seo_editor: {
+      pages: ["/dashboard", "/seo-blog"],
+      bar: ["/dashboard"],
+      create: ["/seo-blog/studio", "/content"],
+      records: ["seo_articles"],
+    },
+    staff: {
+      pages: ["/dashboard", "/inbox", "/contacts", "/sales", "/catalog"],
+      bar: ["/dashboard", "/inbox", "/contacts"],
+      create: ["/contacts", "/inbox", "/catalog"],
+      records: ["contacts", "products"],
+    },
+    marketing_manager: {
+      pages: [
+        "/dashboard",
+        "/inbox",
+        "/contacts",
+        "/social",
+        "/seo-blog",
+        "/marketing",
+        "/campaign-planner",
+        "/advisor",
+      ],
+      bar: ["/dashboard", "/inbox", "/contacts", "/social"],
+      records: ["contacts", "seo_articles"],
+    },
+  };
+
+  for (const [role, expected] of Object.entries(EXPECTED)) {
+    it(`${role}: all four surfaces get this role's entries and no one else's`, async () => {
+      const access = asRole(role);
+      assert.deepEqual(sidebarOf(access), expected.pages);
+      assert.deepEqual(paletteOf(access), expected.pages);
+      assert.deepEqual(barOf(access), expected.bar);
+      if (expected.create) assert.deepEqual(createOf(access), expected.create);
+      assert.deepEqual(await tablesAsked(access), expected.records);
+    });
+  }
+
+  it("an unknown role, a missing role, and a profile still loading get Home only and ask nothing", async () => {
+    const cases = [
+      asRole("owner"),
+      asRole(null),
+      asRole(""),
+      accessFor(undefined),
+      // Loading wins over whatever role was last known: nothing privileged until it is known.
+      accessFor({ staffRole: "company_admin", loading: true }),
+    ];
+    for (const access of cases) {
+      assert.deepEqual(sidebarOf(access), ["/dashboard"]);
+      assert.deepEqual(paletteOf(access), ["/dashboard"]);
+      assert.deepEqual(barOf(access), ["/dashboard"]);
+      assert.deepEqual(createOf(access), []);
+      assert.deepEqual(await tablesAsked(access), []);
+    }
+  });
+
+  it("company admin gets the whole company menu and no platform pages; platform staff also get those", async () => {
+    const admin = asRole("company_admin");
+    assert.ok(sidebarOf(admin).includes("/settings"));
+    assert.ok(!sidebarOf(admin).some((to) => to.startsWith("/companies")));
+    assert.deepEqual(await tablesAsked(admin), ["contacts", "products", "seo_articles"]);
+    const platform = asRole("super_admin");
+    assert.ok(sidebarOf(platform).includes("/companies"));
+    assert.ok(paletteOf(platform).includes("/companies/email-settings"));
+  });
+
+  it("the lists follow the role: one person's list is not another's", () => {
+    const lists = ["seo_editor", "staff", "company_admin", "super_admin"].map((role) =>
+      JSON.stringify(sidebarOf(asRole(role))),
+    );
+    assert.equal(new Set(lists).size, lists.length, "two roles were handed the same menu");
+    // The hook's lists are the filters' lists for that role, nothing else.
+    for (const role of [
+      "seo_editor",
+      "staff",
+      "marketing_manager",
+      "company_admin",
+      "super_admin",
+    ]) {
+      const access = asRole(role);
+      assert.deepEqual(access.sections, app.navSectionsFor(role));
+      assert.deepEqual(access.palette, app.paletteFor(role));
+      assert.deepEqual(access.mobileBar, app.mobileBarFor(role));
+      assert.deepEqual(access.quickCreate, app.quickCreateFor(role));
+    }
   });
 });
 
@@ -298,7 +476,7 @@ describe("the Create menu opens the same screens", () => {
 
   it("is built from one list that the component reads", () => {
     assert.ok(Array.isArray(actions), "QUICK_CREATE_ACTIONS is missing");
-    assert.ok(read("src/components/QuickCreate.tsx").includes("quickCreateFor"));
+    assert.match(read("src/components/QuickCreate.tsx"), /\bquickCreate\b/);
   });
 
   it("only opens screens that exist and that a person can find in the menu", () => {

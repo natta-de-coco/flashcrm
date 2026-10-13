@@ -11,20 +11,19 @@ import { useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
 import { useNavAccess } from "@/hooks/useNavAccess";
-import { quickCreateFor } from "@/lib/navigation";
 
 /**
  * "+ Create" menu. Every entry lands on a real working flow — no dead
  * options — so the header shortcut always does something useful. The entries
  * live in lib/navigation.ts beside the menu, so what they open and what they
- * are called cannot drift from it. Only the actions this role may open are
- * offered (the same rule as the sidebar), and a role with none gets no button.
+ * are called cannot drift from it. Only the actions the signed-in role may open
+ * arrive here (the same rule as the sidebar, by hooks/useNavAccess; this file
+ * never names a role), and a role with none gets no button.
  */
 export function QuickCreate({ compact = false }: { compact?: boolean }) {
   const { t, tx } = useI18n();
   const navigate = useNavigate();
-  const { role } = useNavAccess();
-  const actions = quickCreateFor(role);
+  const { quickCreate: actions } = useNavAccess();
 
   if (actions.length === 0) return null;
 

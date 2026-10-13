@@ -7,8 +7,8 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
-import { paletteFor, type NavItem } from "@/lib/navigation";
-import { NO_RECORDS, searchRecords } from "@/lib/record-search";
+import type { NavItem } from "@/lib/navigation";
+import { NO_RECORDS } from "@/lib/record-search";
 import { useNavAccess } from "@/hooks/useNavAccess";
 import { useNavigate } from "@tanstack/react-router";
 import { FileText, Package, Users, type LucideIcon } from "lucide-react";
@@ -28,9 +28,9 @@ type Hit = {
 };
 
 /**
- * Pages come from the one nav definition (paletteFor is the sidebar's own
- * entries, filtered by the same permission rule), so search can no longer fall
- * behind the sidebar, call a page something else, or offer one the person
+ * Pages come from the one nav definition (useNavAccess hands over the sidebar's
+ * own entries, filtered by the same permission rule), so search can no longer
+ * fall behind the sidebar, call a page something else, or offer one the person
  * cannot open. It previously held its own copy and had drifted: Quotes &
  * Invoices, Chatbot, Campaign Planner and Integrations were all reachable from
  * the sidebar but unfindable here.
@@ -59,7 +59,9 @@ export function CommandPalette({
 }) {
   const { t, tx } = useI18n();
   const navigate = useNavigate();
-  const { role } = useNavAccess();
+  // The pages and the record search both arrive already limited to the signed-in
+  // role (hooks/useNavAccess); this file never names a role.
+  const { palette, findRecords } = useNavAccess();
   const [q, setQ] = useState("");
   const [records, setRecords] = useState<{ contacts: Hit[]; products: Hit[]; articles: Hit[] }>({
     contacts: [],
@@ -95,7 +97,7 @@ export function CommandPalette({
     }
     let cancelled = false;
     const timer = window.setTimeout(async () => {
-      const found = await searchRecords(supabase, term, role).catch(() => NO_RECORDS);
+      const found = await findRecords(supabase, term).catch(() => NO_RECORDS);
       if (cancelled) return;
       setRecords({
         contacts: found.contacts.map((c) => ({
@@ -125,7 +127,7 @@ export function CommandPalette({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [q, role, t, tx]);
+  }, [q, findRecords, t, tx]);
 
   const go = (to: string) => {
     onOpenChange(false);
@@ -137,14 +139,12 @@ export function CommandPalette({
     {
       heading: t("commandPalette.pages"),
       // Shown in the reader's language; the English name stays searchable.
-      hits: paletteFor(role)
-        .map(toHit)
-        .map((page) => ({
-          ...page,
-          label: tx(navMessageKey(page.to, "label"), page.label),
-          ...(page.sub ? { sub: tx(navMessageKey(page.to, "desc"), page.sub) } : {}),
-          keywords: `${page.keywords ?? ""} ${page.label}`,
-        })),
+      hits: palette.map(toHit).map((page) => ({
+        ...page,
+        label: tx(navMessageKey(page.to, "label"), page.label),
+        ...(page.sub ? { sub: tx(navMessageKey(page.to, "desc"), page.sub) } : {}),
+        keywords: `${page.keywords ?? ""} ${page.label}`,
+      })),
     },
     { heading: t("commandPalette.contacts"), hits: records.contacts },
     { heading: t("commandPalette.products"), hits: records.products },

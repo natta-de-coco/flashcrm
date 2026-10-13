@@ -17,7 +17,6 @@ import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, navMessageKey, workspaceDefaultLanguage } from "@/lib/i18n";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
 import { useNavAccess } from "@/hooks/useNavAccess";
-import { navSectionsFor } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -65,20 +64,21 @@ const SIDEBAR_MAX = 360;
 const SIDEBAR_KEY = "flash.sidebar.width";
 
 function NavMenu({ onNavigate }: { onNavigate?: () => void }) {
-  const { role, loading } = useNavAccess();
+  // The sections arrive already filtered for the signed-in role, by the same rule
+  // as the phone bar, search and "+ Create" (hooks/useNavAccess): platform pages
+  // only for platform staff, nothing privileged for an unknown role. This file
+  // never names a role.
+  const { sections, loading } = useNavAccess();
   const { t } = useI18n();
   // A nav entry with no translation key keeps its English text rather than
   // showing the key itself.
   const text = (key: string, fallback: string) => (hasMessage(key) ? t(key) : fallback);
-  // The same rule as the phone bar, search and "+ Create" (lib/permissions.ts):
-  // platform pages only for platform staff, nothing privileged for an unknown role.
-  const visible = navSectionsFor(role);
 
   if (loading) return null;
 
   return (
     <>
-      {visible.map((section) => (
+      {sections.map((section) => (
         <div key={section.title}>
           <p className="mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
             {text(`nav.section.${section.id}`, section.title)}
