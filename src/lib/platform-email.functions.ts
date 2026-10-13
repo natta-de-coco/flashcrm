@@ -391,11 +391,18 @@ const SendPlatformTestEmailSchema = z.object({
   recipient: z.string().email("Invalid recipient email address"),
 });
 
-/** Send a real transactional test email to confirm deliverability from flas@mobidigisol.com. */
+/** What the manager is told: no mail transport is connected, so no test email can go out yet. */
+const TEST_EMAIL_NOT_SENT_MESSAGE = "No test email was sent. Email sending is not connected yet.";
+
+/**
+ * Meant to send a transactional test email to confirm deliverability from flas@mobidigisol.com.
+ * Nothing in this code can send an email yet, so it sends nothing, records the test as "failed"
+ * (never "sent") and says so plainly (ok: false). A real send replaces the refusal below.
+ */
 export const sendPlatformTestEmail = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => SendPlatformTestEmailSchema.parse(input))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<{ ok: boolean; message: string }> => {
     await requireSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -411,7 +418,7 @@ export const sendPlatformTestEmail = createServerFn({ method: "POST" })
       throw new Error("Platform SMTP is not configured yet");
     }
 
-    // Record test delivery in email_delivery_log
+    // Record the test in email_delivery_log as not sent
     const { error: logErr } = await supabaseAdmin.rpc("log_email_delivery", {
       _tenant_id: null,
       _user_id: context.userId,
@@ -420,18 +427,19 @@ export const sendPlatformTestEmail = createServerFn({ method: "POST" })
       _subject: "Flas CRM Platform System Email Test",
       _template: "system_test",
       _provider: "platform",
-      _provider_msg_id: `test-${Date.now()}`,
-      _status: "sent",
-      _error: null,
-      _meta: { initiated_by: context.userId, host: config.smtp_host },
+      _provider_msg_id: `test-unsent-${Date.now()}`,
+      _status: "failed",
+      _error: TEST_EMAIL_NOT_SENT_MESSAGE,
+      _meta: {
+        initiated_by: context.userId,
+        host: config.smtp_host,
+        error: TEST_EMAIL_NOT_SENT_MESSAGE,
+      },
     } as never);
 
     if (logErr) {
       console.warn("Could not log platform test delivery:", logErr);
     }
 
-    return {
-      ok: true,
-      message: `Test email dispatched to ${data.recipient} from flas@mobidigisol.com`,
-    };
+    return { ok: false, message: TEST_EMAIL_NOT_SENT_MESSAGE };
   });

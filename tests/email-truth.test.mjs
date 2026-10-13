@@ -16,6 +16,9 @@ import {
   triggerLeadWelcomeAutomation,
 } from "../node_modules/.cache/flas-lead-automation.mjs";
 import { dispatchDripStepForEnrollment } from "../node_modules/.cache/flas-drip-automation.mjs";
+import { dispatchSalesLeadAlert } from "../node_modules/.cache/flas-lead-alerts.mjs";
+import { sendPlatformTestEmail } from "../node_modules/.cache/flas-platform-email.mjs";
+import { sendPortalEmailReply } from "../node_modules/.cache/flas-user-email-accounts.mjs";
 import {
   dispatchCampaignNow,
   dispatchScheduledCampaigns,
@@ -30,6 +33,9 @@ const B = "company-b";
 const EMAIL = "new@example.com";
 
 const NOT_CONNECTED = "Email sending is not connected yet, so nothing was sent.";
+const ALERT_NOT_EMAILED = "Email sending is not connected yet, so this alert was not emailed.";
+const TEST_EMAIL_NOT_SENT = "No test email was sent. Email sending is not connected yet.";
+const REPLY_NOT_SENT = "Your reply was not sent. Email sending is not connected yet.";
 const NO_UNSUBSCRIBE =
   "Not sent: unsubscribe links are not set up on this server, and an email without one must not go out.";
 
@@ -131,7 +137,6 @@ beforeEach(() => {
   logFault = null;
   unreachableTable = null;
   globalThis.publicIntake.audits = [];
-  globalThis.publicIntake.alerts = [];
   mock.method(console, "error", () => {});
   mock.method(console, "warn", () => {});
 });
@@ -178,7 +183,7 @@ describe("welcome email", () => {
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(globalThis.publicIntake.alerts.length, 1);
+    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
     assertNothingClaimedAsSent();
     assert.ok(statuses().length >= 1);
   });
@@ -191,7 +196,7 @@ describe("welcome email", () => {
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(globalThis.publicIntake.alerts.length, 1);
+    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
     assertNothingClaimedAsSent();
   });
 
@@ -203,7 +208,7 @@ describe("welcome email", () => {
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(globalThis.publicIntake.alerts.length, 1);
+    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
   });
 });
 
@@ -406,5 +411,183 @@ describe("campaign broadcast", () => {
 
     await assert.rejects(dispatchScheduledCampaigns({ context: user }));
     assert.equal(db.table("campaigns")[0].status, "scheduled");
+  });
+});
+
+describe("alert to the sales team", () => {
+  const settings = (overrides = {}) => ({
+    tenant_id: A,
+    lead_alerts_enabled: true,
+    alert_email_addresses: ["boss@example.com", "rep@example.com"],
+    ...overrides,
+  });
+  const alertLog = () => db.table("lead_alerts_log");
+  const alert = () =>
+    dispatchSalesLeadAlert({ tenantId: A, leadId: "lead-1", email: EMAIL, name: "Sam" });
+
+  it("is not recorded as sent, is not counted, and says plainly that it was not emailed", async () => {
+    db.reset({ tenant_alert_settings: [settings()] });
+
+    const result = await alert();
+
+    assert.equal(result.notifiedEmails, 0);
+    assert.equal(result.emailNotSent, ALERT_NOT_EMAILED);
+    assert.deepEqual(statuses(), ["failed", "failed"]);
+    assert.deepEqual(
+      alertLog().map((r) => [r.alert_channel, r.status, r.error]),
+      [
+        ["email", "failed", ALERT_NOT_EMAILED],
+        ["email", "failed", ALERT_NOT_EMAILED],
+      ],
+    );
+    assertNothingClaimedAsSent();
+  });
+
+  it("falls back to the company's staff, and is still not claimed as sent", async () => {
+    db.reset({
+      profiles: [{ id: "u1", tenant_id: A, role: "admin", email: "owner@example.com" }],
+    });
+
+    const result = await alert();
+
+    assert.equal(result.notifiedEmails, 0);
+    assert.deepEqual(statuses(), ["failed"]);
+    assert.deepEqual(
+      alertLog().map((r) => r.status),
+      ["failed"],
+    );
+  });
+
+  it("the in-app notification, which really is written, is still raised", async () => {
+    db.reset({ tenant_alert_settings: [settings()] });
+    await alert();
+    assert.equal(db.table("notifications").length, 1);
+  });
+
+  it("with nobody to email there is nothing to refuse", async () => {
+    db.reset({ tenant_alert_settings: [settings({ alert_email_addresses: [] })] });
+    const result = await alert();
+    assert.equal(result.emailNotSent, undefined);
+    assert.deepEqual(statuses(), []);
+  });
+
+  it("alerts switched off write nothing", async () => {
+    db.reset({ tenant_alert_settings: [settings({ lead_alerts_enabled: false })] });
+    const result = await alert();
+    assert.deepEqual(result, { notifiedEmails: 0, notifiedWhatsApp: false });
+    assert.deepEqual(statuses(), []);
+    assert.equal(db.table("notifications").length, 0);
+  });
+
+  it("a delivery log or alert log that refuses the record does not break the alert", async () => {
+    db.reset({ tenant_alert_settings: [settings()] });
+    logFault = "unreachable";
+    db.fail("lead_alerts_log:insert", { code: "XX000", message: "down" });
+
+    const result = await alert();
+
+    assert.equal(result.notifiedEmails, 0);
+    assert.equal(result.emailNotSent, ALERT_NOT_EMAILED);
+    assert.equal(db.table("notifications").length, 1);
+  });
+
+  it("a captured lead raises it with no 'sent' claim anywhere", async () => {
+    db.reset({
+      leads: [],
+      tenant_alert_settings: [settings()],
+      tenant_smtp_config: [smtp()],
+    });
+
+    await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
+
+    assert.equal(db.table("leads").length, 1);
+    assertNothingClaimedAsSent();
+    assert.ok(alertLog().length >= 2);
+    for (const entry of alertLog()) assert.equal(entry.status, "failed");
+  });
+});
+
+describe("test email from the platform settings", () => {
+  const manager = { supabase: db.client, userId: "root-1" };
+  const rows = (extra = {}) => ({
+    profiles: [{ id: "root-1", staff_role: "super_admin" }],
+    platform_email_config: [
+      { id: "cfg-1", smtp_host: "smtp.example.com", smtp_user: "flas@example.com" },
+    ],
+    ...extra,
+  });
+  const send = (context = manager) =>
+    sendPlatformTestEmail({ data: { recipient: "someone@example.com" }, context });
+
+  it("says no email was sent, and records no 'sent'", async () => {
+    db.reset(rows());
+
+    const result = await send();
+
+    assert.deepEqual(result, { ok: false, message: TEST_EMAIL_NOT_SENT });
+    assert.deepEqual(statuses(), ["failed"]);
+    assert.equal(claims()[0]._error, TEST_EMAIL_NOT_SENT);
+    assertNothingClaimedAsSent();
+  });
+
+  it("a delivery log that refuses the record does not change the answer", async () => {
+    db.reset(rows());
+    logFault = "error";
+    assert.deepEqual(await send(), { ok: false, message: TEST_EMAIL_NOT_SENT });
+  });
+
+  it("is still refused for anyone who is not the platform manager", async () => {
+    db.reset(rows({ profiles: [{ id: "root-1", staff_role: "agent" }] }));
+    await assert.rejects(send(), /only available to the Flas platform manager/);
+    assert.deepEqual(statuses(), []);
+  });
+
+  it("still says the settings are missing when they are", async () => {
+    db.reset(rows({ platform_email_config: [] }));
+    await assert.rejects(send(), { message: "Platform SMTP is not configured yet" });
+  });
+});
+
+describe("reply written in the portal", () => {
+  const staff = { supabase: db.client, userId: "user-1" };
+  const MINE = "11111111-1111-4111-8111-111111111111";
+  const THEIRS = "22222222-2222-4222-8222-222222222222";
+  const rows = (extra = {}) => ({
+    profiles: [{ id: "user-1", tenant_id: A }],
+    user_email_accounts: [
+      { id: MINE, tenant_id: A, from_email: "me@example.com" },
+      { id: THEIRS, tenant_id: B, from_email: "them@example.com" },
+    ],
+    ...extra,
+  });
+  const reply = (accountId = MINE) =>
+    sendPortalEmailReply({
+      data: { accountId, to: "customer@example.com", subject: "Re: hi", bodyText: "Thanks!" },
+      context: staff,
+    });
+
+  it("is refused with the plain sentence, and is never stored as sent", async () => {
+    db.reset(rows());
+
+    await assert.rejects(reply(), { message: REPLY_NOT_SENT });
+
+    assert.equal(db.table("portal_email_messages").length, 1, "the unsent text is kept");
+    for (const message of db.table("portal_email_messages")) {
+      assert.equal(message.status, "failed");
+      assert.equal(message.tenant_id, A);
+    }
+  });
+
+  it("is refused even when saving the unsent copy fails", async () => {
+    db.reset(rows());
+    db.fail("portal_email_messages:insert", { code: "XX000", message: "down" });
+    await assert.rejects(reply(), { message: REPLY_NOT_SENT });
+    assert.equal(db.table("portal_email_messages").length, 0);
+  });
+
+  it("another company's mailbox is still not found", async () => {
+    db.reset(rows());
+    await assert.rejects(reply(THEIRS), { message: "Selected sender email account not found." });
+    assert.equal(db.table("portal_email_messages").length, 0);
   });
 });

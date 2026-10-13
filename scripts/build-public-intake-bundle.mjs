@@ -18,9 +18,6 @@ const stubs = {
       globalThis.publicIntake.emails.push({ tenantId, ...message });
       return globalThis.publicIntake.emailResult;
     }`,
-  "lead-alerts.server.ts": `export async function dispatchSalesLeadAlert(alert) {
-      globalThis.publicIntake.alerts.push(alert);
-    }`,
   // A stored token is its own plaintext here, so a connected number has one.
   "secret-box.server": "export async function openSecret(value) { return value || null; }",
 };
@@ -76,3 +73,10 @@ await bundle("src/lib/lead-automation.server.ts", "flas-lead-automation.mjs");
 await bundle("src/lib/drip-automation.server.ts", "flas-drip-automation.mjs");
 await bundle("src/lib/email-templates.ts", "flas-email-templates.mjs");
 await bundle("src/lib/marketing.functions.ts", "flas-marketing.mjs", campaignStubs);
+await bundle("src/lib/lead-alerts.server.ts", "flas-lead-alerts.mjs");
+await bundle("src/lib/platform-email.functions.ts", "flas-platform-email.mjs", campaignStubs);
+await bundle(
+  "src/lib/user-email-accounts.functions.ts",
+  "flas-user-email-accounts.mjs",
+  campaignStubs,
+);

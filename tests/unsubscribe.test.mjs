@@ -312,7 +312,7 @@ describe("a marketing email is never sent without a working unsubscribe link", (
 
     assert.equal(saved.email, "new@example.com");
     assert.equal(db.table("leads").length, 1);
-    assert.equal(globalThis.publicIntake.alerts.length, 1, "the sales alert still goes out");
+    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
 
     assert.equal(statuses().length >= 2, true);
     assert.deepEqual([...new Set(statuses())], ["failed"], "no email is recorded as sent");

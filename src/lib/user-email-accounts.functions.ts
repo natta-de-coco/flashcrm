@@ -431,8 +431,14 @@ export const getStorageBudgetReport = createServerFn({ method: "GET" })
     };
   });
 
+/** What the staff member is told: no mail transport is connected, so no reply can go out yet. */
+const REPLY_NOT_SENT_MESSAGE = "Your reply was not sent. Email sending is not connected yet.";
+
 /**
- * Dispatches a 1-on-1 email from the portal using the representative's authenticated mailbox
+ * Meant to dispatch a 1-on-1 email from the portal using the representative's authenticated
+ * mailbox. Nothing in this code can send an email yet, so the reply is kept as a message with the
+ * status "failed" (never "sent", so the thread does not show a reply the customer never got) and
+ * the caller is refused with a plain sentence.
  */
 export const sendPortalEmailReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -493,18 +499,22 @@ export const sendPortalEmailReply = createServerFn({ method: "POST" })
         body_text: data.bodyText,
         body_html: bodyHtml,
         in_reply_to_header: data.inReplyTo || null,
-        status: "sent",
+        status: "failed",
         storage_bytes: storageBytes,
       })
       .select("id")
       .single();
 
-    if (msgErr) throw msgErr;
+    // Keeping the unsent text is a courtesy; whether or not it was kept, nothing was sent.
+    if (msgErr || !messageRecord) {
+      console.error("[portal-email] Could not keep the unsent reply");
+      throw new Error(REPLY_NOT_SENT_MESSAGE);
+    }
 
     // Trigger storage check and pruning
     await dbAny(supabaseAdmin).rpc("check_and_prune_tenant_email_storage", {
       target_tenant_id: profile.tenant_id,
     });
 
-    return { ok: true, messageId: messageRecord?.id || "" };
+    throw new Error(REPLY_NOT_SENT_MESSAGE);
   });
