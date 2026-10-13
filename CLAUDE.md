@@ -119,3 +119,9 @@ Set these in Supabase Dashboard → Edge Functions → Environment Variables whe
   claim in this file if it changes the "current state" summary above.
 - No `.git` history existed before 2026-08-31 — this was assembled fresh from zips, so
   don't expect old commits to explain past decisions; `docs/` is the record instead.
+- **Email Delivery & Storage Directives (October 2026)**:
+  - First stop recording sent/delivered without real transport execution, and do not advance unsent drip steps.
+  - Coordinate unsubscribe and storage security with Claude before landing changes.
+  - Implement real outbound delivery and inbound mailbox ingestion with strict tenant isolation and duplicate protection.
+  - Do NOT apply the destructive storage migration as-is.
+  - Use reviewed PRs only; strictly no direct pushes to `main`.
