@@ -391,6 +391,37 @@ describe("Stripe Checkout & Billing Integration", () => {
     assert.equal(org2.subscription_status, "trial");
   });
 
+  it("holds checkout.session.completed for reconciliation when immutable tenantId metadata is missing and does not activate user current company", async () => {
+    rows.profiles.push({ id: "user-nometa", tenant_id: "tenant-2" });
+    rows.organizations.push({ id: "tenant-2", subscription_status: "trial" });
+
+    const payload = {
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          client_reference_id: "user-nometa",
+          customer: "cus_nometa_1",
+          subscription: "sub_nometa_1",
+          metadata: { plan: "flash_monthly" },
+          payment_status: "paid",
+          amount_total: 4900,
+          currency: "usd",
+          livemode: false,
+          invoice: "in_nometa_1",
+        },
+      },
+    };
+
+    const res = await handleStripeWebhook(makeSignedRequest(payload));
+    assert.equal(res.status, 200);
+
+    const org2 = rows.organizations.find((o) => o.id === "tenant-2");
+    assert.equal(org2.subscription_status, "trial");
+
+    const sub = rows.subscriptions.find((s) => s.stripe_subscription_id === "sub_nometa_1");
+    assert.equal(sub, undefined);
+  });
+
   it("does not activate subscription or create paid invoice when checkout session is unpaid", async () => {
     const payload = {
       type: "checkout.session.completed",

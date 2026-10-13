@@ -17,6 +17,10 @@ export type SyncInvoiceDoc = {
   grand_total: number;
   paid_amount?: number;
   balance?: number;
+  shipping?: number;
+  additional_charges?: number;
+  adjustment?: number;
+  invoice_discount?: number;
   payment_terms?: string | null;
   reference?: string | null;
   po_number?: string | null;
@@ -151,7 +155,12 @@ export function generateTallySalesXml(
 
   const inventoryEntries = items
     .map((item) => {
-      const lineAmt = Number(item.line_total || item.quantity * item.unit_price).toFixed(2);
+      const netLine = Number(
+        item.line_total != null && item.tax_amount != null
+          ? item.line_total - item.tax_amount
+          : item.quantity * item.unit_price - (item.discount_amount || 0),
+      );
+      const lineAmt = netLine.toFixed(2);
       const rate = Number(item.unit_price).toFixed(2);
       const qty = Number(item.quantity);
       const unit = item.unit || "Nos";
@@ -214,6 +223,42 @@ export function generateTallySalesXml(
               <LEDGERNAME>${escapeXml(taxLedger)}</LEDGERNAME>
               <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
               <AMOUNT>-${taxTotal}</AMOUNT>
+            </LEDGERENTRIES.LIST>`
+                : ""
+            }
+
+            <!-- Shipping Income (Credit) -->
+            ${
+              Number(doc.shipping || 0) > 0
+                ? `
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>Shipping Income</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>-${Number(doc.shipping).toFixed(2)}</AMOUNT>
+            </LEDGERENTRIES.LIST>`
+                : ""
+            }
+
+            <!-- Additional Charges (Credit) -->
+            ${
+              Number(doc.additional_charges || 0) > 0
+                ? `
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>Additional Charges</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <AMOUNT>-${Number(doc.additional_charges).toFixed(2)}</AMOUNT>
+            </LEDGERENTRIES.LIST>`
+                : ""
+            }
+
+            <!-- Round Off / Adjustment -->
+            ${
+              Number(doc.adjustment || 0) !== 0
+                ? `
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>Round Off</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>${Number(doc.adjustment) > 0 ? "No" : "Yes"}</ISDEEMEDPOSITIVE>
+              <AMOUNT>-${Number(doc.adjustment).toFixed(2)}</AMOUNT>
             </LEDGERENTRIES.LIST>`
                 : ""
             }
@@ -331,7 +376,12 @@ export function generateQuickBooksIif(
   ];
 
   for (const item of items) {
-    const itemTotal = (-item.line_total).toFixed(2);
+    const netItem = Number(
+      item.line_total != null && item.tax_amount != null
+        ? item.line_total - item.tax_amount
+        : item.quantity * item.unit_price - (item.discount_amount || 0),
+    );
+    const itemTotal = (-netItem).toFixed(2);
     lines.push(
       `SPL\t\t${trnsType}\t${dateStr}\t${escapeIif(salesLedger)}\t${customer}\t${itemTotal}\t${docNum}\t${escapeIif(item.description || item.name)}\tN\t-${item.quantity}\t${item.unit_price}\t${escapeIif(item.name)}\tY`,
     );
@@ -341,6 +391,24 @@ export function generateQuickBooksIif(
     const taxLedger = options.taxLedger || "Sales Tax Payable";
     lines.push(
       `SPL\t\t${trnsType}\t${dateStr}\t${escapeIif(taxLedger)}\t${customer}\t${(-doc.tax_total).toFixed(2)}\t${docNum}\t${escapeIif(doc.tax_label || "VAT")}\tN\t\t\t\tN`,
+    );
+  }
+
+  if (doc.shipping && doc.shipping > 0) {
+    lines.push(
+      `SPL\t\t${trnsType}\t${dateStr}\tShipping Income\t${customer}\t${(-doc.shipping).toFixed(2)}\t${docNum}\tShipping\tN\t\t\t\tN`,
+    );
+  }
+
+  if (doc.additional_charges && doc.additional_charges > 0) {
+    lines.push(
+      `SPL\t\t${trnsType}\t${dateStr}\tAdditional Charges\t${customer}\t${(-doc.additional_charges).toFixed(2)}\t${docNum}\tAdditional Charges\tN\t\t\t\tN`,
+    );
+  }
+
+  if (doc.adjustment && doc.adjustment !== 0) {
+    lines.push(
+      `SPL\t\t${trnsType}\t${dateStr}\tRound Off\t${customer}\t${(-doc.adjustment).toFixed(2)}\t${docNum}\tAdjustment\tN\t\t\t\tN`,
     );
   }
 

@@ -210,6 +210,7 @@ function SalesPage() {
           default_terms?: string | null;
           default_notes?: string | null;
           default_payment_terms?: string | null;
+          tax_inclusive?: boolean;
         }
       | undefined;
     const next = emptyDocument(
@@ -219,6 +220,8 @@ function SalesPage() {
       tenant?.timezone ?? null,
       settings?.default_notes ?? "",
       settings?.default_payment_terms ?? "",
+      "modern-emerald",
+      Boolean(settings?.tax_inclusive),
     );
     next.kind = kind;
     setBuilder(next);
@@ -228,18 +231,29 @@ function SalesPage() {
     mutationFn: (id: string) => loadDocument({ data: { id } }),
     onSuccess: (bundle) => {
       const doc = bundle.doc as unknown as Record<string, unknown>;
-      const items = (bundle.items as unknown as Record<string, unknown>[]).map((it) => ({
-        name: (it["name_snapshot"] as string) ?? "Item",
-        description: (it["description_snapshot"] as string) ?? null,
-        sku: (it["sku_snapshot"] as string) ?? null,
-        quantity: Number(it["quantity"] ?? 1),
-        unit: (it["unit"] as string) ?? null,
-        unit_price: Number(it["unit_price"] ?? 0),
-        discount_amount: Number(it["discount_amount"] ?? 0),
-        tax_rate: Number(it["tax_rate"] ?? 0),
-        tax_amount: Number(it["tax_amount"] ?? 0),
-        line_total: Number(it["line_total"] ?? 0),
-      }));
+      const items = (bundle.items as unknown as Record<string, unknown>[]).map((it) => {
+        const qty = Number(it["quantity"] ?? 1);
+        const price = Number(it["unit_price"] ?? 0);
+        const discount = Number(it["discount_amount"] ?? 0);
+        const taxAmount = Number(it["tax_amount"] ?? 0);
+        const storedLineTotal = Number(it["line_total"] ?? 0);
+        const netLineTotal =
+          taxAmount > 0 && storedLineTotal > taxAmount
+            ? storedLineTotal - taxAmount
+            : Math.max(0, qty * price - discount);
+        return {
+          name: (it["name_snapshot"] as string) ?? "Item",
+          description: (it["description_snapshot"] as string) ?? null,
+          sku: (it["sku_snapshot"] as string) ?? null,
+          quantity: qty,
+          unit: (it["unit"] as string) ?? null,
+          unit_price: price,
+          discount_amount: discount,
+          tax_rate: Number(it["tax_rate"] ?? 0),
+          tax_amount: taxAmount,
+          line_total: netLineTotal,
+        };
+      });
       const snapshot = (doc["customer_snapshot"] ?? {}) as Record<string, string | undefined>;
       setAccountingTarget({
         doc: {
@@ -255,6 +269,10 @@ function SalesPage() {
           grand_total: Number(doc["grand_total"] ?? 0),
           paid_amount: Number(doc["paid_amount"] ?? 0),
           balance: Number(doc["balance"] ?? 0),
+          shipping: Number(doc["shipping"] ?? 0),
+          additional_charges: Number(doc["additional_charges"] ?? 0),
+          adjustment: Number(doc["adjustment"] ?? 0),
+          invoice_discount: Number(doc["invoice_discount"] ?? 0),
           payment_terms: (doc["payment_terms"] as string) ?? null,
           reference: (doc["reference"] as string) ?? null,
           po_number: (doc["po_number"] as string) ?? null,
@@ -307,6 +325,7 @@ function SalesPage() {
         shipping: Number(doc["shipping"] ?? 0),
         additional_charges: Number(doc["additional_charges"] ?? 0),
         adjustment: Number(doc["adjustment"] ?? 0),
+        tax_inclusive: Boolean(doc["tax_inclusive"]),
         notes: (doc["notes"] as string) ?? "",
         terms: (doc["terms"] as string) ?? "",
         items: (bundle.items as unknown as Record<string, unknown>[]).map((item) => ({
@@ -343,6 +362,7 @@ function SalesPage() {
     due_date: state.due_date || null,
     valid_until: state.valid_until || null,
     currency: state.currency,
+    tax_inclusive: Boolean(state.tax_inclusive),
     payment_terms: state.payment_terms || null,
     reference: state.reference || null,
     po_number: state.po_number || null,

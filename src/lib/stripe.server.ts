@@ -436,20 +436,12 @@ export async function handleStripeWebhook(request: Request): Promise<Response> {
             : session?.subscription?.id;
         const plan = session?.metadata?.plan || "flash_monthly";
 
-        // Immutable tenant resolution from checkout session metadata
-        let tenantId = session?.metadata?.tenantId;
-        if (!tenantId && userId) {
-          const { data: profile, error: pErr } = await supabaseAdmin
-            .from("profiles")
-            .select("tenant_id")
-            .eq("id", userId)
-            .maybeSingle();
-          if (pErr) throw new Error(`DB error fetching profile: ${pErr.message}`);
-          tenantId = profile?.tenant_id;
-        }
-
+        // Immutable tenant resolution strictly from checkout session metadata
+        const tenantId = session?.metadata?.tenantId;
         if (!tenantId) {
-          console.warn("checkout.session.completed received without tenant binding");
+          console.warn(
+            `checkout.session.completed received without immutable tenantId binding for user ${userId}; holding for reconciliation without mutating tenant`,
+          );
           break;
         }
 

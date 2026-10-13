@@ -46,6 +46,8 @@ const DocSchema = z.object({
   payment_terms: z.string().trim().max(300).nullable().optional(),
   reference: z.string().trim().max(200).nullable().optional(),
   po_number: z.string().trim().max(120).nullable().optional(),
+  tax_inclusive: z.boolean().optional(),
+  tax_label: z.string().trim().max(40).optional(),
   invoice_discount: z.number().min(0).optional(),
   shipping: z.number().min(0).optional(),
   additional_charges: z.number().min(0).optional(),
@@ -608,6 +610,12 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
         });
         if (bankWriteError) throw bankWriteError;
       }
+    } else if (bank_account === null) {
+      const { error: bankDeleteError } = await context.supabase
+        .from("bank_accounts")
+        .delete()
+        .eq("tenant_id", tenantId);
+      if (bankDeleteError) throw bankDeleteError;
     }
 
     return { ok: true };

@@ -275,6 +275,60 @@ test("accounting sync exports valid QuickBooks and Zoho formats", () => {
   assert.equal(zohoJson.line_items.length, 1);
 });
 
+test("accounting sync balances journal entries exactly across net lines, tax, shipping, charges and adjustments", () => {
+  const syncDoc = {
+    id: "doc-balanced-1",
+    doc_number: "INV-2026-00999",
+    issue_date: "2026-10-10",
+    due_date: "2026-11-10",
+    currency: "AED",
+    subtotal: 1000,
+    tax_total: 50,
+    shipping: 40,
+    additional_charges: 15,
+    adjustment: -5,
+    grand_total: 1100,
+    customer_snapshot: {
+      name: "Balanced Customer",
+      company: "Balanced Global FZE",
+    },
+  };
+
+  const syncItems = [
+    {
+      name: "Industrial Switch",
+      quantity: 2,
+      unit_price: 500,
+      discount_amount: 0,
+      tax_rate: 5,
+      tax_amount: 50,
+      line_total: 1050,
+    },
+  ];
+
+  // 1. Tally XML
+  const xml = generateTallySalesXml(syncDoc, syncItems);
+  assert.match(xml, /<AMOUNT>1100.00<\/AMOUNT>/);
+  assert.match(xml, /<AMOUNT>-1000.00<\/AMOUNT>/);
+  assert.match(xml, /<AMOUNT>-50.00<\/AMOUNT>/);
+  assert.match(xml, /<LEDGERNAME>Shipping Income<\/LEDGERNAME>/);
+  assert.match(xml, /<AMOUNT>-40.00<\/AMOUNT>/);
+  assert.match(xml, /<LEDGERNAME>Additional Charges<\/LEDGERNAME>/);
+  assert.match(xml, /<AMOUNT>-15.00<\/AMOUNT>/);
+  assert.match(xml, /<LEDGERNAME>Round Off<\/LEDGERNAME>/);
+
+  // 2. QuickBooks IIF
+  const iif = generateQuickBooksIif(syncDoc, syncItems);
+  const splLines = iif.split("\n").filter((l) => l.startsWith("SPL\t"));
+  const trnsLine = iif.split("\n").find((l) => l.startsWith("TRNS\t"));
+  assert.ok(trnsLine);
+  const trnsAmount = parseFloat(trnsLine.split("\t")[6]);
+  assert.equal(trnsAmount, 1100);
+
+  const splTotal = splLines.reduce((acc, l) => acc + parseFloat(l.split("\t")[6]), 0);
+  assert.equal(Math.round((trnsAmount + splTotal) * 100) / 100, 0);
+});
+
 test("CSV formula injection protection and delimiter sanitization", () => {
   // Untrusted formula injections are prepended with single quote
   assert.equal(sanitizeCsvCell("=SUM(A1:B10)"), "'=SUM(A1:B10)");

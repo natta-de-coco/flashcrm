@@ -57,6 +57,7 @@ export type BuilderState = {
   adjustment: number;
   notes: string;
   terms: string;
+  tax_inclusive?: boolean;
   items: BuilderItem[];
 };
 
@@ -83,6 +84,7 @@ export function emptyDocument(
   notes: string = "",
   paymentTerms: string = "",
   templateId: string = "modern-emerald",
+  taxInclusive: boolean = false,
 ): BuilderState {
   // The tenant's calendar day, not the server's.
   const today = todayInTimeZone(timeZone);
@@ -99,6 +101,7 @@ export function emptyDocument(
     payment_terms: paymentTerms,
     reference: "",
     po_number: "",
+    tax_inclusive: taxInclusive,
     invoice_discount: 0,
     shipping: 0,
     additional_charges: 0,
@@ -109,21 +112,30 @@ export function emptyDocument(
   };
 }
 
-function lineTotals(item: BuilderItem) {
+function lineTotals(item: BuilderItem, taxInclusive = false) {
   const gross = item.quantity * item.unit_price;
   const discount =
     item.discount_type === "percent" ? (gross * item.discount_value) / 100 : item.discount_value;
   const net = Math.max(0, gross - discount);
-  const tax = (net * item.tax_rate) / 100;
-  return { gross, discount, net, tax, total: net + tax };
+  const tax = taxInclusive
+    ? net - (net * 100) / (100 + (item.tax_rate || 0))
+    : (net * (item.tax_rate || 0)) / 100;
+  return {
+    gross,
+    discount,
+    net: taxInclusive ? net - tax : net,
+    tax,
+    total: taxInclusive ? net : net + tax,
+  };
 }
 
 export function previewTotals(state: BuilderState) {
+  const inclusive = Boolean(state.tax_inclusive);
   let subtotal = 0;
   let discountTotal = 0;
   let taxTotal = 0;
   for (const item of state.items) {
-    const t = lineTotals(item);
+    const t = lineTotals(item, inclusive);
     subtotal += t.gross;
     discountTotal += t.discount;
     taxTotal += t.tax;
@@ -133,7 +145,7 @@ export function previewTotals(state: BuilderState) {
   const grand =
     afterLines -
     invoiceDiscount +
-    taxTotal +
+    (inclusive ? 0 : taxTotal) +
     (state.shipping || 0) +
     (state.additional_charges || 0) +
     (state.adjustment || 0);
