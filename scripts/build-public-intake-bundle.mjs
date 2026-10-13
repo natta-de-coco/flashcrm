@@ -1,8 +1,8 @@
 // Bundles the code that runs for requests nobody signed in for: the WhatsApp
-// send gate, the lead intake pipeline, and the website-plugin activation
-// endpoint. The database, the audit log and the email provider are doubles the
-// test drives through globalThis.publicIntake; everything between them is the
-// code production runs.
+// send gate, the lead intake pipeline, the website-plugin activation endpoint,
+// and the unsubscribe link every marketing email carries. The database, the
+// audit log and the email provider are doubles the test drives through
+// globalThis.publicIntake; everything between them is the code production runs.
 import { build } from "esbuild";
 import { mkdirSync } from "node:fs";
 
@@ -17,6 +17,9 @@ const stubs = {
   "email-dispatch.server": `export async function sendTenantEmail(tenantId, message) {
       globalThis.publicIntake.emails.push({ tenantId, ...message });
       return globalThis.publicIntake.emailResult;
+    }`,
+  "lead-alerts.server.ts": `export async function dispatchSalesLeadAlert(alert) {
+      globalThis.publicIntake.alerts.push(alert);
     }`,
   // A stored token is its own plaintext here, so a connected number has one.
   "secret-box.server": "export async function openSecret(value) { return value || null; }",
@@ -58,3 +61,7 @@ await bundle("src/routes/api/public/widget/chat.ts", "flas-widget-chat.mjs");
 await bundle("src/routes/api/public/leads/collect.ts", "flas-leads-collect.mjs");
 await bundle("src/routes/api/public/webhooks/wordpress.ts", "flas-webhook-wordpress.mjs");
 await bundle("src/routes/api/public/webhooks/shopify.ts", "flas-webhook-shopify.mjs");
+await bundle("src/lib/unsubscribe.server.ts", "flas-unsubscribe.mjs");
+await bundle("src/lib/lead-automation.server.ts", "flas-lead-automation.mjs");
+await bundle("src/lib/drip-automation.server.ts", "flas-drip-automation.mjs");
+await bundle("src/lib/email-templates.ts", "flas-email-templates.mjs");
