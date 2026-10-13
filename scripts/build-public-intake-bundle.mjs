@@ -25,21 +25,21 @@ const stubs = {
   "secret-box.server": "export async function openSecret(value) { return value || null; }",
 };
 
-const boundaries = {
+const boundariesFor = (table) => ({
   name: "public-intake-boundaries",
   setup(b) {
     b.onResolve({ filter: /.*/ }, (args) => {
-      const key = Object.keys(stubs).find((k) => args.path === k || args.path.endsWith("/" + k));
+      const key = Object.keys(table).find((k) => args.path === k || args.path.endsWith("/" + k));
       return key ? { path: key, namespace: "intake-stub" } : undefined;
     });
     b.onLoad({ filter: /.*/, namespace: "intake-stub" }, (args) => ({
-      contents: stubs[args.path],
+      contents: table[args.path],
       loader: "js",
     }));
   },
-};
+});
 
-const bundle = (entry, out) =>
+const bundle = (entry, out, table = stubs) =>
   build({
     entryPoints: [entry],
     outfile: `node_modules/.cache/${out}`,
@@ -48,8 +48,18 @@ const bundle = (entry, out) =>
     bundle: true,
     logLevel: "error",
     alias: { "@": "./src" },
-    plugins: [boundaries],
+    plugins: [boundariesFor(table)],
   });
+
+// The campaign send functions are server functions behind the sign-in check. The test calls
+// the handler directly with a signed-in user, so the wrapper and the check are stand-ins.
+const campaignStubs = {
+  ...stubs,
+  "auth-middleware": "export const requireSupabaseAuth = {};",
+  "@tanstack/react-start": `export function createServerFn() {
+      return { middleware() { return this; }, inputValidator() { return this; }, handler(fn) { return fn; } };
+    }`,
+};
 
 await bundle("src/lib/safety.server.ts", "flas-safety.mjs");
 await bundle("src/lib/leads.server.ts", "flas-leads.mjs");
@@ -65,3 +75,4 @@ await bundle("src/lib/unsubscribe.server.ts", "flas-unsubscribe.mjs");
 await bundle("src/lib/lead-automation.server.ts", "flas-lead-automation.mjs");
 await bundle("src/lib/drip-automation.server.ts", "flas-drip-automation.mjs");
 await bundle("src/lib/email-templates.ts", "flas-email-templates.mjs");
+await bundle("src/lib/marketing.functions.ts", "flas-marketing.mjs", campaignStubs);

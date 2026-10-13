@@ -2,11 +2,11 @@
  * src/lib/lead-automation.server.ts
  *
  * Real-time Lead Intake & Automated Welcome Discount Engine.
- * Enforces explicit consent gating, generates signed HMAC one-click unsubscribe tokens,
- * substitutes dynamic merge tags into bulletproof email templates, and logs delivery.
+ * Enforces explicit consent gating, generates signed HMAC one-click unsubscribe tokens, and
+ * records welcome emails truthfully: with no mail transport connected, nothing is sent and nothing
+ * is logged as sent or delivered.
  */
 
-import { BUILT_IN_EMAIL_TEMPLATES, substituteMergeTags } from "./email-templates.ts";
 import crypto from "node:crypto";
 
 /**
@@ -27,16 +27,79 @@ export class UnsubscribeNotSetUpError extends Error {
 export const UNSUBSCRIBE_NOT_SENT_REASON =
   "Not sent: unsubscribe links are not set up on this server, and an email without one must not go out.";
 
+/**
+ * What a person is told when mail was asked to go out and nothing was sent because no mail
+ * transport is connected yet. Shown as it is, so keep it plain.
+ */
+export const EMAIL_NOT_CONNECTED_REASON =
+  "Email sending is not connected yet, so nothing was sent.";
+
 function readUnsubscribeSecret(): string | null {
   const value = (process.env["EMAIL_UNSUBSCRIBE_SECRET"] ?? "").trim();
   return value.length >= MIN_SECRET_LENGTH ? value : null;
 }
 
-// Automated sends have no signed-in user; the log function wants the field present.
-const AUTOMATED_SEND = undefined as unknown as string;
-
 function sign(data: string, secret: string): string {
   return crypto.createHmac("sha256", secret).update(data).digest("base64url");
+}
+
+/**
+ * Why a marketing email cannot go out right now. There is no mail transport in this code yet, so
+ * there is always a reason: either unsubscribe links are not set up (an email without one must
+ * never go out) or, when they are, sending itself is not connected. Pass the recipient to also
+ * check that a link can be made for them. Callers must refuse, record the email as not sent and
+ * leave any progress marker where it is. When a real transport is connected, this is the one
+ * place that stops reporting "not connected".
+ */
+export function whyMarketingEmailCannotBeSent(link?: { email: string; tenantId: string }): string {
+  if (!readUnsubscribeSecret()) return UNSUBSCRIBE_NOT_SENT_REASON;
+  if (link) {
+    try {
+      generateUnsubscribeToken(link.email, link.tenantId);
+    } catch {
+      return UNSUBSCRIBE_NOT_SENT_REASON;
+    }
+  }
+  return EMAIL_NOT_CONNECTED_REASON;
+}
+
+/**
+ * Writes the delivery-log row for an email that was not sent. The status is always "failed" with
+ * the reason: "sent" needs a send, and "delivered" needs a receipt from a provider, and nothing
+ * here has either. A log that cannot be written is reported on the server console (without the
+ * address) and never changes the answer the caller gives.
+ */
+export async function recordEmailNotSent(entry: {
+  tag: string;
+  tenantId: string;
+  recipient: string;
+  fromAddress: string;
+  subject: string;
+  template: string;
+  provider: string;
+  providerMsgId: string;
+  reason: string;
+  meta: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.rpc("log_email_delivery", {
+      _tenant_id: entry.tenantId,
+      _user_id: null,
+      _recipient: entry.recipient,
+      _from_address: entry.fromAddress,
+      _subject: entry.subject,
+      _template: entry.template,
+      _provider: entry.provider,
+      _provider_msg_id: entry.providerMsgId,
+      _status: "failed",
+      _error: entry.reason,
+      _meta: { ...entry.meta, error: entry.reason },
+    } as never);
+    if (error) console.error(`[${entry.tag}] Could not record the unsent email`);
+  } catch {
+    console.error(`[${entry.tag}] Could not record the unsent email`);
+  }
 }
 
 export interface IngestLeadOptions {
@@ -185,12 +248,17 @@ export async function ingestLead(options: IngestLeadOptions) {
 
   // Trigger welcome automation only if consent was explicitly granted
   if (finalConsent) {
-    await triggerLeadWelcomeAutomation({
-      tenantId,
-      email: cleanEmail,
-      name: name || "there",
-      sourceUrl: sourceUrl || "",
-    });
+    // The lead is already saved: whatever happens to the welcome email, capturing it succeeded.
+    try {
+      await triggerLeadWelcomeAutomation({
+        tenantId,
+        email: cleanEmail,
+        name: name || "there",
+        sourceUrl: sourceUrl || "",
+      });
+    } catch {
+      console.error("[welcome-automation] The welcome email step failed; the lead was kept");
+    }
 
     try {
       const { enrollLeadInDripSequence } = await import("./drip-automation.server.ts");
@@ -224,7 +292,8 @@ export async function ingestLead(options: IngestLeadOptions) {
 }
 
 /**
- * Real-time trigger that composes and dispatches the welcome promotional discount email.
+ * Real-time trigger for the welcome discount email. No mail transport is connected yet, so this
+ * never sends: it records the email as not sent and returns the reason (ok: false).
  */
 export async function triggerLeadWelcomeAutomation(params: {
   tenantId: string;
@@ -232,7 +301,7 @@ export async function triggerLeadWelcomeAutomation(params: {
   name: string;
   sourceUrl: string;
 }) {
-  const { tenantId, email, name } = params;
+  const { tenantId, email } = params;
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
   // Fetch workspace tenant SMTP & automation settings
@@ -243,15 +312,12 @@ export async function triggerLeadWelcomeAutomation(params: {
     .maybeSingle();
 
   interface TenantSmtpConfigRow {
-    from_name?: string | null;
     from_email?: string | null;
     smtp_host?: string | null;
     smtp_user?: string | null;
-    smtp_pass_enc?: string | null;
     verified?: boolean | null;
     welcome_email_enabled?: boolean | null;
     welcome_discount_code?: string | null;
-    welcome_discount_percent?: number | null;
     welcome_subject?: string | null;
   }
   const r = config as TenantSmtpConfigRow | null;
@@ -260,123 +326,24 @@ export async function triggerLeadWelcomeAutomation(params: {
   }
 
   const discountCode = r.welcome_discount_code || "WELCOME20";
-  const discountPercent = r.welcome_discount_percent || 20;
   const subject = r.welcome_subject || `Welcome! Here is your exclusive ${discountCode} voucher`;
 
-  // Generate signed one-click unsubscribe URL. A marketing email never goes out without a working
-  // one: if the link cannot be made, say so in the delivery log and stop. The lead itself was
-  // already saved by the caller, so capturing it is not affected.
-  let unsubToken: string;
-  try {
-    unsubToken = generateUnsubscribeToken(email, tenantId);
-  } catch {
-    console.error("[welcome-automation] Welcome email not sent: unsubscribe links are not set up");
-    try {
-      const { error: logError } = await supabaseAdmin.rpc("log_email_delivery", {
-        _tenant_id: tenantId,
-        _user_id: AUTOMATED_SEND,
-        _recipient: email,
-        _from_address: r.from_email || "no-reply@mobidigisol.com",
-        _subject: subject,
-        _template: "welcome_discount",
-        _provider: "smtp_relay",
-        _provider_msg_id: `welcome_${Date.now()}`,
-        _status: "failed",
-        _error: UNSUBSCRIBE_NOT_SENT_REASON,
-        _meta: { error: UNSUBSCRIBE_NOT_SENT_REASON, discount_code: discountCode },
-      });
-      if (logError) console.error("[welcome-automation] Could not record the unsent email");
-    } catch {
-      console.error("[welcome-automation] Could not record the unsent email");
-    }
-    return { ok: false, error: UNSUBSCRIBE_NOT_SENT_REASON };
-  }
-  const baseUrl = process.env["PUBLIC_APP_URL"] || "https://flas.mobidigisol.com";
-  const unsubscribeUrl = `${baseUrl}/unsubscribe?token=${unsubToken}`;
-
-  // Find template & substitute dynamic merge tags
-  const welcomeTpl = BUILT_IN_EMAIL_TEMPLATES.find((t) => t.id === "welcome_discount")!;
-  const html = substituteMergeTags(welcomeTpl.htmlContent, {
-    name: name || "there",
-    company: r.from_name || "Flas CRM",
-    discount_code: discountCode,
-    unsubscribe_url: unsubscribeUrl,
-    company_url: baseUrl,
+  // Nothing in this code can send a message yet, so the welcome email is never sent and never
+  // recorded as sent or delivered. It is logged as not sent with the plain reason, and the caller
+  // (lead capture) carries on: the lead was already saved. A marketing email also never goes out
+  // without a working unsubscribe link, so a missing link is reported as the reason first.
+  const reason = whyMarketingEmailCannotBeSent({ email, tenantId });
+  await recordEmailNotSent({
+    tag: "welcome-automation",
+    tenantId,
+    recipient: email,
+    fromAddress: r.from_email || r.smtp_user || "no-reply@mobidigisol.com",
+    subject,
+    template: "welcome_discount",
+    provider: "smtp_relay",
+    providerMsgId: `welcome_unsent_${Date.now()}`,
+    reason,
+    meta: { discount_code: discountCode, smtp_verified: Boolean(r.verified && r.smtp_host) },
   });
-
-  // Verify BYO SMTP status
-  if (!r.verified || !r.smtp_host) {
-    // Log failure without crashing so intake succeeds
-    try {
-      await supabaseAdmin.rpc("log_email_delivery", {
-        _tenant_id: tenantId,
-        _user_id: null,
-        _recipient: email,
-        _from_address: r.from_email || "no-reply@mobidigisol.com",
-        _subject: subject,
-        _template: "welcome_discount",
-        _provider: "smtp_relay",
-        _provider_msg_id: `welcome_${Date.now()}`,
-        _status: "failed",
-        _error: "Tenant SMTP unverified",
-        _meta: { error: "Tenant SMTP unverified", discount_code: discountCode },
-      } as never);
-    } catch (rpcErr) {
-      console.warn("[welcome-automation] Failed to log unverified SMTP attempt", rpcErr);
-    }
-
-    return { ok: false, error: "Tenant SMTP is unverified" };
-  }
-
-  // Tenant SMTP is verified: attempt dispatch and log success
-  try {
-    const { decryptEmailSecret } = await import("@/lib/email-crypto.server");
-    let smtpPassword = "";
-    if (r.smtp_pass_enc) {
-      smtpPassword = await decryptEmailSecret(r.smtp_pass_enc);
-    }
-
-    // Record delivery log
-    try {
-      await supabaseAdmin.rpc("log_email_delivery", {
-        _tenant_id: tenantId,
-        _user_id: null,
-        _recipient: email,
-        _from_address: r.from_email || r.smtp_user || "no-reply@mobidigisol.com",
-        _subject: subject,
-        _template: "welcome_discount",
-        _provider: "smtp_relay",
-        _provider_msg_id: `welcome_${Date.now()}`,
-        _status: "delivered",
-        _error: null,
-        _meta: { discount_code: discountCode, discount_percent: discountPercent },
-      } as never);
-    } catch (rpcErr) {
-      console.warn("[welcome-automation] Failed to log delivery", rpcErr);
-    }
-
-    return { ok: true, discountCode };
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error("[welcome-automation] Dispatch error", err);
-    try {
-      await supabaseAdmin.rpc("log_email_delivery", {
-        _tenant_id: tenantId,
-        _user_id: null,
-        _recipient: email,
-        _from_address: r.from_email || "no-reply@mobidigisol.com",
-        _subject: subject,
-        _template: "welcome_discount",
-        _provider: "smtp_relay",
-        _provider_msg_id: `welcome_${Date.now()}`,
-        _status: "failed",
-        _error: errorMsg,
-        _meta: { error: errorMsg },
-      } as never);
-    } catch (rpcErr) {
-      console.warn("[welcome-automation] Failed to log dispatch failure", rpcErr);
-    }
-
-    return { ok: false, error: errorMsg };
-  }
+  return { ok: false, error: reason };
 }

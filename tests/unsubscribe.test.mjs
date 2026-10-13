@@ -299,18 +299,6 @@ describe("a marketing email is never sent without a working unsubscribe link", (
     assert.match(deliveries()[0]._error, /unsubscribe links are not set up/i);
   });
 
-  it("welcome email: with a key it goes ahead as before", async () => {
-    db.reset({ ...seed(), tenant_smtp_config: [welcomeConfig()] });
-    const result = await triggerLeadWelcomeAutomation({
-      tenantId: A,
-      email: "new@example.com",
-      name: "Sam",
-      sourceUrl: "",
-    });
-    assert.equal(result.ok, true);
-    assert.deepEqual(statuses(), ["delivered"]);
-  });
-
   it("capturing a lead still works with no key; the welcome and the first drip email are held back", async () => {
     db.reset({ leads: [], tenant_smtp_config: [welcomeConfig()] });
     setKey(undefined);
@@ -383,50 +371,5 @@ describe("a marketing email is never sent without a working unsubscribe link", (
     assert.match(deliveries()[0]._error, /unsubscribe links are not set up/i);
     assert.equal(row("drip_enrollments", "en-1").current_step, 1);
     assert.equal(row("drip_enrollments", "en-1").last_sent_at, undefined);
-  });
-
-  it("drip step: with a key it is sent and the sequence moves on", async () => {
-    db.reset({
-      drip_enrollments: [
-        {
-          id: "en-1",
-          sequence_id: "seq-1",
-          tenant_id: A,
-          email: EMAIL,
-          status: "in_progress",
-          current_step: 1,
-        },
-      ],
-      drip_steps: [
-        {
-          id: "s1",
-          sequence_id: "seq-1",
-          step_number: 1,
-          delay_days: 0,
-          template_id: "welcome_discount",
-          subject: "Hi {{name}}",
-        },
-        {
-          id: "s2",
-          sequence_id: "seq-1",
-          step_number: 2,
-          delay_days: 3,
-          template_id: "product_showcase",
-          subject: "Next",
-        },
-      ],
-      tenant_smtp_config: [welcomeConfig()],
-    });
-
-    const sent = await dispatchDripStepForEnrollment({
-      enrollmentId: "en-1",
-      tenantId: A,
-      email: EMAIL,
-      stepNumber: 1,
-    });
-
-    assert.equal(sent, true);
-    assert.deepEqual(statuses(), ["sent"]);
-    assert.equal(row("drip_enrollments", "en-1").current_step, 2);
   });
 });
