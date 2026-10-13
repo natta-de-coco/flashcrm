@@ -95,6 +95,9 @@ try {
     GRANT SELECT ON public.user_roles TO authenticated;
     GRANT ALL ON public.user_roles TO service_role;
     GRANT USAGE ON SCHEMA public, auth TO anon, authenticated, service_role;
+    -- Supabase hands every new function in public to these roles; a migration has
+    -- to take that away explicitly, so the harness does the same.
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
   `);
   await db.query(sql("20260926090000_profiles_privilege_columns_are_server_only.sql"));
   const migration = sql(MIGRATION);
