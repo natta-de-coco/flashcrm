@@ -209,12 +209,20 @@ export async function ingestLead(options: IngestLeadOptions) {
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-  // Query existing lead row to check previous consent
-  const { data: existing } = await supabaseAdmin
+  // Query this company's existing lead row to check previous consent. Another company holding
+  // the same address is a different person's record: its consent is not ours to read, and its
+  // row is not ours to change. If the lookup fails the capture stops: carrying on would treat an
+  // existing consented subscriber as new.
+  const { data: existing, error: lookupError } = await supabaseAdmin
     .from("leads")
     .select("id, consent_given, subscribed")
+    .eq("tenant_id", tenantId)
     .eq("email", cleanEmail)
     .maybeSingle();
+  if (lookupError) {
+    console.error("[leads] Failed to look up existing lead", lookupError);
+    throw lookupError;
+  }
 
   // Subsequent unconsented interactions never downgrade an existing consented subscriber
   const finalConsent = existing?.consent_given ? true : Boolean(consentGiven);
@@ -237,7 +245,7 @@ export async function ingestLead(options: IngestLeadOptions) {
 
   const { data: savedLead, error } = await supabaseAdmin
     .from("leads")
-    .upsert(payload as never, { onConflict: "email" })
+    .upsert(payload as never, { onConflict: "tenant_id,email" })
     .select()
     .single();
 

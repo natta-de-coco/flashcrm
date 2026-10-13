@@ -6,13 +6,20 @@
 //
 // Shared by the public-endpoint suites so they describe the same database.
 
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// The unique keys the real schema has on tables that the code under test upserts into (see
+// supabase/migrations). Every database starts with them, so an upsert that names any other column
+// list fails here as it would in Postgres, and so does a second row for the same key.
+const schemaKeys = () => ({ leads: [["tenant_id", "email"]] });
+
 export function createDb() {
   const state = {
     rows: {},
     faults: {},
     rpcResults: {},
     rpcCalls: [],
-    uniques: {},
+    uniques: schemaKeys(),
     ids: 0,
   };
 
@@ -36,6 +43,21 @@ export function createDb() {
     }
     in(key, values) {
       this.filters.push((r) => values.includes(r[key]));
+      return this;
+    }
+    ilike(key, pattern) {
+      // As in Postgres: case-insensitive, % is any run of characters, _ is any one
+      // character, and a backslash makes the next character an ordinary one.
+      let source = "";
+      for (let i = 0; i < pattern.length; i++) {
+        const c = pattern[i];
+        if (c === "\\" && i + 1 < pattern.length) source += escapeRegExp(pattern[++i]);
+        else if (c === "%") source += "[\\s\\S]*";
+        else if (c === "_") source += "[\\s\\S]";
+        else source += escapeRegExp(c);
+      }
+      const matcher = new RegExp(`^${source}$`, "i");
+      this.filters.push((r) => typeof r[key] === "string" && matcher.test(r[key]));
       return this;
     }
     is(key, value) {
@@ -150,6 +172,25 @@ export function createDb() {
         found = rows;
       }
       if (this.mode === "upsert") {
+        // Postgres only accepts ON CONFLICT (columns) when a unique index is on exactly those
+        // columns; with the primary key (id) as the default. Anything else is error 42P10, so a
+        // test that declares the real unique keys (db.unique) sees the mistake the real database
+        // would make.
+        const wanted = [...this.conflict].sort().join(",");
+        const known = [["id"], ...(state.uniques[this.table] ?? [])].map((u) =>
+          [...u].sort().join(","),
+        );
+        if (!known.includes(wanted)) {
+          return Promise.resolve({
+            data: null,
+            error: {
+              code: "42P10",
+              message:
+                "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+            },
+            count: null,
+          }).then(resolve, reject);
+        }
         const existing = table.find((r) => this.conflict.every((k) => r[k] === this.payload[k]));
         if (existing) Object.assign(existing, this.payload);
         else table.push(this.row(this.payload));
@@ -196,7 +237,7 @@ export function createDb() {
     /** Replaces every table's rows; anything not named starts empty. */
     reset(rows = {}) {
       state.rows = rows;
-      state.uniques = {};
+      state.uniques = schemaKeys();
       state.faults = {};
       state.rpcResults = {};
       state.rpcCalls = [];

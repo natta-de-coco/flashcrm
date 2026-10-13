@@ -373,3 +373,98 @@ describe("a marketing email is never sent without a working unsubscribe link", (
     assert.equal(row("drip_enrollments", "en-1").last_sent_at, undefined);
   });
 });
+
+describe("lead capture is limited to the company that received it", () => {
+  // The double holds the real key (one lead per company and address) and refuses any other
+  // ON CONFLICT, as Postgres does.
+  const leadsOf = (tenantId) => db.table("leads").filter((r) => r.tenant_id === tenantId);
+
+  beforeEach(() => {
+    db.reset({
+      leads: [
+        // Withdrew from company B some time ago.
+        {
+          id: "lead-b",
+          tenant_id: B,
+          email: EMAIL,
+          subscribed: false,
+          consent_given: false,
+          name: "Sam at B",
+        },
+      ],
+    });
+  });
+
+  it("a company capturing an address another company holds saves its own row and leaves the other alone", async () => {
+    const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
+
+    assert.equal(saved.tenant_id, A);
+    assert.equal(leadsOf(A).length, 1);
+    assert.equal(leadsOf(A)[0].consent_given, true);
+    assert.deepEqual(
+      { ...row("leads", "lead-b") },
+      {
+        id: "lead-b",
+        tenant_id: B,
+        email: EMAIL,
+        subscribed: false,
+        consent_given: false,
+        name: "Sam at B",
+      },
+      "company B's row is exactly as it was: still unsubscribed there",
+    );
+  });
+
+  it("consent given to another company is not read as consent given here", async () => {
+    db.reset({
+      leads: [{ id: "lead-b", tenant_id: B, email: EMAIL, subscribed: true, consent_given: true }],
+    });
+
+    const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: false });
+
+    assert.equal(saved.tenant_id, A);
+    assert.equal(saved.consent_given, false);
+    assert.equal(saved.subscribed, false);
+    assert.equal(row("leads", "lead-b").consent_given, true, "B's row is untouched");
+  });
+
+  it("asking for consent here counts as new consent even though another company already has it", async () => {
+    db.reset({
+      leads: [{ id: "lead-b", tenant_id: B, email: EMAIL, subscribed: true, consent_given: true }],
+    });
+
+    const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
+
+    assert.equal(saved.tenant_id, A);
+    assert.equal(typeof saved.consent_at, "string", "the moment of consent is recorded for A");
+    assert.equal(row("leads", "lead-b").consent_at, undefined);
+  });
+
+  it("someone who already consented here is never downgraded, even when two companies hold the address", async () => {
+    db.reset({
+      leads: [
+        { id: "lead-a", tenant_id: A, email: EMAIL, subscribed: true, consent_given: true },
+        { id: "lead-b", tenant_id: B, email: EMAIL, subscribed: true, consent_given: true },
+      ],
+    });
+
+    const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: false });
+
+    assert.equal(saved.id, "lead-a");
+    assert.equal(saved.consent_given, true);
+    assert.equal(saved.subscribed, true);
+    assert.equal(leadsOf(A).length, 1);
+  });
+
+  it("a lookup the database refuses stops the capture and writes nothing", async () => {
+    db.reset({ leads: [] });
+    db.fail("leads:read", { code: "XX000", message: "down" });
+    const before = snapshot();
+
+    await assert.rejects(
+      ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true }),
+      (thrown) => thrown?.code === "XX000",
+    );
+    assert.equal(snapshot(), before);
+  });
+});
