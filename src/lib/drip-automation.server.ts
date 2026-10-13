@@ -328,6 +328,11 @@ export async function cancelDripEnrollmentsForEmail(
     .in("status", ["enrolled", "in_progress"])
     .select("id");
 
+  // A database where the drip tables were never created (42P01 in Postgres, PGRST205 from the
+  // API) has no enrolments to cancel: that is "nothing to cancel", not a failure. Every other
+  // refusal is still one.
+  if (error?.code === "42P01" || error?.code === "PGRST205") return 0;
+
   if (error) {
     // "Nothing to cancel" (0) and "could not cancel" are different answers: the caller is
     // finishing a withdrawal of consent and must not report it done. The database's own message

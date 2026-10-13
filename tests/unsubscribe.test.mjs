@@ -647,3 +647,35 @@ describe("the address is matched however it was stored", () => {
     assert.equal(held(), before);
   });
 });
+
+describe("a database without the drip tables", () => {
+  // The drip tables come from a later migration than the leads and contacts tables. Where it has
+  // not been applied there can be no enrolments, so there is nothing to cancel and nothing failed.
+  const link = () => generateUnsubscribeToken(EMAIL, A);
+
+  for (const [name, code] of [
+    ["Postgres: relation does not exist", "42P01"],
+    ["PostgREST: table not found in the schema cache", "PGRST205"],
+  ]) {
+    it(`${name} (${code}) means no enrolments, and the withdrawal is complete`, async () => {
+      db.fail("drip_enrollments:update", { code, message: "the table is not there" });
+
+      assert.deepEqual(await applyUnsubscribe(link()), { ok: true, email: EMAIL });
+      assert.equal(row("leads", "lead-a").consent_given, false);
+      assert.equal(row("contacts", "contact-a").consent_given, false);
+      assert.equal(logged.length, 0, "nothing is reported as a failure");
+    });
+  }
+
+  for (const code of ["42501", "XX000", "PGRST301", "08006"]) {
+    it(`any other refusal (${code}) is still a failure`, async () => {
+      db.fail("drip_enrollments:update", { code, message: "refused" });
+      assert.deepEqual(await applyUnsubscribe(link()), { ok: false, error: COULD_NOT_UPDATE });
+    });
+  }
+
+  it("a refusal with no code is still a failure", async () => {
+    db.fail("drip_enrollments:update", { message: "relation does not exist" });
+    assert.deepEqual(await applyUnsubscribe(link()), { ok: false, error: COULD_NOT_UPDATE });
+  });
+});
