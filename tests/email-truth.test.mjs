@@ -20,7 +20,10 @@ import {
 import { dispatchDripStepForEnrollment } from "../node_modules/.cache/flas-drip-automation.mjs";
 import { dispatchSalesLeadAlert } from "../node_modules/.cache/flas-lead-alerts.mjs";
 import { sendPlatformTestEmail } from "../node_modules/.cache/flas-platform-email.mjs";
-import { sendPortalEmailReply } from "../node_modules/.cache/flas-user-email-accounts.mjs";
+import {
+  getStorageBudgetReport,
+  sendPortalEmailReply,
+} from "../node_modules/.cache/flas-user-email-accounts.mjs";
 import {
   dispatchCampaignNow,
   dispatchScheduledCampaigns,
@@ -577,7 +580,41 @@ describe("reply written in the portal", () => {
     for (const message of db.table("portal_email_messages")) {
       assert.equal(message.status, "failed");
       assert.equal(message.tenant_id, A);
+      assert.equal(message.error_message, REPLY_NOT_SENT, "the kept row says why it was not sent");
     }
+  });
+
+  it("an unsent reply deletes nothing: it does not start the storage pruning", async () => {
+    // A mailbox over 85% full, with old mail that the pruning would delete.
+    db.reset(
+      rows({
+        portal_email_messages: [
+          {
+            id: "old",
+            tenant_id: A,
+            storage_bytes: 950_000_000,
+            created_at: "2025-01-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+    let deletes = 0;
+    db.fail("portal_email_messages:delete", () => {
+      deletes++;
+      return undefined;
+    });
+
+    await assert.rejects(reply(), { message: REPLY_NOT_SENT });
+
+    assert.deepEqual(
+      attempts.filter((a) => a.name === "check_and_prune_tenant_email_storage"),
+      [],
+    );
+    assert.equal(deletes, 0);
+    assert.equal(
+      db.table("portal_email_messages").some((m) => m.id === "old"),
+      true,
+    );
   });
 
   it("is refused even when saving the unsent copy fails", async () => {
@@ -591,6 +628,80 @@ describe("reply written in the portal", () => {
     db.reset(rows());
     await assert.rejects(reply(THEIRS), { message: "Selected sender email account not found." });
     assert.equal(db.table("portal_email_messages").length, 0);
+  });
+});
+
+describe("the storage report only reads", () => {
+  const staff = { supabase: db.client, userId: "user-1" };
+  const GB = 1073741824;
+  const report = () => getStorageBudgetReport({ context: staff });
+  const message = (id, tenant_id, storage_bytes, created_at = "2025-01-01T00:00:00Z") => ({
+    id,
+    tenant_id,
+    storage_bytes,
+    created_at,
+  });
+  const base = (messages) => ({
+    profiles: [{ id: "user-1", tenant_id: A }],
+    portal_email_messages: messages,
+  });
+  // Every kind of write to the mailbox table is counted, so a delete, an update or an insert
+  // anywhere in the report is seen however it is made.
+  let writes;
+  const watch = () => {
+    writes = 0;
+    for (const op of ["insert", "update", "delete", "upsert"]) {
+      db.fail(`portal_email_messages:${op}`, () => {
+        writes++;
+        return undefined;
+      });
+    }
+  };
+  const prunes = () => attempts.filter((a) => a.name === "check_and_prune_tenant_email_storage");
+
+  it("over 85% full, with old mail, it reports the usage and deletes nothing", async () => {
+    db.reset(
+      base([message("old", A, 950_000_000), message("new", A, 1000, new Date().toISOString())]),
+    );
+    watch();
+
+    const result = await report();
+
+    assert.equal(result.usedBytes, 950_001_000);
+    assert.equal(result.maxCapBytes, GB);
+    assert.equal(result.usagePercent, 88.48);
+    assert.equal(result.isCritical, true);
+    assert.equal(result.purgedCount, 0);
+    assert.equal(writes, 0, "the report wrote to the mailbox table");
+    assert.deepEqual(prunes(), [], "the report started the pruning");
+    assert.equal(db.table("portal_email_messages").length, 2);
+  });
+
+  it("counts every message even when one read returns fewer rows than exist, and only this company's", async () => {
+    const mine = [];
+    for (let i = 0; i < 12; i++) mine.push(message(`m-${i}`, A, 100));
+    db.reset(base([...mine, message("theirs", B, 5000)]));
+    db.state.rowCap = 5;
+
+    const result = await report();
+
+    assert.equal(result.usedBytes, 1200);
+    assert.equal(result.isCritical, false);
+  });
+
+  it("a read that fails is an error, not an empty mailbox", async () => {
+    db.reset(base([message("old", A, 950_000_000)]));
+    db.fail("portal_email_messages:read", { code: "XX000", message: "down" });
+    await assert.rejects(report(), /could not be read/);
+  });
+
+  it("with no workspace it reports nothing and touches nothing", async () => {
+    db.reset({ profiles: [{ id: "user-1", tenant_id: null }], portal_email_messages: [] });
+    watch();
+    const result = await report();
+    assert.equal(result.usedBytes, 0);
+    assert.equal(writes, 0);
+    assert.deepEqual(prunes(), []);
   });
 });
 
