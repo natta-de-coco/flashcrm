@@ -1318,4 +1318,19 @@ describe("text written straight into screens does not send anyone to a retired e
     );
     assert.ok(read("src/routes/_authenticated/marketing.tsx").includes("Leads & email — Flas CRM"));
   });
+
+  it("the Leads & email page is headed with the menu's own label, in the reader's language", () => {
+    const page = strip(read("src/routes/_authenticated/marketing.tsx"));
+    // Not the old name in any spelling...
+    assert.equal(/Leads\s*(&|&amp;)\s*marketing/i.test(page), false);
+    // ...but the label the menu shows for this screen, from the same translation key.
+    assert.match(
+      page,
+      /<h1[^>]*>\s*\{tx\(navMessageKey\("\/marketing", "label"\), "Leads & email"\)\}\s*<\/h1>/,
+    );
+    assert.equal(MESSAGES.en[navMessageKey("/marketing", "label")], "Leads & email");
+    for (const language of LANGUAGES) {
+      assert.ok(MESSAGES[language][navMessageKey("/marketing", "label")], language);
+    }
+  });
 });
