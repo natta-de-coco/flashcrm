@@ -130,11 +130,15 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         );
       }
 
+      if (status === "sent") {
+        throw new Error(
+          "Campaigns cannot be manually dragged to Sent. Broadcast the campaign using 'Send Now'.",
+        );
+      }
+
       const updateData: Record<string, unknown> = { status };
       if (status === "scheduled") {
         updateData["scheduled_at"] = new Date().toISOString();
-      } else if (status === "sent") {
-        updateData["sent_at"] = new Date().toISOString();
       }
 
       const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
