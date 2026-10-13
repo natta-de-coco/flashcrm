@@ -551,10 +551,10 @@ export const COMPARISON_POSTS = defineArticles([
 <p>To evaluate how each platform behaves under pressure, we simulated a realistic B2B sales scenario: <em>A regional equipment contractor contacts the business via WhatsApp requesting 15 industrial pumps ($12,000 total). The buyer needs an official formal quotation with company registration and VAT details within 15 minutes, requests an amended quantity to 18 units two hours later, and the transaction must be handed over seamlessly to the afternoon shift manager.</em></p>
 
 <h3>1. Time-to-Quote (TtQ) &amp; Clerical Friction</h3>
-<p>In <strong>Flas CRM</strong>, the sales rep opened the catalog selector directly inside the active WhatsApp chat, picked the pump model, entered the quantity, verified the 5% VAT calculation with the company's Tax Registration Number (TRN), and generated a branded PDF quote in <strong>32 seconds</strong>. In <strong>Kommo</strong> and <strong>Wati</strong>, the agent had to open external accounting software (such as QuickBooks or Zoho Books), re-enter the buyer's details, generate a PDF on their desktop, switch back to the browser, and upload the file—taking an average of <strong>3 minutes and 40 seconds</strong> of clerical drag.</p>
+<p>In <strong>Flas CRM</strong>, the sales rep opened the catalog selector directly inside the active WhatsApp chat (following the method detailed in our <a href="/blog/quotation-to-payment-on-whatsapp">quotation-to-payment workflow guide</a>), picked the pump model, entered the quantity, verified the 5% VAT calculation with the company's Tax Registration Number (TRN), and generated a branded PDF quote in <strong>32 seconds</strong>. In <strong>Kommo</strong> and <strong>Wati</strong>, the agent had to open external accounting software (such as QuickBooks or Zoho Books), re-enter the buyer's details, generate a PDF on their desktop, switch back to the browser, and upload the file—taking an average of <strong>3 minutes and 40 seconds</strong> of clerical drag.</p>
 
 <h3>2. The Unbriefed Shift Handover</h3>
-<p>At 2:00 PM, Shift Rep A clocked out and Shift Rep B took over the conversation without a verbal briefing. In Flas CRM, Rep B clicked the contact record and immediately saw the deal stage (Negotiation), total value ($12,000), and quote timestamp in the sidebar. In Kommo, the visual deal timeline also presented the deal value clearly. In Wati, Rep B had to scroll through 45 lines of conversational small talk to ascertain what had been agreed, creating a 5-minute onboarding lag.</p>
+<p>At 2:00 PM, Shift Rep A clocked out and Shift Rep B took over the conversation without a verbal briefing. In Flas CRM, Rep B clicked the contact record and immediately saw the deal stage (Negotiation), total value ($12,000), and quote timestamp in the sidebar. In Kommo, the visual deal timeline also presented the deal value clearly. In Wati, Rep B had to scroll through 45 lines of conversational small talk to ascertain what had been agreed, creating a 5-minute onboarding lag. (Review our <a href="/blog/whatsapp-shared-inbox-for-teams">shared team inbox protocols</a> for shift management).</p>
 
 <h3>3. The Mid-Flight Quantity Revision</h3>
 <p>When the buyer messaged: <em>"Can you please increase the order to 18 units and send an updated quotation?"</em>, Flas CRM allowed the rep to duplicate Quote #1042 with one click, modify the quantity to 18, and dispatch Quote #1042-v2 in <strong>18 seconds</strong>. In external accounting setups linked to Wati or Kommo, updating the quotation required creating a whole new transaction in the third-party software, downloading another file, and manually updating the deal value.</p>
@@ -575,7 +575,7 @@ export const COMPARISON_POSTS = defineArticles([
   <tbody>
     <tr>
       <td>Core Platform Subscription</td>
-      <td>Flat workspace subscription</td>
+      <td>Flat workspace subscription (<a href="/pricing">view Flas pricing</a>)</td>
       <td>$15 – $45 / user / mo ($900 – $2,700/yr)</td>
       <td>$49 – $99 / mo base ($588 – $1,188/yr)</td>
     </tr>
@@ -619,7 +619,7 @@ export const COMPARISON_POSTS = defineArticles([
 <ul>
   <li><strong>Choose Kommo if:</strong> Your sales operation relies heavily on complex multi-channel conversational funnels across Instagram DMs, Telegram, and Facebook Messenger, and you need a visual bot builder ("Salesbot") with dozens of branching conditional rules. If your back-office already has an established enterprise ERP that handles all billing, Kommo's social lead intake pipeline is exceptionally mature.</li>
   <li><strong>Choose Wati if:</strong> You run an online consumer e-commerce store on Shopify or WooCommerce where 90% of your activity is mass broadcast notifications, promotional flash-sale blasts, and automated abandoned cart recovery sequences with interactive catalog browsing. Wati's broadcast analytics and e-commerce webhooks are purpose-built for consumer volume.</li>
-  <li><strong>Choose Flas CRM if:</strong> You are a B2B distributor, wholesale supplier, professional consultancy, or regional service enterprise where sales reps need to handle incoming WhatsApp enquiries, qualify leads on a visual pipeline, issue official branded PDF quotations with local VAT in under a minute, and track payments without paying a per-seat penalty.</li>
+  <li><strong>Choose Flas CRM if:</strong> You are a B2B distributor, wholesale supplier, professional consultancy, or regional service enterprise where sales reps need to handle incoming WhatsApp enquiries, qualify leads on a visual pipeline, issue official branded PDF quotations with local VAT in under a minute, and track payments without paying a per-seat penalty. Explore the <a href="/features">full Flas CRM feature suite</a>.</li>
 </ul>
 
 <h2>The 14-Day Practical Evaluation Scorecard</h2>
