@@ -7,8 +7,9 @@
  *   - Step 2 (Day 3): Product / Solution Showcase & Demo
  *   - Step 3 (Day 7): Urgency Offer Expiry Reminder (e.g. LASTCHANCE20)
  *
- * Strictly respects unsubscribe requests. No mail transport is connected yet, so a step is never
- * sent and never recorded as sent: it is logged as not sent and the enrolment stays where it is.
+ * Strictly respects unsubscribe requests. This path does not call a sender (the HTTP senders in
+ * email-dispatch.server.ts are used elsewhere, not here), so a step is never sent and never
+ * recorded as sent: it is logged as not sent and the enrolment stays where it is.
  */
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -212,7 +213,7 @@ export async function enrollLeadInDripSequence(args: {
 /**
  * Tries to send a specific step for an enrollment.
  *
- * With no mail transport connected nothing is sent: the step is logged as not sent (with the
+ * This path calls no sender, so nothing is sent: the step is logged as not sent (with the
  * reason) and the enrolment is NOT advanced (current_step, next_run_at and last_sent_at stay as
  * they are), so a later real send starts at this same step. Returns true only when the step is
  * done (nothing left to send, or sent); false when it was not sent. A real send must advance the

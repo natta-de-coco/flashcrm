@@ -431,7 +431,7 @@ export const getStorageBudgetReport = createServerFn({ method: "GET" })
     };
   });
 
-/** What the staff member is told: no mail transport is connected, so no reply can go out yet. */
+/** What the staff member is told: this path calls no sender, so no reply can go out yet. */
 const REPLY_NOT_SENT_MESSAGE = "Your reply was not sent. Email sending is not connected yet.";
 
 /**

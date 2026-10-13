@@ -102,6 +102,10 @@ const STAGES: {
   },
 ];
 
+// A campaign saved with a date is not sent by anything yet: the screen must not promise it.
+const NOT_SENT_UNTIL_CONNECTED =
+  "Saved with a date. Nothing will be sent until email sending is connected.";
+
 export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: CampaignBoardProps) {
   const qc = useQueryClient();
   const [composerOpen, setComposerOpen] = useState(false);
@@ -141,8 +145,8 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
       const { error } = await campaignsTable.update(updateData).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      toast.success("Campaign stage updated");
+    onSuccess: (_data, { status }) => {
+      toast.success(status === "scheduled" ? NOT_SENT_UNTIL_CONNECTED : "Campaign stage updated");
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
@@ -179,7 +183,7 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         .eq("id", editingCampaign.id);
 
       if (error) throw error;
-      toast.success("Campaign updated successfully");
+      toast.success(isScheduled ? NOT_SENT_UNTIL_CONNECTED : "Campaign updated successfully");
     } else {
       const { error } = await campaignsTable.insert({
         name: data.name,
@@ -193,7 +197,7 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
       });
 
       if (error) throw error;
-      toast.success(isScheduled ? "Campaign scheduled successfully" : "Draft campaign saved");
+      toast.success(isScheduled ? NOT_SENT_UNTIL_CONNECTED : "Draft campaign saved");
     }
 
     setEditingCampaign(null);

@@ -3,7 +3,7 @@
  *
  * Real-time Lead Intake & Automated Welcome Discount Engine.
  * Enforces explicit consent gating, generates signed HMAC one-click unsubscribe tokens, and
- * records welcome emails truthfully: with no mail transport connected, nothing is sent and nothing
+ * records welcome emails truthfully: this path calls no sender, so nothing is sent and nothing
  * is logged as sent or delivered.
  */
 
@@ -44,12 +44,19 @@ function sign(data: string, secret: string): string {
 }
 
 /**
- * Why a marketing email cannot go out right now. There is no mail transport in this code yet, so
- * there is always a reason: either unsubscribe links are not set up (an email without one must
- * never go out) or, when they are, sending itself is not connected. Pass the recipient to also
- * check that a link can be made for them. Callers must refuse, record the email as not sent and
- * leave any progress marker where it is. When a real transport is connected, this is the one
- * place that stops reporting "not connected".
+ * Why a marketing email cannot go out right now. The welcome, drip and campaign paths call no
+ * sender, so there is always a reason: either unsubscribe links are not set up (an email
+ * without one must never go out) or, when they are, sending itself is not connected. Pass the
+ * recipient to also check that a link can be made for them. Callers must refuse, record the
+ * email as not sent and leave any progress marker where it is.
+ *
+ * For whoever connects sending: src/lib/email-dispatch.server.ts already has HTTP senders
+ * (Resend, Postmark, Mailgun, via sendTenantEmail), used by plugin activation. What is missing
+ * is that these marketing paths do not call one. The code that was removed from them
+ * decrypted each company's SMTP password and could not run on the serverless host, so connect
+ * them to those HTTP senders, and then change this function and the callers together: a path
+ * may record "sent" only after the provider accepted the message, and may move a drip
+ * enrolment or a campaign on only after that.
  */
 export function whyMarketingEmailCannotBeSent(link?: { email: string; tenantId: string }): string {
   if (!readUnsubscribeSecret()) return UNSUBSCRIBE_NOT_SENT_REASON;
@@ -305,8 +312,8 @@ export async function ingestLead(options: IngestLeadOptions) {
 }
 
 /**
- * Real-time trigger for the welcome discount email. No mail transport is connected yet, so this
- * never sends: it records the email as not sent and returns the reason (ok: false).
+ * Real-time trigger for the welcome discount email. This path calls no sender, so it never
+ * sends: it records the email as not sent and returns the reason (ok: false).
  */
 export async function triggerLeadWelcomeAutomation(params: {
   tenantId: string;

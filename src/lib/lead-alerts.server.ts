@@ -3,8 +3,8 @@
  *
  * Real-time Instant Sales Lead Alert Dispatcher.
  * Notifies sales reps by WhatsApp and in-app alert whenever a new lead submits their contact info
- * or requests a quotation in the widget. Email alerts are not sent yet (no mail transport is
- * connected): they are logged as not sent and never counted.
+ * or requests a quotation in the widget. Email alerts are not sent yet (this path calls no
+ * sender): they are logged as not sent and never counted.
  */
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";

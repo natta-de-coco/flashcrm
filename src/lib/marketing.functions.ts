@@ -35,8 +35,8 @@ const DispatchCampaignSchema = z.object({
 /**
  * Sends a campaign immediately to all subscribed/consented leads.
  *
- * No mail transport is connected yet, so this never sends: it refuses with the plain reason and
- * changes nothing. In particular the campaign is not moved to "sent", no recipient count is
+ * This path calls no sender (email-dispatch.server.ts has HTTP senders, but nothing here uses
+ * one), so it never sends: it refuses with the plain reason and changes nothing. In particular the campaign is not moved to "sent", no recipient count is
  * stored and no "dispatched" audit record is written, because none of that would be true. The
  * result type is what a real send will return.
  */
@@ -72,7 +72,7 @@ export const dispatchCampaignNow = createServerFn({ method: "POST" })
  * Sends all pending scheduled campaigns for the active tenant.
  *
  * Nothing scheduled is a true "nothing to send". Anything scheduled is refused with the plain
- * reason (no mail transport is connected yet) and keeps its status; a database error reading the
+ * reason (this path calls no sender) and keeps its status; a database error reading the
  * list is an error, not "nothing to send".
  */
 export const dispatchScheduledCampaigns = createServerFn({ method: "POST" })

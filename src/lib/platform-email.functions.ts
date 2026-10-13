@@ -391,7 +391,7 @@ const SendPlatformTestEmailSchema = z.object({
   recipient: z.string().email("Invalid recipient email address"),
 });
 
-/** What the manager is told: no mail transport is connected, so no test email can go out yet. */
+/** What the manager is told: this path calls no sender, so no test email can go out yet. */
 const TEST_EMAIL_NOT_SENT_MESSAGE = "No test email was sent. Email sending is not connected yet.";
 
 /**

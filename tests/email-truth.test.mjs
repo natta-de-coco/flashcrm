@@ -1,12 +1,14 @@
 // What the product says about email it did not send.
 //
-// There is no mail transport in this code yet: nothing here can put a message on the wire. So the
+// These paths call no sender (the HTTP senders in email-dispatch.server.ts are not used by them),
+// so nothing here puts a message on the wire. So the
 // welcome email, each drip step and a campaign broadcast must not say "sent" or "delivered", must
 // not use up a drip step or move a campaign to "sent", and must tell the caller plainly that
 // nothing went out. Every test drives the real handler against a database double; the double
 // can also refuse the delivery-log call, because a log that fails must not turn into success.
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 
 import { createDb } from "./support/db-double.mjs";
@@ -589,5 +591,27 @@ describe("reply written in the portal", () => {
     db.reset(rows());
     await assert.rejects(reply(THEIRS), { message: "Selected sender email account not found." });
     assert.equal(db.table("portal_email_messages").length, 0);
+  });
+});
+
+describe("campaign board", () => {
+  const board = readFileSync(
+    new URL("../src/components/marketing/CampaignBoard.tsx", import.meta.url),
+    "utf8",
+  )
+    .split("\r\n")
+    .join("\n");
+
+  it("never says a scheduled campaign was scheduled successfully, because nothing will send it", () => {
+    assert.doesNotMatch(board, /Campaign scheduled successfully/);
+    assert.match(
+      board,
+      /Saved with a date\. Nothing will be sent until email sending is connected\./,
+    );
+  });
+
+  it("shows that sentence everywhere a campaign is saved or moved to 'scheduled'", () => {
+    const uses = board.match(/toast\.success\([^;]*NOT_SENT_UNTIL_CONNECTED/g) ?? [];
+    assert.equal(uses.length, 3, "new campaign, edited campaign, and a card moved to scheduled");
   });
 });
