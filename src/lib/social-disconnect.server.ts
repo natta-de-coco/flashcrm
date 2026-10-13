@@ -106,7 +106,11 @@ export async function disconnectSocialAccount(args: {
     } catch {
       token = null;
     }
-    providerRevoke = await revokeAtProvider(connector(row.platform)?.provider, token, args.fetchImpl);
+    providerRevoke = await revokeAtProvider(
+      connector(row.platform)?.provider,
+      token,
+      args.fetchImpl,
+    );
   }
 
   const { error: clearError } = await supabaseAdmin

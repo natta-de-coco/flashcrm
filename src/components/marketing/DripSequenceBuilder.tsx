@@ -88,9 +88,7 @@ export function DripSequenceBuilder() {
                   {data.active ? "Active & Running" : "Paused"}
                 </Badge>
               </div>
-              <CardDescription className="text-xs">
-                {data.description}
-              </CardDescription>
+              <CardDescription className="text-xs">{data.description}</CardDescription>
             </div>
 
             <div className="flex items-center gap-3">
@@ -189,14 +187,16 @@ export function DripSequenceBuilder() {
                 <CardContent className="p-4 pt-1 text-xs text-muted-foreground">
                   {isFirst && (
                     <p>
-                      Dispatched immediately when a visitor subscribes via the website chat widget or
-                      lead form with marketing consent. Delivers their initial discount promo code.
+                      Dispatched immediately when a visitor subscribes via the website chat widget
+                      or lead form with marketing consent. Delivers their initial discount promo
+                      code.
                     </p>
                   )}
                   {step.stepNumber === 2 && (
                     <p>
-                      Follows up 3 days later with an educational showcase highlighting how your core
-                      product or service solves their key pain points. Encourages booking a demo or quotation.
+                      Follows up 3 days later with an educational showcase highlighting how your
+                      core product or service solves their key pain points. Encourages booking a
+                      demo or quotation.
                     </p>
                   )}
                   {isLast && (

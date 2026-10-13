@@ -82,7 +82,6 @@ await build({
   ],
 });
 
-
 await build({
   entryPoints: ["src/lib/locale.ts"],
   outfile: "node_modules/.cache/flas-locale.mjs",
@@ -93,7 +92,6 @@ await build({
   logLevel: "error",
   alias: { "@": "./src" },
 });
-
 
 await build({
   entryPoints: ["src/lib/navigation.ts"],
@@ -157,7 +155,6 @@ await build({
   logLevel: "error",
 });
 
-
 await build({
   entryPoints: ["src/lib/social.server.ts"],
   outfile: "node_modules/.cache/flas-social-server.mjs",
@@ -211,5 +208,4 @@ await build({
   bundle: true,
   logLevel: "error",
   alias: { "@": "./src" },
-
 });

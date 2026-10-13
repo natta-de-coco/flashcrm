@@ -349,7 +349,9 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
     input.company.email,
     input.company.website,
     input.company.vat_number ? `TRN / VAT: ${input.company.vat_number}` : null,
-    input.company.tax_registration_number ? `Tax Reg No: ${input.company.tax_registration_number}` : null,
+    input.company.tax_registration_number
+      ? `Tax Reg No: ${input.company.tax_registration_number}`
+      : null,
     input.company.registration_number ? `Reg. No: ${input.company.registration_number}` : null,
   ].filter(Boolean) as string[];
   for (const line of companyLines) {

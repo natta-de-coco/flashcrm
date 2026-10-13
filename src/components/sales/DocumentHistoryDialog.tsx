@@ -114,7 +114,8 @@ export function DocumentHistoryDialog({
             <DialogTitle>Document History &amp; Backup Logs</DialogTitle>
           </div>
           <DialogDescription>
-            Audit trail, version history, SHA-256 verification fingerprints and tamper-proof PDF backups.
+            Audit trail, version history, SHA-256 verification fingerprints and tamper-proof PDF
+            backups.
           </DialogDescription>
         </DialogHeader>
 
@@ -147,7 +148,8 @@ export function DocumentHistoryDialog({
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Issued: {d.issue_date} · Total: {d.currency} {Number(d.grand_total).toFixed(2)}
+                      Issued: {d.issue_date} · Total: {d.currency}{" "}
+                      {Number(d.grand_total).toFixed(2)}
                     </p>
                   </div>
 
@@ -205,15 +207,23 @@ export function DocumentHistoryDialog({
                             </div>
                             {item.actor_label && (
                               <p className="text-[11px] text-muted-foreground mt-0.5">
-                                Actor: <span className="font-medium text-foreground">{item.actor_label}</span>
+                                Actor:{" "}
+                                <span className="font-medium text-foreground">
+                                  {item.actor_label}
+                                </span>
                               </p>
                             )}
                             {item.details && Object.keys(item.details).length > 0 && (
                               <div className="mt-2 rounded bg-muted/60 p-2 font-mono text-[10px] space-y-1">
                                 {Object.entries(item.details).map(([k, v]) => (
-                                  <div key={k} className="flex items-baseline justify-between gap-2">
+                                  <div
+                                    key={k}
+                                    className="flex items-baseline justify-between gap-2"
+                                  >
                                     <span className="text-muted-foreground capitalize">{k}:</span>
-                                    <span className="truncate max-w-[280px] font-semibold">{String(v)}</span>
+                                    <span className="truncate max-w-[280px] font-semibold">
+                                      {String(v)}
+                                    </span>
                                   </div>
                                 ))}
                               </div>
@@ -229,17 +239,27 @@ export function DocumentHistoryDialog({
               <TabsContent value="files" className="flex-1 min-h-0 overflow-y-auto mt-3">
                 {files.length === 0 ? (
                   <div className="py-8 text-center text-xs text-muted-foreground border border-dashed rounded-lg space-y-1">
-                    <p className="font-medium text-foreground">No locked PDF backup archived yet.</p>
-                    <p>Finalizing a document freezes its vector PDF, calculates its SHA-256 fingerprint, and stores an immutable copy.</p>
+                    <p className="font-medium text-foreground">
+                      No locked PDF backup archived yet.
+                    </p>
+                    <p>
+                      Finalizing a document freezes its vector PDF, calculates its SHA-256
+                      fingerprint, and stores an immutable copy.
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {files.map((file) => (
-                      <div key={file.id} className="rounded-lg border p-3 text-xs bg-card space-y-2">
+                      <div
+                        key={file.id}
+                        className="rounded-lg border p-3 text-xs bg-card space-y-2"
+                      >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 font-semibold">
                             <FileCheck className="size-4 text-emerald-600" />
-                            <span>Version {file.version} ({file.kind})</span>
+                            <span>
+                              Version {file.version} ({file.kind})
+                            </span>
                           </div>
                           <span className="text-[10px] text-muted-foreground">
                             {new Date(file.created_at).toLocaleString()}

@@ -13,7 +13,10 @@ type BriefLike = {
 const MARGIN = 48;
 const BRAND: [number, number, number] = [16, 94, 62];
 
-export async function downloadAdvisorPdf(analysis: AdvisorAnalysis, brief: BriefLike = {}): Promise<void> {
+export async function downloadAdvisorPdf(
+  analysis: AdvisorAnalysis,
+  brief: BriefLike = {},
+): Promise<void> {
   // Loaded on click, not with the page: jsPDF and its html2canvas dependency
   // are ~600 kB, and almost every visit never exports a PDF.
   const { jsPDF } = await import("jspdf");

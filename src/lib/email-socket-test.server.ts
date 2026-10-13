@@ -137,7 +137,10 @@ class SocketReader {
       const line = await this.readLine(timeoutMs);
       lines.push(line);
       if (line.startsWith(`${tag} `)) {
-        const parts = line.slice(tag.length + 1).trim().split(" ");
+        const parts = line
+          .slice(tag.length + 1)
+          .trim()
+          .split(" ");
         const status = parts[0] as "OK" | "NO" | "BAD";
         return { status, line, lines };
       }
@@ -154,10 +157,12 @@ export async function testSmtpSocket(options: SmtpTestOptions): Promise<Connecti
   const reader = new SocketReader();
   const password = options.password ?? options.pass;
 
-  const isImplicitTls = options.secure ?? (options.port === 465);
+  const isImplicitTls = options.secure ?? options.port === 465;
 
   try {
-    steps.push(`Connecting to ${options.host}:${options.port} (${isImplicitTls ? "SSL/TLS" : "Plain/STARTTLS"})...`);
+    steps.push(
+      `Connecting to ${options.host}:${options.port} (${isImplicitTls ? "SSL/TLS" : "Plain/STARTTLS"})...`,
+    );
 
     socket = await new Promise<net.Socket | tls.TLSSocket>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -380,10 +385,12 @@ export async function testImapSocket(options: ImapTestOptions): Promise<Connecti
   const reader = new SocketReader();
   const password = options.password ?? options.pass;
 
-  const isImplicitTls = options.secure ?? (options.port === 993);
+  const isImplicitTls = options.secure ?? options.port === 993;
 
   try {
-    steps.push(`Connecting to IMAP ${options.host}:${options.port} (${isImplicitTls ? "SSL/TLS" : "Plain"})...`);
+    steps.push(
+      `Connecting to IMAP ${options.host}:${options.port} (${isImplicitTls ? "SSL/TLS" : "Plain"})...`,
+    );
 
     socket = await new Promise<net.Socket | tls.TLSSocket>((resolve, reject) => {
       const timer = setTimeout(() => {

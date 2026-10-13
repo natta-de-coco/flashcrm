@@ -80,7 +80,10 @@ export const getSalesWorkspace = createServerFn({ method: "GET" })
     ]);
     if (docs.error) throw docs.error;
 
-    const contactMeta = new Map<string, { vat_number?: string | undefined; address?: string | undefined }>();
+    const contactMeta = new Map<
+      string,
+      { vat_number?: string | undefined; address?: string | undefined }
+    >();
     for (const doc of docs.data ?? []) {
       if (doc.contact_id && doc.customer_snapshot) {
         const snap = doc.customer_snapshot as { vat_number?: string; address?: string };
@@ -579,14 +582,17 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     if (data.email !== undefined) patch["email"] = data.email;
     if (data.website !== undefined) patch["website"] = data.website;
     if (trn !== undefined) patch["vat_number"] = trn;
-    if (data.registration_number !== undefined) patch["registration_number"] = data.registration_number;
+    if (data.registration_number !== undefined)
+      patch["registration_number"] = data.registration_number;
     if (data.tax_label !== undefined) patch["tax_label"] = data.tax_label;
     if (data.tax_enabled !== undefined) patch["tax_enabled"] = data.tax_enabled;
     if (data.default_currency !== undefined) patch["default_currency"] = data.default_currency;
     if (data.default_tax_rate !== undefined) patch["default_tax_rate"] = data.default_tax_rate;
-    if (data.default_payment_terms !== undefined) patch["default_payment_terms"] = data.default_payment_terms;
+    if (data.default_payment_terms !== undefined)
+      patch["default_payment_terms"] = data.default_payment_terms;
     if (data.default_terms !== undefined) patch["default_terms"] = data.default_terms;
-    if (data.online_payment_url !== undefined) patch["online_payment_url"] = data.online_payment_url;
+    if (data.online_payment_url !== undefined)
+      patch["online_payment_url"] = data.online_payment_url;
 
     const { error } = await context.supabase
       .from("billing_settings")

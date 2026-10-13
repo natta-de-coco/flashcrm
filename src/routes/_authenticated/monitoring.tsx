@@ -42,7 +42,6 @@ function metaUnavailableReason(raw: string | null | undefined): string {
   return plain.kind === "provider_unsupported" ? META_ANALYTICS_UNAVAILABLE : plain.message;
 }
 
-
 export const Route = createFileRoute("/_authenticated/monitoring")({
   head: () => ({
     meta: [
@@ -112,7 +111,6 @@ function MonitoringPage() {
       console.error("[monitoring] analytics insights failed", e);
       toast.error(plainErrorMessage(e, { action: "prepare those recommendations" }));
     },
-
   });
 
   // The provider's own words are kept where an engineer can find them, and out
@@ -222,19 +220,26 @@ function MonitoringPage() {
     else void qc.invalidateQueries({ queryKey: ["system_alerts"] });
   }
 
-  if (waAnalytics.isLoading || events.isLoading || alerts.isLoading || stats.isLoading || numbers.isLoading) return (
-  <div className="space-y-3 p-6">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
-        <Skeleton className="h-10 w-10 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-3 w-2/3" />
-        </div>
+  if (
+    waAnalytics.isLoading ||
+    events.isLoading ||
+    alerts.isLoading ||
+    stats.isLoading ||
+    numbers.isLoading
+  )
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
       </div>
-    ))}
-  </div>
-);
+    );
 
   const openAlerts = (alerts.data ?? []).filter((a) => !a.resolved);
 
@@ -318,7 +323,6 @@ function MonitoringPage() {
               )}
               {t("monitoring.askFlasAiWhatTo")}
             </Button>
-
           </div>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -548,11 +552,9 @@ function MonitoringPage() {
             <p className="text-sm text-muted-foreground">{t("monitoring.loadingEvents")}</p>
           )}
           {!events.isLoading && (events.data ?? []).length === 0 && (
-
             <p className="text-sm text-muted-foreground">
               {t("monitoring.noWebhookEventsRecordedYet")}
             </p>
-
           )}
           {(events.data ?? []).map((event) => (
             <div key={event.id} className="rounded-lg border p-3">

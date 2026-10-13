@@ -36,7 +36,7 @@ export type AccountLike = {
   external_id?: string | null;
   connect_method?: string | null;
   label?: string | null;
-/** Last live provider call that proved the token works. */
+  /** Last live provider call that proved the token works. */
   last_validation_success_at?: string | null;
   legacy_manual_connection?: boolean | null;
   /** Batch 2A: set for channels on a shared authorization. */

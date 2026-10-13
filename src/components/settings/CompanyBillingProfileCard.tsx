@@ -90,8 +90,8 @@ export function CompanyBillingProfileCard() {
           <Receipt className="size-4 text-primary" /> Company Tax, TRN &amp; Invoicing Profile
         </CardTitle>
         <CardDescription>
-          Your company legal details and Tax Registration Number (TRN). These appear on your official
-          quotation and tax invoice PDFs, ZATCA QR codes and WhatsApp payment links.
+          Your company legal details and Tax Registration Number (TRN). These appear on your
+          official quotation and tax invoice PDFs, ZATCA QR codes and WhatsApp payment links.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -228,11 +228,7 @@ export function CompanyBillingProfileCard() {
         </div>
 
         <div className="flex justify-end pt-2">
-          <Button
-            onClick={() => mutation.mutate()}
-            disabled={mutation.isPending}
-            className="gap-2"
-          >
+          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} className="gap-2">
             {mutation.isPending ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (

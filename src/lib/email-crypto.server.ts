@@ -36,8 +36,7 @@ export class EmailCryptoError extends Error {
 }
 
 export type Env = Record<string, string | undefined>;
-const defaultEnv = (): Env =>
-  (typeof process !== "undefined" ? process.env : {}) as Env;
+const defaultEnv = (): Env => (typeof process !== "undefined" ? process.env : {}) as Env;
 
 /* ---------- base64 / base64url helpers ---------- */
 
@@ -96,7 +95,10 @@ export function readEmailKeyRing(env: Env = defaultEnv()): KeyRing {
     const id = i > 0 ? trimmed.slice(0, i).trim() : "";
     const material = i > 0 ? trimmed.slice(i + 1).trim() : "";
     if (!KEY_ID_REGEX.test(id)) {
-      throw new EmailCryptoError("bad_key_ring", "Key ring contains an entry with an invalid key id.");
+      throw new EmailCryptoError(
+        "bad_key_ring",
+        "Key ring contains an entry with an invalid key id.",
+      );
     }
     let bytes: Uint8Array<ArrayBuffer>;
     try {
@@ -140,13 +142,7 @@ function getCryptoKey(id: string, bytes: Uint8Array<ArrayBuffer>): Promise<Crypt
   const cacheKey = `${id}:${toB64url(bytes)}`;
   let key = importedKeys.get(cacheKey);
   if (!key) {
-    key = crypto.subtle.importKey(
-      "raw",
-      bytes,
-      { name: "AES-GCM" },
-      false,
-      ["encrypt", "decrypt"],
-    );
+    key = crypto.subtle.importKey("raw", bytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     importedKeys.set(cacheKey, key);
   }
   return key;
@@ -160,14 +156,12 @@ export function emailAad(scope: string = "platform", field: string = "secret"): 
 
 export function isEmailEnvelope(value: unknown): value is string {
   return (
-    typeof value === "string" &&
-    value.startsWith(`${VERSION}:`) &&
-    value.split(":").length === 5
+    typeof value === "string" && value.startsWith(`${VERSION}:`) && value.split(":").length === 5
   );
 }
 
 export function emailEnvelopeKeyId(envelope: string): string | null {
-  return isEmailEnvelope(envelope) ? envelope.split(":")[1] ?? null : null;
+  return isEmailEnvelope(envelope) ? (envelope.split(":")[1] ?? null) : null;
 }
 
 function resolveAadAndRing(
@@ -265,7 +259,10 @@ export async function decryptEmailSecret(
   envOrRing?: Env | KeyRing,
 ): Promise<string> {
   if (!isEmailEnvelope(envelope)) {
-    throw new EmailCryptoError("malformed", "Stored secret is not a recognized encryption envelope.");
+    throw new EmailCryptoError(
+      "malformed",
+      "Stored secret is not a recognized encryption envelope.",
+    );
   }
 
   const parts = envelope.split(":");
@@ -289,7 +286,10 @@ export async function decryptEmailSecret(
     ct = fromB64(ctPart);
     tag = fromB64(tagPart);
   } catch {
-    throw new EmailCryptoError("malformed", "Stored secret envelope contains invalid base64url data.");
+    throw new EmailCryptoError(
+      "malformed",
+      "Stored secret envelope contains invalid base64url data.",
+    );
   }
 
   if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
