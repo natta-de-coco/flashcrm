@@ -100,6 +100,7 @@ interface UntypedDbQuery {
   in: (col: string, vals: unknown[]) => UntypedDbQuery;
   order: (col: string, opts?: unknown) => UntypedDbQuery;
   limit: (count: number) => UntypedDbQuery;
+  range: (from: number, to: number) => UntypedDbQuery;
   single: <T = AnyRow>() => Promise<UntypedDbResult<T>>;
   maybeSingle: <T = AnyRow>() => Promise<UntypedDbResult<T>>;
   then: <T = AnyRow>(resolve: (val: UntypedDbResult<T>) => void) => Promise<unknown>;
