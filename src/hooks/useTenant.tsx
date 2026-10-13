@@ -15,6 +15,11 @@ export type TenantInfo = {
   timezone: string | null;
   /** The company's language: the interface default for a teammate who has not picked one. */
   locale: string | null;
+  paddle_customer_id?: string | null;
+  paddle_subscription_id?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  billing_provider?: string | null;
 };
 
 type TenantState = {
@@ -64,7 +69,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     const { data: org } = await supabase
       .from("organizations")
       .select(
-        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency, timezone, locale",
+        "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency, timezone, locale, paddle_customer_id, paddle_subscription_id, stripe_customer_id, stripe_subscription_id, billing_provider",
       )
       .eq("id", profile.tenant_id)
       .maybeSingle();

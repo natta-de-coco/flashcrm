@@ -16,6 +16,7 @@ import { todayInTimeZone } from "@/lib/locale";
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import { useI18n } from "@/hooks/useI18n";
+import { INVOICE_TEMPLATES } from "@/lib/invoice-templates";
 
 export type BuilderItem = {
   product_id: string | null;
@@ -34,6 +35,7 @@ export type BuilderState = {
   id: string | null;
   kind: "quotation" | "invoice";
   contact_id: string | null;
+  template_id?: string | null;
   customer: {
     name: string;
     company: string;
@@ -55,6 +57,7 @@ export type BuilderState = {
   adjustment: number;
   notes: string;
   terms: string;
+  tax_inclusive?: boolean;
   items: BuilderItem[];
 };
 
@@ -78,6 +81,10 @@ export function emptyDocument(
   taxRate: number,
   terms: string,
   timeZone: string | null,
+  notes: string = "",
+  paymentTerms: string = "",
+  templateId: string = "modern-emerald",
+  taxInclusive: boolean = false,
 ): BuilderState {
   // The tenant's calendar day, not the server's.
   const today = todayInTimeZone(timeZone);
@@ -85,39 +92,50 @@ export function emptyDocument(
     id: null,
     kind: "invoice",
     contact_id: null,
+    template_id: templateId,
     customer: { name: "", company: "", email: "", phone: "", address: "", vat_number: "" },
     issue_date: today,
     due_date: "",
     valid_until: "",
     currency,
-    payment_terms: "",
+    payment_terms: paymentTerms,
     reference: "",
     po_number: "",
+    tax_inclusive: taxInclusive,
     invoice_discount: 0,
     shipping: 0,
     additional_charges: 0,
     adjustment: 0,
-    notes: "",
+    notes,
     terms,
     items: [{ ...emptyItem(), tax_rate: taxRate }],
   };
 }
 
-function lineTotals(item: BuilderItem) {
+function lineTotals(item: BuilderItem, taxInclusive = false) {
   const gross = item.quantity * item.unit_price;
   const discount =
     item.discount_type === "percent" ? (gross * item.discount_value) / 100 : item.discount_value;
   const net = Math.max(0, gross - discount);
-  const tax = (net * item.tax_rate) / 100;
-  return { gross, discount, net, tax, total: net + tax };
+  const tax = taxInclusive
+    ? net - (net * 100) / (100 + (item.tax_rate || 0))
+    : (net * (item.tax_rate || 0)) / 100;
+  return {
+    gross,
+    discount,
+    net: taxInclusive ? net - tax : net,
+    tax,
+    total: taxInclusive ? net : net + tax,
+  };
 }
 
 export function previewTotals(state: BuilderState) {
+  const inclusive = Boolean(state.tax_inclusive);
   let subtotal = 0;
   let discountTotal = 0;
   let taxTotal = 0;
   for (const item of state.items) {
-    const t = lineTotals(item);
+    const t = lineTotals(item, inclusive);
     subtotal += t.gross;
     discountTotal += t.discount;
     taxTotal += t.tax;
@@ -127,7 +145,7 @@ export function previewTotals(state: BuilderState) {
   const grand =
     afterLines -
     invoiceDiscount +
-    taxTotal +
+    (inclusive ? 0 : taxTotal) +
     (state.shipping || 0) +
     (state.additional_charges || 0) +
     (state.adjustment || 0);
@@ -267,6 +285,31 @@ export function InvoiceBuilder({
               placeholder={i18n.t("invoiceBuilder.50AdvanceBalanceOnDelivery")}
               onChange={(e) => patch({ payment_terms: e.target.value })}
             />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>{i18n.t("invoiceBuilder.templateStyle")}</Label>
+            <Select
+              value={state.template_id ?? "modern-emerald"}
+              onValueChange={(v) => patch({ template_id: v })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INVOICE_TEMPLATES.map((tmpl) => (
+                  <SelectItem key={tmpl.id} value={tmpl.id}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block size-3 rounded-full"
+                        style={{ backgroundColor: tmpl.primary_color }}
+                      />
+                      <span>{tmpl.name}</span>
+                      <span className="text-[10px] text-muted-foreground">({tmpl.badge})</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

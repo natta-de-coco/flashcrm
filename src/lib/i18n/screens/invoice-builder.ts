@@ -50,6 +50,7 @@ export default screen({
     "invoiceBuilder.discounts": "Discounts",
     "invoiceBuilder.tax2": "Tax",
     "invoiceBuilder.grandTotal": "Grand total",
+    "invoiceBuilder.templateStyle": "Invoice template & style",
     "invoiceBuilder.finalFiguresAreRecalculatedOn":
       "Final figures are recalculated on the server when you save, so the PDF always matches your records.",
   },
@@ -99,6 +100,7 @@ export default screen({
     "invoiceBuilder.discounts": "الخصومات",
     "invoiceBuilder.tax2": "الضريبة",
     "invoiceBuilder.grandTotal": "الإجمالي الكلي",
+    "invoiceBuilder.templateStyle": "قالب الفاتورة ونمطها",
     "invoiceBuilder.finalFiguresAreRecalculatedOn":
       "تُعاد حساب الأرقام النهائية على الخادم عند الحفظ، فيطابق ملف PDF سجلاتك دائمًا.",
   },
@@ -148,6 +150,7 @@ export default screen({
     "invoiceBuilder.discounts": "Diskaun",
     "invoiceBuilder.tax2": "Cukai",
     "invoiceBuilder.grandTotal": "Jumlah besar",
+    "invoiceBuilder.templateStyle": "Templat & gaya invois",
     "invoiceBuilder.finalFiguresAreRecalculatedOn":
       "Angka akhir dikira semula pada pelayan apabila anda menyimpan, jadi PDF sentiasa sepadan dengan rekod anda.",
   },
@@ -197,6 +200,7 @@ export default screen({
     "invoiceBuilder.discounts": "Mga diskwento",
     "invoiceBuilder.tax2": "Buwis",
     "invoiceBuilder.grandTotal": "Kabuuang halaga",
+    "invoiceBuilder.templateStyle": "Template at estilo ng invoice",
     "invoiceBuilder.finalFiguresAreRecalculatedOn":
       "Kinakalkula muli sa server ang mga huling numero kapag nag-save ka, kaya laging tugma ang PDF sa iyong mga record.",
   },
@@ -246,6 +250,7 @@ export default screen({
     "invoiceBuilder.discounts": "Mapunguzo",
     "invoiceBuilder.tax2": "Kodi",
     "invoiceBuilder.grandTotal": "Jumla kuu",
+    "invoiceBuilder.templateStyle": "Kiolezo na mtindo wa ankara",
     "invoiceBuilder.finalFiguresAreRecalculatedOn":
       "Takwimu za mwisho hukokotolewa upya kwenye seva unapohifadhi, hivyo PDF hulingana na rekodi zako kila wakati.",
   },

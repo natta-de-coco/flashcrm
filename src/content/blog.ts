@@ -21,6 +21,8 @@ import { SALES_POSTS } from "./blog-posts/sales-operations";
 import { BUYING_POSTS } from "./blog-posts/buying-guides";
 import { COMPARISON_POSTS } from "./blog-posts/comparisons";
 import { LEAD_CAPTURE_POSTS } from "./blog-posts/lead-capture";
+import { REGIONAL_POSTS } from "./blog-posts/regional-growth";
+import { ECOMMERCE_POSTS } from "./blog-posts/ecommerce-automation";
 
 export type Post = {
   slug: string;
@@ -807,6 +809,8 @@ export const POSTS: Post[] = [
   ...LEAD_CAPTURE_POSTS,
   ...SALES_POSTS,
   ...AI_POSTS,
+  ...REGIONAL_POSTS,
+  ...ECOMMERCE_POSTS,
 ];
 
 /** Newest first, which is the order both the index and the sitemap want. */

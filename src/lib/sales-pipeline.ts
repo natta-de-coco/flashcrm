@@ -79,13 +79,12 @@ export function getDocStage(doc: DocRow): StageId {
 }
 
 /** Identifies internal SaaS billing receipts which must not appear in customer sales pipeline or lists. */
-export function isSubscriptionReceipt(doc: {
-  custom_fields?: Record<string, unknown> | null;
-}): boolean {
-  if (!doc.custom_fields) return false;
+export function isSubscriptionReceipt(doc: { custom_fields?: unknown }): boolean {
+  if (!doc.custom_fields || typeof doc.custom_fields !== "object") return false;
+  const cf = doc.custom_fields as Record<string, unknown>;
   return (
-    doc.custom_fields["is_subscription_receipt"] === true ||
-    doc.custom_fields["provider"] === "stripe" ||
-    Boolean(doc.custom_fields["stripe_invoice_id"])
+    cf["is_subscription_receipt"] === true ||
+    cf["provider"] === "stripe" ||
+    Boolean(cf["stripe_invoice_id"])
   );
 }

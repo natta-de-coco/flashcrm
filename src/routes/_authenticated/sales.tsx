@@ -43,21 +43,26 @@ import {
   FileText,
   History,
   KanbanSquare,
+  LayoutGrid,
   LayoutList,
+  List,
   Plus,
   Receipt,
   Send,
+  Share2,
   ShieldCheck,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
+import { AccountingExportDialog } from "@/components/sales/AccountingExportDialog";
+import { type SyncInvoiceDoc, type SyncInvoiceItem } from "@/lib/accounting-sync";
+import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
 import { DocumentHistoryDialog } from "@/components/sales/DocumentHistoryDialog";
 import { CompanyBillingProfileCard } from "@/components/settings/CompanyBillingProfileCard";
 import { isSubscriptionReceipt } from "@/lib/sales-pipeline";
 import { useRef, useState } from "react";
-import { toast } from "sonner";
-import { useI18n } from "@/hooks/useI18n";
-import { hasMessage, type MessageKey } from "@/lib/i18n";
-import { referenceFor, type SendReference } from "@/lib/send-reference";
 
 /**
  * Why a document cannot be finalised yet, or null when it can.
@@ -122,6 +127,8 @@ type DocRow = {
   paid_amount: number;
   balance: number;
   customer_snapshot: { name?: string; company?: string } | null;
+  template_id?: string | null;
+  custom_fields?: Record<string, string> | null;
   share_token: string | null;
   last_sent_at: string | null;
 };
@@ -172,9 +179,12 @@ function SalesPage() {
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
   const [sendFor, setSendFor] = useState<DocRow | null>(null);
   const [sendNote, setSendNote] = useState("");
+  const [accountingTarget, setAccountingTarget] = useState<{
+    doc: SyncInvoiceDoc;
+    items: SyncInvoiceItem[];
+  } | null>(null);
   const [historyDocId, setHistoryDocId] = useState<string | null>(null);
   const [showCompanyProfile, setShowCompanyProfile] = useState(false);
-
   // Why the last WhatsApp send did not go, shown in the dialog with the PDF as
   // the way to send it by hand.
   const [sendBlocks, setSendBlocks] = useState<{ code: string; message: string }[]>([]);
@@ -187,11 +197,12 @@ function SalesPage() {
     queryFn: () => loadWorkspace(),
   });
 
-  const documents = (data?.documents ?? []) as unknown as DocRow[];
+  const rawDocs = (data?.documents ?? []) as unknown as DocRow[];
   // Internal SaaS billing receipts (Stripe) must never appear in the customer sales view.
-  const customerDocs = documents.filter(
+  const customerDocs = rawDocs.filter(
     (doc) => !isSubscriptionReceipt(doc as { custom_fields?: Record<string, unknown> | null }),
   );
+  const documents = customerDocs;
   const visible = customerDocs.filter((doc) =>
     tab === "all"
       ? true
@@ -204,17 +215,94 @@ function SalesPage() {
 
   const startNew = (kind: "quotation" | "invoice") => {
     const settings = data?.settings as
-      | { default_currency?: string; default_tax_rate?: number; default_terms?: string | null }
+      | {
+          default_currency?: string;
+          default_tax_rate?: number;
+          default_terms?: string | null;
+          default_notes?: string | null;
+          default_payment_terms?: string | null;
+          tax_inclusive?: boolean;
+        }
       | undefined;
     const next = emptyDocument(
       settings?.default_currency ?? "AED",
       Number(settings?.default_tax_rate ?? 0),
       settings?.default_terms ?? "",
       tenant?.timezone ?? null,
+      settings?.default_notes ?? "",
+      settings?.default_payment_terms ?? "",
+      "modern-emerald",
+      Boolean(settings?.tax_inclusive),
     );
     next.kind = kind;
     setBuilder(next);
   };
+
+  const openAccountingSync = useMutation({
+    mutationFn: (id: string) => loadDocument({ data: { id } }),
+    onSuccess: (bundle) => {
+      const doc = bundle.doc as unknown as Record<string, unknown>;
+      const items = (bundle.items as unknown as Record<string, unknown>[]).map((it) => {
+        const qty = Number(it["quantity"] ?? 1);
+        const price = Number(it["unit_price"] ?? 0);
+        const discount = Number(it["discount_amount"] ?? 0);
+        const taxAmount = Number(it["tax_amount"] ?? 0);
+        const storedLineTotal = Number(it["line_total"] ?? 0);
+        const netLineTotal =
+          taxAmount > 0 && storedLineTotal > taxAmount
+            ? storedLineTotal - taxAmount
+            : Math.max(0, qty * price - discount);
+        return {
+          name: (it["name_snapshot"] as string) ?? "Item",
+          description: (it["description_snapshot"] as string) ?? null,
+          sku: (it["sku_snapshot"] as string) ?? null,
+          quantity: qty,
+          unit: (it["unit"] as string) ?? null,
+          unit_price: price,
+          discount_amount: discount,
+          tax_rate: Number(it["tax_rate"] ?? 0),
+          tax_amount: taxAmount,
+          line_total: netLineTotal,
+        };
+      });
+      const snapshot = (doc["customer_snapshot"] ?? {}) as Record<string, string | undefined>;
+      setAccountingTarget({
+        doc: {
+          id: doc["id"] as string,
+          doc_number: (doc["doc_number"] as string) ?? "INV-DRAFT",
+          kind: (doc["kind"] as string) ?? "invoice",
+          issue_date: (doc["issue_date"] as string) ?? "",
+          due_date: (doc["due_date"] as string) ?? null,
+          currency: (doc["currency"] as string) ?? "AED",
+          tax_label: (doc["tax_label"] as string) ?? "VAT",
+          subtotal: Number(doc["subtotal"] ?? 0),
+          tax_total: Number(doc["tax_total"] ?? 0),
+          grand_total: Number(doc["grand_total"] ?? 0),
+          paid_amount: Number(doc["paid_amount"] ?? 0),
+          balance: Number(doc["balance"] ?? 0),
+          shipping: Number(doc["shipping"] ?? 0),
+          additional_charges: Number(doc["additional_charges"] ?? 0),
+          adjustment: Number(doc["adjustment"] ?? 0),
+          invoice_discount: Number(doc["invoice_discount"] ?? 0),
+          payment_terms: (doc["payment_terms"] as string) ?? null,
+          reference: (doc["reference"] as string) ?? null,
+          po_number: (doc["po_number"] as string) ?? null,
+          notes: (doc["notes"] as string) ?? null,
+          terms: (doc["terms"] as string) ?? null,
+          customer_snapshot: {
+            name: snapshot["name"] ?? null,
+            company: snapshot["company"] ?? null,
+            email: snapshot["email"] ?? null,
+            phone: snapshot["phone"] ?? null,
+            address: snapshot["address"] ?? null,
+            vat_number: snapshot["vat_number"] ?? null,
+          },
+        },
+        items,
+      });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const openExisting = useMutation({
     mutationFn: (id: string) => loadDocument({ data: { id } }),
@@ -225,6 +313,10 @@ function SalesPage() {
         id: doc["id"] as string,
         kind: (doc["kind"] as "invoice") ?? "invoice",
         contact_id: (doc["contact_id"] as string) ?? null,
+        template_id:
+          (doc["template_id"] as string) ??
+          ((doc["custom_fields"] as Record<string, string>)?.["template_id"] as string) ??
+          "modern-emerald",
         customer: {
           name: snapshot["name"] ?? "",
           company: snapshot["company"] ?? "",
@@ -244,6 +336,7 @@ function SalesPage() {
         shipping: Number(doc["shipping"] ?? 0),
         additional_charges: Number(doc["additional_charges"] ?? 0),
         adjustment: Number(doc["adjustment"] ?? 0),
+        tax_inclusive: Boolean(doc["tax_inclusive"]),
         notes: (doc["notes"] as string) ?? "",
         terms: (doc["terms"] as string) ?? "",
         items: (bundle.items as unknown as Record<string, unknown>[]).map((item) => ({
@@ -267,6 +360,7 @@ function SalesPage() {
     id: state.id,
     kind: state.kind,
     contact_id: state.contact_id,
+    template_id: state.template_id || null,
     customer_snapshot: {
       name: state.customer.name || null,
       company: state.customer.company || null,
@@ -279,6 +373,7 @@ function SalesPage() {
     due_date: state.due_date || null,
     valid_until: state.valid_until || null,
     currency: state.currency,
+    tax_inclusive: Boolean(state.tax_inclusive),
     payment_terms: state.payment_terms || null,
     reference: state.reference || null,
     po_number: state.po_number || null,
@@ -631,6 +726,15 @@ function SalesPage() {
                   <Button size="sm" variant="outline" onClick={() => setSendFor(doc)}>
                     <Send className="me-1 h-4 w-4" /> WhatsApp
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={openAccountingSync.isPending}
+                    onClick={() => openAccountingSync.mutate(doc.id)}
+                    title={t("sales.accountingSyncTitle")}
+                  >
+                    <Share2 className="me-1 h-4 w-4" /> {t("sales.syncAccounting")}
+                  </Button>
                   {doc.kind === "quotation" ? (
                     <Button size="sm" onClick={() => convert.mutate(doc.id)}>
                       <ArrowRight className="me-1 h-4 w-4" /> {t("sales.toInvoice")}
@@ -739,6 +843,14 @@ function SalesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AccountingExportDialog
+        open={!!accountingTarget}
+        onOpenChange={(open) => !open && setAccountingTarget(null)}
+        document={accountingTarget?.doc ?? null}
+        items={accountingTarget?.items ?? []}
+        companyName={tenant?.name}
+      />
 
       <DocumentHistoryDialog
         documentId={historyDocId}

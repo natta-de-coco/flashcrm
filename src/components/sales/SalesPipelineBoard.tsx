@@ -26,6 +26,9 @@ import {
   User,
 } from "lucide-react";
 
+export type { DocRow, StageDef, StageId };
+export { getDocStage };
+
 type BoardActions = {
   onOpenExisting: (id: string) => void;
   onSendWhatsApp: (doc: DocRow) => void;
@@ -239,9 +242,9 @@ function StageColumn({
 
 export function SalesPipelineBoard({
   documents,
-  currency,
+  currency = "AED",
   ...actions
-}: { documents: DocRow[]; currency: string } & BoardActions) {
+}: { documents: DocRow[]; currency?: string } & BoardActions) {
   // Group documents by stage, filtering out internal subscription receipts
   const byStage: Record<StageId, DocRow[]> = Object.fromEntries(
     STAGES.map((s) => [s.id, [] as DocRow[]]),

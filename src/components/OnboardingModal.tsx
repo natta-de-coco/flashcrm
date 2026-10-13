@@ -390,7 +390,7 @@ export function OnboardingModal() {
                 onChange={(e) => setBotDetails(e.target.value)}
               />
             </div>
-            <label className="flex items-center gap-2 text-xs">
+            <label className="flex items-center gap-2 text-sm">
               <Switch
                 checked={botReady && botEnabled}
                 disabled={!botReady}

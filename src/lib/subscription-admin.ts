@@ -80,13 +80,17 @@ export type CompanySubscription = {
   subscription_renews_at: string | null;
   suspended: boolean;
   paddle_subscription_id?: string | null | undefined;
+  stripe_subscription_id?: string | null | undefined;
 };
 
-/** Paddle keeps a card-paying company's status and dates in sync by itself. */
+/** Tells card payers (Stripe or Paddle) from manual payers. */
 export function billedBy(c: {
   paddle_subscription_id?: string | null | undefined;
-}): "paddle" | "manual" {
-  return c.paddle_subscription_id ? "paddle" : "manual";
+  stripe_subscription_id?: string | null | undefined;
+}): "stripe" | "paddle" | "manual" {
+  if (c.stripe_subscription_id) return "stripe";
+  if (c.paddle_subscription_id) return "paddle";
+  return "manual";
 }
 
 export function isDay(value: string): boolean {

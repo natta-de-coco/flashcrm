@@ -2584,6 +2584,9 @@ export type Database = {
           name: string
           paddle_customer_id: string | null
           paddle_subscription_id: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          billing_provider?: string | null
           plan: string
           slug: string
           subscription_renews_at: string | null
@@ -2602,6 +2605,9 @@ export type Database = {
           name: string
           paddle_customer_id?: string | null
           paddle_subscription_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          billing_provider?: string | null
           plan?: string
           slug: string
           subscription_renews_at?: string | null
@@ -2620,6 +2626,9 @@ export type Database = {
           name?: string
           paddle_customer_id?: string | null
           paddle_subscription_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          billing_provider?: string | null
           plan?: string
           slug?: string
           subscription_renews_at?: string | null
@@ -4082,11 +4091,15 @@ export type Database = {
           current_period_start: string | null
           environment: string
           id: string
-          paddle_customer_id: string
-          paddle_subscription_id: string
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          provider?: string | null
           price_id: string
           product_id: string
           status: string
+          tenant_id?: string | null
           updated_at: string | null
           user_id: string
         }
@@ -4097,11 +4110,15 @@ export type Database = {
           current_period_start?: string | null
           environment?: string
           id?: string
-          paddle_customer_id: string
-          paddle_subscription_id: string
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          provider?: string | null
           price_id: string
           product_id: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -4112,11 +4129,15 @@ export type Database = {
           current_period_start?: string | null
           environment?: string
           id?: string
-          paddle_customer_id?: string
-          paddle_subscription_id?: string
+          paddle_customer_id?: string | null
+          paddle_subscription_id?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          provider?: string | null
           price_id?: string
           product_id?: string
           status?: string
+          tenant_id?: string | null
           updated_at?: string | null
           user_id?: string
         }
