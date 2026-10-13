@@ -11,12 +11,16 @@
 
 <!-- LOVABLE:END -->
 
-## Email Delivery, Ingestion & Security Directives (October 2026)
+## FLAS shared-agent handovers (owner instruction, 13 October 2026)
 
-> [!CRITICAL]
-> **Mandatory Agent Directives Confirmed with Codex & Claude:**
-> 1. **Stop false status reporting:** Stop recording emails as `sent` or `delivered` without actual underlying transport execution, and do not advance unsent drip steps.
-> 2. **Coordination:** Coordinate unsubscribe mechanisms and storage security with Claude.
-> 3. **Real delivery & mailbox ingestion:** Implement genuine outbound delivery and inbound mailbox ingestion with strict tenant isolation and duplicate protection.
-> 4. **Storage migration:** Do NOT apply the destructive storage migration as-is.
-> 5. **Git workflow:** Use reviewed PRs only; strictly NO direct pushes to `main`.
+Before working, read [the team handover protocol](docs/handoff/TEAM-HANDOVER-PROTOCOL.md)
+and the latest comments in [the central GitHub ledger](https://github.com/natta-de-coco/flashcrm/issues/73).
+Every Claude, Antigravity and Codex chat must register its fixed chat name/ID there,
+then post a short commit-scoped GitHub handover after each task, revision, pause or blocker.
+A final chat reply alone does not complete a handover.
+
+Use reviewed PRs; do not push directly to main. Preserve published history.
+SQL authors provide committed migrations, order, pre-checks, deployment dependencies,
+verification and recovery instructions. CX-00 (Codex) reviews and coordinates authorized
+SQL execution and records results in the ledger. Posting SQL does not run it or authorize
+destructive customer-data changes. Never include secrets or customer data in handovers.

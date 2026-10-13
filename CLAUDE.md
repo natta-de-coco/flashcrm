@@ -2,6 +2,15 @@
 
 Read this first in any new session. Full detail lives in `docs/`.
 
+## Mandatory team handovers (13 October 2026)
+
+Read `AGENTS.md` and `docs/handoff/TEAM-HANDOVER-PROTOCOL.md` before working.
+Use chat ID **CL-03**, name **FLAS · Claude Security & Core Workflows**.
+Register and post short commit-scoped handovers in https://github.com/natta-de-coco/flashcrm/issues/73.
+Include SQL requirements/order/pre-checks/deployment dependencies/verification/recovery, or explicitly say no SQL.
+Codex coordinates review and authorized SQL; use PRs, no direct main pushes.
+The dated status sections below are historical context, not evidence of the current tree, CI or live database.
+
 ## What this is
 
 A multi-tenant CRM for WhatsApp-driven sales teams — inbox, contacts, invoicing/Paddle
@@ -119,9 +128,3 @@ Set these in Supabase Dashboard → Edge Functions → Environment Variables whe
   claim in this file if it changes the "current state" summary above.
 - No `.git` history existed before 2026-08-31 — this was assembled fresh from zips, so
   don't expect old commits to explain past decisions; `docs/` is the record instead.
-- **Email Delivery & Storage Directives (October 2026)**:
-  - First stop recording sent/delivered without real transport execution, and do not advance unsent drip steps.
-  - Coordinate unsubscribe and storage security with Claude before landing changes.
-  - Implement real outbound delivery and inbound mailbox ingestion with strict tenant isolation and duplicate protection.
-  - Do NOT apply the destructive storage migration as-is.
-  - Use reviewed PRs only; strictly no direct pushes to `main`.
