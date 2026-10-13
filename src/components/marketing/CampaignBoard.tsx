@@ -5,10 +5,15 @@
  * Lifecycle stages: Draft -> Scheduled -> In Progress -> Sent | Paused.
  */
 
+import { useI18n } from "@/hooks/useI18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   CampaignComposerModal,
   type CampaignComposerData,
@@ -35,7 +40,8 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
-export type CampaignStatus = "draft" | "scheduled" | "in_progress" | "sent" | "paused";
+export type CampaignStatus =
+  "draft" | "scheduled" | "in_progress" | "sent" | "paused";
 
 export interface CampaignItem {
   id: string;
@@ -91,49 +97,72 @@ const STAGES: {
   {
     id: "sent",
     label: "Sent / Completed",
-    color: "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300",
+    color:
+      "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300",
     badgeVariant: "default",
   },
   {
     id: "paused",
     label: "Paused",
-    color: "bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300",
+    color:
+      "bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300",
     badgeVariant: "secondary",
   },
 ];
 
-export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: CampaignBoardProps) {
+// Keep disabled until campaign delivery has a real transport and per-recipient evidence.
+const EMAIL_CAMPAIGNS_CAN_SEND = false;
+
+export function CampaignBoard({
+  campaigns,
+  isSmtpVerified,
+  audienceCount,
+}: CampaignBoardProps) {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const [composerOpen, setComposerOpen] = useState(false);
-  const [editingCampaign, setEditingCampaign] = useState<CampaignItem | null>(null);
+  const [editingCampaign, setEditingCampaign] = useState<CampaignItem | null>(
+    null,
+  );
 
   const dispatchNowFn = useServerFn(dispatchCampaignNow);
   const dispatchNowMutation = useMutation({
     mutationFn: async (campaignId: string) => {
+      if (!EMAIL_CAMPAIGNS_CAN_SEND) {
+        throw new Error(t("marketing.sendingIsNotAutomatedYet"));
+      }
       if (!isSmtpVerified) {
-        throw new Error("Cannot send broadcast without verified tenant SMTP credentials");
+        throw new Error(
+          "Cannot send broadcast without verified tenant SMTP credentials",
+        );
       }
       return await dispatchNowFn({ data: { campaignId } });
     },
-    onSuccess: (res) => {
-      toast.success(`Broadcast sent to ${res.recipientsCount} subscribers!`);
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: CampaignStatus }) => {
-      if ((status === "scheduled" || status === "in_progress") && !isSmtpVerified) {
+    mutationFn: async ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: CampaignStatus;
+    }) => {
+      if (
+        (status === "scheduled" || status === "in_progress") &&
+        !isSmtpVerified
+      ) {
         throw new Error(
           "Cannot schedule or send campaign without verified tenant SMTP credentials",
         );
       }
 
       if (status === "sent") {
-        throw new Error(
-          "Campaigns cannot be manually dragged to Sent. Broadcast the campaign using 'Send Now'.",
-        );
+        throw new Error(t("marketing.sendingIsNotAutomatedYet"));
       }
 
       const updateData: Record<string, unknown> = { status };
@@ -141,12 +170,18 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         updateData["scheduled_at"] = new Date().toISOString();
       }
 
-      const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
+      const campaignsTable = supabase.from(
+        "campaigns",
+      ) as unknown as CampaignsTableClient;
       const { error } = await campaignsTable.update(updateData).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      toast.success("Campaign stage updated");
+    onSuccess: (_data, { status }) => {
+      toast.success(
+        status === "scheduled"
+          ? t("marketing.markedAsQueuedFlasCrm")
+          : "Campaign stage updated",
+      );
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
@@ -164,9 +199,14 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
-  async function handleSaveCampaign(data: CampaignComposerData, isScheduled?: boolean) {
+  async function handleSaveCampaign(
+    data: CampaignComposerData,
+    isScheduled?: boolean,
+  ) {
     const status: CampaignStatus = isScheduled ? "scheduled" : "draft";
-    const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
+    const campaignsTable = supabase.from(
+      "campaigns",
+    ) as unknown as CampaignsTableClient;
 
     if (editingCampaign) {
       const { error } = await campaignsTable
@@ -183,7 +223,11 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         .eq("id", editingCampaign.id);
 
       if (error) throw error;
-      toast.success("Campaign updated successfully");
+      toast.success(
+        isScheduled
+          ? t("marketing.markedAsQueuedFlasCrm")
+          : "Campaign updated successfully",
+      );
     } else {
       const { error } = await campaignsTable.insert({
         name: data.name,
@@ -197,7 +241,11 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
       });
 
       if (error) throw error;
-      toast.success(isScheduled ? "Campaign scheduled successfully" : "Draft campaign saved");
+      toast.success(
+        isScheduled
+          ? t("marketing.markedAsQueuedFlasCrm")
+          : "Draft campaign saved",
+      );
     }
 
     setEditingCampaign(null);
@@ -211,9 +259,14 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         <div>
           <h2 className="text-lg font-bold">Email Campaigns Kanban Board</h2>
           <p className="text-xs text-muted-foreground">
-            Manage your campaigns across 5 lifecycle stages. Audience pool: {audienceCount}{" "}
-            consented subscribers.
+            Manage your campaigns across 5 lifecycle stages. Audience pool:{" "}
+            {audienceCount} consented subscribers.
           </p>
+          {!EMAIL_CAMPAIGNS_CAN_SEND && (
+            <p role="status" className="mt-2 text-xs text-muted-foreground">
+              {t("marketing.sendingIsNotAutomatedYet")}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -234,8 +287,8 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                You can draft campaigns now, but SMTP verification in Settings is required before
-                sending.
+                You can draft campaigns now, but SMTP verification in Settings
+                is required before sending.
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -265,21 +318,30 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
             >
               {/* Column Header */}
               <div className="flex items-center justify-between mb-3">
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${stage.color}`}>
+                <span
+                  className={`text-xs font-bold px-2 py-0.5 rounded-full ${stage.color}`}
+                >
                   {stage.label}
                 </span>
-                <span className="text-xs font-semibold text-muted-foreground">{items.length}</span>
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {items.length}
+                </span>
               </div>
 
               {/* Column Cards */}
               <div className="flex-1 space-y-2.5 min-h-[300px]">
                 {items.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-32 rounded-lg border border-dashed text-center p-3">
-                    <p className="text-xs text-muted-foreground">No {stage.label.toLowerCase()}</p>
+                    <p className="text-xs text-muted-foreground">
+                      No {stage.label.toLowerCase()}
+                    </p>
                   </div>
                 ) : (
                   items.map((camp) => (
-                    <Card key={camp.id} className="shadow-sm hover:shadow transition-shadow">
+                    <Card
+                      key={camp.id}
+                      className="shadow-sm hover:shadow transition-shadow"
+                    >
                       <CardHeader className="p-3 pb-2 space-y-1">
                         <div className="flex items-start justify-between gap-1">
                           <CardTitle className="text-xs font-bold line-clamp-1">
@@ -329,7 +391,9 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                                   </span>
                                 </TooltipTrigger>
                                 {!isSmtpVerified && (
-                                  <TooltipContent>Requires verified SMTP</TooltipContent>
+                                  <TooltipContent>
+                                    Requires verified SMTP
+                                  </TooltipContent>
                                 )}
                               </Tooltip>
                             )}
@@ -342,13 +406,20 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                                       size="icon"
                                       variant="ghost"
                                       className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
-                                      disabled={dispatchNowMutation.isPending}
-                                      onClick={() => dispatchNowMutation.mutate(camp.id)}
+                                      disabled={
+                                        !EMAIL_CAMPAIGNS_CAN_SEND ||
+                                        dispatchNowMutation.isPending
+                                      }
+                                      onClick={() =>
+                                        dispatchNowMutation.mutate(camp.id)
+                                      }
                                     >
                                       <Send className="h-3 w-3" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Send broadcast now</TooltipContent>
+                                  <TooltipContent>
+                                    {t("marketing.sendingIsNotAutomatedYet")}
+                                  </TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -366,7 +437,9 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                                       <Pause className="h-3 w-3" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Pause campaign</TooltipContent>
+                                  <TooltipContent>
+                                    Pause campaign
+                                  </TooltipContent>
                                 </Tooltip>
                               </>
                             )}
@@ -378,13 +451,20 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                                     size="icon"
                                     variant="ghost"
                                     className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
-                                    disabled={dispatchNowMutation.isPending}
-                                    onClick={() => dispatchNowMutation.mutate(camp.id)}
+                                    disabled={
+                                      !EMAIL_CAMPAIGNS_CAN_SEND ||
+                                      dispatchNowMutation.isPending
+                                    }
+                                    onClick={() =>
+                                      dispatchNowMutation.mutate(camp.id)
+                                    }
                                   >
                                     <Send className="h-3 w-3" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Complete & mark sent</TooltipContent>
+                                <TooltipContent>
+                                  {t("marketing.sendingIsNotAutomatedYet")}
+                                </TooltipContent>
                               </Tooltip>
                             )}
 
@@ -421,7 +501,9 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                             size="icon"
                             variant="ghost"
                             className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                            onClick={() => deleteCampaignMutation.mutate(camp.id)}
+                            onClick={() =>
+                              deleteCampaignMutation.mutate(camp.id)
+                            }
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
