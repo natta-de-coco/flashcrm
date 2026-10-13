@@ -83,15 +83,15 @@ export function DocumentHistoryDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
-interface DocumentRecord {
-  doc_number?: string | null;
-  kind?: string | null;
-  status?: string | null;
-  issue_date?: string | null;
-  currency?: string | null;
-  grand_total?: number | string | null;
-  [key: string]: unknown;
-}
+  interface DocumentRecord {
+    doc_number?: string | null;
+    kind?: string | null;
+    status?: string | null;
+    issue_date?: string | null;
+    currency?: string | null;
+    grand_total?: number | string | null;
+    [key: string]: unknown;
+  }
 
   const doc = query.data?.doc as DocumentRecord | undefined;
   const activity = (query.data?.activity ?? []) as Array<{

@@ -57,6 +57,13 @@ interface CampaignBoardProps {
   audienceCount: number;
 }
 
+interface CampaignsTableClient {
+  update: (values: Record<string, unknown>) => {
+    eq: (col: string, val: unknown) => Promise<{ error: unknown }>;
+  };
+  insert: (values: Record<string, unknown>) => Promise<{ error: unknown }>;
+}
+
 const STAGES: {
   id: CampaignStatus;
   label: string;
@@ -123,14 +130,15 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         );
       }
 
-      const updateData: any = { status };
+      const updateData: Record<string, unknown> = { status };
       if (status === "scheduled") {
         updateData["scheduled_at"] = new Date().toISOString();
       } else if (status === "sent") {
         updateData["sent_at"] = new Date().toISOString();
       }
 
-      const { error } = await (supabase.from("campaigns") as any).update(updateData).eq("id", id);
+      const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
+      const { error } = await campaignsTable.update(updateData).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -154,16 +162,17 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
 
   async function handleSaveCampaign(data: CampaignComposerData, isScheduled?: boolean) {
     const status: CampaignStatus = isScheduled ? "scheduled" : "draft";
+    const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
 
     if (editingCampaign) {
-      const { error } = await (supabase.from("campaigns") as any)
+      const { error } = await campaignsTable
         .update({
           name: data.name,
           subject: data.subject,
           body: data.body,
           template_id: data.templateId,
           image_url: data.imageUrl,
-          attachments: data.attachments as any,
+          attachments: data.attachments,
           status,
           recipients_count: audienceCount,
         })
@@ -172,13 +181,13 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
       if (error) throw error;
       toast.success("Campaign updated successfully");
     } else {
-      const { error } = await (supabase.from("campaigns") as any).insert({
+      const { error } = await campaignsTable.insert({
         name: data.name,
         subject: data.subject,
         body: data.body,
         template_id: data.templateId,
         image_url: data.imageUrl,
-        attachments: data.attachments as any,
+        attachments: data.attachments,
         status,
         recipients_count: audienceCount,
       });
