@@ -1105,3 +1105,36 @@ describe("Platform email is a platform-only entry, written as PR #54 writes it",
     assert.ok(read("src/routeTree.gen.ts").includes("'/companies/email-settings':"));
   });
 });
+
+describe("text written straight into screens does not send anyone to a retired entry", () => {
+  // Screens whose English is in the code, not in the five-language files. Files
+  // owned by PR #54 (seo-blog.studio.tsx, sales, inbox, ...) are not checked here.
+  const FILES = [
+    "src/lib/connection-setup.ts",
+    "src/lib/connection-state.ts",
+    "src/components/channels/SocialConnectionWizard.tsx",
+    "src/components/channels/ChannelPicker.tsx",
+    "src/routes/_authenticated/campaign-planner.tsx",
+    "src/routes/_authenticated/connect.tsx",
+    "src/routes/_authenticated/marketing.tsx",
+    "src/routes/index.tsx",
+  ];
+  const RETIRED = /\b(Social Hub|SEO Studio|Content & SEO|Leads & Marketing|Integrations)\b/;
+  // "Monitoring & webhooks" is the name of a capability on the public home page, not a menu entry.
+  const isComment = (line) => /^\s*(\/\/|\/\*|\*)/.test(line);
+
+  for (const file of FILES) {
+    it(`${file} names no retired entry`, () => {
+      const lines = read(file).split("\n");
+      const bad = lines.filter((line) => !isComment(line) && RETIRED.test(line));
+      assert.deepEqual(bad, []);
+    });
+  }
+
+  it("the browser-tab titles match the menu", () => {
+    assert.ok(
+      read("src/routes/_authenticated/connect.tsx").includes("Connect accounts — Flas CRM"),
+    );
+    assert.ok(read("src/routes/_authenticated/marketing.tsx").includes("Leads & email — Flas CRM"));
+  });
+});

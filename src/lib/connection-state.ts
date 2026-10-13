@@ -305,7 +305,7 @@ export const CONNECTION_STATE_INFO: Readonly<Record<ConnectionState, StatePresen
   not_configured: {
     label: "Not set up",
     description: "This platform has not been connected in this workspace.",
-    nextAction: "Connect it from Integrations.",
+    nextAction: "Connect it in Connect accounts.",
     actionOwner: "customer",
     tone: "neutral",
   },
@@ -313,7 +313,7 @@ export const CONNECTION_STATE_INFO: Readonly<Record<ConnectionState, StatePresen
     label: "Needs app keys",
     description:
       "This connector needs your own platform app credentials before authorization can start.",
-    nextAction: "Add the App ID and secret under Integrations.",
+    nextAction: "Add the App ID and secret under Connect accounts.",
     actionOwner: "customer",
     tone: "warn",
   },

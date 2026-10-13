@@ -23,13 +23,13 @@ import { getTenantSmtpConfig } from "@/lib/tenant-smtp.functions";
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({
     meta: [
-      { title: "Leads & Marketing — Flas CRM" },
+      { title: "Leads & email — Flas CRM" },
       {
         name: "description",
         content:
           "Collect email leads from WordPress and Shopify, then build marketing campaigns for your list.",
       },
-      { property: "og:title", content: "Leads & Marketing — Flas CRM" },
+      { property: "og:title", content: "Leads & email — Flas CRM" },
       {
         property: "og:description",
         content: "WordPress and Shopify lead capture plus email marketing campaigns.",
