@@ -103,7 +103,8 @@ export function LeadAlertsSettingsCard() {
             <div>
               <CardTitle className="text-base font-bold">Instant Sales Lead Alerts</CardTitle>
               <CardDescription className="text-xs">
-                Immediately notify sales reps when a website visitor requests a quote or submits contact info
+                Immediately notify sales reps when a website visitor requests a quote or submits
+                contact info
               </CardDescription>
             </div>
           </div>
@@ -132,7 +133,13 @@ export function LeadAlertsSettingsCard() {
               className="text-xs h-9"
               disabled={!enabled}
             />
-            <Button size="sm" variant="outline" onClick={addEmail} disabled={!enabled} className="h-9">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={addEmail}
+              disabled={!enabled}
+              className="h-9"
+            >
               <Plus className="h-3.5 w-3.5 mr-1" /> Add
             </Button>
           </div>

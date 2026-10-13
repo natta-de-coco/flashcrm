@@ -14,45 +14,74 @@ function slugify(name: string): string {
 import { countryOption } from "@/lib/locale";
 
 const BLOCKED_FAKE_NAMES = [
-  "test", "testing", "admin", "administrator", "fake", "user", "company",
-  "my company", "mycompany", "abc", "asdf", "qwerty", "none", "n/a", "na",
-  "sample", "demo", "null", "undefined", "xyz", "owner", "customer"
+  "test",
+  "testing",
+  "admin",
+  "administrator",
+  "fake",
+  "user",
+  "company",
+  "my company",
+  "mycompany",
+  "abc",
+  "asdf",
+  "qwerty",
+  "none",
+  "n/a",
+  "na",
+  "sample",
+  "demo",
+  "null",
+  "undefined",
+  "xyz",
+  "owner",
+  "customer",
 ];
 
 function isLikelyFake(val: string): boolean {
   const norm = val.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return BLOCKED_FAKE_NAMES.some((blocked) => norm === blocked || norm.startsWith("testcompany") || norm.startsWith("fakecompany"));
+  return BLOCKED_FAKE_NAMES.some(
+    (blocked) =>
+      norm === blocked || norm.startsWith("testcompany") || norm.startsWith("fakecompany"),
+  );
 }
 
 const PHONE_REGEX = /^\+?[1-9]\d{6,15}$/;
 
-const OnboardingSchema = z.object({
-  companyName: z.string().trim().min(2, "Company name must be at least 2 characters").max(120),
-  fullName: z.string().trim().min(2, "Full name must be at least 2 characters").max(120),
-  mobilePhone: z.string().trim().optional(),
-  whatsappNumber: z.string().trim().optional(),
-  landlinePhone: z.string().trim().optional(),
-  taxRegistrationNumber: z.string().trim().optional(),
-  country: z.string().trim().default("AE"),
-  language: z.string().trim().default("en"),
-  // Optional chatbot setup, written by the company itself at sign-up.
-  botGreeting: z.string().trim().max(500).optional().default(""),
-  botDetails: z.string().trim().max(4000).optional().default(""),
-  botEnabled: z.boolean().optional().default(false),
-}).refine((d) => !isLikelyFake(d.companyName), {
-  message: "Please enter a real business name (test and generic names are not allowed)",
-  path: ["companyName"],
-}).refine((d) => !isLikelyFake(d.fullName), {
-  message: "Please enter a real full name",
-  path: ["fullName"],
-}).refine((d) => {
-  if (!d.mobilePhone) return true;
-  const digits = d.mobilePhone.replace(/[^\d+]/g, "");
-  return PHONE_REGEX.test(digits);
-}, {
-  message: "Mobile phone must be in valid international format (e.g. +971 50 123 4567)",
-  path: ["mobilePhone"],
-});
+const OnboardingSchema = z
+  .object({
+    companyName: z.string().trim().min(2, "Company name must be at least 2 characters").max(120),
+    fullName: z.string().trim().min(2, "Full name must be at least 2 characters").max(120),
+    mobilePhone: z.string().trim().optional(),
+    whatsappNumber: z.string().trim().optional(),
+    landlinePhone: z.string().trim().optional(),
+    taxRegistrationNumber: z.string().trim().optional(),
+    country: z.string().trim().default("AE"),
+    language: z.string().trim().default("en"),
+    // Optional chatbot setup, written by the company itself at sign-up.
+    botGreeting: z.string().trim().max(500).optional().default(""),
+    botDetails: z.string().trim().max(4000).optional().default(""),
+    botEnabled: z.boolean().optional().default(false),
+  })
+  .refine((d) => !isLikelyFake(d.companyName), {
+    message: "Please enter a real business name (test and generic names are not allowed)",
+    path: ["companyName"],
+  })
+  .refine((d) => !isLikelyFake(d.fullName), {
+    message: "Please enter a real full name",
+    path: ["fullName"],
+  })
+  .refine(
+    (d) => {
+      if (!d.mobilePhone) return true;
+      const digits = d.mobilePhone.replace(/[^\d+]/g, "");
+      return PHONE_REGEX.test(digits);
+    },
+    {
+      message: "Mobile phone must be in valid international format (e.g. +971 50 123 4567)",
+      path: ["mobilePhone"],
+    },
+  );
 
 /**
  * 2-step onboarding: creates the company, links the caller as company_admin,
@@ -162,7 +191,12 @@ export const completeOnboarding = createServerFn({ method: "POST" })
     // Chatbot: only saved when the company gave both a greeting and real
     // business details (same gate wa.server.ts uses before replying). It is
     // switched on only if the admin explicitly chose to.
-    const botReady = Boolean(data.botGreeting && data.botGreeting.length > 0 && data.botDetails && data.botDetails.length >= 20);
+    const botReady = Boolean(
+      data.botGreeting &&
+      data.botGreeting.length > 0 &&
+      data.botDetails &&
+      data.botDetails.length >= 20,
+    );
     if (botReady) {
       await supabaseAdmin.from("tenant_bot_settings").upsert(
         {
@@ -183,7 +217,12 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       actorId: userId,
       entityType: "organization",
       entityId: org.id,
-      details: { companyName: data.companyName, trialEnds: trialEnd, chatbotSaved: botReady, chatbotOn: botReady && data.botEnabled },
+      details: {
+        companyName: data.companyName,
+        trialEnds: trialEnd,
+        chatbotSaved: botReady,
+        chatbotOn: botReady && data.botEnabled,
+      },
     });
 
     return { ok: true, alreadyDone: false };

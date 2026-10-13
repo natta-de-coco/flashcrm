@@ -269,7 +269,10 @@ export function PlatformEmailSettingsCard() {
                 <AlertCircle className="size-3" /> Connection Failed
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 gap-1">
+              <Badge
+                variant="outline"
+                className="text-amber-600 border-amber-300 bg-amber-50 gap-1"
+              >
                 <Clock className="size-3" /> Not Verified
               </Badge>
             )}
@@ -307,18 +310,24 @@ export function PlatformEmailSettingsCard() {
             <CardContent className="space-y-4">
               <Alert className="bg-muted/40 border-primary/20">
                 <Info className="size-4 text-brand" />
-                <AlertTitle className="text-xs font-semibold">Reputation &amp; Brand Isolation</AlertTitle>
+                <AlertTitle className="text-xs font-semibold">
+                  Reputation &amp; Brand Isolation
+                </AlertTitle>
                 <AlertDescription className="text-xs text-muted-foreground">
-                  Platform system operations (password resets, signup OTPs, workspace invitations) are
-                  strictly bound to <strong>flas@mobidigisol.com</strong>. This protects the core platform's
-                  deliverability reputation and guarantees security authenticity. Customer-facing marketing
-                  campaigns use workspace-specific BYO credentials configured in Workspace Settings.
+                  Platform system operations (password resets, signup OTPs, workspace invitations)
+                  are strictly bound to <strong>flas@mobidigisol.com</strong>. This protects the
+                  core platform's deliverability reputation and guarantees security authenticity.
+                  Customer-facing marketing campaigns use workspace-specific BYO credentials
+                  configured in Workspace Settings.
                 </AlertDescription>
               </Alert>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="fromEmail" className="flex items-center gap-1.5 text-xs font-medium">
+                  <Label
+                    htmlFor="fromEmail"
+                    className="flex items-center gap-1.5 text-xs font-medium"
+                  >
                     From Address
                     <Lock className="size-3 text-muted-foreground" />
                   </Label>
@@ -436,7 +445,11 @@ export function PlatformEmailSettingsCard() {
                     <Input
                       id="smtpPass"
                       type={showSmtpPass ? "text" : "password"}
-                      placeholder={d?.smtpPassConfigured ? "•••••••••••••••• (Encrypted at rest)" : "Enter SMTP password"}
+                      placeholder={
+                        d?.smtpPassConfigured
+                          ? "•••••••••••••••• (Encrypted at rest)"
+                          : "Enter SMTP password"
+                      }
                       value={smtpPass}
                       onChange={(e) => setSmtpPass(e.target.value)}
                       className="pr-10 text-xs font-mono"
@@ -564,7 +577,9 @@ export function PlatformEmailSettingsCard() {
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">
                     <Label className="text-xs font-medium">Use SSL / TLS</Label>
-                    <p className="text-[11px] text-muted-foreground">Port 993 (SSL implicit) or 143</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Port 993 (SSL implicit) or 143
+                    </p>
                   </div>
                   <Switch
                     checked={imapSecure}
@@ -597,7 +612,11 @@ export function PlatformEmailSettingsCard() {
                     <Input
                       id="imapPass"
                       type={showImapPass ? "text" : "password"}
-                      placeholder={d?.imapPassConfigured ? "•••••••••••••••• (Encrypted at rest)" : "Enter IMAP password"}
+                      placeholder={
+                        d?.imapPassConfigured
+                          ? "•••••••••••••••• (Encrypted at rest)"
+                          : "Enter IMAP password"
+                      }
                       value={imapPass}
                       onChange={(e) => setImapPass(e.target.value)}
                       className="pr-10 text-xs font-mono"
@@ -679,7 +698,8 @@ export function PlatformEmailSettingsCard() {
                 Live Transactional Test Dispatch
               </CardTitle>
               <CardDescription>
-                Send a real system transactional email to an administrator inbox to confirm deliverability.
+                Send a real system transactional email to an administrator inbox to confirm
+                deliverability.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -715,9 +735,7 @@ export function PlatformEmailSettingsCard() {
           <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background/95 p-4 backdrop-blur shadow-sm">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {d?.lastTestAt ? (
-                <span>
-                  Last tested: {new Date(d.lastTestAt).toLocaleString()}
-                </span>
+                <span>Last tested: {new Date(d.lastTestAt).toLocaleString()}</span>
               ) : (
                 <span>Not tested yet</span>
               )}

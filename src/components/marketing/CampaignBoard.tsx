@@ -57,12 +57,49 @@ interface CampaignBoardProps {
   audienceCount: number;
 }
 
-const STAGES: { id: CampaignStatus; label: string; color: string; badgeVariant: "default" | "secondary" | "outline" }[] = [
-  { id: "draft", label: "Drafts", color: "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200", badgeVariant: "secondary" },
-  { id: "scheduled", label: "Scheduled", color: "bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300", badgeVariant: "default" },
-  { id: "in_progress", label: "In Progress", color: "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300", badgeVariant: "default" },
-  { id: "sent", label: "Sent / Completed", color: "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300", badgeVariant: "default" },
-  { id: "paused", label: "Paused", color: "bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300", badgeVariant: "secondary" },
+interface CampaignsTableClient {
+  update: (values: Record<string, unknown>) => {
+    eq: (col: string, val: unknown) => Promise<{ error: unknown }>;
+  };
+  insert: (values: Record<string, unknown>) => Promise<{ error: unknown }>;
+}
+
+const STAGES: {
+  id: CampaignStatus;
+  label: string;
+  color: string;
+  badgeVariant: "default" | "secondary" | "outline";
+}[] = [
+  {
+    id: "draft",
+    label: "Drafts",
+    color: "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200",
+    badgeVariant: "secondary",
+  },
+  {
+    id: "scheduled",
+    label: "Scheduled",
+    color: "bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300",
+    badgeVariant: "default",
+  },
+  {
+    id: "in_progress",
+    label: "In Progress",
+    color: "bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300",
+    badgeVariant: "default",
+  },
+  {
+    id: "sent",
+    label: "Sent / Completed",
+    color: "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300",
+    badgeVariant: "default",
+  },
+  {
+    id: "paused",
+    label: "Paused",
+    color: "bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300",
+    badgeVariant: "secondary",
+  },
 ];
 
 export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: CampaignBoardProps) {
@@ -88,17 +125,20 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: CampaignStatus }) => {
       if ((status === "scheduled" || status === "in_progress") && !isSmtpVerified) {
-        throw new Error("Cannot schedule or send campaign without verified tenant SMTP credentials");
+        throw new Error(
+          "Cannot schedule or send campaign without verified tenant SMTP credentials",
+        );
       }
 
-      const updateData: any = { status };
+      const updateData: Record<string, unknown> = { status };
       if (status === "scheduled") {
         updateData["scheduled_at"] = new Date().toISOString();
       } else if (status === "sent") {
         updateData["sent_at"] = new Date().toISOString();
       }
 
-      const { error } = await (supabase.from("campaigns") as any).update(updateData).eq("id", id);
+      const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
+      const { error } = await campaignsTable.update(updateData).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -122,16 +162,17 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
 
   async function handleSaveCampaign(data: CampaignComposerData, isScheduled?: boolean) {
     const status: CampaignStatus = isScheduled ? "scheduled" : "draft";
+    const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
 
     if (editingCampaign) {
-      const { error } = await (supabase.from("campaigns") as any)
+      const { error } = await campaignsTable
         .update({
           name: data.name,
           subject: data.subject,
           body: data.body,
           template_id: data.templateId,
           image_url: data.imageUrl,
-          attachments: data.attachments as any,
+          attachments: data.attachments,
           status,
           recipients_count: audienceCount,
         })
@@ -140,13 +181,13 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
       if (error) throw error;
       toast.success("Campaign updated successfully");
     } else {
-      const { error } = await (supabase.from("campaigns") as any).insert({
+      const { error } = await campaignsTable.insert({
         name: data.name,
         subject: data.subject,
         body: data.body,
         template_id: data.templateId,
         image_url: data.imageUrl,
-        attachments: data.attachments as any,
+        attachments: data.attachments,
         status,
         recipients_count: audienceCount,
       });
@@ -166,7 +207,8 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         <div>
           <h2 className="text-lg font-bold">Email Campaigns Kanban Board</h2>
           <p className="text-xs text-muted-foreground">
-            Manage your campaigns across 5 lifecycle stages. Audience pool: {audienceCount} consented subscribers.
+            Manage your campaigns across 5 lifecycle stages. Audience pool: {audienceCount}{" "}
+            consented subscribers.
           </p>
         </div>
 
@@ -188,7 +230,8 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                You can draft campaigns now, but SMTP verification in Settings is required before sending.
+                You can draft campaigns now, but SMTP verification in Settings is required before
+                sending.
               </TooltipContent>
             </Tooltip>
           ) : (
@@ -310,7 +353,10 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                                       variant="ghost"
                                       className="h-6 w-6 text-purple-600"
                                       onClick={() =>
-                                        updateStatusMutation.mutate({ id: camp.id, status: "paused" })
+                                        updateStatusMutation.mutate({
+                                          id: camp.id,
+                                          status: "paused",
+                                        })
                                       }
                                     >
                                       <Pause className="h-3 w-3" />

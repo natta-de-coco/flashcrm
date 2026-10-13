@@ -46,7 +46,9 @@ export type ReadTokens = {
   source: "encrypted" | "legacy_plaintext" | "none";
 };
 
-export function plaintextReadAllowed(env: Record<string, string | undefined> = process.env): boolean {
+export function plaintextReadAllowed(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
   return env["SOCIAL_TOKEN_ALLOW_PLAINTEXT_READ"] === "true";
 }
 
@@ -69,10 +71,16 @@ export async function encryptTokensForStorage(args: {
   const ring = readKeyRing(); // throws not_configured -> nothing is stored
   return {
     access_token_enc: args.accessToken
-      ? await encryptSecret(args.accessToken, tokenAad(args.tenantId, args.platform, "access_token"))
+      ? await encryptSecret(
+          args.accessToken,
+          tokenAad(args.tenantId, args.platform, "access_token"),
+        )
       : null,
     refresh_token_enc: args.refreshToken
-      ? await encryptSecret(args.refreshToken, tokenAad(args.tenantId, args.platform, "refresh_token"))
+      ? await encryptSecret(
+          args.refreshToken,
+          tokenAad(args.tenantId, args.platform, "refresh_token"),
+        )
       : null,
     token_key_id: ring.active,
     access_token: null,
@@ -84,16 +92,26 @@ export async function readStoredTokens(row: StoredTokenRow): Promise<ReadTokens>
   if (row.access_token_enc || row.refresh_token_enc) {
     return {
       access: row.access_token_enc
-        ? await decryptSecret(row.access_token_enc, tokenAad(row.tenant_id, row.platform, "access_token"))
+        ? await decryptSecret(
+            row.access_token_enc,
+            tokenAad(row.tenant_id, row.platform, "access_token"),
+          )
         : null,
       refresh: row.refresh_token_enc
-        ? await decryptSecret(row.refresh_token_enc, tokenAad(row.tenant_id, row.platform, "refresh_token"))
+        ? await decryptSecret(
+            row.refresh_token_enc,
+            tokenAad(row.tenant_id, row.platform, "refresh_token"),
+          )
         : null,
       source: "encrypted",
     };
   }
   if ((row.access_token || row.refresh_token) && plaintextReadAllowed()) {
-    return { access: row.access_token ?? null, refresh: row.refresh_token ?? null, source: "legacy_plaintext" };
+    return {
+      access: row.access_token ?? null,
+      refresh: row.refresh_token ?? null,
+      source: "legacy_plaintext",
+    };
   }
   return { access: null, refresh: null, source: "none" };
 }

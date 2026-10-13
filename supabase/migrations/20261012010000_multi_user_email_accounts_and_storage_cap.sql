@@ -57,6 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_user_email_accounts_lookup
 ALTER TABLE public.user_email_accounts ENABLE ROW LEVEL SECURITY;
 
 -- RLS: Users can see their own personal accounts; Company Admins & Managers can see all tenant accounts
+DROP POLICY IF EXISTS "user_email_accounts_select_policy" ON public.user_email_accounts;
 CREATE POLICY "user_email_accounts_select_policy"
   ON public.user_email_accounts
   FOR SELECT
@@ -75,6 +76,7 @@ CREATE POLICY "user_email_accounts_select_policy"
     )
   );
 
+DROP POLICY IF EXISTS "user_email_accounts_insert_policy" ON public.user_email_accounts;
 CREATE POLICY "user_email_accounts_insert_policy"
   ON public.user_email_accounts
   FOR INSERT
@@ -86,6 +88,7 @@ CREATE POLICY "user_email_accounts_insert_policy"
     AND user_id = auth.uid()
   );
 
+DROP POLICY IF EXISTS "user_email_accounts_update_policy" ON public.user_email_accounts;
 CREATE POLICY "user_email_accounts_update_policy"
   ON public.user_email_accounts
   FOR UPDATE
@@ -104,6 +107,7 @@ CREATE POLICY "user_email_accounts_update_policy"
     )
   );
 
+DROP POLICY IF EXISTS "user_email_accounts_delete_policy" ON public.user_email_accounts;
 CREATE POLICY "user_email_accounts_delete_policy"
   ON public.user_email_accounts
   FOR DELETE
@@ -165,6 +169,7 @@ CREATE INDEX IF NOT EXISTS idx_portal_email_messages_conv
 
 ALTER TABLE public.portal_email_messages ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "portal_email_messages_tenant_isolation" ON public.portal_email_messages;
 CREATE POLICY "portal_email_messages_tenant_isolation"
   ON public.portal_email_messages
   FOR ALL

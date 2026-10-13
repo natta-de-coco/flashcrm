@@ -91,10 +91,7 @@ export function SearchConsoleDashboard() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Select
-            value={String(periodDays)}
-            onValueChange={(val) => setPeriodDays(Number(val))}
-          >
+          <Select value={String(periodDays)} onValueChange={(val) => setPeriodDays(Number(val))}>
             <SelectTrigger className="w-36 h-9 text-xs">
               <SelectValue placeholder="Period" />
             </SelectTrigger>
@@ -123,8 +120,9 @@ export function SearchConsoleDashboard() {
           <AlertTitle className="text-xs font-semibold">Google Search Console Setup</AlertTitle>
           <AlertDescription className="text-xs space-y-2 mt-1">
             <p>
-              Displaying simulated keyword data below. To stream real rankings for your live website,
-              enable the Search Console API in Google Cloud and connect your verified domain in{" "}
+              Displaying simulated keyword data below. To stream real rankings for your live
+              website, enable the Search Console API in Google Cloud and connect your verified
+              domain in{" "}
               <Link to="/connect" className="font-semibold underline underline-offset-2">
                 Connect & setup → Analytics & search
               </Link>
@@ -251,7 +249,9 @@ export function SearchConsoleDashboard() {
                   <TableCell className="text-right text-muted-foreground">{q.ctr}%</TableCell>
                   <TableCell className="text-right">
                     <Badge
-                      variant={q.position <= 3 ? "default" : q.position <= 10 ? "secondary" : "outline"}
+                      variant={
+                        q.position <= 3 ? "default" : q.position <= 10 ? "secondary" : "outline"
+                      }
                       className="text-[10px] px-1.5"
                     >
                       #{q.position}
@@ -289,9 +289,7 @@ export function SearchConsoleDashboard() {
             <TableBody>
               {data?.pages.map((p, idx) => (
                 <TableRow key={idx} className="text-xs">
-                  <TableCell className="font-mono text-[11px] text-foreground">
-                    {p.page}
-                  </TableCell>
+                  <TableCell className="font-mono text-[11px] text-foreground">{p.page}</TableCell>
                   <TableCell className="text-right font-semibold">
                     {p.clicks.toLocaleString()}
                   </TableCell>

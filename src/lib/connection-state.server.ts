@@ -262,7 +262,10 @@ export async function beginAuthorization(args: {
 
   // disconnected and missing_app_credentials reach authorization_started only
   // through ready_to_authorize.
-  if (!isLegalTransition(from, "authorization_started") && isLegalTransition(from, "ready_to_authorize")) {
+  if (
+    !isLegalTransition(from, "authorization_started") &&
+    isLegalTransition(from, "ready_to_authorize")
+  ) {
     await transitionConnection({
       accountId: row.id,
       tenantId: args.tenantId,

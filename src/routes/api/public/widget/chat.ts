@@ -111,7 +111,7 @@ export const Route = createFileRoute("/api/public/widget/chat")({
             text: parsed.message,
           });
 
-// Ingest lead for welcome automation / drip sequence if marketing consent or email is present
+          // Ingest lead for welcome automation / drip sequence if marketing consent or email is present
           if (parsed.email) {
             try {
               const { ingestLead } = await import("@/lib/lead-automation.server");
@@ -128,7 +128,6 @@ export const Route = createFileRoute("/api/public/widget/chat")({
               console.error("[widget] could not record lead automation", error);
             }
           }
-
 
           // Attach the rest of the identity to the contact this chat created.
           //
@@ -179,7 +178,6 @@ export const Route = createFileRoute("/api/public/widget/chat")({
                 // The message is already delivered; failing to annotate the
                 // contact must not turn that into an error for the visitor.
                 console.error("[widget] could not record identity", error);
-
               }
             } else {
               await logAudit({

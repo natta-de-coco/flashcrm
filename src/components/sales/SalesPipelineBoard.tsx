@@ -6,7 +6,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { STAGES, getDocStage, type DocRow, type StageDef, type StageId } from "@/lib/sales-pipeline";
+import {
+  STAGES,
+  getDocStage,
+  type DocRow,
+  type StageDef,
+  type StageId,
+} from "@/lib/sales-pipeline";
 import {
   ArrowRight,
   CheckCircle,
@@ -68,9 +74,7 @@ function StageColumn({
         ) : (
           docs.map((doc) => {
             const customerName =
-              doc.customer_snapshot?.name ||
-              doc.customer_snapshot?.company ||
-              "No customer named";
+              doc.customer_snapshot?.name || doc.customer_snapshot?.company || "No customer named";
             const isInvoice = doc.kind === "invoice";
             const hasBalance = Number(doc.balance) > 0;
 

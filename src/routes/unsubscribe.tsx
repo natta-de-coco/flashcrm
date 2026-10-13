@@ -19,17 +19,28 @@ const processUnsubscribeFn = createServerFn({ method: "POST" })
     return await applyUnsubscribe(data.token);
   });
 
-export const Route = (createFileRoute as any)("/unsubscribe")({
-  validateSearch: (search: Record<string, unknown>) => ({
+type UnsubscribeLoaderData =
+  { ok: true; email: string; error?: never } | { ok: false; error: string; email?: never };
+
+interface UnsubscribeSearch {
+  token?: string;
+}
+
+export const Route = createFileRoute("/unsubscribe")({
+  validateSearch: (search: Record<string, unknown>): UnsubscribeSearch => ({
     token: typeof search["token"] === "string" ? (search["token"] as string) : "",
   }),
-  loaderDeps: ({ search }: { search: Record<string, any> }) => ({ token: search["token"] }),
-  loader: async ({ deps }: { deps: Record<string, any> }) => {
-    const token = deps["token"];
+  loaderDeps: ({ search }) => ({ token: search.token }),
+  loader: async ({ deps }): Promise<UnsubscribeLoaderData> => {
+    const token = deps.token;
     if (!token) {
       return { ok: false, error: "No unsubscribe token provided" };
     }
-    return await processUnsubscribeFn({ data: { token } });
+    const res = await processUnsubscribeFn({ data: { token } });
+    if (!res.ok) {
+      return { ok: false, error: res.error || "Failed to process unsubscribe" };
+    }
+    return { ok: true, email: res.email || "" };
   },
   head: () => ({
     meta: [

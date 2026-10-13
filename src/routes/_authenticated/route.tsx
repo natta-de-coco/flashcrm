@@ -12,7 +12,6 @@ import { ProfileBanner } from "@/components/ProfileBanner";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageLanguage } from "@/components/PageLanguage";
 
-
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, navMessageKey, workspaceDefaultLanguage } from "@/lib/i18n";
@@ -370,8 +369,8 @@ function AuthenticatedLayout() {
             </div>
           </header>
 
-<ProfileBanner />
-          
+          <ProfileBanner />
+
           {shellOwnsMain ? (
             <main id="content" className="min-h-0 flex-1 overflow-y-auto p-6">
               <PageLanguage pathname={pathname}>
@@ -393,4 +392,3 @@ function AuthenticatedLayout() {
     </TenantProvider>
   );
 }
-

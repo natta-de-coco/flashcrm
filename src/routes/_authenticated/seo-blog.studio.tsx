@@ -667,7 +667,8 @@ function SeoStudioPage() {
                     Omnichannel Campaign Studio
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    Custom resolution, aspect ratio, writing style, and 3-tier hashtags for each platform. Verify copy and publish directly.
+                    Custom resolution, aspect ratio, writing style, and 3-tier hashtags for each
+                    platform. Verify copy and publish directly.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -721,8 +722,12 @@ function SeoStudioPage() {
                         <div className="flex items-center gap-2">
                           {getPlatformIcon(p.platform)}
                           <div>
-                            <CardTitle className="text-sm font-semibold">{p.platformName || p.platform}</CardTitle>
-                            <p className="text-[11px] text-muted-foreground">{p.specs?.mediaType ?? "Social Post"}</p>
+                            <CardTitle className="text-sm font-semibold">
+                              {p.platformName || p.platform}
+                            </CardTitle>
+                            <p className="text-[11px] text-muted-foreground">
+                              {p.specs?.mediaType ?? "Social Post"}
+                            </p>
                           </div>
                         </div>
                         <Button
@@ -764,7 +769,10 @@ function SeoStudioPage() {
                           <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-mono">
                             {p.specs?.aspectRatio ?? "Adaptive"}
                           </Badge>
-                          <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-mono text-muted-foreground">
+                          <Badge
+                            variant="outline"
+                            className="px-1.5 py-0 text-[10px] font-mono text-muted-foreground"
+                          >
                             {p.specs?.resolution ?? "Native"}
                           </Badge>
                           <span
@@ -779,7 +787,8 @@ function SeoStudioPage() {
                         {/* Hook Strategy Guide */}
                         {p.specs?.hookGuide && (
                           <div className="rounded bg-muted/50 p-2 text-[11px] text-muted-foreground leading-snug">
-                            <span className="font-semibold text-foreground">Hook strategy:</span> {p.specs.hookGuide}
+                            <span className="font-semibold text-foreground">Hook strategy:</span>{" "}
+                            {p.specs.hookGuide}
                           </div>
                         )}
 
@@ -791,7 +800,9 @@ function SeoStudioPage() {
                             onChange={(e) => {
                               const newText = e.target.value;
                               setMicroPosts((prev) =>
-                                prev.map((item, i) => (i === idx ? { ...item, text: newText } : item)),
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, text: newText } : item,
+                                ),
                               );
                             }}
                             placeholder={`Write copy for ${p.platformName}...`}
@@ -845,7 +856,9 @@ function SeoStudioPage() {
                                 );
                                 toast.success(`Recreated fresh copy for ${p.platformName}`);
                               } catch (err) {
-                                toast.error(err instanceof Error ? err.message : "Recreation failed");
+                                toast.error(
+                                  err instanceof Error ? err.message : "Recreation failed",
+                                );
                               } finally {
                                 setRecreatingPlatform(null);
                               }
