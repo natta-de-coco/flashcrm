@@ -848,6 +848,121 @@ describe("search asks the database only about records the role may open", () => 
   });
 });
 
+// Review finding 4 on PR #70: a search that FAILED looked exactly like one that
+// found nothing ("No matches found."), because the error was never read. A failed
+// lookup is not "no results": it has to be told apart and said out loud.
+describe("a search that could not run is not shown as 'no matches'", () => {
+  const rowsFor = (table) => [
+    { id: `${table}-1`, name: "Ada", title: "Ada", sku: null, status: "draft" },
+  ];
+  // `plan` says, per table, what that query does: "ok", "empty", "error", "throws" or "rejects".
+  const clientWith = (plan) => ({
+    from(table) {
+      const how = plan[table] ?? "ok";
+      const query = {
+        select: () => query,
+        or: () => query,
+        ilike: () => query,
+        limit: async () => {
+          if (how === "rejects") throw new Error("network down");
+          if (how === "error") return { data: null, error: { message: "permission denied" } };
+          return { data: how === "empty" ? [] : rowsFor(table), error: null };
+        },
+      };
+      if (how === "throws") throw new Error("client exploded");
+      return query;
+    },
+  });
+  const search = (plan, role = "company_admin") => app.searchRecords(clientWith(plan), "ada", role);
+
+  it("a query that returns an error is reported as failed, not as empty", async () => {
+    const found = await search({ contacts: "error" });
+    assert.deepEqual(found.failed, ["contacts"]);
+    assert.deepEqual(found.contacts, []);
+  });
+
+  it("an error is told apart from a real empty result", async () => {
+    const empty = await search({ contacts: "empty", products: "empty", seo_articles: "empty" });
+    assert.deepEqual(empty.failed, []);
+    assert.deepEqual([empty.contacts, empty.products, empty.articles], [[], [], []]);
+    const broken = await search({ contacts: "error", products: "error", seo_articles: "error" });
+    assert.deepEqual(broken.failed, ["contacts", "products", "articles"]);
+    assert.notDeepEqual(broken, empty);
+  });
+
+  it("a query that rejects or throws is failed too, and does not take the others down", async () => {
+    for (const how of ["rejects", "throws"]) {
+      const found = await search({ products: how });
+      assert.deepEqual(found.failed, ["products"], how);
+      assert.equal(found.contacts.length, 1, `${how}: contacts still shown`);
+      assert.equal(found.articles.length, 1, `${how}: articles still shown`);
+      assert.deepEqual(found.products, []);
+    }
+  });
+
+  it("only kinds this role searches can fail, and the others are not counted", async () => {
+    const found = await search({ contacts: "error", products: "error" }, "seo_editor");
+    assert.deepEqual(found.failed, []);
+    assert.equal(found.articles.length, 1);
+    const articles = await search({ seo_articles: "error" }, "seo_editor");
+    assert.deepEqual(articles.failed, ["articles"]);
+  });
+
+  it("nothing sent is not a failure", async () => {
+    for (const role of [null, "owner"]) assert.deepEqual((await search({}, role)).failed, []);
+    assert.deepEqual(app.NO_RECORDS.failed, []);
+  });
+
+  it("the hook's findRecords reports the same failure", async () => {
+    globalThis.__tenantDouble = { staffRole: "staff", loading: false };
+    let access;
+    try {
+      renderToStaticMarkup(
+        createElement(() => {
+          access = navHook.useNavAccess();
+          return null;
+        }),
+      );
+    } finally {
+      delete globalThis.__tenantDouble;
+    }
+    const found = await access.findRecords(clientWith({ contacts: "error" }), "ada");
+    assert.deepEqual(found.failed, ["contacts"]);
+  });
+
+  it("the palette says so, in one sentence, instead of 'No matches found'", () => {
+    const palette = strip(read("src/components/CommandPalette.tsx"));
+    // A rejected search must become a failed one, never an empty one.
+    assert.equal(/\.catch\(\s*\(\)\s*=>\s*NO_RECORDS\s*\)/.test(palette), false);
+    // Any failed kind, or a search that threw, marks the search as failed...
+    assert.match(palette, /setSearchFailed\(answer === null \|\| answer\.failed\.length > 0\)/);
+    // ...and a failed search shows the sentence INSTEAD of "No matches found".
+    assert.match(
+      palette,
+      /\{searchFailed \? \(\s*<p role="alert"[^>]*>\s*\{t\("commandPalette\.searchFailed"\)\}\s*<\/p>\s*\) : \(\s*<CommandEmpty>/,
+    );
+  });
+
+  it("the sentence exists in all five languages", () => {
+    assert.equal(
+      MESSAGES.en["commandPalette.searchFailed"],
+      "Search could not load. Check your connection and try again.",
+    );
+    for (const language of LANGUAGES) {
+      const text = MESSAGES[language]["commandPalette.searchFailed"];
+      assert.ok(text && text.length > 10, language);
+      assert.notEqual(text, MESSAGES[language]["commandPalette.noMatchesFound"], language);
+    }
+    for (const language of LANGUAGES.filter((code) => code !== "en")) {
+      assert.notEqual(
+        MESSAGES[language]["commandPalette.searchFailed"],
+        MESSAGES.en["commandPalette.searchFailed"],
+        `${language} is still English`,
+      );
+    }
+  });
+});
+
 describe("the phone bar names every tab in a few letters", () => {
   const more = (language) => MESSAGES[language]["shell.more"];
   const barName = (language, item) =>

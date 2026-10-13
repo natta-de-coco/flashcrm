@@ -68,6 +68,9 @@ export function CommandPalette({
     products: [],
     articles: [],
   });
+  // True when the last record search could not run (a database error or a dropped
+  // connection). That is not "no matches", and the screen must not say so.
+  const [searchFailed, setSearchFailed] = useState(false);
 
   // Global shortcut.
   useEffect(() => {
@@ -93,12 +96,16 @@ export function CommandPalette({
     const term = q.trim();
     if (term.length < 2) {
       setRecords({ contacts: [], products: [], articles: [] });
+      setSearchFailed(false);
       return;
     }
     let cancelled = false;
     const timer = window.setTimeout(async () => {
-      const found = await findRecords(supabase, term).catch(() => NO_RECORDS);
+      // A search that throws counts as failed, never as empty.
+      const answer = await findRecords(supabase, term).catch(() => null);
       if (cancelled) return;
+      setSearchFailed(answer === null || answer.failed.length > 0);
+      const found = answer ?? NO_RECORDS;
       setRecords({
         contacts: found.contacts.map((c) => ({
           id: c.id,
@@ -159,11 +166,17 @@ export function CommandPalette({
         onValueChange={setQ}
       />
       <CommandList>
-        <CommandEmpty>
-          {q.trim().length < 2
-            ? t("commandPalette.typeAtLeast2Characters")
-            : t("commandPalette.noMatchesFound")}
-        </CommandEmpty>
+        {searchFailed ? (
+          <p role="alert" className="px-3 py-3 text-center text-sm text-destructive">
+            {t("commandPalette.searchFailed")}
+          </p>
+        ) : (
+          <CommandEmpty>
+            {q.trim().length < 2
+              ? t("commandPalette.typeAtLeast2Characters")
+              : t("commandPalette.noMatchesFound")}
+          </CommandEmpty>
+        )}
         {groups.map((group) =>
           group.hits.length ? (
             <CommandGroup key={group.heading} heading={group.heading}>
