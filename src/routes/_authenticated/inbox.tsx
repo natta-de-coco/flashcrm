@@ -820,6 +820,8 @@ function InboxPage() {
         <SocialInbox />
       </div>
     );
+  }
+
   if (team.isLoading || templates.isLoading || products.isLoading || conversations.isLoading) {
     return (
       <div className="space-y-3 p-6">
