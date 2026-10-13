@@ -470,6 +470,7 @@ describe("lead capture is limited to the company that received it", () => {
 });
 
 describe("the address is matched however it was stored", () => {
+  const BACKSLASH = String.fromCharCode(92);
   // Addresses reach the database in whatever form they were typed or imported: mixed case, a
   // stray space. The link always carries the plain lower-case form.
   const mixedSeed = () => ({
@@ -558,7 +559,7 @@ describe("the address is matched however it was stored", () => {
     assert.equal(row("leads", "lead-other-co").consent_given, true);
   });
 
-  it("the characters % _ and \ in an address mean themselves, not 'anything'", async () => {
+  it("the characters % _ and backslash in an address mean themselves, not 'anything'", async () => {
     db.reset({
       leads: [
         {
@@ -592,7 +593,7 @@ describe("the address is matched however it was stored", () => {
         {
           id: "slash",
           tenant_id: A,
-          email: "a\b@example.com",
+          email: `a${BACKSLASH}b@example.com`,
           subscribed: true,
           consent_given: true,
         },
@@ -607,7 +608,7 @@ describe("the address is matched however it was stored", () => {
       contacts: [],
     });
 
-    for (const address of ["a_b@example.com", "a%b@example.com", "a\b@example.com"]) {
+    for (const address of ["a_b@example.com", "a%b@example.com", `a${BACKSLASH}b@example.com`]) {
       assert.equal((await applyUnsubscribe(linkFor(address))).ok, true, address);
     }
     for (const id of ["under", "percent", "slash"]) {
