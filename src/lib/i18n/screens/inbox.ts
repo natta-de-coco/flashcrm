@@ -91,11 +91,11 @@ export default screen({
       "WhatsApp did not confirm this message. Check with the customer before sending it again.",
     "inbox.block.conversation_not_found": "Conversation not found.",
     "inbox.block.no_number":
-      "No WhatsApp number is connected to this workspace. A company admin can connect one in Integrations.",
+      "No WhatsApp number is connected to this workspace. A company admin can connect one in Connect accounts.",
     "inbox.block.number_missing":
-      "The WhatsApp number this conversation belongs to is no longer connected. A company admin must reconnect it in Integrations.",
+      "The WhatsApp number this conversation belongs to is no longer connected. A company admin must reconnect it in Connect accounts.",
     "inbox.block.number_disabled":
-      "The WhatsApp number for this conversation is switched off in Integrations.",
+      "The WhatsApp number for this conversation is switched off in Connect accounts.",
     "inbox.block.number_needs_reconnect":
       "The WhatsApp number for this conversation has lost its connection to Meta. A company admin must reconnect it.",
     "inbox.block.workspace_suspended":
@@ -234,10 +234,10 @@ export default screen({
     "inbox.unconfirmedHint": "لم يؤكد واتساب هذه الرسالة. تحقق مع العميل قبل إرسالها مجددًا.",
     "inbox.block.conversation_not_found": "المحادثة غير موجودة.",
     "inbox.block.no_number":
-      "لا يوجد رقم واتساب مرتبط بمساحة العمل هذه. يمكن لمسؤول الشركة ربط رقم من التكاملات.",
+      "لا يوجد رقم واتساب مرتبط بمساحة العمل هذه. يمكن لمسؤول الشركة ربط رقم من «ربط الحسابات».",
     "inbox.block.number_missing":
-      "رقم واتساب الذي تنتمي إليه هذه المحادثة لم يعد مرتبطًا. يجب أن يعيد مسؤول الشركة ربطه من التكاملات.",
-    "inbox.block.number_disabled": "رقم واتساب الخاص بهذه المحادثة متوقف في التكاملات.",
+      "رقم واتساب الذي تنتمي إليه هذه المحادثة لم يعد مرتبطًا. يجب أن يعيد مسؤول الشركة ربطه من «ربط الحسابات».",
+    "inbox.block.number_disabled": "رقم واتساب الخاص بهذه المحادثة متوقف في «ربط الحسابات».",
     "inbox.block.number_needs_reconnect":
       "رقم واتساب الخاص بهذه المحادثة فقد اتصاله بـ Meta. يجب أن يعيد مسؤول الشركة ربطه.",
     "inbox.block.workspace_suspended": "مساحة العمل هذه معلّقة — تواصل مع مدير حسابك في Flas.",
@@ -375,10 +375,10 @@ export default screen({
       "WhatsApp tidak mengesahkan mesej ini. Semak dengan pelanggan sebelum menghantarnya lagi.",
     "inbox.block.conversation_not_found": "Perbualan tidak ditemui.",
     "inbox.block.no_number":
-      "Tiada nombor WhatsApp disambungkan ke ruang kerja ini. Pentadbir syarikat boleh menyambungkannya di Integrasi.",
+      "Tiada nombor WhatsApp disambungkan ke ruang kerja ini. Pentadbir syarikat boleh menyambungkannya di Sambung Akaun.",
     "inbox.block.number_missing":
-      "Nombor WhatsApp bagi perbualan ini tidak lagi disambungkan. Pentadbir syarikat mesti menyambungkannya semula di Integrasi.",
-    "inbox.block.number_disabled": "Nombor WhatsApp bagi perbualan ini dimatikan di Integrasi.",
+      "Nombor WhatsApp bagi perbualan ini tidak lagi disambungkan. Pentadbir syarikat mesti menyambungkannya semula di Sambung Akaun.",
+    "inbox.block.number_disabled": "Nombor WhatsApp bagi perbualan ini dimatikan di Sambung Akaun.",
     "inbox.block.number_needs_reconnect":
       "Nombor WhatsApp bagi perbualan ini telah hilang sambungan dengan Meta. Pentadbir syarikat mesti menyambungkannya semula.",
     "inbox.block.workspace_suspended":
@@ -522,11 +522,11 @@ export default screen({
       "Hindi kinumpirma ng WhatsApp ang mensaheng ito. Tanungin muna ang customer bago ito ipadala muli.",
     "inbox.block.conversation_not_found": "Hindi nahanap ang usapan.",
     "inbox.block.no_number":
-      "Walang WhatsApp number na nakakonekta sa workspace na ito. Maaaring magkonekta ang company admin sa Mga Integrasyon.",
+      "Walang WhatsApp number na nakakonekta sa workspace na ito. Maaaring magkonekta ang company admin sa Ikonekta ang mga Account.",
     "inbox.block.number_missing":
-      "Hindi na nakakonekta ang WhatsApp number ng usapang ito. Dapat itong ikonekta muli ng company admin sa Mga Integrasyon.",
+      "Hindi na nakakonekta ang WhatsApp number ng usapang ito. Dapat itong ikonekta muli ng company admin sa Ikonekta ang mga Account.",
     "inbox.block.number_disabled":
-      "Naka-off sa Mga Integrasyon ang WhatsApp number ng usapang ito.",
+      "Naka-off sa Ikonekta ang mga Account ang WhatsApp number ng usapang ito.",
     "inbox.block.number_needs_reconnect":
       "Nawalan ng koneksyon sa Meta ang WhatsApp number ng usapang ito. Dapat itong ikonekta muli ng company admin.",
     "inbox.block.workspace_suspended":
@@ -668,11 +668,11 @@ export default screen({
       "WhatsApp haikuthibitisha ujumbe huu. Wasiliana na mteja kabla ya kuutuma tena.",
     "inbox.block.conversation_not_found": "Mazungumzo hayajapatikana.",
     "inbox.block.no_number":
-      "Hakuna namba ya WhatsApp iliyounganishwa na eneo hili la kazi. Msimamizi wa kampuni anaweza kuunganisha moja kwenye Miunganisho.",
+      "Hakuna namba ya WhatsApp iliyounganishwa na eneo hili la kazi. Msimamizi wa kampuni anaweza kuunganisha moja kwenye Unganisha Akaunti.",
     "inbox.block.number_missing":
-      "Namba ya WhatsApp ya mazungumzo haya haijaunganishwa tena. Msimamizi wa kampuni lazima aiunganishe upya kwenye Miunganisho.",
+      "Namba ya WhatsApp ya mazungumzo haya haijaunganishwa tena. Msimamizi wa kampuni lazima aiunganishe upya kwenye Unganisha Akaunti.",
     "inbox.block.number_disabled":
-      "Namba ya WhatsApp ya mazungumzo haya imezimwa kwenye Miunganisho.",
+      "Namba ya WhatsApp ya mazungumzo haya imezimwa kwenye Unganisha Akaunti.",
     "inbox.block.number_needs_reconnect":
       "Namba ya WhatsApp ya mazungumzo haya imepoteza muunganisho wake na Meta. Msimamizi wa kampuni lazima aiunganishe upya.",
     "inbox.block.workspace_suspended":

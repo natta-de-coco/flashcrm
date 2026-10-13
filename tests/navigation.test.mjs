@@ -862,3 +862,246 @@ describe("every way into Social posts lands where its name says", () => {
     assert.ok(links >= 3, `expected the dashboard and channel links, found ${links}`);
   });
 });
+
+/* ───────── Old menu names in other screens' text ───────── */
+
+describe("no screen tells a person to open a menu entry that no longer exists", () => {
+  // The names the menu had before 12 Oct, and what they are called now.
+  const RETIRED =
+    /\b(Social Hub|SEO Studio|Content & SEO|Leads & Marketing|Integrations|Monitoring)\b/;
+  // Text owned by PR #54 (Antigravity), which is open on these screens. Mentions
+  // there are not changed here; the PR lists them as "left for #54".
+  const LEFT_FOR_54 = /^(sales|seoBlogStudio|invoice[A-Za-z]*)\./;
+  // Where a retired word is not the name of a menu entry, case by case.
+  const NOT_A_MENU_NAME = {
+    "features.item.3.1.title":
+      "public site: names the capability (monitoring and webhooks), points nowhere",
+    "home.module.9.title":
+      "public site: names the capability (monitoring and webhooks), points nowhere",
+    "pricing.included.10": "public pricing list: names what is included, points nowhere",
+    "integrationsV2.integrations": "title of IntegrationsV2, a component no route renders any more",
+  };
+
+  it("English text names no retired entry, except where it is not a menu name", () => {
+    const found = Object.entries(MESSAGES.en)
+      .filter(([key, text]) => !LEFT_FOR_54.test(key) && RETIRED.test(text))
+      .map(([key, text]) => `${key}: ${text}`)
+      .filter((line) => !(line.split(":")[0] in NOT_A_MENU_NAME));
+    assert.deepEqual(found, []);
+  });
+
+  it("every allowance still matches a real sentence (none is left over)", () => {
+    for (const key of Object.keys(NOT_A_MENU_NAME)) {
+      assert.ok(RETIRED.test(MESSAGES.en[key] ?? ""), `${key} no longer needs an allowance`);
+    }
+  });
+
+  // What the sentences that sent people to a retired entry say now, in every
+  // language: the new name, not the old one.
+  const POINTERS = {
+    "campaignPlanner.noConnectedSocialAccountsYet": "social",
+    "content.websiteIsTheFlasHosted": "connect",
+    "dashboard.social.hub": "social",
+    "dashboard.recent.none": "connect",
+    "dashboard.meta.fullMonitoring": "monitoring",
+    "home.step.0.body": "connect",
+    "inbox.block.no_number": "connect",
+    "inbox.block.number_missing": "connect",
+    "inbox.block.number_disabled": "connect",
+    "integrationsAuditFixed.integrations": "connect",
+    "marketing.connectAWhatsappNumberIn": "connect",
+    "settingsIndex.integrations": "connect",
+    "socialInbox.connectASocialAccountIn": "social",
+    "widgetDemo.integrationsWebsiteChatWidgetPreview": "connect",
+    "wordPressSitesCard.connectWordpressForOneClick": "seo-blog",
+  };
+  const OLD_NAMES = {
+    ar: ["مركز التواصل الاجتماعي", "استوديو SEO", "استوديو تحسين البحث", "التكاملات", "المراقبة"],
+    ms: ["Hab Sosial", "Studio SEO", "Integrasi", "Pemantauan"],
+    fil: ["Social Hub", "SEO Studio", "Mga Integrasyon", "Integrations hub", "Monitoring"],
+    sw: ["Kitovu cha Mitandao", "Studio ya SEO", "Miunganisho", "kitovu"],
+  };
+
+  // Where the text is only the name itself (a link, a page title), it IS the menu's name.
+  const IS_THE_NAME = {
+    "dashboard.social.hub": "/social",
+    "dashboard.meta.fullMonitoring": "/monitoring",
+    "integrationsAuditFixed.integrations": "/connect",
+    "settingsIndex.integrations": "/connect",
+  };
+
+  for (const language of LANGUAGES) {
+    it(`${language}: each name-only text is the menu's name`, () => {
+      for (const [key, route] of Object.entries(IS_THE_NAME)) {
+        assert.equal(
+          MESSAGES[language][key],
+          MESSAGES[language][navMessageKey(route, "label")],
+          key,
+        );
+      }
+    });
+
+    it(`${language}: each sentence that points at a menu entry uses the entry's current name`, () => {
+      for (const key of Object.keys(POINTERS)) {
+        const text = MESSAGES[language][key];
+        assert.ok(text, `${language}: ${key} is missing`);
+        for (const old of OLD_NAMES[language] ?? []) {
+          assert.ok(!text.includes(old), `${language} ${key} still says "${old}": ${text}`);
+        }
+      }
+    });
+  }
+
+  it("a sentence that names Connect accounts or Social posts spells it as the menu does", () => {
+    for (const key of [
+      "inbox.block.no_number",
+      "marketing.connectAWhatsappNumberIn",
+      "dashboard.recent.none",
+    ]) {
+      assert.ok(MESSAGES.en[key].includes(MESSAGES.en["nav.connect.label"]), key);
+    }
+    assert.ok(
+      MESSAGES.en["socialInbox.connectASocialAccountIn"].includes(MESSAGES.en["nav.social.label"]),
+    );
+    assert.ok(
+      MESSAGES.en["wordPressSitesCard.connectWordpressForOneClick"].includes(
+        MESSAGES.en["nav.seo-blog.label"],
+      ),
+    );
+  });
+
+  it("the Connect accounts page is titled by its menu name", () => {
+    const connect = read("src/routes/_authenticated/connect.tsx");
+    const page = read("src/components/integrations-v2/IntegrationsAuditFixed.tsx");
+    assert.ok(connect.includes("IntegrationsAuditFixed"));
+    assert.ok(page.includes('t("integrationsAuditFixed.integrations")'));
+    assert.equal(
+      MESSAGES.en["integrationsAuditFixed.integrations"],
+      MESSAGES.en["nav.connect.label"],
+    );
+  });
+
+  it("the channel picker's link says Social posts, not Social Hub", () => {
+    const picker = read("src/components/channels/ChannelPicker.tsx");
+    assert.equal(picker.includes("Social Hub"), false);
+    assert.ok(picker.includes("Go to Social posts"));
+  });
+});
+
+describe("Swahili: the two grammar fixes on the Social posts notes", () => {
+  it("Flas hailichapishi (the subject is Flas, and the verb is chapisha everywhere else)", () => {
+    assert.match(MESSAGES.sw["social.noPublishBody"], /Flas hailichapishi kwa niaba yako/);
+    assert.equal(MESSAGES.sw["social.noPublishBody"].includes("haliwasilishi"), false);
+  });
+
+  it("linakili (the button says Nakili chapisho; iga means imitate)", () => {
+    assert.match(MESSAGES.sw["social.copyThenPost"], /kisha linakili na ulichapishe/);
+    assert.equal(MESSAGES.sw["social.copyThenPost"].includes("liige"), false);
+  });
+});
+
+/* ───────── F6: the old names are search words, never a second entry ───────── */
+
+describe("the names the menu used to have still find the right page, and add no entry", () => {
+  const OLD_NAMES = {
+    "social hub": "/social",
+    "seo studio": "/seo-blog",
+    "content & seo": "/seo-blog",
+    "saved drafts": "/seo-blog",
+    integrations: "/connect",
+    monitoring: "/monitoring",
+    "leads & marketing": "/marketing",
+  };
+  const aliasesOf = (to) => items.find((item) => item.to === to).keywords.toLowerCase();
+
+  for (const [name, to] of Object.entries(OLD_NAMES)) {
+    it(`typing "${name}" finds ${to}`, () => {
+      assert.ok(aliasesOf(to).includes(name), `${to} has no alias "${name}"`);
+      // And search can really offer it: the page is in the palette for a role that reaches it.
+      assert.ok(app.paletteFor("company_admin").some((page) => page.to === to));
+    });
+  }
+
+  it("an old name is never a visible label, description or heading, in any language", () => {
+    const retired =
+      /Social Hub|SEO Studio|Content & SEO|Leads & Marketing|Integrations|Monitoring/i;
+    for (const language of LANGUAGES) {
+      for (const section of sections) {
+        assert.ok(!retired.test(MESSAGES[language][`nav.section.${section.id}`]));
+      }
+      for (const item of items) {
+        for (const part of ["label", "desc", "bar"]) {
+          const text = MESSAGES[language][navMessageKey(item.to, part)];
+          if (text) assert.ok(!retired.test(text), `${language} ${item.to} ${part}: ${text}`);
+        }
+      }
+    }
+  });
+
+  it("there is one search result per screen, so an alias is not a second entry", () => {
+    const palette = app.paletteFor("super_admin").map((page) => page.to);
+    assert.equal(new Set(palette).size, palette.length);
+    assert.ok(
+      !palette.includes("/content"),
+      "Saved drafts is reached from Website & SEO, not listed",
+    );
+    assert.deepEqual([...app.UNLISTED_ROUTES], ["/content"]);
+  });
+
+  it("Saved drafts keeps its address and is named the same everywhere it appears", () => {
+    assert.equal(app.canOpen("seo_editor", "/content"), true);
+    for (const language of LANGUAGES) {
+      assert.equal(
+        MESSAGES[language]["nav.content.label"],
+        MESSAGES[language]["content.contentSeo"],
+        `${language}: the Saved drafts name differs between nav and the screen`,
+      );
+    }
+    assert.equal(MESSAGES.en["nav.content.label"], "Saved drafts");
+  });
+});
+
+/* ───────── Platform email: the same entry PR #54 adds ───────── */
+
+describe("Platform email is a platform-only entry, written as PR #54 writes it", () => {
+  const entry = MANAGER_SECTION.items.find((item) => item.to === "/companies/email-settings");
+
+  it("is under Platform, after Errors & issues, with the route-derived keys", () => {
+    assert.ok(entry, "the entry is missing");
+    assert.equal(entry.label, "Platform email");
+    assert.equal(entry.desc, "System SMTP and IMAP settings");
+    assert.equal(navMessageKey(entry.to, "label"), "nav.companies.email-settings.label");
+    assert.deepEqual(
+      MANAGER_SECTION.items.map((item) => item.to),
+      ["/companies", "/companies/errors", "/companies/email-settings"],
+    );
+  });
+
+  it("uses #54's Arabic, Malay, Filipino and Swahili, so the two PRs agree", () => {
+    const theirs = {
+      ar: ["بريد المنصة", "إعدادات SMTP وIMAP للنظام"],
+      ms: ["E-mel Platform", "Tetapan SMTP dan IMAP sistem"],
+      fil: ["Platform Email", "Mga setting ng SMTP at IMAP ng system"],
+      sw: ["Barua Pepe ya Jukwaa", "Mipangilio ya SMTP na IMAP ya mfumo"],
+    };
+    for (const [language, [label, desc]] of Object.entries(theirs)) {
+      assert.equal(MESSAGES[language]["nav.companies.email-settings.label"], label);
+      assert.equal(MESSAGES[language]["nav.companies.email-settings.desc"], desc);
+    }
+  });
+
+  it("is for platform staff only, and only they can search for it", () => {
+    for (const role of ["company_admin", "marketing_manager", "staff", "seo_editor", undefined]) {
+      assert.equal(app.canOpen(role, entry.to), false, String(role));
+      assert.ok(!app.paletteFor(role).some((page) => page.to === entry.to));
+    }
+    assert.ok(app.paletteFor("super_admin").some((page) => page.to === entry.to));
+    assert.ok(
+      app.navSectionsFor("super_admin").some((s) => s.items.some((i) => i.to === entry.to)),
+    );
+  });
+
+  it("is a page the app serves", () => {
+    assert.ok(read("src/routeTree.gen.ts").includes("'/companies/email-settings':"));
+  });
+});

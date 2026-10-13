@@ -19,7 +19,7 @@ export default screen({
     "content.writeYourPost": "Write your post…",
     "content.publishTo": "Publish to",
     "content.websiteIsTheFlasHosted":
-      "Website is the Flas-hosted blog feed. WordPress pushes the same article into your own site through the Flas plugin. Social targets require the account to be linked in Integrations first.",
+      "Website is the Flas-hosted blog feed. WordPress pushes the same article into your own site through the Flas plugin. Social targets require the account to be linked in Connect accounts first.",
     "content.scheduleFor": "Schedule for",
     "content.seoMetadata": "SEO metadata",
     "content.seoTitle": "SEO title",
@@ -61,7 +61,7 @@ export default screen({
     "content.writeYourPost": "اكتب منشورك…",
     "content.publishTo": "النشر على",
     "content.websiteIsTheFlasHosted":
-      "«الموقع» هو خلاصة المدونة المستضافة لدى Flas. وWordPress يدفع المقال نفسه إلى موقعك عبر إضافة Flas. وجهات التواصل الاجتماعي تتطلب ربط الحساب من التكاملات أولًا.",
+      "«الموقع» هو خلاصة المدونة المستضافة لدى Flas. وWordPress يدفع المقال نفسه إلى موقعك عبر إضافة Flas. وجهات التواصل الاجتماعي تتطلب ربط الحساب من «ربط الحسابات» أولًا.",
     "content.scheduleFor": "جدولة لـ",
     "content.seoMetadata": "بيانات SEO الوصفية",
     "content.seoTitle": "عنوان SEO",
@@ -103,7 +103,7 @@ export default screen({
     "content.writeYourPost": "Tulis hantaran anda…",
     "content.publishTo": "Terbitkan ke",
     "content.websiteIsTheFlasHosted":
-      "Laman web ialah suapan blog yang dihoskan Flas. WordPress menolak artikel yang sama ke laman anda sendiri melalui pemalam Flas. Sasaran sosial memerlukan akaun dipautkan di Integrasi dahulu.",
+      "Laman web ialah suapan blog yang dihoskan Flas. WordPress menolak artikel yang sama ke laman anda sendiri melalui pemalam Flas. Sasaran sosial memerlukan akaun dipautkan di Sambung Akaun dahulu.",
     "content.scheduleFor": "Jadualkan untuk",
     "content.seoMetadata": "Metadata SEO",
     "content.seoTitle": "Tajuk SEO",
@@ -147,7 +147,7 @@ export default screen({
     "content.writeYourPost": "Isulat ang iyong post…",
     "content.publishTo": "I-publish sa",
     "content.websiteIsTheFlasHosted":
-      "Ang Website ay ang blog feed na naka-host sa Flas. Itinutulak ng WordPress ang parehong artikulo sa sarili mong site sa pamamagitan ng Flas plugin. Kailangang naka-link muna ang account sa Mga Integrasyon para sa mga social target.",
+      "Ang Website ay ang blog feed na naka-host sa Flas. Itinutulak ng WordPress ang parehong artikulo sa sarili mong site sa pamamagitan ng Flas plugin. Kailangang naka-link muna ang account sa Ikonekta ang mga Account para sa mga social target.",
     "content.scheduleFor": "I-schedule para sa",
     "content.seoMetadata": "SEO metadata",
     "content.seoTitle": "SEO title",
@@ -190,7 +190,7 @@ export default screen({
     "content.writeYourPost": "Andika chapisho lako…",
     "content.publishTo": "Chapisha kwenye",
     "content.websiteIsTheFlasHosted":
-      "Tovuti ni mlisho wa blogu unaohifadhiwa na Flas. WordPress husukuma makala ileile kwenye tovuti yako kupitia programu-jalizi ya Flas. Malengo ya mitandao yanahitaji akaunti iunganishwe kwenye Miunganisho kwanza.",
+      "Tovuti ni mlisho wa blogu unaohifadhiwa na Flas. WordPress husukuma makala ileile kwenye tovuti yako kupitia programu-jalizi ya Flas. Malengo ya mitandao yanahitaji akaunti iunganishwe kwenye Unganisha Akaunti kwanza.",
     "content.scheduleFor": "Ratibu kwa",
     "content.seoMetadata": "Data za SEO",
     "content.seoTitle": "Kichwa cha SEO",

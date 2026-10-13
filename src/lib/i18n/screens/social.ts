@@ -686,9 +686,9 @@ export default screen({
     "social.postStatus.draft": "Rasimu",
     "social.noPublishTitle": "Flas bado haichapishi machapisho",
     "social.noPublishBody":
-      "Unaweza kuandika chapisho, kulihifadhi na kupanga tarehe hapa, lakini Flas haliwasilishi kwa niaba yako. Likiwa tayari, bonyeza Nakili chapisho kisha ulibandike kwenye Instagram, Facebook au programu unayochapishia.",
+      "Unaweza kuandika chapisho, kulihifadhi na kupanga tarehe hapa, lakini Flas hailichapishi kwa niaba yako. Likiwa tayari, bonyeza Nakili chapisho kisha ulibandike kwenye Instagram, Facebook au programu unayochapishia.",
     "social.copyThenPost":
-      "Flas bado haichapishi kwa niaba yako. Hifadhi chapisho hapa, kisha liige na ulichapishe mwenyewe kwenye {platformDisplayName}.",
+      "Flas bado haichapishi kwa niaba yako. Hifadhi chapisho hapa, kisha linakili na ulichapishe mwenyewe kwenye {platformDisplayName}.",
     "social.needsMediaNote":
       "{platformDisplayName} pia inahitaji picha au video. Flas huhifadhi maandishi tu, kwa hiyo ongeza moja unapochapisha.",
     "social.plannedDateNote":
