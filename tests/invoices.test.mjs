@@ -329,6 +329,176 @@ test("accounting sync balances journal entries exactly across net lines, tax, sh
   assert.equal(Math.round((trnsAmount + splTotal) * 100) / 100, 0);
 });
 
+test("accounting sync balances 100 AED invoice with 10 AED document discount in QuickBooks IIF and Tally XML", () => {
+  // Codex reproducer: 100 AED invoice with 10 AED overall discount
+  const syncDoc = {
+    id: "doc-codex-discount-1",
+    doc_number: "INV-2026-00301",
+    issue_date: "2026-10-13",
+    due_date: "2026-11-13",
+    currency: "AED",
+    subtotal: 100,
+    invoice_discount: 10,
+    taxable_amount: 90,
+    tax_total: 0,
+    shipping: 0,
+    additional_charges: 0,
+    adjustment: 0,
+    grand_total: 90,
+    customer_snapshot: {
+      name: "Codex Reviewer",
+      company: "Codex Testing FZE",
+    },
+  };
+
+  const syncItems = [
+    {
+      name: "Consulting Service",
+      quantity: 1,
+      unit_price: 100,
+      tax_rate: 0,
+      tax_amount: 0,
+      line_total: 100,
+    },
+  ];
+
+  // 1. QuickBooks IIF must balance to exactly 0.00
+  const iif = generateQuickBooksIif(syncDoc, syncItems);
+  const splLines = iif.split("\n").filter((l) => l.startsWith("SPL\t"));
+  const trnsLine = iif.split("\n").find((l) => l.startsWith("TRNS\t"));
+  assert.ok(trnsLine);
+  const trnsAmount = parseFloat(trnsLine.split("\t")[6]);
+  assert.equal(trnsAmount, 90);
+
+  // Split line for Discounts Given must be present and have +10.00 debit
+  const discountSpl = splLines.find((l) => l.split("\t")[4] === "Discounts Given");
+  assert.ok(discountSpl, "QuickBooks IIF must contain a split line for Discounts Given");
+  assert.equal(parseFloat(discountSpl.split("\t")[6]), 10);
+
+  const splTotal = splLines.reduce((acc, l) => acc + parseFloat(l.split("\t")[6]), 0);
+  assert.equal(
+    Math.round((trnsAmount + splTotal) * 100) / 100,
+    0,
+    "QuickBooks IIF sum of TRNS and SPL amounts must be exactly zero",
+  );
+
+  // 2. Tally Prime XML must balance debits and credits
+  const xml = generateTallySalesXml(syncDoc, syncItems);
+  assert.match(
+    xml,
+    /<LEDGERNAME>Codex Testing FZE<\/LEDGERNAME>[\s\S]*?<ISDEEMEDPOSITIVE>Yes<\/ISDEEMEDPOSITIVE>[\s\S]*?<AMOUNT>90\.00<\/AMOUNT>/,
+  );
+  assert.match(
+    xml,
+    /<LEDGERNAME>Discounts Given<\/LEDGERNAME>[\s\S]*?<ISDEEMEDPOSITIVE>Yes<\/ISDEEMEDPOSITIVE>[\s\S]*?<AMOUNT>10\.00<\/AMOUNT>/,
+  );
+  assert.match(xml, /<AMOUNT>-100\.00<\/AMOUNT>/);
+
+  // 3. QuickBooks JSON must contain DiscountLineDetail
+  const qbJson = JSON.parse(generateQuickBooksInvoiceJson(syncDoc, syncItems));
+  const discountLine = qbJson.Line.find((l) => l.DetailType === "DiscountLineDetail");
+  assert.ok(discountLine, "QuickBooks JSON must include DiscountLineDetail");
+  assert.equal(discountLine.Amount, 10);
+});
+
+test("accounting sync balances document discounts alongside tax, shipping, additional charges, and rounding in both directions", () => {
+  // Scenario A: 100 AED subtotal, 10 AED discount, 5% tax (4.50), 15 shipping, 5 charges, -0.50 adjustment => 114.00 grand_total
+  const syncDocA = {
+    id: "doc-complex-1",
+    doc_number: "INV-2026-00302",
+    issue_date: "2026-10-13",
+    due_date: "2026-11-13",
+    currency: "AED",
+    tax_label: "VAT",
+    subtotal: 100,
+    invoice_discount: 10,
+    taxable_amount: 90,
+    tax_total: 4.5,
+    shipping: 15,
+    additional_charges: 5,
+    adjustment: -0.5,
+    grand_total: 114,
+    customer_snapshot: {
+      name: "Complex Customer",
+      company: "Complex Enterprises LLC",
+    },
+  };
+
+  const syncItemsA = [
+    {
+      name: "Network Hardware",
+      quantity: 1,
+      unit_price: 100,
+      tax_rate: 5,
+      tax_amount: 4.5,
+      line_total: 104.5,
+    },
+  ];
+
+  // QuickBooks IIF check
+  const iifA = generateQuickBooksIif(syncDocA, syncItemsA, {
+    discountLedger: "Sales Discounts",
+    roundOffLedger: "Rounding Account",
+  });
+  const splLinesA = iifA.split("\n").filter((l) => l.startsWith("SPL\t"));
+  const trnsLineA = iifA.split("\n").find((l) => l.startsWith("TRNS\t"));
+  assert.ok(trnsLineA);
+  const trnsAmountA = parseFloat(trnsLineA.split("\t")[6]);
+  assert.equal(trnsAmountA, 114);
+  const splTotalA = splLinesA.reduce((acc, l) => acc + parseFloat(l.split("\t")[6]), 0);
+  assert.equal(
+    Math.round((trnsAmountA + splTotalA) * 100) / 100,
+    0,
+    "QuickBooks IIF complex invoice with discount, tax, charges, rounding must balance to 0",
+  );
+
+  // Tally XML check
+  const xmlA = generateTallySalesXml(syncDocA, syncItemsA, {
+    discountLedger: "Sales Discounts",
+    roundOffLedger: "Rounding Account",
+  });
+  assert.match(
+    xmlA,
+    /<LEDGERNAME>Sales Discounts<\/LEDGERNAME>[\s\S]*?<ISDEEMEDPOSITIVE>Yes<\/ISDEEMEDPOSITIVE>[\s\S]*?<AMOUNT>10\.00<\/AMOUNT>/,
+  );
+  assert.match(
+    xmlA,
+    /<LEDGERNAME>Rounding Account<\/LEDGERNAME>[\s\S]*?<ISDEEMEDPOSITIVE>Yes<\/ISDEEMEDPOSITIVE>[\s\S]*?<AMOUNT>0\.50<\/AMOUNT>/,
+  );
+  assert.doesNotMatch(
+    xmlA,
+    /<AMOUNT>--/,
+    "Tally XML amounts must never contain malformed double minus",
+  );
+
+  // Scenario B: Positive rounding adjustment (+0.50 => 115.00 grand_total)
+  const syncDocB = {
+    ...syncDocA,
+    doc_number: "INV-2026-00303",
+    adjustment: 0.5,
+    grand_total: 115,
+  };
+  const iifB = generateQuickBooksIif(syncDocB, syncItemsA);
+  const splLinesB = iifB.split("\n").filter((l) => l.startsWith("SPL\t"));
+  const trnsLineB = iifB.split("\n").find((l) => l.startsWith("TRNS\t"));
+  assert.ok(trnsLineB);
+  const trnsAmountB = parseFloat(trnsLineB.split("\t")[6]);
+  assert.equal(trnsAmountB, 115);
+  const splTotalB = splLinesB.reduce((acc, l) => acc + parseFloat(l.split("\t")[6]), 0);
+  assert.equal(
+    Math.round((trnsAmountB + splTotalB) * 100) / 100,
+    0,
+    "QuickBooks IIF with positive rounding must balance to 0",
+  );
+
+  const xmlB = generateTallySalesXml(syncDocB, syncItemsA);
+  assert.match(
+    xmlB,
+    /<LEDGERNAME>Round Off<\/LEDGERNAME>[\s\S]*?<ISDEEMEDPOSITIVE>No<\/ISDEEMEDPOSITIVE>[\s\S]*?<AMOUNT>-0\.50<\/AMOUNT>/,
+  );
+  assert.doesNotMatch(xmlB, /<AMOUNT>--/);
+});
+
 test("CSV formula injection protection and delimiter sanitization", () => {
   // Untrusted formula injections are prepended with single quote
   assert.equal(sanitizeCsvCell("=SUM(A1:B10)"), "'=SUM(A1:B10)");

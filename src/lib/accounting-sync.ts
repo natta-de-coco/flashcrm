@@ -54,6 +54,7 @@ export type AccountingExportOptions = {
   salesLedger?: string;
   taxLedger?: string;
   roundOffLedger?: string;
+  discountLedger?: string;
 };
 
 export type AccountingSyncOptions = AccountingExportOptions;
@@ -139,6 +140,8 @@ export function generateTallySalesXml(
   const companyName = options.companyName || "Flas CRM Company";
   const salesLedger = options.salesLedger || "Sales Account";
   const taxLedger = options.taxLedger || (doc.tax_label ? `${doc.tax_label} Output` : "Output VAT");
+  const roundOffLedger = options.roundOffLedger || "Round Off";
+  const discountLedger = options.discountLedger || "Discounts Given";
   const customerName =
     doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Cash Customer";
 
@@ -215,6 +218,18 @@ export function generateTallySalesXml(
               <AMOUNT>${grandTotal}</AMOUNT>
             </LEDGERENTRIES.LIST>
 
+            <!-- Document-level Discount (Debit) -->
+            ${
+              Number(doc.invoice_discount || 0) > 0
+                ? `
+            <LEDGERENTRIES.LIST>
+              <LEDGERNAME>${escapeXml(discountLedger)}</LEDGERNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <AMOUNT>${Number(doc.invoice_discount).toFixed(2)}</AMOUNT>
+            </LEDGERENTRIES.LIST>`
+                : ""
+            }
+
             <!-- Tax Ledger Entry (Credit) -->
             ${
               Number(taxTotal) > 0
@@ -256,9 +271,9 @@ export function generateTallySalesXml(
               Number(doc.adjustment || 0) !== 0
                 ? `
             <LEDGERENTRIES.LIST>
-              <LEDGERNAME>Round Off</LEDGERNAME>
+              <LEDGERNAME>${escapeXml(roundOffLedger)}</LEDGERNAME>
               <ISDEEMEDPOSITIVE>${Number(doc.adjustment) > 0 ? "No" : "Yes"}</ISDEEMEDPOSITIVE>
-              <AMOUNT>-${Number(doc.adjustment).toFixed(2)}</AMOUNT>
+              <AMOUNT>${Number(doc.adjustment) > 0 ? `-${Number(doc.adjustment).toFixed(2)}` : Math.abs(Number(doc.adjustment)).toFixed(2)}</AMOUNT>
             </LEDGERENTRIES.LIST>`
                 : ""
             }
@@ -344,6 +359,25 @@ export function generateQuickBooksCsv(doc: SyncInvoiceDoc, items: SyncInvoiceIte
     rows.push(row.join(","));
   }
 
+  if (doc.invoice_discount && doc.invoice_discount > 0) {
+    const discountRow = [
+      sanitizeCsvCell(doc.doc_number),
+      sanitizeCsvCell(customerName),
+      sanitizeCsvCell(doc.issue_date),
+      sanitizeCsvCell(doc.due_date || doc.issue_date),
+      sanitizeCsvCell(doc.payment_terms || "Net 30"),
+      sanitizeCsvCell("Discount"),
+      sanitizeCsvCell("Invoice Discount"),
+      sanitizeCsvCell(1),
+      sanitizeCsvCell((-doc.invoice_discount).toFixed(2)),
+      sanitizeCsvCell((-doc.invoice_discount).toFixed(2)),
+      sanitizeCsvCell("NON"),
+      sanitizeCsvCell("0.00"),
+      sanitizeCsvCell(doc.currency),
+    ];
+    rows.push(discountRow.join(","));
+  }
+
   return rows.join("\n");
 }
 
@@ -359,6 +393,9 @@ export function generateQuickBooksIif(
   const isQuotation = doc.kind === "quotation";
   const trnsType = isQuotation ? "ESTIMATE" : "INVOICE";
   const salesLedger = options.salesLedger || "Sales";
+  const taxLedger = options.taxLedger || "Sales Tax Payable";
+  const roundOffLedger = options.roundOffLedger || "Round Off";
+  const discountLedger = options.discountLedger || "Discounts Given";
   const customer = escapeIif(
     doc.customer_snapshot?.name || doc.customer_snapshot?.company || "Customer",
   );
@@ -387,8 +424,13 @@ export function generateQuickBooksIif(
     );
   }
 
+  if (doc.invoice_discount && doc.invoice_discount > 0) {
+    lines.push(
+      `SPL\t\t${trnsType}\t${dateStr}\t${escapeIif(discountLedger)}\t${customer}\t${Number(doc.invoice_discount).toFixed(2)}\t${docNum}\tDiscount\tN\t\t\t\tN`,
+    );
+  }
+
   if (doc.tax_total > 0) {
-    const taxLedger = options.taxLedger || "Sales Tax Payable";
     lines.push(
       `SPL\t\t${trnsType}\t${dateStr}\t${escapeIif(taxLedger)}\t${customer}\t${(-doc.tax_total).toFixed(2)}\t${docNum}\t${escapeIif(doc.tax_label || "VAT")}\tN\t\t\t\tN`,
     );
@@ -408,7 +450,7 @@ export function generateQuickBooksIif(
 
   if (doc.adjustment && doc.adjustment !== 0) {
     lines.push(
-      `SPL\t\t${trnsType}\t${dateStr}\tRound Off\t${customer}\t${(-doc.adjustment).toFixed(2)}\t${docNum}\tAdjustment\tN\t\t\t\tN`,
+      `SPL\t\t${trnsType}\t${dateStr}\t${escapeIif(roundOffLedger)}\t${customer}\t${(-doc.adjustment).toFixed(2)}\t${docNum}\tAdjustment\tN\t\t\t\tN`,
     );
   }
 
@@ -501,6 +543,7 @@ export function generateZohoInvoiceJson(doc: SyncInvoiceDoc, items: SyncInvoiceI
         date: doc.issue_date,
         expiry_date: doc.due_date || doc.issue_date,
         currency_code: doc.currency,
+        discount: doc.invoice_discount || undefined,
         notes: doc.notes || undefined,
         terms: doc.terms || undefined,
         line_items: items.map((i) => ({
@@ -520,6 +563,7 @@ export function generateZohoInvoiceJson(doc: SyncInvoiceDoc, items: SyncInvoiceI
         due_date: doc.due_date || doc.issue_date,
         currency_code: doc.currency,
         payment_terms_label: doc.payment_terms || "Net 30",
+        discount: doc.invoice_discount || undefined,
         notes: doc.notes || undefined,
         terms: doc.terms || undefined,
         line_items: items.map((i) => ({
@@ -546,6 +590,28 @@ export function generateQuickBooksInvoiceJson(
   const isQuotation = doc.kind === "quotation";
   const customerName = doc.customer_snapshot?.company || doc.customer_snapshot?.name || "Customer";
 
+  const lines: Record<string, unknown>[] = items.map((i) => ({
+    DetailType: "SalesItemLineDetail",
+    Amount: i.line_total,
+    Description: i.description || i.name,
+    SalesItemLineDetail: {
+      ItemRef: { name: i.name },
+      UnitPrice: i.unit_price,
+      Qty: i.quantity,
+      TaxCodeRef: { value: doc.tax_label || "TAX" },
+    },
+  }));
+
+  if (doc.invoice_discount && doc.invoice_discount > 0) {
+    lines.push({
+      DetailType: "DiscountLineDetail",
+      Amount: doc.invoice_discount,
+      DiscountLineDetail: {
+        PercentBased: false,
+      },
+    });
+  }
+
   const payload = {
     DocNumber: doc.doc_number,
     TxnDate: doc.issue_date,
@@ -561,17 +627,7 @@ export function generateQuickBooksInvoiceJson(
         doc.notes ||
         (isQuotation ? "Quotation generated from Flas CRM" : "Invoice generated from Flas CRM"),
     },
-    Line: items.map((i) => ({
-      DetailType: "SalesItemLineDetail",
-      Amount: i.line_total,
-      Description: i.description || i.name,
-      SalesItemLineDetail: {
-        ItemRef: { name: i.name },
-        UnitPrice: i.unit_price,
-        Qty: i.quantity,
-        TaxCodeRef: { value: doc.tax_label || "TAX" },
-      },
-    })),
+    Line: lines,
   };
   return JSON.stringify(payload, null, 2);
 }
