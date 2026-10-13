@@ -36,28 +36,33 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-
-import { toast } from "sonner";
-import { useI18n } from "@/hooks/useI18n";
-import { hasMessage, type MessageKey } from "@/lib/i18n";
-import { AccountingExportDialog } from "@/components/sales/AccountingExportDialog";
-import { type SyncInvoiceDoc, type SyncInvoiceItem } from "@/lib/accounting-sync";
 import {
   AlertTriangle,
   ArrowRight,
   Download,
   FileText,
+  History,
+  KanbanSquare,
+  LayoutGrid,
+  LayoutList,
+  List,
   Plus,
   Receipt,
   Send,
   Share2,
-  LayoutGrid,
-  List,
+  ShieldCheck,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { useI18n } from "@/hooks/useI18n";
+import { hasMessage, type MessageKey } from "@/lib/i18n";
+import { AccountingExportDialog } from "@/components/sales/AccountingExportDialog";
+import { type SyncInvoiceDoc, type SyncInvoiceItem } from "@/lib/accounting-sync";
 import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
+import { DocumentHistoryDialog } from "@/components/sales/DocumentHistoryDialog";
+import { CompanyBillingProfileCard } from "@/components/settings/CompanyBillingProfileCard";
 import { isSubscriptionReceipt } from "@/lib/sales-pipeline";
+import { useRef, useState } from "react";
 
 /**
  * Why a document cannot be finalised yet, or null when it can.
@@ -168,7 +173,7 @@ function SalesPage() {
   const convertQuote = useServerFn(convertQuotationToInvoice);
 
   const [tab, setTab] = useState("all");
-  const [viewMode, setViewMode] = useState<"list" | "board">("board");
+  const [viewMode, setViewMode] = useState<"board" | "list">("board");
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [payFor, setPayFor] = useState<DocRow | null>(null);
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
@@ -178,6 +183,8 @@ function SalesPage() {
     doc: SyncInvoiceDoc;
     items: SyncInvoiceItem[];
   } | null>(null);
+  const [historyDocId, setHistoryDocId] = useState<string | null>(null);
+  const [showCompanyProfile, setShowCompanyProfile] = useState(false);
   // Why the last WhatsApp send did not go, shown in the dialog with the PDF as
   // the way to send it by hand.
   const [sendBlocks, setSendBlocks] = useState<{ code: string; message: string }[]>([]);
@@ -191,8 +198,12 @@ function SalesPage() {
   });
 
   const rawDocs = (data?.documents ?? []) as unknown as DocRow[];
-  const documents = rawDocs.filter((doc) => !isSubscriptionReceipt(doc));
-  const visible = documents.filter((doc) =>
+  // Internal SaaS billing receipts (Stripe) must never appear in the customer sales view.
+  const customerDocs = rawDocs.filter(
+    (doc) => !isSubscriptionReceipt(doc as { custom_fields?: Record<string, unknown> | null }),
+  );
+  const documents = customerDocs;
+  const visible = customerDocs.filter((doc) =>
     tab === "all"
       ? true
       : tab === "quotations"
@@ -507,6 +518,15 @@ function SalesPage() {
               <Button variant="ghost" onClick={() => setBuilder(null)}>
                 {t("sales.back")}
               </Button>
+              {builder.id && (
+                <Button
+                  variant="outline"
+                  onClick={() => setHistoryDocId(builder.id)}
+                  className="gap-1.5"
+                >
+                  <History className="h-4 w-4" /> Backups &amp; Logs
+                </Button>
+              )}
               <Button
                 variant="outline"
                 disabled={save.isPending || salesDraftBlocker(builder) !== null}
@@ -550,6 +570,13 @@ function SalesPage() {
         description={t("sales.quoteACustomerTurnIt")}
         actions={
           <>
+            <Button
+              variant="outline"
+              onClick={() => setShowCompanyProfile(true)}
+              className="gap-1.5"
+            >
+              <Receipt className="h-4 w-4 text-primary" /> Tax &amp; TRN Profile
+            </Button>
             <Button variant="outline" onClick={() => startNew("quotation")}>
               <Plus className="me-1 h-4 w-4" /> {t("sales.quotation")}
             </Button>
@@ -560,28 +587,29 @@ function SalesPage() {
         }
       />
 
+      {/* Toolbar: view toggle + list-mode filters */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+        {/* Board / List toggle */}
+        <div className="flex rounded-lg border p-0.5">
           <Button
             variant={viewMode === "board" ? "default" : "ghost"}
             size="sm"
-            className="h-8 px-3 text-xs"
+            className="h-7 gap-1.5 px-2.5 text-xs"
             onClick={() => setViewMode("board")}
           >
-            <LayoutGrid className="me-1.5 h-3.5 w-3.5" />
-            Deal Stages Board
+            <KanbanSquare className="h-3.5 w-3.5" /> Board
           </Button>
           <Button
             variant={viewMode === "list" ? "default" : "ghost"}
             size="sm"
-            className="h-8 px-3 text-xs"
+            className="h-7 gap-1.5 px-2.5 text-xs"
             onClick={() => setViewMode("list")}
           >
-            <List className="me-1.5 h-3.5 w-3.5" />
-            List View
+            <LayoutList className="h-3.5 w-3.5" /> List
           </Button>
         </div>
 
+        {/* Filters — only shown in list mode */}
         {viewMode === "list" && (
           <Tabs value={tab} onValueChange={setTab}>
             <TabsList>
@@ -597,21 +625,37 @@ function SalesPage() {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">{t("sales.loadingYourSalesDocuments")}</p>
       ) : viewMode === "board" ? (
-        <SalesPipelineBoard
-          documents={documents}
-          onOpenExisting={(id) => openExisting.mutate(id)}
-          onSendWhatsApp={(doc) => setSendFor(doc)}
-          onRecordPayment={(doc) => {
-            setPayFor(doc);
-            setPayForm({
-              amount: String(doc.balance > 0 ? doc.balance : doc.grand_total),
-              reference: "",
-              method: "bank_transfer",
-            });
-          }}
-          onConvertQuotation={(id) => convert.mutate(id)}
-          onDownloadPdf={(id) => download.mutate(id)}
-        />
+        customerDocs.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Receipt className="h-4 w-4" /> {t("sales.nothingHereYet")}
+              </CardTitle>
+              <CardDescription>{t("sales.createYourFirstQuotationWhen")}</CardDescription>
+            </CardHeader>
+          </Card>
+        ) : (
+          <SalesPipelineBoard
+            documents={customerDocs}
+            currency={
+              (data?.settings as { default_currency?: string } | undefined)?.default_currency ??
+              "AED"
+            }
+            onOpenExisting={(id) => openExisting.mutate(id)}
+            onSendWhatsApp={(doc) => setSendFor(doc)}
+            onConvertQuotation={(id) => convert.mutate(id)}
+            onRecordPayment={(doc) => {
+              setPayFor(doc);
+              setPayForm({
+                amount: String(Number(doc.balance).toFixed(2)),
+                reference: "",
+                method: "bank_transfer",
+              });
+            }}
+            onDownloadPdf={(id) => download.mutate(id)}
+            onViewHistory={(id) => setHistoryDocId(id)}
+          />
+        )
       ) : visible.length === 0 ? (
         <Card>
           <CardHeader>
@@ -625,7 +669,7 @@ function SalesPage() {
         <div className="space-y-3">
           {visible.map((doc) => (
             <Card key={doc.id}>
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 items-start">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
@@ -662,6 +706,14 @@ function SalesPage() {
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => openExisting.mutate(doc.id)}>
                     {t("sales.edit2")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setHistoryDocId(doc.id)}
+                    title="View PDF Backups & Audit Trail"
+                  >
+                    <History className="mr-1 h-4 w-4" /> Backups
                   </Button>
                   <Button
                     size="sm"
@@ -799,6 +851,18 @@ function SalesPage() {
         items={accountingTarget?.items ?? []}
         companyName={tenant?.name}
       />
+
+      <DocumentHistoryDialog
+        documentId={historyDocId}
+        open={Boolean(historyDocId)}
+        onOpenChange={(open) => !open && setHistoryDocId(null)}
+      />
+
+      <Dialog open={showCompanyProfile} onOpenChange={setShowCompanyProfile}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <CompanyBillingProfileCard />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

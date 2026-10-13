@@ -257,7 +257,7 @@ describe("AI resilience respects workspace choice and records actual outcomes", 
     rpc.get_tenant_ai_key = { provider: "google", api_key: "google-key" };
     responder = googleReply;
     await callFlashAi("system", "hello", { tenantId: TENANT });
-    assert.match(requests[0].url, /gemini-3\.8-flash:generateContent$/);
+    assert.match(requests[0].url, /gemini-1\.5-flash:generateContent$/);
   });
   it("does not turn on backups without workspace opt-in", async () => {
     rpc.get_tenant_ai_key = { provider: "google", api_key: "google-key" };

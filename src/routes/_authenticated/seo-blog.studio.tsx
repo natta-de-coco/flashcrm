@@ -21,21 +21,33 @@ import {
   analyzeImagesFn,
   generateDraftFn,
   generateMicroPostsFn,
+  generateSingleMicroPostFn,
   humanizeFn,
   publishArticleFn,
+  publishMicroPostToSocialFn,
 } from "@/lib/seo.functions";
 import { BLOG_TEMPLATES } from "@/lib/blog-templates";
+import type { MicroPost, PlatformKey } from "@/lib/seo.server";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowLeft,
   Check,
+  CheckCircle2,
+  Copy,
+  Facebook,
   ImagePlus,
+  Instagram,
+  Linkedin,
   Loader2,
+  RefreshCw,
+  Send,
   Sparkles,
   Star,
   Trash2,
+  Twitter,
+  Video,
   Wand2,
   X,
 } from "lucide-react";
@@ -89,8 +101,10 @@ function SeoStudioPage() {
   const analyze = useServerFn(analyzeImagesFn);
   const genDraft = useServerFn(generateDraftFn);
   const genMicro = useServerFn(generateMicroPostsFn);
+  const genSingleMicro = useServerFn(generateSingleMicroPostFn);
   const humanize = useServerFn(humanizeFn);
   const publish = useServerFn(publishArticleFn);
+  const publishSocial = useServerFn(publishMicroPostToSocialFn);
 
   // --- state ---------------------------------------------------------------
   const [articleId, setArticleId] = useState<string | null>(article ?? null);
@@ -117,9 +131,9 @@ function SeoStudioPage() {
   const [contentHtml, setContentHtml] = useState("");
   const [secondary, setSecondary] = useState<string[]>([]);
   const [faq, setFaq] = useState<Faq[]>([]);
-  const [microPosts, setMicroPosts] = useState<
-    Array<{ platform: string; text: string; hashtags: string[] }>
-  >([]);
+  const [microPosts, setMicroPosts] = useState<MicroPost[]>([]);
+  const [recreatingPlatform, setRecreatingPlatform] = useState<string | null>(null);
+  const [publishingPlatform, setPublishingPlatform] = useState<string | null>(null);
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [pubSite, setPubSite] = useState("");
   const [pubStatus, setPubStatus] = useState<"draft" | "pending" | "publish" | "future">("draft");
@@ -697,33 +711,276 @@ function SeoStudioPage() {
           </Card>
 
           {mode === "micro" && microPosts.length > 0 && (
-            <div className="grid gap-3 lg:grid-cols-3">
-              {microPosts.map((p) => (
-                <Card key={p.platform}>
-                  <CardHeader className="flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-sm">{p.platform}</CardTitle>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(
-                          `${p.text}\n\n${p.hashtags.map((h) => `#${h}`).join(" ")}`,
-                        );
-                        toast.success(t("seoBlogStudio.copied"));
-                      }}
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card p-3 shadow-sm">
+                <div>
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Sparkles className="size-4 text-brand" />
+                    Omnichannel Campaign Studio
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Custom resolution, aspect ratio, writing style, and 3-tier hashtags for each
+                    platform. Verify copy and publish directly.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {microPosts.filter((p) => p.verified).length} of {microPosts.length} Verified
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      setMicroPosts((prev) => prev.map((p) => ({ ...p, verified: true })));
+                      toast.success("All platform posts marked as verified!");
+                    }}
+                  >
+                    Verify All
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {microPosts.map((p, idx) => {
+                  const isOverLimit = p.specs && p.text.length > p.specs.charLimit;
+                  const getPlatformIcon = (key: string) => {
+                    switch (key) {
+                      case "instagram":
+                        return <Instagram className="size-4 text-pink-500" />;
+                      case "linkedin":
+                        return <Linkedin className="size-4 text-blue-600" />;
+                      case "tiktok":
+                        return <Video className="size-4 text-purple-600 dark:text-purple-400" />;
+                      case "facebook":
+                        return <Facebook className="size-4 text-blue-500" />;
+                      case "twitter":
+                        return <Twitter className="size-4 text-sky-500" />;
+                      default:
+                        return <Sparkles className="size-4 text-brand" />;
+                    }
+                  };
+
+                  return (
+                    <Card
+                      key={p.platform}
+                      className={`flex flex-col transition-all duration-200 ${
+                        p.verified
+                          ? "border-emerald-500/60 shadow-sm bg-card"
+                          : "hover:border-border"
+                      }`}
                     >
-                      {t("seoBlogStudio.copy")}
-                    </Button>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="whitespace-pre-wrap text-xs">{p.text}</p>
-                    <p className="mt-2 text-xs text-brand">
-                      {p.hashtags.map((h) => `#${h}`).join(" ")}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
+                      <CardHeader className="flex-row items-start justify-between space-y-0 pb-2">
+                        <div className="flex items-center gap-2">
+                          {getPlatformIcon(p.platform)}
+                          <div>
+                            <CardTitle className="text-sm font-semibold">
+                              {p.platformName || p.platform}
+                            </CardTitle>
+                            <p className="text-[11px] text-muted-foreground">
+                              {p.specs?.mediaType ?? "Social Post"}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={p.verified ? "default" : "outline"}
+                          className={`h-7 px-2.5 text-xs gap-1.5 transition-all ${
+                            p.verified
+                              ? "bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          onClick={() => {
+                            setMicroPosts((prev) =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, verified: !item.verified } : item,
+                              ),
+                            );
+                            if (!p.verified) {
+                              toast.success(`Verified copy for ${p.platformName}`);
+                            }
+                          }}
+                        >
+                          {p.verified ? (
+                            <>
+                              <CheckCircle2 className="size-3.5" />
+                              Verified
+                            </>
+                          ) : (
+                            <>
+                              <Check className="size-3.5" />
+                              Verify
+                            </>
+                          )}
+                        </Button>
+                      </CardHeader>
+
+                      <CardContent className="flex-1 space-y-3 pt-0">
+                        {/* Specs & Dimensions Badge Ribbon */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                          <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-mono">
+                            {p.specs?.aspectRatio ?? "Adaptive"}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className="px-1.5 py-0 text-[10px] font-mono text-muted-foreground"
+                          >
+                            {p.specs?.resolution ?? "Native"}
+                          </Badge>
+                          <span
+                            className={`ml-auto text-[11px] font-mono ${
+                              isOverLimit ? "font-bold text-destructive" : "text-muted-foreground"
+                            }`}
+                          >
+                            {p.text.length}/{p.specs?.charLimit ?? 2200}
+                          </span>
+                        </div>
+
+                        {/* Hook Strategy Guide */}
+                        {p.specs?.hookGuide && (
+                          <div className="rounded bg-muted/50 p-2 text-[11px] text-muted-foreground leading-snug">
+                            <span className="font-semibold text-foreground">Hook strategy:</span>{" "}
+                            {p.specs.hookGuide}
+                          </div>
+                        )}
+
+                        {/* Editable Post Copy */}
+                        <div className="space-y-1">
+                          <Textarea
+                            className="min-h-[140px] resize-y text-xs leading-relaxed font-sans"
+                            value={p.text}
+                            onChange={(e) => {
+                              const newText = e.target.value;
+                              setMicroPosts((prev) =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, text: newText } : item,
+                                ),
+                              );
+                            }}
+                            placeholder={`Write copy for ${p.platformName}...`}
+                          />
+                        </div>
+
+                        {/* 3-Tier Hashtags Ribbon */}
+                        <div className="rounded border bg-secondary/10 p-2">
+                          <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                            3-Tier Hashtags
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {p.hashtags.map((h, hIdx) => (
+                              <span
+                                key={hIdx}
+                                className="inline-flex items-center rounded bg-brand/10 px-1.5 py-0.5 text-[11px] font-medium text-brand"
+                              >
+                                #{h}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Bottom Actions: Recreate, Copy, Publish */}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 border-t pt-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1"
+                            disabled={recreatingPlatform === p.platform}
+                            onClick={async () => {
+                              setRecreatingPlatform(p.platform);
+                              try {
+                                const updated = await genSingleMicro({
+                                  data: {
+                                    platform: p.platform,
+                                    params: {
+                                      primaryKeyword: keyword,
+                                      industry,
+                                      intent,
+                                      tone,
+                                      visionSummary: vision?.summary ?? "",
+                                      secondaryKeywords: secondary,
+                                    },
+                                  },
+                                });
+                                setMicroPosts((prev) =>
+                                  prev.map((item, i) =>
+                                    i === idx ? { ...updated, verified: false } : item,
+                                  ),
+                                );
+                                toast.success(`Recreated fresh copy for ${p.platformName}`);
+                              } catch (err) {
+                                toast.error(
+                                  err instanceof Error ? err.message : "Recreation failed",
+                                );
+                              } finally {
+                                setRecreatingPlatform(null);
+                              }
+                            }}
+                          >
+                            {recreatingPlatform === p.platform ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="size-3" />
+                            )}
+                            Recreate for {p.platformName}
+                          </Button>
+
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              title="Copy text & hashtags"
+                              onClick={() => {
+                                void navigator.clipboard.writeText(
+                                  `${p.text}\n\n${p.hashtags.map((h) => `#${h}`).join(" ")}`,
+                                );
+                                toast.success(t("seoBlogStudio.copied"));
+                              }}
+                            >
+                              <Copy className="size-3.5" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant={p.verified ? "default" : "secondary"}
+                              className="h-7 px-2.5 text-xs gap-1.5"
+                              disabled={publishingPlatform === p.platform}
+                              onClick={async () => {
+                                setPublishingPlatform(p.platform);
+                                try {
+                                  const res = await publishSocial({
+                                    data: {
+                                      platform: p.platform,
+                                      text: p.text,
+                                      hashtags: p.hashtags,
+                                    },
+                                  });
+                                  toast.success(
+                                    `Published to ${p.platformName} pipeline! Saved to Social Hub.`,
+                                  );
+                                } catch (err) {
+                                  toast.error(
+                                    err instanceof Error ? err.message : "Publishing failed",
+                                  );
+                                } finally {
+                                  setPublishingPlatform(null);
+                                }
+                              }}
+                            >
+                              {publishingPlatform === p.platform ? (
+                                <Loader2 className="size-3 animate-spin" />
+                              ) : (
+                                <Send className="size-3.5" />
+                              )}
+                              Publish
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
             </div>
           )}
 

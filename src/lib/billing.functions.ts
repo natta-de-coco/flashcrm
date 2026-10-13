@@ -88,11 +88,32 @@ export const getSalesWorkspace = createServerFn({ method: "GET" })
     if (docs.error) throw docs.error;
 
     const customerDocs = (docs.data ?? []).filter((d) => !isSubscriptionReceipt(d));
+    const contactMeta = new Map<
+      string,
+      { vat_number?: string | undefined; address?: string | undefined }
+    >();
+    for (const doc of docs.data ?? []) {
+      if (doc.contact_id && doc.customer_snapshot) {
+        const snap = doc.customer_snapshot as { vat_number?: string; address?: string };
+        const existing = contactMeta.get(doc.contact_id);
+        const entry: { vat_number?: string | undefined; address?: string | undefined } = {
+          vat_number: existing?.vat_number ?? (snap.vat_number || undefined),
+          address: existing?.address ?? (snap.address || undefined),
+        };
+        contactMeta.set(doc.contact_id, entry);
+      }
+    }
+
+    const enrichedContacts = (contacts.data ?? []).map((c) => ({
+      ...c,
+      vat_number: contactMeta.get(c.id)?.vat_number ?? null,
+      address: contactMeta.get(c.id)?.address ?? null,
+    }));
 
     return {
       settings,
       documents: customerDocs,
-      contacts: contacts.data ?? [],
+      contacts: enrichedContacts,
       products: products.data ?? [],
       banks: banks.data ?? [],
     };
@@ -497,7 +518,17 @@ export const convertQuotationToInvoice = createServerFn({ method: "POST" })
     return result;
   });
 
-/** Company details, payment link and defaults used on every document. */
+/** Fetches company billing & tax profile for settings and invoice headers. */
+export const getBillingProfile = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { ensureBillingSettings, requireTenantId } = await import("@/lib/billing.server");
+    const tenantId = await requireTenantId(context.supabase);
+    const settings = await ensureBillingSettings(context.supabase, tenantId);
+    return settings;
+  });
+
+/** Company details, TRN/tax numbers, payment link and defaults used on every document. */
 export const saveBillingProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
@@ -511,10 +542,12 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
         email: z.string().trim().max(200).nullable().optional(),
         website: z.string().trim().max(200).nullable().optional(),
         vat_number: z.string().trim().max(80).nullable().optional(),
+        tax_registration_number: z.string().trim().max(80).nullable().optional(),
         registration_number: z.string().trim().max(80).nullable().optional(),
+        tax_label: z.string().trim().max(40).optional(),
+        tax_enabled: z.boolean().optional(),
         default_currency: z.string().trim().min(2).max(6).optional(),
         default_tax_rate: z.number().min(0).max(100).optional(),
-        tax_label: z.string().trim().max(40).optional(),
         tax_inclusive: z.boolean().optional(),
         default_payment_terms: z.string().trim().max(300).nullable().optional(),
         default_terms: z.string().trim().max(6000).nullable().optional(),
@@ -561,11 +594,16 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     const tenantId = await requireTenantId(context.supabase);
     await ensureBillingSettings(context.supabase, tenantId);
 
-    const { bank_account, ...settingsData } = data;
+    const { bank_account, tax_registration_number, ...settingsData } = data;
+    const trn = tax_registration_number ?? data.vat_number ?? undefined;
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     for (const [key, value] of Object.entries(settingsData)) {
       if (value !== undefined) patch[key] = value;
     }
+    if (trn !== undefined) {
+      patch["vat_number"] = trn;
+    }
+
     const { error } = await context.supabase
       .from("billing_settings")
       .update(patch as never)
@@ -618,5 +656,29 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
       if (bankDeleteError) throw bankDeleteError;
     }
 
+    // Keep business_profiles tax_registration_number synchronized if present in DB
+    if (trn !== undefined) {
+      await (
+        context.supabase as unknown as {
+          from: (table: string) => {
+            update: (values: Record<string, unknown>) => {
+              eq: (col: string, val: unknown) => Promise<unknown>;
+            };
+          };
+        }
+      )
+        .from("business_profiles")
+        .update({ tax_registration_number: trn })
+        .eq("tenant_id", tenantId);
+    }
+
+    const { logAudit } = await import("@/lib/audit.server");
+    await logAudit({
+      action: "billing.profile_updated",
+      actorId: context.userId,
+      tenantId,
+      entityType: "billing_settings",
+      details: { trn, legal_name: data.legal_name, trade_name: data.trade_name },
+    });
     return { ok: true };
   });

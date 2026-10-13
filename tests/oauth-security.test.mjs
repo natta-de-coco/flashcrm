@@ -89,6 +89,40 @@ describe("redirect allowlist", () => {
     });
   });
 
+  // A bare host in configuration is what took every social connection on the
+  // deployment down: the entry could not be parsed, so it matched nothing and
+  // said nothing. It is accepted now -- but only as https, and only as a host.
+  test("a bare host in configuration is accepted, as https", () => {
+    withEnv("flas.example.com", () => {
+      assert.equal(allow("https://flas.example.com"), "https://flas.example.com");
+    });
+  });
+
+  test("a bare host does not also allow plain http", () => {
+    withEnv("flas.example.com", () => {
+      assert.equal(resolveAllowedOrigin("http://flas.example.com"), null);
+    });
+  });
+
+  test("a bare host matches that host only, not lookalikes or subdomains", () => {
+    withEnv("flas.example.com", () => {
+      for (const other of [
+        "https://flas.example.com.attacker.test",
+        "https://evil-flas.example.com",
+        "https://sub.flas.example.com",
+      ]) {
+        assert.equal(allow(other), null, `${other} should be refused`);
+      }
+    });
+  });
+
+  test("an explicit scheme is still honoured exactly", () => {
+    withEnv("http://localhost:8080", () => {
+      assert.equal(allow("http://localhost:8080"), "http://localhost:8080");
+      assert.equal(resolveAllowedOrigin("https://localhost:8080"), null);
+    });
+  });
+
   test("junk input is refused rather than throwing", () => {
     withEnv("https://a.example.com", () => {
       for (const junk of ["", "javascript:alert(1)", "//evil.test", "ftp://a.example.com"]) {

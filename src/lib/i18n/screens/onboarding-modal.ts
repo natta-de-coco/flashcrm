@@ -56,16 +56,17 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "ابدأ شهري المجاني",
     "onboardingModal.youLlBeTheCompany":
       "ستكون مسؤول الشركة. يمكنك دعوة فريقك لاحقًا من «الفريق والموظفون».",
-    "onboardingModal.chatbotSection": "روبوت الدردشة (اختياري)",
-    "onboardingModal.chatbotGreeting": "التحية",
-    "onboardingModal.chatbotGreetingPh": "مرحبًا! أهلًا بك. كيف يمكننا مساعدتك اليوم؟",
-    "onboardingModal.chatbotDetails": "عن نشاطك التجاري",
-    "onboardingModal.chatbotDetailsPh": "ما تبيعه، الموقع، ساعات العمل، التوصيل، الأسعار…",
+    "onboardingModal.chatbotSection": "روبوت الدردشة الخاص بك (اختياري)",
+    "onboardingModal.chatbotGreeting": "رسالة الترحيب",
+    "onboardingModal.chatbotGreetingPh": "مرحبًا! أهلاً بك. كيف يمكننا مساعدتك اليوم؟",
+    "onboardingModal.chatbotDetails": "نبذة عن نشاطك التجاري",
+    "onboardingModal.chatbotDetailsPh":
+      "ما تقدمه، الموقع، ساعات العمل، التوصيل، الأسعار الشائعة...",
     "onboardingModal.chatbotDetailsShort":
-      "أضف 20 حرفًا على الأقل عن نشاطك، أو اترك حقلي الروبوت فارغين.",
-    "onboardingModal.chatbotTurnOn": "تشغيل روبوت الدردشة الآن",
+      "أضف ما لا يقل عن 20 حرفًا حول نشاطك، أو اترك الحقلين فارغين.",
+    "onboardingModal.chatbotTurnOn": "تفعيل روبوت الدردشة الآن",
     "onboardingModal.chatbotHint":
-      "يجيب الروبوت فقط مما تكتبه هنا. يمكنك تغييره في أي وقت من صفحة روبوت الدردشة.",
+      "يجيب الروبوت فقط بناءً على ما تكتبه هنا. يمكنك تعديله في أي وقت من إعدادات الروبوت.",
   },
   ms: {
     "onboardingModal.pleaseEnterYourCompanyName": "Sila masukkan nama syarikat anda",
@@ -87,17 +88,18 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Mulakan bulan percuma saya",
     "onboardingModal.youLlBeTheCompany":
       "Anda akan menjadi pentadbir syarikat. Anda boleh menjemput pasukan anda kemudian dari Pasukan & Staf.",
-    "onboardingModal.chatbotSection": "Chatbot anda (pilihan)",
-    "onboardingModal.chatbotGreeting": "Ucapan aluan",
-    "onboardingModal.chatbotGreetingPh": "Hai! Selamat datang. Bagaimana kami boleh bantu?",
-    "onboardingModal.chatbotDetails": "Tentang perniagaan anda",
+    "onboardingModal.chatbotSection": "Bot sembang anda (pilihan)",
+    "onboardingModal.chatbotGreeting": "Ucapan",
+    "onboardingModal.chatbotGreetingPh":
+      "Hai! Selamat datang. Bagaimana kami boleh membantu hari ini?",
+    "onboardingModal.chatbotDetails": "Mengenai perniagaan anda",
     "onboardingModal.chatbotDetailsPh":
-      "Apa yang anda jual, lokasi, waktu operasi, penghantaran, harga…",
+      "Apa yang anda jual, lokasi, waktu operasi, penghantaran, harga biasa...",
     "onboardingModal.chatbotDetailsShort":
-      "Tambah sekurang-kurangnya 20 aksara tentang perniagaan anda, atau biarkan kedua-dua medan kosong.",
-    "onboardingModal.chatbotTurnOn": "Hidupkan chatbot sekarang",
+      "Tambah sekurang-kurangnya 20 aksara mengenai perniagaan anda, atau biarkan kedua-duanya kosong.",
+    "onboardingModal.chatbotTurnOn": "Hidupkan bot sembang sekarang",
     "onboardingModal.chatbotHint":
-      "Chatbot hanya menjawab berdasarkan apa yang anda tulis di sini. Anda boleh ubah bila-bila masa.",
+      "Bot sembang hanya menjawab dari apa yang anda tulis di sini. Anda boleh mengubahnya pada bila-bila masa.",
   },
   fil: {
     "onboardingModal.pleaseEnterYourCompanyName": "Pakilagay ang pangalan ng iyong kumpanya",
@@ -122,14 +124,16 @@ export default screen({
       "Ikaw ang magiging company admin. Maaari mong imbitahan ang iyong team mamaya mula sa Team at Staff.",
     "onboardingModal.chatbotSection": "Ang iyong chatbot (opsyonal)",
     "onboardingModal.chatbotGreeting": "Pagbati",
-    "onboardingModal.chatbotGreetingPh": "Hi! Maligayang pagdating. Paano kami makakatulong?",
+    "onboardingModal.chatbotGreetingPh":
+      "Kumusta! Maligayang pagdating. Paano kami makakatulong ngayon?",
     "onboardingModal.chatbotDetails": "Tungkol sa iyong negosyo",
-    "onboardingModal.chatbotDetailsPh": "Ano ang ibinebenta mo, lokasyon, oras, delivery, presyo…",
+    "onboardingModal.chatbotDetailsPh":
+      "Ano ang iyong ibinebenta, lokasyon, oras, delivery, presyo...",
     "onboardingModal.chatbotDetailsShort":
-      "Magdagdag ng hindi bababa sa 20 character tungkol sa negosyo mo, o iwanang blangko ang dalawa.",
+      "Maglagay ng hindi bababa sa 20 character tungkol sa negosyo, o iwang blangko.",
     "onboardingModal.chatbotTurnOn": "I-on ang chatbot ngayon",
     "onboardingModal.chatbotHint":
-      "Sumasagot lang ang chatbot mula sa isinulat mo rito. Mababago mo ito anumang oras.",
+      "Sumasagot lang ang chatbot batay sa isusulat mo dito. Maaari mo itong baguhin anumang oras.",
   },
   sw: {
     "onboardingModal.pleaseEnterYourCompanyName": "Tafadhali weka jina la kampuni yako",
@@ -152,15 +156,16 @@ export default screen({
     "onboardingModal.startMyFreeMonth": "Anza mwezi wangu wa bure",
     "onboardingModal.youLlBeTheCompany":
       "Utakuwa msimamizi wa kampuni. Unaweza kualika timu yako baadaye kutoka Timu na Wafanyakazi.",
-    "onboardingModal.chatbotSection": "Chatbot yako (si lazima)",
+    "onboardingModal.chatbotSection": "Chatbot yako (hiari)",
     "onboardingModal.chatbotGreeting": "Salamu",
-    "onboardingModal.chatbotGreetingPh": "Habari! Karibu. Tunaweza kukusaidiaje leo?",
+    "onboardingModal.chatbotGreetingPh": "Hujambo! Karibu. Tunawezaje kukusaidia leo?",
     "onboardingModal.chatbotDetails": "Kuhusu biashara yako",
-    "onboardingModal.chatbotDetailsPh": "Unachouza, mahali, saa za kazi, usafirishaji, bei…",
+    "onboardingModal.chatbotDetailsPh":
+      "Unachouza, eneo, saa za kazi, uwasilishaji, bei za kawaida...",
     "onboardingModal.chatbotDetailsShort":
-      "Ongeza angalau herufi 20 kuhusu biashara yako, au acha sehemu zote mbili wazi.",
+      "Ongeza angalau herufi 20 kuhusu biashara, au acha sehemu zote mbili wazi.",
     "onboardingModal.chatbotTurnOn": "Washa chatbot sasa",
     "onboardingModal.chatbotHint":
-      "Chatbot hujibu tu kutokana na unachoandika hapa. Unaweza kubadilisha wakati wowote.",
+      "Chatbot hujibu tu kutokana na kile unachoandika hapa. Unaweza kubadilisha wakati wowote.",
   },
 });

@@ -187,6 +187,13 @@ export const MANAGER_SECTION: NavSection = {
         "tenants workspaces clients organizations subscriptions billing payments paid renew suspend plans",
     },
     {
+      to: "/companies/email-settings",
+      label: "Platform Email",
+      desc: "System SMTP and IMAP settings",
+      icon: Mail,
+      keywords: "email smtp imap settings platform superadmin",
+    },
+    {
       to: "/companies/errors",
       label: "Errors & issues",
       desc: "What customers are hitting",
