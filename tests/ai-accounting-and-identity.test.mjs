@@ -385,6 +385,58 @@ describe("one place answers whose number this is", () => {
     assert.equal(await resolveContactByPhone("tenant-b", "+971501234567"), null);
   });
 
+  // The legacy column holds whatever form the number was saved in, and the
+  // number can arrive in another. Each of these fell through to "stranger",
+  // and the insert that followed collided with the contact that was there.
+  it("finds a contact saved with a plus when the number arrives as bare digits", async () => {
+    assert.deepEqual(await resolveContactByPhone(TENANT, "971501234567"), {
+      contactId: "contact-1",
+      branchId: null,
+    });
+  });
+
+  it("finds a contact saved as bare digits when the number arrives with a plus", async () => {
+    rows.contacts = [{ id: "contact-2", tenant_id: TENANT, name: "Bashir", phone: "971509999999" }];
+    assert.deepEqual(await resolveContactByPhone(TENANT, "+971509999999"), {
+      contactId: "contact-2",
+      branchId: null,
+    });
+  });
+
+  it("finds it when the arriving number carries spaces and dashes", async () => {
+    assert.deepEqual(await resolveContactByPhone(TENANT, "+971 50-123 4567"), {
+      contactId: "contact-1",
+      branchId: null,
+    });
+  });
+
+  it("still finds a number saved exactly as it arrives", async () => {
+    rows.contacts = [{ id: "contact-3", tenant_id: TENANT, name: "Chidi", phone: "0501234567" }];
+    assert.deepEqual(await resolveContactByPhone(TENANT, "0501234567"), {
+      contactId: "contact-3",
+      branchId: null,
+    });
+  });
+
+  it("does not match a different number that merely shares digits", async () => {
+    assert.equal(await resolveContactByPhone(TENANT, "971501234"), null);
+    assert.equal(await resolveContactByPhone(TENANT, "+9715012345670"), null);
+  });
+
+  it("does not reach another workspace through a different form of the number", async () => {
+    // tenant-a holds "+971501234567"; tenant-b holds nobody.
+    assert.equal(await resolveContactByPhone("tenant-b", "971501234567"), null);
+    rows.contacts.push({ id: "contact-b", tenant_id: "tenant-b", name: "Dara", phone: "971501234567" });
+    assert.deepEqual(await resolveContactByPhone("tenant-b", "+971501234567"), {
+      contactId: "contact-b",
+      branchId: null,
+    });
+    assert.deepEqual(await resolveContactByPhone(TENANT, "971501234567"), {
+      contactId: "contact-1",
+      branchId: null,
+    });
+  });
+
   it("is what the template send uses, so a saved contact is not called unknown", () => {
     // The template send lives in the send pipeline now; the API function
     // only names the workspace and hands over.

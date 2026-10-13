@@ -2,6 +2,15 @@
 
 Read this first in any new session. Full detail lives in `docs/`.
 
+## Mandatory team handovers (13 October 2026)
+
+Read `AGENTS.md` and `docs/handoff/TEAM-HANDOVER-PROTOCOL.md` before working.
+Use chat ID **CL-03**, name **FLAS · Claude Security & Core Workflows**.
+Register and post short commit-scoped handovers in https://github.com/natta-de-coco/flashcrm/issues/73.
+Include SQL requirements/order/pre-checks/deployment dependencies/verification/recovery, or explicitly say no SQL.
+Codex coordinates review and authorized SQL; use PRs, no direct main pushes.
+The dated status sections below are historical context, not evidence of the current tree, CI or live database.
+
 ## What this is
 
 A multi-tenant CRM for WhatsApp-driven sales teams — inbox, contacts, invoicing/Paddle
