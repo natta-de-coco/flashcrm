@@ -91,7 +91,7 @@ Install (2 minutes)
 
 Go live
 -------
-6. In Flas CRM open Leads & Marketing, pick this site and either click
+6. In Flas CRM open Leads & email, pick this site and either click
    "Activate now" (admins) or copy the activation link and open it once.
    Until the site is activated the popup collects nothing.
 

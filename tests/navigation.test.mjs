@@ -1296,6 +1296,9 @@ describe("text written straight into screens does not send anyone to a retired e
     "src/routes/_authenticated/connect.tsx",
     "src/routes/_authenticated/marketing.tsx",
     "src/routes/index.tsx",
+    // Install text a customer reads inside the downloaded plugin packages.
+    "src/lib/shopify-plugin.server.ts",
+    "src/lib/wordpress-plugin.server.ts",
   ];
   const RETIRED = /\b(Social Hub|SEO Studio|Content & SEO|Leads & Marketing|Integrations)\b/;
   // "Monitoring & webhooks" is the name of a capability on the public home page, not a menu entry.
