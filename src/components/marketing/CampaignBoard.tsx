@@ -51,6 +51,10 @@ export interface CampaignItem {
   created_at: string;
 }
 
+// A campaign saved with a date is not sent by anything yet: the screen must not promise it.
+const NOT_SENT_UNTIL_CONNECTED =
+  "Saved with a date. Nothing will be sent until email sending is connected.";
+
 interface CampaignBoardProps {
   campaigns: CampaignItem[];
   isSmtpVerified: boolean;
@@ -101,10 +105,6 @@ const STAGES: {
     badgeVariant: "secondary",
   },
 ];
-
-// A campaign saved with a date is not sent by anything yet: the screen must not promise it.
-const NOT_SENT_UNTIL_CONNECTED =
-  "Saved with a date. Nothing will be sent until email sending is connected.";
 
 export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: CampaignBoardProps) {
   const qc = useQueryClient();
