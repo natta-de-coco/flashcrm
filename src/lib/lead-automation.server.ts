@@ -268,16 +268,21 @@ export async function ingestLead(options: IngestLeadOptions) {
 
   // Trigger welcome automation only if consent was explicitly granted
   if (finalConsent) {
-    // The lead is already saved: whatever happens to the welcome email, capturing it succeeded.
-    try {
-      await triggerLeadWelcomeAutomation({
-        tenantId,
-        email: cleanEmail,
-        name: name || "there",
-        sourceUrl: sourceUrl || "",
-      });
-    } catch {
-      console.error("[welcome-automation] The welcome email step failed; the lead was kept");
+    // The welcome step belongs to the moment consent is newly given, not to every later message
+    // from the same visitor: the chat widget calls this once per message that carries an address,
+    // and a welcome (or its "not sent" record) per message would be wrong. The lead is already
+    // saved: whatever happens to the welcome email, capturing it succeeded.
+    if (isNewlyConsented) {
+      try {
+        await triggerLeadWelcomeAutomation({
+          tenantId,
+          email: cleanEmail,
+          name: name || "there",
+          sourceUrl: sourceUrl || "",
+        });
+      } catch {
+        console.error("[welcome-automation] The welcome email step failed; the lead was kept");
+      }
     }
 
     try {

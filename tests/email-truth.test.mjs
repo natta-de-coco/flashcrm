@@ -615,3 +615,69 @@ describe("campaign board", () => {
     assert.equal(uses.length, 3, "new campaign, edited campaign, and a card moved to scheduled");
   });
 });
+
+describe("welcome step runs when consent is newly given, not on every message", () => {
+  const welcomes = () => claims().filter((c) => c._template === "welcome_discount");
+  const capture = (consentGiven = true) =>
+    ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven });
+
+  it("three messages from the same consented visitor make one welcome attempt", async () => {
+    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+
+    await capture();
+    await capture();
+    await capture();
+
+    assert.equal(db.table("leads").length, 1);
+    assert.equal(welcomes().length, 1);
+  });
+
+  it("a visitor who was already consented here gets no welcome step at all", async () => {
+    db.reset({
+      leads: [{ id: "lead-a", tenant_id: A, email: EMAIL, consent_given: true, subscribed: true }],
+      tenant_smtp_config: [smtp()],
+    });
+
+    await capture();
+    await capture(false);
+
+    assert.equal(welcomes().length, 0);
+  });
+
+  it("messages without consent never start it; the message that gives consent does, once", async () => {
+    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+
+    await capture(false);
+    await capture(false);
+    assert.equal(welcomes().length, 0);
+
+    await capture(true);
+    await capture(true);
+    assert.equal(welcomes().length, 1);
+  });
+
+  it("someone who withdrew consent and gives it again is a new consent", async () => {
+    db.reset({
+      leads: [
+        { id: "lead-a", tenant_id: A, email: EMAIL, consent_given: false, subscribed: false },
+      ],
+      tenant_smtp_config: [smtp()],
+    });
+
+    await capture(true);
+    await capture(true);
+
+    assert.equal(welcomes().length, 1);
+  });
+
+  it("another company holding the same consented address does not use up this company's welcome", async () => {
+    db.reset({
+      leads: [{ id: "lead-b", tenant_id: B, email: EMAIL, consent_given: true, subscribed: true }],
+      tenant_smtp_config: [smtp()],
+    });
+
+    await capture(true);
+
+    assert.equal(welcomes().length, 1);
+  });
+});
