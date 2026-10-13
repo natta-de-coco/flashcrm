@@ -50,9 +50,13 @@ describe("Social posts says plainly that Flas does not publish", () => {
     assert.equal(MESSAGES.en["social.socialHub"], "Social posts");
     assert.equal(MESSAGES.en["social.aiComposer"], "Write a post");
     const screen = read("src/routes/_authenticated/social.tsx");
-    assert.match(screen, /useState\("composer"\)/, "the screen should open on the composer");
-    assert.equal(/useState\("inbox"\)/.test(screen), false);
-    const order = ["composer", "inbox", "reach"].map((value) =>
+    // The tab is in the address (?tab=write | comments | reach); no tab means the writer.
+    assert.ok(
+      screen.includes("parseSocialTab(search.tab)"),
+      "the screen should read its tab from the address",
+    );
+    assert.equal(/useState\("(composer|inbox)"\)/.test(screen), false);
+    const order = ["write", "comments", "reach"].map((value) =>
       screen.indexOf(`<TabsTrigger value="${value}"`),
     );
     assert.ok(
