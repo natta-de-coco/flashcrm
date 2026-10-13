@@ -16,8 +16,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, navMessageKey, workspaceDefaultLanguage } from "@/lib/i18n";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
-import { canReach } from "@/lib/permissions";
-import { MANAGER_SECTION, NAV_SECTIONS, type NavSection } from "@/lib/navigation";
+import { useNavAccess } from "@/hooks/useNavAccess";
+import { navSectionsFor } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -64,26 +64,15 @@ const SIDEBAR_MIN = 224;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_KEY = "flash.sidebar.width";
 
-function NavMenu({
-  sections,
-  onNavigate,
-}: {
-  sections: readonly NavSection[];
-  onNavigate?: () => void;
-}) {
-  const { staffRole, loading } = useTenant();
+function NavMenu({ onNavigate }: { onNavigate?: () => void }) {
+  const { role, loading } = useNavAccess();
   const { t } = useI18n();
   // A nav entry with no translation key keeps its English text rather than
   // showing the key itself.
   const text = (key: string, fallback: string) => (hasMessage(key) ? t(key) : fallback);
-  const visible = sections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter(
-        (item) => section.id === "platform" || canReach(staffRole, item.to),
-      ),
-    }))
-    .filter((section) => section.items.length > 0);
+  // The same rule as the phone bar, search and "+ Create" (lib/permissions.ts):
+  // platform pages only for platform staff, nothing privileged for an unknown role.
+  const visible = navSectionsFor(role);
 
   if (loading) return null;
 
@@ -136,7 +125,7 @@ function WorkspaceLanguageDefault() {
 }
 
 function AuthenticatedLayout() {
-  const { session, loading, signOut, user, isSuperAdmin } = useAuth();
+  const { session, loading, signOut, user } = useAuth();
   const { t, dir } = useI18n();
   const navigate = useNavigate();
   // Reads saved locale from DB and applies lang + dir to <html> live.
@@ -146,8 +135,6 @@ function AuthenticatedLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-
-  const sections = isSuperAdmin ? [...NAV_SECTIONS, MANAGER_SECTION] : NAV_SECTIONS;
 
   useEffect(() => {
     if (!loading && !session) navigate({ to: "/auth" });
@@ -264,7 +251,7 @@ function AuthenticatedLayout() {
           </Link>
 
           <nav className="flash-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain">
-            <NavMenu sections={sections} />
+            <NavMenu />
           </nav>
 
           <div className="border-t border-sidebar-border pt-3">
@@ -313,7 +300,7 @@ function AuthenticatedLayout() {
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="flex flex-col gap-4">
-                  <NavMenu sections={sections} onNavigate={() => setMobileOpen(false)} />
+                  <NavMenu onNavigate={() => setMobileOpen(false)} />
                 </nav>
                 <div className="mt-4 border-t border-sidebar-border pt-3">
                   <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">

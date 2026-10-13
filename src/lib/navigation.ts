@@ -27,6 +27,7 @@
  * learned "Social Hub" or "Integrations" still finds the screen. These are
  * matched but never displayed.
  */
+import { canOpen } from "./permissions";
 import {
   Activity,
   Bot,
@@ -55,8 +56,18 @@ export type NavItem = {
   label: string;
   desc: string;
   icon: LucideIcon;
-  /** Extra search terms. Matched, never rendered. */
+  /**
+   * Extra search terms. Matched, never rendered. The names an entry used to
+   * have go here, so a person who learned "Social Hub" still finds it, and
+   * there is never a second, visible entry for the old name.
+   */
   keywords?: string;
+  /**
+   * A shorter name for the phone's bottom bar only, where each slot is a few
+   * letters wide. It must be a word taken from the full name, never a new one
+   * (tests check this). Its translation key is `nav.<route>.bar`.
+   */
+  barLabel?: string;
 };
 
 export type NavSectionId = "daily" | "sell" | "marketing" | "setup" | "platform";
@@ -132,6 +143,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       {
         to: "/social",
         label: "Social posts",
+        barLabel: "Posts",
         desc: "Write & plan posts (you post them)",
         icon: Megaphone,
         keywords:
@@ -143,14 +155,15 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         desc: "Articles for Google + search stats",
         icon: Sparkles,
         keywords:
-          "seo studio seo article articles blog writer ai image google search console keywords ranking wordpress website content drafts",
+          "seo studio content & seo content seo saved drafts drafts seo article articles blog writer ai image google search console keywords ranking wordpress website",
       },
       {
         to: "/marketing",
         label: "Leads & email",
         desc: "Capture leads, plan emails",
         icon: Mail,
-        keywords: "leads marketing email campaigns newsletter drip popup capture forms consent",
+        keywords:
+          "leads & marketing leads marketing email campaigns newsletter drip popup capture forms consent",
       },
       {
         to: "/campaign-planner",
@@ -218,6 +231,13 @@ export const MANAGER_SECTION: NavSection = {
       icon: Bug,
       keywords: "errors issues bugs incidents failures",
     },
+    {
+      to: "/companies/email-settings",
+      label: "Platform email",
+      desc: "System SMTP and IMAP settings",
+      icon: Mail,
+      keywords: "platform email smtp imap system mail sender outgoing incoming settings",
+    },
   ],
 };
 
@@ -228,6 +248,7 @@ export const MANAGER_SECTION: NavSection = {
 export const UNLISTED_ROUTES: readonly string[] = ["/content"];
 
 const MENU_ITEMS: readonly NavItem[] = NAV_SECTIONS.flatMap((section) => section.items);
+const PLATFORM_ITEMS: readonly NavItem[] = MANAGER_SECTION.items;
 
 /**
  * The tabs of the phone's bottom bar. They are the menu's own entries, so they
@@ -240,13 +261,59 @@ export const MOBILE_BAR_ITEMS: readonly NavItem[] = MOBILE_BAR_ROUTES.map((to) =
   return item;
 });
 
-/** What search (Ctrl K) offers as a page: every entry in the sidebar. */
-export const PALETTE_PAGES: readonly NavItem[] = MENU_ITEMS;
+/**
+ * What search (Ctrl K) can offer as a page: every entry in the sidebar, the
+ * platform pages included. Ask `paletteFor(role)` for what one person may see.
+ */
+export const PALETTE_PAGES: readonly NavItem[] = [...MENU_ITEMS, ...PLATFORM_ITEMS];
+
+/*
+ * One rule, four surfaces. The sidebar, the phone bar, search and "+ Create"
+ * each ask `canOpen(role, route)` (lib/permissions.ts) through these, so a role
+ * that cannot open a screen is offered it nowhere, and one that can is offered it
+ * everywhere it belongs. Pass the role as loaded; an unknown or not-yet-loaded
+ * role (null) is offered only Home.
+ */
+
+/** The sections the sidebar and the phone drawer show this role, without empty ones. */
+export function navSectionsFor(role: string | null | undefined): readonly NavSection[] {
+  return [...NAV_SECTIONS, MANAGER_SECTION]
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => canOpen(role, item.to)),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+/** The pages search offers this role. */
+export function paletteFor(role: string | null | undefined): readonly NavItem[] {
+  return PALETTE_PAGES.filter((page) => canOpen(role, page.to));
+}
+
+/** The tabs the phone's bottom bar shows this role ("More" is always there). */
+export function mobileBarFor(role: string | null | undefined): readonly NavItem[] {
+  return MOBILE_BAR_ITEMS.filter((item) => canOpen(role, item.to));
+}
+
+/**
+ * The "+ Create" actions this role may use. `index` is the action's place in
+ * QUICK_CREATE_ACTIONS, which is also its translation key, so filtering never
+ * shifts a label onto the wrong action.
+ */
+export function quickCreateFor(
+  role: string | null | undefined,
+): readonly { action: QuickCreateAction; index: number }[] {
+  return QUICK_CREATE_ACTIONS.map((action, index) => ({ action, index })).filter(({ action }) =>
+    canOpen(role, action.to),
+  );
+}
 
 export type QuickCreateAction = {
   label: string;
   desc: string;
   to: string;
+  /** Opens the screen on a particular tab, e.g. the writer on Social posts. */
+  search?: Record<string, string>;
   icon: LucideIcon;
 };
 
@@ -260,7 +327,13 @@ export const QUICK_CREATE_ACTIONS: readonly QuickCreateAction[] = [
   { label: "Contact", desc: "Add a person to the CRM", to: "/contacts", icon: UserPlus },
   { label: "Message", desc: "Open a conversation", to: "/inbox", icon: MessageSquare },
   { label: "Campaign", desc: "Plan an email campaign", to: "/marketing", icon: Mail },
-  { label: "Social post", desc: "Write and plan a post", to: "/social", icon: Megaphone },
+  {
+    label: "Social post",
+    desc: "Write and plan a post",
+    to: "/social",
+    search: { tab: "write" },
+    icon: Megaphone,
+  },
   {
     label: "SEO article",
     desc: "Write an article for Google",

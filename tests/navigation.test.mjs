@@ -73,6 +73,7 @@ describe("the menu is the approved one", () => {
       [
         ["/companies", "Companies"],
         ["/companies/errors", "Errors & issues"],
+        ["/companies/email-settings", "Platform email"],
       ],
     ],
   ];
@@ -223,6 +224,19 @@ describe("the sidebar, the phone bar and the search palette agree", () => {
     assert.ok(inMenuOrder(routes), "the bar is out of the menu's order");
   });
 
+  it("every search, bar and Create surface reads its role from the one shared rule", () => {
+    const bar = read("src/components/MobileBottomNav.tsx");
+    const palette = read("src/components/CommandPalette.tsx");
+    const create = read("src/components/QuickCreate.tsx");
+    assert.ok(bar.includes("mobileBarFor("), "the bar filters by role");
+    assert.ok(palette.includes("paletteFor("), "search filters its pages by role");
+    assert.ok(palette.includes("searchRecords("), "search asks only for allowed records");
+    assert.ok(create.includes("quickCreateFor("), "Create filters by role");
+    for (const source of [bar, palette, create]) {
+      assert.ok(source.includes("useNavAccess"), "the role comes from one hook");
+    }
+  });
+
   it("the phone bar entries are the menu's own entries, so they carry the menu's names", () => {
     for (const tab of app.MOBILE_BAR_ITEMS) {
       const entry = items.find((item) => item.to === tab.to);
@@ -231,11 +245,11 @@ describe("the sidebar, the phone bar and the search palette agree", () => {
     }
   });
 
-  it("the search palette lists every sidebar entry a company sees, and only those", () => {
+  it("the search palette lists every sidebar entry, the platform pages included", () => {
     assert.ok(Array.isArray(app.PALETTE_PAGES), "PALETTE_PAGES is missing");
     assert.deepEqual(
       app.PALETTE_PAGES.map((page) => page.to),
-      NAV_SECTIONS.flatMap((section) => section.items.map((item) => item.to)),
+      menuRoutes,
     );
     for (const page of app.PALETTE_PAGES) {
       const entry = items.find((item) => item.to === page.to);
@@ -254,12 +268,12 @@ describe("the sidebar, the phone bar and the search palette agree", () => {
       }
     }
     const bar = read("src/components/MobileBottomNav.tsx");
-    assert.ok(bar.includes("MOBILE_BAR_ITEMS"), "the bar builds its tabs from the menu");
+    assert.ok(bar.includes("mobileBarFor"), "the bar builds its tabs from the menu");
     assert.ok(bar.includes("navMessageKey"), "the bar names its tabs with the menu's keys");
     assert.equal(bar.includes("bottomNav."), false, "the bar must not keep names of its own");
 
     const palette = read("src/components/CommandPalette.tsx");
-    assert.ok(palette.includes("PALETTE_PAGES"), "the palette builds its pages from the menu");
+    assert.ok(palette.includes("paletteFor"), "the palette builds its pages from the menu");
     assert.ok(palette.includes("navMessageKey"), "the palette names pages with the menu's keys");
 
     const menu = read("src/routes/_authenticated/route.tsx");
@@ -269,11 +283,10 @@ describe("the sidebar, the phone bar and the search palette agree", () => {
       "section titles come from the section id",
     );
     assert.equal(menu.includes('section.title === "Manager"'), false);
-    assert.ok(menu.includes('section.id === "platform"'));
-    assert.ok(
-      menu.includes("isSuperAdmin ? [...NAV_SECTIONS, MANAGER_SECTION] : NAV_SECTIONS"),
-      "platform entries stay for platform staff only",
-    );
+    // The platform section is no longer special-cased here: the same rule that
+    // filters every other entry (canOpen) keeps it for platform staff only.
+    assert.ok(menu.includes("navSectionsFor("), "the sidebar asks the shared rule");
+    assert.equal(menu.includes("isSuperAdmin"), false, "no second, separate platform check");
   });
 });
 
@@ -284,7 +297,7 @@ describe("the Create menu opens the same screens", () => {
 
   it("is built from one list that the component reads", () => {
     assert.ok(Array.isArray(actions), "QUICK_CREATE_ACTIONS is missing");
-    assert.ok(read("src/components/QuickCreate.tsx").includes("QUICK_CREATE_ACTIONS"));
+    assert.ok(read("src/components/QuickCreate.tsx").includes("quickCreateFor"));
   });
 
   it("only opens screens that exist and that a person can find in the menu", () => {
@@ -421,5 +434,293 @@ describe("every key the menu surfaces use exists", () => {
     }
     assert.equal(MESSAGES.en["seoBlogIndex.seoStudio"], "Website & SEO");
     assert.equal(MESSAGES.en["seoBlogIndex.savedDrafts"], "Saved drafts");
+  });
+});
+
+/* ───────── F4: one permission rule for the sidebar, the bar, search and Create ──────── */
+
+describe("one permission rule decides what every entry point offers", () => {
+  // What each role should reach, written out by hand (not derived from the rule
+  // under test). Screens only; a screen's child routes follow it.
+  const REACHES = {
+    company_admin: [
+      "/dashboard",
+      "/inbox",
+      "/contacts",
+      "/chatbot",
+      "/sales",
+      "/catalog",
+      "/social",
+      "/seo-blog",
+      "/marketing",
+      "/campaign-planner",
+      "/advisor",
+      "/connect",
+      "/monitoring",
+      "/settings",
+    ],
+    marketing_manager: [
+      "/dashboard",
+      "/inbox",
+      "/contacts",
+      "/social",
+      "/seo-blog",
+      "/marketing",
+      "/campaign-planner",
+      "/advisor",
+    ],
+    staff: ["/dashboard", "/inbox", "/contacts", "/sales", "/catalog"],
+    seo_editor: ["/dashboard", "/seo-blog"],
+  };
+  const PLATFORM = ["/companies", "/companies/errors", "/companies/email-settings"];
+  REACHES.super_admin = [...REACHES.company_admin, ...PLATFORM];
+  // A role that is not loaded yet, or that this file has never heard of.
+  const UNKNOWN = [undefined, null, "", "owner", "admin", "Staff", "__proto__", "constructor"];
+
+  const sidebarRoutes = (role) =>
+    app.navSectionsFor(role).flatMap((section) => section.items.map((item) => item.to));
+  const paletteRoutes = (role) => app.paletteFor(role).map((page) => page.to);
+  const barRoutes = (role) => app.mobileBarFor(role).map((item) => item.to);
+  const createTargets = (role) => app.quickCreateFor(role).map(({ action }) => action.to);
+
+  for (const [role, expected] of Object.entries(REACHES)) {
+    it(`${role}: the sidebar and search offer exactly the same pages, the ones this role may open`, () => {
+      assert.deepEqual(sidebarRoutes(role), expected);
+      assert.deepEqual(paletteRoutes(role), expected);
+    });
+
+    it(`${role}: the phone bar and Create offer only things this role can open`, () => {
+      const bar = barRoutes(role);
+      assert.deepEqual(
+        bar,
+        app.MOBILE_BAR_ITEMS.map((item) => item.to).filter((to) => expected.includes(to)),
+      );
+      for (const to of bar) assert.ok(expected.includes(to), `${role}: bar offers ${to}`);
+      for (const to of createTargets(role)) {
+        assert.ok(app.canOpen(role, to), `${role}: Create offers ${to}, which it cannot open`);
+      }
+      // And it leaves out nothing it could have offered.
+      assert.equal(
+        createTargets(role).length,
+        app.QUICK_CREATE_ACTIONS.filter((action) => app.canOpen(role, action.to)).length,
+      );
+    });
+  }
+
+  for (const role of UNKNOWN) {
+    it(`an unknown or not-yet-loaded role (${JSON.stringify(role) ?? "undefined"}) is offered Home and nothing else`, () => {
+      assert.deepEqual(sidebarRoutes(role), ["/dashboard"]);
+      assert.deepEqual(paletteRoutes(role), ["/dashboard"]);
+      assert.deepEqual(barRoutes(role), ["/dashboard"]);
+      assert.deepEqual(createTargets(role), []);
+      assert.deepEqual(app.searchableRecords(role), {
+        contacts: false,
+        products: false,
+        articles: false,
+      });
+      assert.equal(app.canOpen(role, "/companies"), false);
+      assert.equal(app.canOpen(role, "/inbox"), false);
+    });
+  }
+
+  it("a role the rules do not know is not treated as Staff", () => {
+    // It used to fall back to the Staff list, which opens the inbox and contacts.
+    assert.deepEqual([...app.routesFor("some_new_role")], ["/dashboard"]);
+  });
+
+  it("the Create menu offers each role the right actions, by name", () => {
+    const names = (role) => app.quickCreateFor(role).map(({ action }) => action.label);
+    assert.deepEqual(names("seo_editor"), ["SEO article", "Content draft"]);
+    assert.deepEqual(names("staff"), ["Contact", "Message", "Product"]);
+    assert.deepEqual(names("marketing_manager"), [
+      "Lead",
+      "Contact",
+      "Message",
+      "Campaign",
+      "Social post",
+      "SEO article",
+      "Content draft",
+    ]);
+    assert.equal(names("company_admin").length, app.QUICK_CREATE_ACTIONS.length);
+    assert.deepEqual(names(undefined), []);
+  });
+
+  it("filtering Create keeps each action's own translation key", () => {
+    for (const { action, index } of app.quickCreateFor("staff")) {
+      assert.equal(app.QUICK_CREATE_ACTIONS[index], action);
+      assert.equal(MESSAGES.en[`quickCreate.action.${index}.label`], action.label);
+    }
+  });
+
+  it("an SEO editor is offered no Inbox and no Contacts, anywhere", () => {
+    for (const surface of [sidebarRoutes, paletteRoutes, barRoutes, createTargets]) {
+      const routes = surface("seo_editor");
+      assert.ok(!routes.includes("/inbox"), "Inbox");
+      assert.ok(!routes.includes("/contacts"), "Contacts");
+    }
+  });
+
+  it("platform pages are for platform staff only, and only they can search for them", () => {
+    for (const role of [...Object.keys(REACHES), ...UNKNOWN]) {
+      const platformStaff = role === "super_admin";
+      for (const to of PLATFORM) {
+        assert.equal(app.canOpen(role, to), platformStaff, `${role} ${to}`);
+        assert.equal(paletteRoutes(role).includes(to), platformStaff, `${role} search ${to}`);
+        assert.equal(sidebarRoutes(role).includes(to), platformStaff, `${role} sidebar ${to}`);
+      }
+      const hasSection = app.navSectionsFor(role).some((section) => section.id === "platform");
+      assert.equal(hasSection, platformStaff, `${role}: the Platform heading`);
+    }
+    // A company admin is not platform staff. Company admins see no Platform.
+    assert.equal(app.canOpen("company_admin", "/companies/errors"), false);
+    // A page nobody listed (a child of /companies) follows the same rule.
+    assert.equal(app.canOpen("company_admin", "/companies/some-org-id"), false);
+    assert.equal(app.canOpen("super_admin", "/companies/some-org-id"), true);
+  });
+
+  it("a child route follows its screen, and a path nobody knows is closed", () => {
+    assert.equal(app.canOpen("seo_editor", "/seo-blog/studio"), true);
+    assert.equal(app.canOpen("staff", "/seo-blog/studio"), false);
+    assert.equal(app.canOpen("seo_editor", "/seo-blog/studio?x=1#top"), true);
+    assert.equal(app.canOpen("company_admin", "/seo-blogger"), false, "a prefix is not a parent");
+    assert.equal(app.canOpen("company_admin", "/nowhere"), false);
+    assert.equal(app.canOpen("super_admin", "/nowhere"), false);
+  });
+
+  it("every other screen Create can open is one the rules know", () => {
+    for (const action of app.QUICK_CREATE_ACTIONS) {
+      assert.ok(app.canOpen("super_admin", action.to), `${action.to} is unknown to the rules`);
+    }
+  });
+
+  it("does not give any role more than it had", () => {
+    // The lists above are the rules as they stood; widening one would change them.
+    const sorted = (list) => [...list].sort();
+    assert.deepEqual(sorted(app.routesFor("staff")), sorted(REACHES.staff));
+    assert.deepEqual(
+      sorted(app.routesFor("seo_editor")),
+      sorted([...REACHES.seo_editor, "/content"]),
+    );
+    assert.deepEqual(
+      sorted(app.routesFor("marketing_manager")),
+      sorted([...REACHES.marketing_manager, "/content"]),
+    );
+    assert.deepEqual(
+      sorted(app.routesFor("company_admin")),
+      sorted([...REACHES.company_admin, "/content"]),
+    );
+  });
+});
+
+describe("search asks the database only about records the role may open", () => {
+  const fakeClient = () => {
+    const asked = [];
+    return {
+      asked,
+      from(table) {
+        asked.push(table);
+        const rows = [{ id: `${table}-1`, name: "Ada", title: "Ada", sku: null, status: "draft" }];
+        const query = {
+          select: () => query,
+          or: () => query,
+          ilike: () => query,
+          limit: async () => ({ data: rows, error: null }),
+        };
+        return query;
+      },
+    };
+  };
+  const run = async (role, term = "ada") => {
+    const client = fakeClient();
+    const found = await app.searchRecords(client, term, role);
+    return { asked: client.asked.sort(), found };
+  };
+
+  it("an SEO editor gets no customer or product results, and those queries are never sent", async () => {
+    const { asked, found } = await run("seo_editor");
+    assert.deepEqual(asked, ["seo_articles"]);
+    assert.deepEqual(found.contacts, []);
+    assert.deepEqual(found.products, []);
+    assert.equal(found.articles.length, 1);
+  });
+
+  it("each role searches the records of the screens it can open", async () => {
+    assert.deepEqual((await run("staff")).asked, ["contacts", "products"]);
+    assert.deepEqual((await run("marketing_manager")).asked, ["contacts", "seo_articles"]);
+    assert.deepEqual((await run("company_admin")).asked, ["contacts", "products", "seo_articles"]);
+    assert.deepEqual((await run("super_admin")).asked, ["contacts", "products", "seo_articles"]);
+  });
+
+  it("an unknown or not-yet-loaded role searches nothing at all", async () => {
+    for (const role of [undefined, null, "", "owner"]) {
+      const { asked, found } = await run(role);
+      assert.deepEqual(asked, [], String(role));
+      assert.deepEqual(found, app.NO_RECORDS);
+    }
+  });
+
+  it("a search that is too short sends nothing", async () => {
+    assert.deepEqual((await run("company_admin", " a ")).asked, []);
+  });
+
+  it("the palette reads its records through that function and nowhere else", () => {
+    const palette = read("src/components/CommandPalette.tsx");
+    assert.equal(/\.from\(\s*"(contacts|products|seo_articles)"/.test(palette), false);
+  });
+});
+
+describe("the phone bar names every tab in a few letters", () => {
+  const more = (language) => MESSAGES[language]["shell.more"];
+  const barName = (language, item) =>
+    item.barLabel
+      ? MESSAGES[language][navMessageKey(item.to, "bar")]
+      : MESSAGES[language][navMessageKey(item.to, "label")];
+  // "ال" is the Arabic "the": "المنشورات" is the word "منشورات" with it on.
+  const words = (text) =>
+    text
+      .toLowerCase()
+      .split(/\s+/)
+      .map((word) => word.replace(/^ال/, ""))
+      .filter(Boolean);
+
+  for (const language of LANGUAGES) {
+    it(`${language}: every bar label, and More, fits a slot (at most 12 characters)`, () => {
+      for (const item of app.MOBILE_BAR_ITEMS) {
+        const name = barName(language, item);
+        assert.ok(name && name.trim(), `${language}: ${item.to} has no bar name`);
+        assert.ok([...name].length <= 12, `${language}: "${name}" is too long for the bar`);
+      }
+      assert.ok([...more(language)].length <= 12, `${language}: More`);
+    });
+
+    it(`${language}: a short bar name is a word from the full name, never a new word`, () => {
+      for (const item of app.MOBILE_BAR_ITEMS) {
+        if (!item.barLabel) continue;
+        const short = words(barName(language, item));
+        const full = words(MESSAGES[language][navMessageKey(item.to, "label")]);
+        for (const word of short) {
+          assert.ok(full.includes(word), `${language}: "${word}" is not in "${full.join(" ")}"`);
+        }
+      }
+    });
+  }
+
+  it("only Social posts needs a short name; the other tabs already fit", () => {
+    assert.deepEqual(
+      app.MOBILE_BAR_ITEMS.filter((item) => item.barLabel).map((item) => [item.to, item.barLabel]),
+      [["/social", "Posts"]],
+    );
+  });
+
+  it("the bar's old private names are gone, not left unread", () => {
+    for (const language of LANGUAGES) {
+      for (const key of ["dashboard", "inbox", "marketing", "social"]) {
+        assert.equal(
+          `bottomNav.${key}` in MESSAGES[language],
+          false,
+          `${language} bottomNav.${key}`,
+        );
+      }
+    }
   });
 });

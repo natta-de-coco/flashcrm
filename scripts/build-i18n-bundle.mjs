@@ -11,6 +11,8 @@ await build({
       `export { TRANSLATED_LANGUAGES } from './src/lib/i18n/define';`,
       `export * from './src/lib/navigation';`,
       `export * from './src/lib/permissions';`,
+      `export * from './src/lib/record-search';`,
+      `export * from './src/lib/social-tabs';`,
     ].join("\n"),
     resolveDir: process.cwd(),
   },

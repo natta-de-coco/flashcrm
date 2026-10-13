@@ -10,17 +10,23 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
-import { QUICK_CREATE_ACTIONS } from "@/lib/navigation";
+import { useNavAccess } from "@/hooks/useNavAccess";
+import { quickCreateFor } from "@/lib/navigation";
 
 /**
  * "+ Create" menu. Every entry lands on a real working flow — no dead
  * options — so the header shortcut always does something useful. The entries
  * live in lib/navigation.ts beside the menu, so what they open and what they
- * are called cannot drift from it.
+ * are called cannot drift from it. Only the actions this role may open are
+ * offered (the same rule as the sidebar), and a role with none gets no button.
  */
 export function QuickCreate({ compact = false }: { compact?: boolean }) {
   const { t, tx } = useI18n();
   const navigate = useNavigate();
+  const { role } = useNavAccess();
+  const actions = quickCreateFor(role);
+
+  if (actions.length === 0) return null;
 
   return (
     <DropdownMenu>
@@ -39,10 +45,14 @@ export function QuickCreate({ compact = false }: { compact?: boolean }) {
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel>{t("quickCreate.create")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {QUICK_CREATE_ACTIONS.map((action, index) => (
+        {actions.map(({ action, index }) => (
           <DropdownMenuItem
             key={action.label}
-            onSelect={() => void navigate({ to: action.to })}
+            onSelect={() =>
+              void navigate(
+                action.search ? { to: action.to, search: action.search } : { to: action.to },
+              )
+            }
             className="gap-2.5"
           >
             <action.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
