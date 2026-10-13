@@ -6,6 +6,7 @@
 // if an id is guessed. tenant_id is read from the caller's profile and never
 // taken from the request body.
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { NOTES_MAX_LENGTH } from "@/lib/contacts-view";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
@@ -84,21 +85,36 @@ export const getContactDetail = createServerFn({ method: "GET" })
     };
   });
 
-/** Free-text notes on a contact, saved from the detail dialog. */
+/**
+ * Free-text notes on a contact, saved from the detail dialog.
+ *
+ * Answers with the note as it was stored (trimmed, or null when cleared), so the
+ * dialog can show what is really saved without waiting for a refetch.
+ */
 export const saveContactNotes = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ contactId: z.string().uuid(), notes: z.string().max(4000) }).parse(input),
+    z
+      .object({ contactId: z.string().uuid(), notes: z.string().max(NOTES_MAX_LENGTH) })
+      .parse(input),
   )
   .handler(async ({ data, context }) => {
     // Blank clears the field rather than storing an empty string, so the
     // "no notes yet" state stays a single condition everywhere that reads it.
-    const { error } = await context.supabase
+    const stored = data.notes.trim() || null;
+    const { data: updated, error } = await context.supabase
       .from("contacts")
-      .update({ notes: data.notes.trim() || null })
-      .eq("id", data.contactId);
+      .update({ notes: stored })
+      .eq("id", data.contactId)
+      .select("id");
     if (error) throw error;
-    return { ok: true };
+    // An update that matches no row is not an error to the database: the contact
+    // was deleted in another tab, or is not in this workspace. Saying "saved"
+    // then would tell the person a note exists that was never written.
+    if (!updated || updated.length === 0) {
+      throw new Error("This contact could not be found, so the note was not saved.");
+    }
+    return { ok: true, notes: stored };
   });
 
 export const addContactIdentity = createServerFn({ method: "POST" })
@@ -149,31 +165,216 @@ export const removeContactIdentity = createServerFn({ method: "POST" })
 /**
  * Makes one identity the primary of its kind.
  *
- * Two writes rather than one because a partial unique index allows only one
- * primary per (contact, kind): the existing primary has to be cleared before
- * the new one is set, or the second write violates it.
+ * Two writes rather than one because a unique index
+ * (contact_identities_one_primary_key, on contact_id and kind where is_primary)
+ * allows only one primary per (contact, kind): the existing primary has to be
+ * cleared before the new one is set, or the second write violates it.
+ *
+ * `id` null means "the number on the contact record": the phone or email held
+ * in `contacts` itself has no identity row to flag, and it counts as the
+ * primary exactly when no identity of that kind is (see reachLines()). Choosing
+ * it is therefore the first write alone.
+ *
+ * Nothing is cleared until what is being chosen has been checked. Clearing first
+ * and then finding the number gone (removed in another tab, or never this
+ * contact's) would leave the contact with no primary while telling the person it
+ * worked. The same goes for the contact itself: an update that matches no row is
+ * not an error to the database, so "the number on the record" of a contact that
+ * cannot be seen would otherwise clear nothing and report success.
+ *
+ * Once the old primary is cleared the second write can still fail, or match no
+ * row. Then the old primary is put back so the contact keeps the one it had, and
+ * the person is told nothing was changed; if even that cannot be done they are
+ * told so, and the card reads the contact again to show what is really there.
+ *
+ * Choosing an identity also points the contact record at it: messages are sent
+ * to `contacts.phone` (and the campaign audience reads `contacts.email`), not to
+ * whichever identity is flagged. Changing only the flag left the card saying one
+ * number was primary while messages went to another. So that is a third write,
+ * and if it fails the flag change is undone as above and the person is told. The
+ * number that was on the record, if no identity covers it, is kept as an identity
+ * first, so replacing it on the record does not lose it.
  */
 export const setPrimaryIdentity = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
     z
-      .object({ id: z.string().uuid(), contactId: z.string().uuid(), kind: KindSchema })
+      .object({ id: z.string().uuid().nullable(), contactId: z.string().uuid(), kind: KindSchema })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    const gone = () =>
+      new Error("That number is no longer on this contact. Close this card and open it again.");
+    // The contact, as this caller can see it (their own client, so another
+    // workspace's contact is not there). Read for both choices.
+    const contact = await context.supabase
+      .from("contacts")
+      .select("id, tenant_id, phone, email")
+      .eq("id", data.contactId)
+      .maybeSingle();
+    if (contact.error) throw contact.error;
+    if (!contact.data) {
+      throw new Error("This contact could not be found. Close this card and open it again.");
+    }
+    // This contact's numbers (or emails) of the kind, for the identity chosen and
+    // for deciding what the record's own value is already covered by.
+    let target: { id: string; value: string } | undefined;
+    let ofKind: { id: string; value: string }[] = [];
+    if (data.id) {
+      const listed = await context.supabase
+        .from("contact_identities")
+        .select("id, value")
+        .eq("contact_id", data.contactId)
+        .eq("kind", data.kind);
+      if (listed.error) throw listed.error;
+      ofKind = (listed.data ?? []) as { id: string; value: string }[];
+      target = ofKind.find((row) => row.id === data.id);
+      if (!target) throw gone();
+    } else {
+      // The number on the record has to be there to be chosen.
+      const onRecord = data.kind === "phone" ? contact.data.phone : contact.data.email;
+      if (!onRecord?.trim()) throw gone();
+    }
     const cleared = await context.supabase
       .from("contact_identities")
       .update({ is_primary: false })
       .eq("contact_id", data.contactId)
-      .eq("kind", data.kind);
+      .eq("kind", data.kind)
+      .eq("is_primary", true)
+      .select("id");
     if (cleared.error) throw cleared.error;
-    const { error } = await context.supabase
-      .from("contact_identities")
-      .update({ is_primary: true })
-      .eq("id", data.id);
-    if (error) throw error;
+    const previous = (cleared.data ?? []).map((row) => row.id as string);
+    if (data.id && target) {
+      const thing = data.kind === "phone" ? "number" : "email address";
+      // Undoes the flag change, then says what happened. `why` is for a refusal
+      // the person can do something about; otherwise it is the general sentence.
+      const abandon = async (why: string | null, technical: unknown): Promise<never> => {
+        console.error("[contacts] could not make the identity primary", technical);
+        const restored = await putPreviousPrimaryBack(context.supabase, data.id!, previous);
+        throw new Error(
+          restored
+            ? (why ??
+                `That ${thing} could not be made primary, so nothing was changed. Try again in a moment.`)
+            : `That ${thing} could not be made primary, and the previous primary could not be put back. Close this card, open it again and choose the primary ${thing} again.`,
+        );
+      };
+      const set = await context.supabase
+        .from("contact_identities")
+        .update({ is_primary: true })
+        .eq("id", data.id)
+        .select("id");
+      if (set.error || !set.data || set.data.length === 0) {
+        return abandon(null, set.error ?? "no row matched");
+      }
+      const followed = await pointRecordAt(context, contact.data, data.kind, target.value, ofKind);
+      if (!followed.ok) return abandon(followed.why, followed.technical);
+    }
     return { ok: true };
   });
+
+/** A phone number by its digits (a leading 00 is a +), an email by its lower-case form. */
+function sameContactDetail(kind: "phone" | "email", a: string, b: string): boolean {
+  const form = (value: string) =>
+    kind === "phone" ? value.replace(/\D/g, "").replace(/^00/, "") : value.trim().toLowerCase();
+  const left = form(a);
+  return left !== "" && left === form(b);
+}
+
+/**
+ * Makes the contact record carry the value that was chosen as primary, because
+ * that is the one messages are sent to. If the record held a different value that
+ * no identity of the contact covers, it is kept as an identity first (not
+ * primary): the New contact form and the CSV import write only the record, so
+ * for those contacts it is the only place that number exists.
+ *
+ * Says what to tell the person when the database refuses: a phone number that is
+ * not in international format, or one another contact in the workspace already
+ * sends to. Anything else is the general sentence (why null).
+ */
+async function pointRecordAt(
+  context: { supabase: import("@supabase/supabase-js").SupabaseClient; userId: string },
+  contact: { id: string; tenant_id: string | null; phone: string | null; email: string | null },
+  kind: "phone" | "email",
+  value: string,
+  identitiesOfKind: { id: string; value: string }[],
+): Promise<{ ok: true } | { ok: false; why: string | null; technical: unknown }> {
+  const onRecord = ((kind === "phone" ? contact.phone : contact.email) ?? "").trim();
+  if (sameContactDetail(kind, onRecord, value)) return { ok: true };
+  try {
+    if (onRecord && !identitiesOfKind.some((row) => sameContactDetail(kind, row.value, onRecord))) {
+      const kept = await context.supabase.from("contact_identities").insert({
+        tenant_id: contact.tenant_id ?? (await callerTenantId(context)),
+        contact_id: contact.id,
+        kind,
+        value: onRecord,
+        label: null,
+        is_primary: false,
+      });
+      // 23505: the workspace already has that number on a contact's list, so it is
+      // not lost, only not this contact's to list. Anything else stops here.
+      if (kept.error && kept.error.code !== "23505") {
+        return { ok: false, why: null, technical: kept.error };
+      }
+    }
+    const column = kind === "phone" ? "phone" : "email";
+    const changed = await context.supabase
+      .from("contacts")
+      .update({ [column]: value })
+      .eq("id", contact.id)
+      .select("id");
+    if (changed.error) {
+      const code = changed.error.code;
+      return {
+        ok: false,
+        technical: changed.error,
+        why:
+          code === "23514"
+            ? kind === "phone"
+              ? "That number is not in international format (a + and the country code), so messages cannot be sent to it as the primary. Nothing was changed."
+              : "That email address is not valid, so it cannot be the primary. Nothing was changed."
+            : code === "23505" && kind === "phone"
+              ? "Another contact in this workspace already uses that number as its main number, so nothing was changed."
+              : null,
+      };
+    }
+    if (!changed.data || changed.data.length === 0) {
+      return { ok: false, why: null, technical: "the contact record matched no row" };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, why: null, technical: error };
+  }
+}
+
+/**
+ * After a failed change of primary: unflags the one that was being set, in case
+ * the write got further than its answer says, and flags the ones that were
+ * cleared. Best effort; says whether the contact has its old primary again.
+ */
+async function putPreviousPrimaryBack(
+  supabase: import("@supabase/supabase-js").SupabaseClient,
+  attemptedId: string,
+  previous: string[],
+): Promise<boolean> {
+  try {
+    const undo = await supabase
+      .from("contact_identities")
+      .update({ is_primary: false })
+      .eq("id", attemptedId);
+    if (undo.error) console.error("[contacts] could not undo the attempted primary", undo.error);
+    if (previous.length === 0) return !undo.error;
+    const back = await supabase
+      .from("contact_identities")
+      .update({ is_primary: true })
+      .in("id", previous)
+      .select("id");
+    if (back.error) console.error("[contacts] could not restore the previous primary", back.error);
+    return !back.error && (back.data?.length ?? 0) === previous.length;
+  } catch (error) {
+    console.error("[contacts] could not restore the previous primary", error);
+    return false;
+  }
+}
 
 export const saveContactBranch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

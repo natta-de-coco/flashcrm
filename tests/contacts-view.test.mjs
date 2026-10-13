@@ -11,9 +11,15 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 const {
+  draftAfterSave,
+  followKeptNote,
+  forgetSavedNote,
   formatStageMoney,
+  hasUnsavedNotes,
   inboxConversationHref,
+  keepNoteBeingSaved,
   normalizeIdentityValue,
+  notesFieldValue,
   reachLines,
   reachSummary,
   stageTotal,
@@ -113,6 +119,199 @@ describe("H12 — the contact's own number is listed", () => {
     assert.equal(normalizeIdentityValue("phone", "0509630506"), "0509630506");
     assert.equal(normalizeIdentityValue("email", "  Sara@Example.COM "), "sara@example.com");
     assert.equal(normalizeIdentityValue("phone", null), "");
+  });
+});
+
+describe("one primary of each kind (review of PR #32)", () => {
+  // The report: a contact made with the New contact form has its number only in
+  // contacts.phone. Add a second number, press "Make primary" — and the card
+  // showed two primary numbers, because the line built from the contact row was
+  // marked primary whatever the identities said.
+  const primaries = (lines, kind) => lines.filter((l) => l.kind === kind && l.isPrimary);
+
+  it("shows the chosen number as the only primary", () => {
+    const lines = reachLines({ phone: "+971509630506" }, [
+      identity({ value: "+971559876543", is_primary: true }),
+    ]);
+    assert.deepEqual(
+      primaries(lines, "phone").map((l) => l.value),
+      ["+971559876543"],
+      "exactly one primary phone, and it is the one the person chose",
+    );
+  });
+
+  it("stops calling the number on the record primary once another is", () => {
+    const lines = reachLines({ phone: "+971509630506" }, [
+      identity({ value: "+971559876543", is_primary: true }),
+    ]);
+    const onRecord = lines.find((l) => l.fromContactRow);
+    assert.equal(onRecord.isPrimary, false);
+    assert.doesNotMatch(onRecord.label, /primary/i);
+    assert.equal(onRecord.value, "+971509630506", "the number itself is still listed");
+  });
+
+  it("keeps the number on the record as primary while no identity is", () => {
+    const lines = reachLines({ phone: "+971509630506" }, [identity({ value: "+971559876543" })]);
+    assert.deepEqual(
+      primaries(lines, "phone").map((l) => l.value),
+      ["+971509630506"],
+    );
+  });
+
+  it("decides phones and emails separately", () => {
+    // A primary email says nothing about which phone is primary, and the other
+    // way round.
+    const lines = reachLines({ phone: "+971509630506", email: "sara@example.com" }, [
+      identity({ id: "e1", kind: "email", value: "accounts@example.com", is_primary: true }),
+    ]);
+    assert.deepEqual(
+      primaries(lines, "phone").map((l) => l.value),
+      ["+971509630506"],
+    );
+    assert.deepEqual(
+      primaries(lines, "email").map((l) => l.value),
+      ["accounts@example.com"],
+    );
+  });
+
+  it("never shows two primaries of a kind, whichever rows it is given", () => {
+    for (const phone of [null, "+971509630506"]) {
+      for (const first of [false, true]) {
+        for (const second of [false, true]) {
+          if (first && second) continue; // the database's unique index forbids it
+          const lines = reachLines({ phone }, [
+            identity({ id: "p1", value: "+971559876543", is_primary: first }),
+            identity({ id: "p2", value: "+971501112222", is_primary: second }),
+          ]);
+          const count = primaries(lines, "phone").length;
+          const expected = phone || first || second ? 1 : 0;
+          assert.equal(count, expected, JSON.stringify({ phone, first, second }));
+        }
+      }
+    }
+  });
+});
+
+describe("what the notes box shows (review of PR #32)", () => {
+  const SARA = "contact-sara";
+  const OMAR = "contact-omar";
+
+  it("shows the saved note when nothing has been typed", () => {
+    assert.equal(notesFieldValue(SARA, "Call before 10am", null), "Call before 10am");
+    assert.equal(notesFieldValue(SARA, null, null), "");
+    assert.equal(notesFieldValue(SARA, undefined, null), "");
+  });
+
+  it("shows what is being typed for this contact over the saved note", () => {
+    assert.equal(notesFieldValue(SARA, "saved", { contactId: SARA, text: "typing" }), "typing");
+    // Cleared on purpose is still typing: an empty box, not the saved note back.
+    assert.equal(notesFieldValue(SARA, "saved", { contactId: SARA, text: "" }), "");
+  });
+
+  it("never shows one contact's typing on another contact", () => {
+    const draft = { contactId: SARA, text: "about Sara" };
+    assert.equal(notesFieldValue(OMAR, "Omar's note", draft), "Omar's note");
+    assert.equal(notesFieldValue(null, undefined, draft), "");
+    assert.equal(hasUnsavedNotes(OMAR, draft), false);
+    assert.equal(hasUnsavedNotes(SARA, draft), true);
+    assert.equal(hasUnsavedNotes(SARA, null), false);
+  });
+
+  it("clears the typing once exactly that text has been saved", () => {
+    const draft = { contactId: SARA, text: "first" };
+    assert.equal(draftAfterSave(draft, { contactId: SARA, text: "first" }), null);
+  });
+
+  it("keeps words typed after Save was pressed", () => {
+    const draft = { contactId: SARA, text: "first, and more" };
+    assert.deepEqual(draftAfterSave(draft, { contactId: SARA, text: "first" }), draft);
+  });
+
+  it("keeps another contact's typing when an earlier save answers", () => {
+    const draft = { contactId: OMAR, text: "first" };
+    assert.deepEqual(draftAfterSave(draft, { contactId: SARA, text: "first" }), draft);
+    assert.equal(draftAfterSave(null, { contactId: SARA, text: "first" }), null);
+  });
+});
+
+describe("a note that is being saved is kept for that contact until it is saved", () => {
+  const SARA = "contact-sara";
+  const OMAR = "contact-omar";
+  const none = {};
+
+  it("remembers what was sent for the contact it was sent for", () => {
+    const sent = { contactId: SARA, text: "Call before 10am" };
+    const kept = keepNoteBeingSaved(none, sent);
+    assert.deepEqual(kept, { [SARA]: "Call before 10am" });
+    assert.deepEqual(none, {}, "the map it was given is not changed");
+  });
+
+  it("keeps each contact's note apart", () => {
+    let kept = keepNoteBeingSaved(none, { contactId: SARA, text: "Sara's" });
+    kept = keepNoteBeingSaved(kept, { contactId: OMAR, text: "Omar's" });
+    assert.deepEqual(kept, { [SARA]: "Sara's", [OMAR]: "Omar's" });
+  });
+
+  it("is shown for that contact, instead of the saved note", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.equal(notesFieldValue(SARA, "saved", null, kept), "unsaved words");
+    assert.equal(hasUnsavedNotes(SARA, null, kept), true);
+  });
+
+  it("is never shown for another contact", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.equal(notesFieldValue(OMAR, "Omar's note", null, kept), "Omar's note");
+    assert.equal(hasUnsavedNotes(OMAR, null, kept), false);
+    assert.equal(notesFieldValue(null, undefined, null, kept), "");
+    assert.equal(hasUnsavedNotes(null, null, kept), false);
+  });
+
+  it("is not wiped by a refetch: the saved note changing does not change it", () => {
+    const kept = { [SARA]: "unsaved words" };
+    for (const saved of ["old", "changed elsewhere", null, undefined])
+      assert.equal(notesFieldValue(SARA, saved, null, kept), "unsaved words");
+  });
+
+  it("gives way to what is being typed now", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.equal(notesFieldValue(SARA, "saved", { contactId: SARA, text: "newer" }, kept), "newer");
+  });
+
+  it("follows the typing, so closing the card keeps the newest words", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.deepEqual(followKeptNote(kept, { contactId: SARA, text: "newer" }), {
+      [SARA]: "newer",
+    });
+  });
+
+  it("only follows typing for a contact that has something kept", () => {
+    const kept = { [SARA]: "unsaved words" };
+    assert.equal(followKeptNote(kept, { contactId: OMAR, text: "typing" }), kept);
+    assert.equal(followKeptNote(none, { contactId: SARA, text: "typing" }), none);
+  });
+
+  it("is forgotten once exactly that text has been saved", () => {
+    const kept = { [SARA]: "unsaved words", [OMAR]: "Omar's" };
+    const after = forgetSavedNote(kept, { contactId: SARA, text: "unsaved words" });
+    assert.deepEqual(after, { [OMAR]: "Omar's" });
+    assert.equal(notesFieldValue(SARA, "stored", null, after), "stored");
+    assert.equal(hasUnsavedNotes(SARA, null, after), false);
+  });
+
+  it("keeps words typed after Save was pressed, as it keeps them in the box", () => {
+    const kept = { [SARA]: "unsaved words, and more" };
+    const after = forgetSavedNote(kept, { contactId: SARA, text: "unsaved words" });
+    assert.equal(after, kept, "those words were not in the request: they are still unsaved");
+  });
+
+  it("forgets nothing for a contact that has nothing kept", () => {
+    const kept = { [OMAR]: "Omar's" };
+    assert.equal(forgetSavedNote(kept, { contactId: SARA, text: "x" }), kept);
+  });
+
+  it("does not mistake a contact id for a built-in property name", () => {
+    assert.equal(hasUnsavedNotes("constructor", null, {}), false);
+    assert.equal(notesFieldValue("toString", "saved", null, {}), "saved");
   });
 });
 
