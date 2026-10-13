@@ -133,7 +133,12 @@ describe("the inbound resolver uses identities", () => {
     // A contact created between the migration and this deploy has no identity
     // row yet; dropping the fallback would make them a stranger again.
     const block = resolver.slice(resolver.indexOf("resolve_contact_by_identity"));
-    assert.match(block, /\.eq\("phone", phone\)/);
+    // The lookup may try the number as typed or in its stored forms ("+digits",
+    // digits); either way it reads contacts.phone ...
+    assert.match(block, /\.(eq\("phone", phone\)|in\("phone", forms\))/);
+    // ... and only inside the workspace the message arrived for.
+    const fallback = block.slice(block.indexOf('.from("contacts")'));
+    assert.match(fallback.slice(0, 200), /\.eq\("tenant_id", tenantId\)/);
   });
 
   it("is the only way the inbound path resolves a number", () => {
