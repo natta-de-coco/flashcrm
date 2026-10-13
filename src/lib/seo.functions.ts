@@ -43,7 +43,7 @@ export const generateDraftFn = createServerFn({ method: "POST" })
     });
   });
 
-/** Generates omnichannel micro-posts (Meta / LinkedIn / TikTok). */
+/** Generates omnichannel micro-posts across all platforms with specs and hashtags. */
 export const generateMicroPostsFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => DraftSchema.parse(input))
@@ -56,6 +56,51 @@ export const generateMicroPostsFn = createServerFn({ method: "POST" })
       tone: data.tone,
       visionSummary: data.visionSummary ?? "",
       secondaryKeywords: data.secondaryKeywords ?? [],
+    });
+  });
+
+const SingleMicroSchema = z.object({
+  platform: z.enum(["instagram", "linkedin", "tiktok", "facebook", "twitter"]),
+  params: DraftSchema,
+});
+
+/** Recreates/regenerates a single platform's post copy adhering to its specific resolution and culture. */
+export const generateSingleMicroPostFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => SingleMicroSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { generateSingleMicroPost } = await import("@/lib/seo.server");
+    return generateSingleMicroPost(context.supabase as never, {
+      platform: data.platform,
+      params: {
+        primaryKeyword: data.params.primaryKeyword,
+        industry: data.params.industry,
+        intent: data.params.intent,
+        tone: data.params.tone,
+        visionSummary: data.params.visionSummary ?? "",
+        secondaryKeywords: data.params.secondaryKeywords ?? [],
+      },
+    });
+  });
+
+const PublishMicroSchema = z.object({
+  platform: z.enum(["instagram", "linkedin", "tiktok", "facebook", "twitter"]),
+  text: z.string().min(1).max(4000),
+  hashtags: z.array(z.string()).default([]),
+  scheduledAt: z.string().datetime().optional().nullable(),
+});
+
+/** Publishes a verified micro-post into the CRM's social pipeline (social_posts). */
+export const publishMicroPostToSocialFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => PublishMicroSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const { publishMicroPostToSocial } = await import("@/lib/seo.server");
+    return publishMicroPostToSocial(context.supabase as never, {
+      platform: data.platform,
+      text: data.text,
+      hashtags: data.hashtags,
+      scheduledAt: data.scheduledAt ?? null,
     });
   });
 

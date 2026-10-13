@@ -242,7 +242,7 @@ describe("the page is rendered in the chosen language and direction", () => {
 
   it("reads the language before rendering, on the server too", () => {
     assert.match(root, /beforeLoad: \(\) => \(\{ uiLanguage: readUiLanguage\(\) \}\)/);
-    assert.match(root, /<html lang=\{uiLanguage\} dir=\{directionOf\(uiLanguage\)\}>/);
+    assert.match(root, /<html lang=\{uiLanguage\} dir=\{directionOf\(uiLanguage\)\}/);
     assert.ok(!root.includes('<html lang="en">'), "the language was hard-coded");
   });
 

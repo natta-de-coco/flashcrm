@@ -1,3 +1,4 @@
+import { useLocale } from "@/hooks/useLocale";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -6,6 +7,8 @@ import { OnboardingModal } from "@/components/OnboardingModal";
 import { CommandPalette } from "@/components/CommandPalette";
 import { QuickCreate } from "@/components/QuickCreate";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
+import { ProfileBanner } from "@/components/ProfileBanner";
+
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageLanguage } from "@/components/PageLanguage";
 
@@ -136,6 +139,9 @@ function AuthenticatedLayout() {
   const { session, loading, signOut, user, isSuperAdmin } = useAuth();
   const { t, dir } = useI18n();
   const navigate = useNavigate();
+  // Reads saved locale from DB and applies lang + dir to <html> live.
+  // Must be called inside the QueryClientProvider (which wraps this tree).
+  useLocale();
   const [sidebarW, setSidebarW] = useState(264);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -350,6 +356,7 @@ function AuthenticatedLayout() {
               className="flex h-9 w-full max-w-md items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted"
             >
               <Search className="size-4" />
+
               {t("shell.search")}
               <kbd className="ms-auto rounded border bg-background px-1.5 py-0.5 text-[10px] font-medium">
                 {shortcutHint()}
@@ -357,9 +364,12 @@ function AuthenticatedLayout() {
             </button>
             <div className="ms-auto flex items-center gap-2">
               <LanguageSwitcher />
+
               <QuickCreate />
             </div>
           </header>
+
+          <ProfileBanner />
 
           {shellOwnsMain ? (
             <main id="content" className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -374,6 +384,7 @@ function AuthenticatedLayout() {
               </PageLanguage>
             </div>
           )}
+
           <MobileBottomNav onMore={() => setMobileOpen(true)} />
         </div>
       </div>

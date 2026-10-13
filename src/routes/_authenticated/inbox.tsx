@@ -1,4 +1,5 @@
 import { SocialInbox } from "@/components/inbox/SocialInbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,11 +37,13 @@ import {
 import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  AlertCircle,
   AlertTriangle,
   Bell,
   Bot,
   Check,
   CheckCheck,
+  Clock,
   Download,
   Globe,
   Languages,
@@ -57,6 +60,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-parameters";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendly-error";
 import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
@@ -79,6 +83,49 @@ export const Route = createFileRoute("/_authenticated/inbox")({
   },
   component: InboxPage,
 });
+
+function MessageDeliveryStatus({ status }: { status?: string | null }) {
+  const normalized = (status || "").toLowerCase();
+  switch (normalized) {
+    case "pending":
+    case "sending":
+      return (
+        <span title="Sending...">
+          <Clock className="size-3 animate-pulse text-muted-foreground" />
+        </span>
+      );
+    case "sent":
+      return (
+        <span title="Sent to server / provider">
+          <Check className="size-3.5 text-muted-foreground opacity-80" />
+        </span>
+      );
+    case "delivered":
+      return (
+        <span title="Delivered to recipient">
+          <CheckCheck className="size-3.5 text-muted-foreground opacity-80" />
+        </span>
+      );
+    case "read":
+      return (
+        <span title="Read by recipient">
+          <CheckCheck className="size-3.5 text-sky-400" />
+        </span>
+      );
+    case "failed":
+      return (
+        <span title="Delivery failed">
+          <AlertCircle className="size-3.5 text-destructive" />
+        </span>
+      );
+    default:
+      return (
+        <span title="Sent">
+          <Check className="size-3.5 text-muted-foreground opacity-70" />
+        </span>
+      );
+  }
+}
 
 function InboxPage() {
   const i18n = useI18n();
@@ -111,6 +158,7 @@ function InboxPage() {
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
+  const [assignmentFilter, setAssignmentFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [tagDraft, setTagDraft] = useState("");
   const [reminderNote, setReminderNote] = useState("");
   const [reminderDue, setReminderDue] = useState("");
@@ -382,13 +430,19 @@ function InboxPage() {
     const q = search.trim().toLowerCase();
     const matching = loadedConversations.filter((c) => {
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
+      const matchesAssignment =
+        assignmentFilter === "all" ||
+        (assignmentFilter === "mine" && c.assigned_to === user?.id) ||
+        (assignmentFilter === "unassigned" && !c.assigned_to);
+      const q = search.trim().toLowerCase();
       const matchesSearch =
         !q ||
         c.contacts?.name?.toLowerCase().includes(q) ||
         c.contacts?.phone?.includes(q) ||
         c.last_message_preview?.toLowerCase().includes(q);
-      return matchesStatus && Boolean(matchesSearch);
+      return matchesStatus && matchesAssignment && Boolean(matchesSearch);
     });
+
     // Matches the server found among conversations that are not loaded.
     const loaded = new Set(loadedConversations.map((c) => c.id));
     const older = (q ? (foundConversations.data ?? []) : []).filter(
@@ -399,7 +453,7 @@ function InboxPage() {
       : [...matching, ...older].sort((a, b) =>
           (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""),
         );
-  }, [loadedConversations, foundConversations.data, statusFilter, search]);
+  }, [loadedConversations, foundConversations.data, statusFilter, search, assignmentFilter, user?.id]);
 
   const active = list.find((c) => c.id === activeId) ?? null;
 
@@ -509,6 +563,7 @@ function InboxPage() {
         );
       }
     },
+
     // No answer is not a "no". The reference is kept, so trying the same text
     // again asks the server about the same message: if the first copy did get
     // through, the server says so instead of sending another.
@@ -518,7 +573,7 @@ function InboxPage() {
   const suggestMutation = useMutation({
     mutationFn: async () => suggest({ data: { conversationId: activeId! } }),
     onSuccess: (res) => setDraft(res.draft),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   type ConvPatch = {
@@ -532,7 +587,7 @@ function InboxPage() {
     if (!activeId) return;
     const { error } = await supabase.from("conversations").update(patch).eq("id", activeId);
     if (error) {
-      toast.error(error.message);
+      toast.error(friendlyError(error));
       return;
     }
     if (patch.assigned_to !== undefined) {
@@ -577,7 +632,7 @@ function InboxPage() {
       toast.success(i18n.t("inbox.followUpReminderSet"));
       void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const templateMutation = useMutation({
@@ -624,6 +679,7 @@ function InboxPage() {
         );
       }
     },
+
     // Kept for the retry, as for a reply.
     onError: (e: Error) => toast.error(e.message),
   });
@@ -639,7 +695,7 @@ function InboxPage() {
       });
       void qc.invalidateQueries({ queryKey: ["messages", activeId] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const catalogMutation = useMutation({
@@ -649,12 +705,12 @@ function InboxPage() {
       setSelectedProductIds([]);
       toast.success(i18n.t("inbox.catalogMessageInsertedPressSend"));
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   async function toggleReminderDone(id: string, done: boolean) {
     const { error } = await supabase.from("reminders").update({ done }).eq("id", id);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlyError(error));
     else void qc.invalidateQueries({ queryKey: ["reminders", activeId] });
   }
 
@@ -766,6 +822,22 @@ function InboxPage() {
     );
   }
 
+  if (team.isLoading || templates.isLoading || products.isLoading || conversations.isLoading) {
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 lg:h-[100dvh]">
       {/* Conversation list */}
@@ -836,7 +908,7 @@ function InboxPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {(["all", "open", "pending", "closed"] as const).map((s) => (
               <button
                 key={s}
@@ -849,6 +921,27 @@ function InboxPage() {
                 )}
               >
                 {s}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 pt-0.5">
+            <span className="text-[11px] font-medium text-muted-foreground mr-1">Assign:</span>
+            {[
+              { id: "all", label: "All" },
+              { id: "mine", label: "Mine" },
+              { id: "unassigned", label: "Unassigned" },
+            ].map((af) => (
+              <button
+                key={af.id}
+                onClick={() => setAssignmentFilter(af.id as "all" | "mine" | "unassigned")}
+                className={cn(
+                  "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  assignmentFilter === af.id
+                    ? "bg-secondary text-foreground font-semibold shadow-xs"
+                    : "text-muted-foreground hover:bg-muted/80",
+                )}
+              >
+                {af.label}
               </button>
             ))}
           </div>
@@ -935,7 +1028,7 @@ function InboxPage() {
       </div>
 
       {/* Chat pane */}
-      <div className={cn("min-w-0 flex-1 flex-col lg:flex", active ? "flex" : "hidden")}>
+      <div className={cn("min-w-0 flex-1 flex-col md:flex", active ? "flex" : "hidden")}>
         {!active ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
             {i18n.t("inbox.selectAConversationToStart")}
@@ -1048,10 +1141,12 @@ function InboxPage() {
                     </button>
                   </Badge>
                 ))}
+
                 <Input
                   className="h-8 w-40"
                   placeholder={i18n.t("inbox.addTag")}
                   aria-label={i18n.t("inbox.addConversationTag")}
+
                   value={tagDraft}
                   onChange={(e) => setTagDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -1140,10 +1235,12 @@ function InboxPage() {
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Package className="size-4 text-muted-foreground" />
+
                   <Input
                     className="h-8 w-48"
                     placeholder={i18n.t("inbox.searchProducts")}
                     aria-label={i18n.t("inbox.searchCatalogProducts")}
+
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                   />
@@ -1213,14 +1310,17 @@ function InboxPage() {
 
               <div className="flex flex-wrap items-center gap-2">
                 <Bell className="size-4 text-muted-foreground" />
+
                 <Input
                   className="h-8 w-56"
                   placeholder={i18n.t("inbox.followUpNote")}
                   aria-label={i18n.t("inbox.followUpNote")}
+
                   value={reminderNote}
                   onChange={(e) => setReminderNote(e.target.value)}
                 />
                 <Input
+                  aria-label="Reminder time"
                   type="datetime-local"
                   className="h-8 w-52"
                   value={reminderDue}
@@ -1285,7 +1385,9 @@ function InboxPage() {
                     key={m.id}
                     className={cn(
                       "flex",
-                      m.direction === "outbound" ? "justify-end" : "justify-start",
+                      m.direction === "outbound"
+                        ? "justify-end rtl:justify-start"
+                        : "justify-start rtl:justify-end",
                     )}
                   >
                     <div
@@ -1338,11 +1440,14 @@ function InboxPage() {
                               ? i18n.t("inbox.showTranslation")
                               : i18n.t("inbox.translate")}
                         </button>
-                        <span className="text-[10px] opacity-60">
+                        <span className="inline-flex items-center gap-1 text-[10px] opacity-60">
                           {new Date(m.created_at).toLocaleTimeString([], {
                             hour: "2-digit",
                             minute: "2-digit",
                           })}
+                          {m.direction === "outbound" && (
+                            <MessageDeliveryStatus status={m.status} />
+                          )}
                         </span>
                         {m.direction === "outbound" && (
                           <DeliveryState
