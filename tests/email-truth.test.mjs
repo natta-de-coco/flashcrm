@@ -39,8 +39,12 @@ const db = createDb();
 // be made to refuse or to be unreachable.
 let attempts;
 let logFault; // null | "error" | "unreachable"
+let unreachableTable; // a table whose reads throw instead of answering
 const database = {
-  from: (table) => db.client.from(table),
+  from: (table) => {
+    if (table === unreachableTable) throw new Error("the database is unreachable");
+    return db.client.from(table);
+  },
   rpc: async (name, args) => {
     attempts.push({ name, args });
     if (logFault === "unreachable") throw new Error("the delivery log is unreachable");
@@ -125,6 +129,7 @@ beforeEach(() => {
   setKey(GOOD_KEY);
   attempts = [];
   logFault = null;
+  unreachableTable = null;
   globalThis.publicIntake.audits = [];
   globalThis.publicIntake.alerts = [];
   mock.method(console, "error", () => {});
@@ -176,6 +181,18 @@ describe("welcome email", () => {
     assert.equal(globalThis.publicIntake.alerts.length, 1);
     assertNothingClaimedAsSent();
     assert.ok(statuses().length >= 1);
+  });
+
+  it("the lead is still captured when the welcome step itself throws", async () => {
+    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    unreachableTable = "tenant_smtp_config";
+
+    const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
+
+    assert.equal(saved.email, EMAIL);
+    assert.equal(db.table("leads").length, 1);
+    assert.equal(globalThis.publicIntake.alerts.length, 1);
+    assertNothingClaimedAsSent();
   });
 
   it("the lead is still captured when the delivery log is unreachable", async () => {
