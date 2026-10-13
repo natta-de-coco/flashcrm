@@ -602,7 +602,15 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
 
     // Keep business_profiles tax_registration_number synchronized if present in DB
     if (trn !== undefined) {
-      await (context.supabase as any)
+      await (
+        context.supabase as unknown as {
+          from: (table: string) => {
+            update: (values: Record<string, unknown>) => {
+              eq: (col: string, val: unknown) => Promise<unknown>;
+            };
+          };
+        }
+      )
         .from("business_profiles")
         .update({ tax_registration_number: trn })
         .eq("tenant_id", tenantId);

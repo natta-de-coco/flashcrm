@@ -83,12 +83,22 @@ export function DocumentHistoryDialog({
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const doc = query.data?.doc as Record<string, any> | undefined;
+interface DocumentRecord {
+  doc_number?: string | null;
+  kind?: string | null;
+  status?: string | null;
+  issue_date?: string | null;
+  currency?: string | null;
+  grand_total?: number | string | null;
+  [key: string]: unknown;
+}
+
+  const doc = query.data?.doc as DocumentRecord | undefined;
   const activity = (query.data?.activity ?? []) as Array<{
     id: string;
     event: string;
     actor_label?: string | null;
-    details?: Record<string, any> | null;
+    details?: Record<string, unknown> | null;
     created_at: string;
   }>;
   const files = (query.data?.files ?? []) as Array<{
@@ -132,7 +142,7 @@ export function DocumentHistoryDialog({
           <div className="flex-1 min-h-0 flex flex-col space-y-4">
             {/* Header Summary */}
             {(() => {
-              const d = doc as any;
+              const d = doc;
               return (
                 <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border bg-muted/40">
                   <div>

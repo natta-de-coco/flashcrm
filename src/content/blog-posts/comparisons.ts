@@ -650,7 +650,7 @@ export const COMPARISON_POSTS = defineArticles([
       "conversational sales roi",
     ],
     html: `
-<p><strong>For sales teams operating in WhatsApp-first markets across the Middle East, Europe, and Asia, enterprise CRM suites like Salesforce and HubSpot introduce an unexpected hidden tax:</strong> while both offer comprehensive multi-department ecosystems, enabling native WhatsApp sales functionality requires premium tier upgrades (Service/Marketing Hub Professional or Salesforce Digital Engagement add-ons), steep per-seat licenses ($90–$165+/user/month), and thousands of dollars in systems integration consulting. Flas CRM delivers native WhatsApp pipeline management, 30-second in-chat PDF quotations, and shared team inboxes at an audited 80% lower 12-month Total Cost of Ownership (TCO) with zero middleware overhead.</p>
+<p><strong>For sales teams operating in WhatsApp-first markets across the Middle East, Europe, and Asia, enterprise CRM suites like Salesforce and HubSpot introduce an unexpected hidden tax:</strong> while both offer comprehensive multi-department ecosystems, enabling native WhatsApp sales functionality requires premium tier upgrades (Service/Marketing Hub Professional or Salesforce Digital Engagement add-ons), steep per-seat licenses ($90–$165+/user/month), and thousands of dollars in systems integration consulting. Flas CRM delivers native WhatsApp pipeline management, 30-second in-chat PDF quotations, and shared team inboxes at an audited 80% lower 12-month Total Cost of Ownership (TCO) with zero middleware overhead (see our <a href="/blog/whatsapp-crm-benchmark-2026">2026 WhatsApp CRM benchmark</a> for composite performance scoring).</p>
 
 <p>This analysis is published by the engineering and product team behind Flas CRM. Feature matrices, pricing schedules, and mandatory tier prerequisites were audited against official Salesforce and HubSpot public documentation in October 2026. The calculations below reflect real-world deployment costs for mid-market and SME commercial sales teams.</p>
 
@@ -680,7 +680,7 @@ export const COMPARISON_POSTS = defineArticles([
   <tbody>
     <tr>
       <td><strong>Base CRM Platform</strong></td>
-      <td>Flat workspace subscription</td>
+      <td>Flat workspace subscription (<a href="/pricing">view Flas pricing</a>)</td>
       <td>$500 – $800 / month (Professional Hub)</td>
       <td>$165 / user / mo ($825 / mo for 5 seats)</td>
     </tr>
@@ -725,7 +725,7 @@ export const COMPARISON_POSTS = defineArticles([
 
 <h2>The Operational Drag Test: From First Ping to Issued Quotation</h2>
 
-<p>Cost is only half the equation; daily agent productivity dictates revenue. We timed the exact workflow required for a sales representative to receive a WhatsApp enquiry, qualify the buyer, and issue an official quotation with company registration and VAT details:</p>
+<p>Cost is only half the equation; daily agent productivity dictates revenue. As documented in our <a href="/blog/quotation-to-payment-on-whatsapp">quotation-to-payment workflow guide</a>, we timed the exact workflow required for a sales representative to receive a WhatsApp enquiry, qualify the buyer, and issue an official quotation with company registration and VAT details:</p>
 
 <table>
   <thead>
@@ -771,7 +771,7 @@ export const COMPARISON_POSTS = defineArticles([
 <ul>
   <li><strong>Choose Salesforce if:</strong> Your enterprise employs 200+ agents across multiple global subsidiaries, requires complex bidirectional synchronization with an on-premise SAP or Oracle ERP, enforces granular field-level security permissions across dozens of departmental roles, and maintains a dedicated in-house Salesforce administration team.</li>
   <li><strong>Choose HubSpot if:</strong> Your primary customer acquisition engine relies on inbound marketing content, complex multi-touch marketing attribution, automated email drip sequences across hundreds of thousands of contacts, and HubSpot is already the established single source of truth across your sales, marketing, and customer success departments.</li>
-  <li><strong>Choose Flas CRM if:</strong> Your business operates in high-velocity WhatsApp-driven commerce—such as wholesale distribution, equipment supply, automotive trading, real estate, or professional business services. If your sales reps spend their day in WhatsApp chats and lose deals because quotation preparation is slow and cumbersome, Flas delivers the entire commercial cycle in one uncluttered workspace.</li>
+  <li><strong>Choose Flas CRM if:</strong> Your business operates in high-velocity WhatsApp-driven commerce—such as wholesale distribution, equipment supply, automotive trading, real estate, or professional business services. If your sales reps spend their day in WhatsApp chats and lose deals because quotation preparation is slow and cumbersome, Flas delivers the entire commercial cycle in one uncluttered workspace. See our <a href="/features">feature matrix</a>.</li>
 </ul>
 
 <h2>The 5-Point Buyer Decision Framework</h2>
@@ -870,10 +870,10 @@ export const COMPARISON_POSTS = defineArticles([
 <p>To evaluate how interface design impacts real-world sales results, we simulated a standard commercial surge: <em>A morning paid social media campaign generates 20 inbound WhatsApp enquiries in 30 minutes. Each prospective customer asks about product availability, pricing, and requests an official company quote.</em></p>
 
 <h3>1. Assignment &amp; Queue Management</h3>
-<p>In <strong>Flas CRM</strong>, incoming conversations landed in the shared team inbox and were assigned automatically to active reps via round-robin distribution. Reps could claim unassigned conversations with a single tap, keeping the unowned queue at zero. In <strong>Bitrix24</strong>, configuring Open Channel queues required navigating through CRM Settings &gt; Contact Center &gt; Open Channels &gt; Routing Rules, where improper permission setup frequently left chats stranded in unmonitored supervisor queues.</p>
+<p>In <strong>Flas CRM</strong>, incoming conversations landed in the shared team inbox and were assigned automatically to active reps via round-robin distribution (following our <a href="/blog/whatsapp-shared-inbox-for-teams">shared team inbox protocols</a>). Reps could claim unassigned conversations with a single tap, keeping the unowned queue at zero. In <strong>Bitrix24</strong>, configuring Open Channel queues required navigating through CRM Settings &gt; Contact Center &gt; Open Channels &gt; Routing Rules, where improper permission setup frequently left chats stranded in unmonitored supervisor queues.</p>
 
 <h3>2. The 30-Second Quotation Challenge</h3>
-<p>In Flas CRM, an agent clicked "Create Quote" directly from the message thread, selected items from the integrated catalog, verified the calculated 5% UAE VAT, and delivered the formatted PDF document in <strong>32 seconds</strong>. In Bitrix24, the agent had to convert the Chat to a Lead, convert the Lead to a Deal, open the Invoices/Quotes tab, select products from the internal catalog, configure payment terms, generate a public document link or download a PDF, and navigate back to the Open Channel chat to send it—averaging <strong>4 minutes and 50 seconds</strong> per enquiry.</p>
+<p>In Flas CRM, an agent clicked "Create Quote" directly from the message thread, selected items from the integrated catalog, verified the calculated 5% UAE VAT, and delivered the formatted PDF document in <strong>32 seconds</strong> (as detailed in our <a href="/blog/quotation-to-payment-on-whatsapp">quotation-to-payment workflow guide</a> and <a href="/blog/whatsapp-crm-for-uae-businesses">UAE business compliance guide</a>). In Bitrix24, the agent had to convert the Chat to a Lead, convert the Lead to a Deal, open the Invoices/Quotes tab, select products from the internal catalog, configure payment terms, generate a public document link or download a PDF, and navigate back to the Open Channel chat to send it—averaging <strong>4 minutes and 50 seconds</strong> per enquiry.</p>
 
 <h3>3. Daily Cognitive Drag</h3>
 <p>When reps handle 40 to 60 enquiries per day, an extra 4 minutes per quote consumes nearly 3 hours of sales capacity purely in clerical clicks and page transitions. Flas CRM keeps the conversation and commercial documents in a single unified view, preserving focus on customer relationship building and negotiation.</p>
@@ -885,7 +885,7 @@ export const COMPARISON_POSTS = defineArticles([
 <ul>
   <li><strong>Marketplace WhatsApp Applications:</strong> Bitrix24 does not provide a turn-key native WhatsApp inbox out of the box. Users must install third-party marketplace apps (such as Wazzup, Chatfuel, or Twilio connector) which charge between <strong>$35 to $80 per connected phone number per month</strong>.</li>
   <li><strong>Telephony &amp; Connector Downtime:</strong> When multiple third-party systems bridge WhatsApp, Bitrix24, and Meta, webhook sync failures and disconnects create administrative headaches for sales managers.</li>
-  <li><strong>The Flas CRM Alternative:</strong> Flas CRM connects directly to the official Meta WhatsApp Cloud API without any intermediary marketplace applications. There are zero connector subscription markups—you pay only the official Meta message rate card for utility and marketing templates.</li>
+  <li><strong>The Flas CRM Alternative:</strong> Flas CRM connects directly to the official Meta WhatsApp Cloud API without any intermediary marketplace applications. There are zero connector subscription markups—you pay only the official Meta message rate card for utility and marketing templates. Review <a href="/pricing">current Flas pricing</a> for comparison.</li>
 </ul>
 
 <h2>Defensible Honesty: When Bitrix24 Is the Superior Choice</h2>
@@ -894,7 +894,7 @@ export const COMPARISON_POSTS = defineArticles([
 
 <ul>
   <li><strong>Choose Bitrix24 if:</strong> Your company requires a complete internal corporate intranet with employee clock-in/clock-out timesheets, departmental document wikis, complex Gantt chart project management, and internal video conferencing, and WhatsApp is merely an occasional communication channel handled by a dedicated support team.</li>
-  <li><strong>Choose Flas CRM if:</strong> WhatsApp is your business's primary revenue engine. If your sales team lives and breathes in WhatsApp conversations, and you need to respond instantly, manage visual deal pipelines, issue official VAT-compliant PDF quotes, and record invoices without fighting through a 35-tool administrative suite, Flas CRM delivers unmatched velocity and focus.</li>
+  <li><strong>Choose Flas CRM if:</strong> WhatsApp is your business's primary revenue engine. If your sales team lives and breathes in WhatsApp conversations, and you need to respond instantly, manage visual deal pipelines, issue official VAT-compliant PDF quotes, and record invoices without fighting through a 35-tool administrative suite, Flas CRM delivers unmatched velocity and focus. Explore the <a href="/features">full feature tour</a>.</li>
 </ul>
 
 <h2>Buyer Trial Checklist: How to Test Both Systems</h2>

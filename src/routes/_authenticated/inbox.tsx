@@ -931,7 +931,7 @@ function InboxPage() {
             ].map((af) => (
               <button
                 key={af.id}
-                onClick={() => setAssignmentFilter(af.id as any)}
+                onClick={() => setAssignmentFilter(af.id as "all" | "mine" | "unassigned")}
                 className={cn(
                   "rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors",
                   assignmentFilter === af.id
