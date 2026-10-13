@@ -18,9 +18,13 @@ export function createDb() {
     rows: {},
     faults: {},
     rpcResults: {},
+    rpcHandlers: {},
     rpcCalls: [],
     uniques: schemaKeys(),
     ids: 0,
+    // PostgREST answers a read with at most this many rows (1,000 by default) and says nothing
+    // when it stops there. null = no cap. Set it small to put a result beyond it.
+    rowCap: null,
   };
 
   class Query {
@@ -81,6 +85,11 @@ export function createDb() {
     }
     limit(n) {
       this.take = n;
+      return this;
+    }
+    range(from, to) {
+      this.offset = from;
+      this.take = to - from + 1;
       return this;
     }
     maybeSingle() {
@@ -204,7 +213,12 @@ export function createDb() {
           return ascending ? left.localeCompare(right) : right.localeCompare(left);
         });
       }
-      if (this.take) found = found.slice(0, this.take);
+      if (this.mode === "read") {
+        const start = this.offset ?? 0;
+        let size = this.take ?? Infinity;
+        if (state.rowCap) size = Math.min(size, state.rowCap);
+        if (this.take || state.rowCap || start) found = found.slice(start, start + size);
+      } else if (this.take) found = found.slice(0, this.take);
       // PostgREST's single-row reads are not "the first row": asking for one
       // row and getting several is an error, and code that ignores that error
       // silently stops doing whatever it asked the row for.
@@ -231,6 +245,10 @@ export function createDb() {
       from: (table) => new Query(table),
       rpc: async (name, args) => {
         state.rpcCalls.push({ name, args });
+        // A handler answers like the function would ({ data, error }), or throws like a dropped
+        // connection. Without one, the call succeeds with whatever rpcResults holds.
+        const handler = state.rpcHandlers[name];
+        if (handler) return handler(args);
         return { data: state.rpcResults[name] ?? null, error: null };
       },
     },
@@ -240,8 +258,10 @@ export function createDb() {
       state.uniques = schemaKeys();
       state.faults = {};
       state.rpcResults = {};
+      state.rpcHandlers = {};
       state.rpcCalls = [];
       state.ids = 0;
+      state.rowCap = null;
     },
     table(name) {
       return (state.rows[name] ??= []);
@@ -255,6 +275,10 @@ export function createDb() {
      */
     unique(table, columns) {
       (state.uniques[table] ??= []).push(columns);
+    },
+    /** Makes a database function answer with `handler(args)` -> { data, error }. */
+    onRpc(name, handler) {
+      state.rpcHandlers[name] = handler;
     },
     /** Lifts a fault set with fail(): the database has recovered. */
     recover(key) {

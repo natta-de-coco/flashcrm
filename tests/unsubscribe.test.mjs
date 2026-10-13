@@ -33,6 +33,17 @@ const COULD_NOT_UPDATE =
 const REFUSED = "This unsubscribe link is not valid or has expired.";
 
 const db = createDb();
+// Until the SQL is pasted into the live database the function is not there: every database this
+// file builds starts that way, and a test that wants the function in place says so with onRpc().
+const functionIsNotThere = async () => ({
+  data: null,
+  error: { code: "PGRST202", message: "Could not find the function in the schema cache" },
+});
+const resetWithoutFunction = db.reset;
+db.reset = (rows) => {
+  resetWithoutFunction(rows);
+  db.onRpc("withdraw_marketing_consent", functionIsNotThere);
+};
 globalThis.publicIntake = { db: db.client, audits: [], emails: [], alerts: [] };
 
 const setKey = (value) => {
@@ -266,6 +277,258 @@ describe("a write that fails is never reported as done", () => {
     setKey(undefined);
     assert.deepEqual(await applyUnsubscribe(token), { ok: false, error: COULD_NOT_UPDATE });
     assert.equal(JSON.stringify(logged).includes(EMAIL), false);
+  });
+});
+
+// The withdrawal is one database function (supabase/migrations/20261014110000_...). Until someone
+// pastes that SQL into the live database the function does not exist, and the link must still
+// work completely. beforeEach() above makes the function "not there", so every test that does
+// not say otherwise runs the fallback; the tests below that name the function run the other
+// world, where it exists.
+describe("a result the database cut short never counts as done", () => {
+  const CAP = 5; // PostgREST stops a read at 1,000 rows without saying so; the double stops at 5
+  const SPACED = " Shared@Example.COM ";
+
+  // Eight addresses that CONTAIN the one in the link (so a substring search finds them) but are
+  // other people, then the person themself in two spellings. The double lists them in this order,
+  // so a single read of CAP rows never reaches the last two.
+  const crowd = {
+    leads: {
+      each: (id, email, tenant_id = A) => ({
+        id,
+        tenant_id,
+        email,
+        subscribed: true,
+        consent_given: true,
+      }),
+      done: (r) => r.subscribed === false && r.consent_given === false,
+    },
+    contacts: {
+      each: (id, email, tenant_id = A) => ({ id, tenant_id, email, consent_given: true }),
+      done: (r) => r.consent_given === false,
+    },
+    drip_enrollments: {
+      each: (id, email, tenant_id = A) => ({ id, tenant_id, email, status: "in_progress" }),
+      done: (r) => r.status === "unsubscribed",
+    },
+  };
+
+  const fill = (table) => {
+    const { each } = crowd[table];
+    const rows = [];
+    for (let i = 1; i <= 8; i++) rows.push(each(`look-${i}`, `x${i}${EMAIL}`));
+    rows.push(each("target-1", SPACED), each("target-2", EMAIL), each("target-b", EMAIL, B));
+    return rows;
+  };
+
+  for (const table of Object.keys(crowd)) {
+    it(`${table}: the person is withdrawn even when more rows match than one read returns`, async () => {
+      db.reset({ ...seed(), [table]: fill(table) });
+      db.onRpc("withdraw_marketing_consent", async () => ({
+        data: null,
+        error: { code: "PGRST202", message: "not there" },
+      }));
+      db.state.rowCap = CAP;
+
+      const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+
+      assert.deepEqual(result, { ok: true, email: EMAIL });
+      const { done } = crowd[table];
+      assert.equal(done(row(table, "target-1")), true, "the spaced, mixed-case spelling");
+      assert.equal(done(row(table, "target-2")), true, "the exact spelling");
+      for (let i = 1; i <= 8; i++) {
+        assert.equal(done(row(table, `look-${i}`)), false, `look-${i} is someone else`);
+      }
+      assert.equal(done(row(table, "target-b")), false, "the other company is untouched");
+    });
+  }
+
+  it("does not say unsubscribed when a later page cannot be read, and changes nothing on that table", async () => {
+    db.reset({ ...seed(), leads: fill("leads") });
+    db.onRpc("withdraw_marketing_consent", async () => ({
+      data: null,
+      error: { code: "PGRST202", message: "not there" },
+    }));
+    db.state.rowCap = CAP;
+    let reads = 0;
+    db.fail("leads:read", () =>
+      ++reads === 2 ? { code: "57014", message: `timeout on ${EMAIL}` } : undefined,
+    );
+
+    const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+
+    assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE });
+    assert.equal(crowd.leads.done(row("leads", "target-2")), false, "nothing was half-done");
+    assert.equal(JSON.stringify(logged).includes(EMAIL), false, "the address is not logged");
+  });
+
+  for (const table of ["leads", "contacts", "drip_enrollments"]) {
+    it(`${table}: a refused read is "could not update"`, async () => {
+      db.fail(`${table}:read`, { code: "XX000", message: "down" });
+      const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+      assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE });
+    });
+  }
+
+  it("a write that reports fewer rows changed than asked is not done", async () => {
+    db.fail("leads:update", () => ({ empty: true })); // the statement "succeeds" and changes nothing
+    const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+    assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE });
+    assert.equal(row("leads", "lead-a").subscribed, true);
+  });
+
+  it("reads the rows again afterwards, and is not done if one is subscribed again", async () => {
+    // Someone re-subscribes the address between the write and the check.
+    let flipped = false;
+    db.fail("leads:read", () => {
+      const r = row("leads", "lead-a");
+      if (!flipped && r.subscribed === false) {
+        r.subscribed = true;
+        flipped = true;
+      }
+      return undefined;
+    });
+
+    const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+
+    assert.equal(flipped, true, "the rows were read again after the write");
+    assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE });
+  });
+
+  it("is not done if the rows cannot be read again afterwards", async () => {
+    // The write went through; the check that it did cannot be made.
+    db.fail("leads:read", () =>
+      row("leads", "lead-a").subscribed === false
+        ? { code: "57014", message: "canceling statement due to statement timeout" }
+        : undefined,
+    );
+    const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+    assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE });
+  });
+
+  it("an address that is on file nowhere is simply done", async () => {
+    db.reset({ leads: [], contacts: [] });
+    db.onRpc("withdraw_marketing_consent", async () => ({
+      data: null,
+      error: { code: "PGRST202", message: "not there" },
+    }));
+    const result = await applyUnsubscribe(generateUnsubscribeToken("nobody@example.com", A));
+    assert.deepEqual(result, { ok: true, email: "nobody@example.com" });
+  });
+
+  it("a database that has no drip tables yet is not a failure", async () => {
+    for (const code of ["42P01", "PGRST205"]) {
+      db.reset(seed());
+      db.fail("drip_enrollments:read", { code, message: "relation does not exist" });
+      db.fail("drip_enrollments:update", { code, message: "relation does not exist" });
+      const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+      assert.deepEqual(result, { ok: true, email: EMAIL }, code);
+      assert.equal(row("leads", "lead-a").subscribed, false, code);
+    }
+  });
+
+  it("changes a large number of rows in small groups, so no request names thousands of ids", async () => {
+    const leads = [];
+    for (let i = 0; i < 250; i++) {
+      leads.push({
+        id: `many-${String(i).padStart(3, "0")}`,
+        tenant_id: A,
+        email: i % 2 ? EMAIL : SPACED,
+        subscribed: true,
+        consent_given: true,
+      });
+    }
+    db.reset({ ...seed(), leads });
+    db.onRpc("withdraw_marketing_consent", async () => ({
+      data: null,
+      error: { code: "42883", message: "function does not exist" },
+    }));
+    let writes = 0;
+    db.fail("leads:update", () => {
+      writes++;
+      return undefined;
+    });
+
+    const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+
+    assert.deepEqual(result, { ok: true, email: EMAIL });
+    assert.equal(
+      db.table("leads").every((r) => r.subscribed === false),
+      true,
+    );
+    assert.equal(writes, 3);
+  });
+});
+
+describe("once the database function is in place", () => {
+  const FUNCTION = "withdraw_marketing_consent";
+  const counts = { leads: 1, contacts: 1, drip_enrollments: 1 };
+  const answer =
+    (data, error = null) =>
+    async () => ({ data, error });
+
+  it("hands the whole job to the function, for this company and this address, and writes nothing itself", async () => {
+    db.onRpc(FUNCTION, answer(counts));
+    const before = snapshot();
+
+    const result = await applyUnsubscribe(generateUnsubscribeToken("Shared@Example.com", A));
+
+    assert.deepEqual(result, { ok: true, email: EMAIL });
+    assert.deepEqual(
+      db.state.rpcCalls.filter((c) => c.name === FUNCTION),
+      [{ name: FUNCTION, args: { _tenant_id: A, _email: EMAIL } }],
+    );
+    assert.equal(snapshot(), before, "nothing was read-then-written around the function");
+  });
+
+  for (const error of [
+    { code: "42501", message: `permission denied for ${EMAIL}` },
+    { code: "XX000", message: "boom" },
+    { code: "57014", message: "canceling statement due to statement timeout" },
+    { code: "PGRST301", message: "JWT expired" },
+    { message: "no code at all" },
+  ]) {
+    it(`an error from the function (${error.code ?? "no code"}) is "could not update", with no second attempt around it`, async () => {
+      db.onRpc(FUNCTION, answer(null, error));
+      const before = snapshot();
+
+      const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+
+      assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE });
+      assert.equal(snapshot(), before, "the fallback did not run");
+      assert.equal(logged.length > 0, true);
+      assert.equal(JSON.stringify(logged).includes(EMAIL), false, "the address is not logged");
+    });
+  }
+
+  it("a dropped connection is not done either", async () => {
+    db.onRpc(FUNCTION, async () => {
+      throw Object.assign(new Error(`fetch failed for ${EMAIL}`), { code: "ECONNRESET" });
+    });
+    const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+    assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE });
+    assert.equal(JSON.stringify(logged).includes(EMAIL), false);
+  });
+
+  it("an answer that is not the function's counts is not done", async () => {
+    for (const data of [null, undefined, "ok", 7, [], { leads: "1" }]) {
+      db.onRpc(FUNCTION, answer(data));
+      const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+      assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE }, JSON.stringify(data));
+    }
+  });
+
+  it("only 'the function does not exist' (PGRST202, 42883) switches to the complete fallback", async () => {
+    for (const code of ["PGRST202", "42883"]) {
+      db.reset(seed());
+      db.onRpc(FUNCTION, answer(null, { code, message: "not there" }));
+      const result = await applyUnsubscribe(generateUnsubscribeToken(EMAIL, A));
+      assert.deepEqual(result, { ok: true, email: EMAIL }, code);
+      assert.equal(row("leads", "lead-a").subscribed, false, code);
+      assert.equal(row("contacts", "contact-a").consent_given, false, code);
+      assert.equal(row("drip_enrollments", "enrol-a").status, "unsubscribed", code);
+      assert.equal(row("leads", "lead-b").subscribed, true, code);
+    }
   });
 });
 
