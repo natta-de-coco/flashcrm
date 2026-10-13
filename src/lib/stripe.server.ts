@@ -266,7 +266,7 @@ export async function recordStripeSubscriptionInvoice(params: {
     .single();
 
   if (insertError) {
-    // If concurrent insert occurred, return existing document
+    // If concurrent insert occurred, verify document and its items before returning
     if (insertError.code === "23505" || insertError.message.includes("unique")) {
       const { data: conflictDoc } = await supabaseAdmin
         .from("sales_documents")
@@ -274,7 +274,30 @@ export async function recordStripeSubscriptionInvoice(params: {
         .eq("tenant_id", params.tenantId)
         .filter("custom_fields->>stripe_invoice_id", "eq", params.stripeInvoiceId)
         .maybeSingle();
-      if (conflictDoc) return conflictDoc.id;
+      if (conflictDoc) {
+        const { data: conflictItems } = await supabaseAdmin
+          .from("sales_document_items")
+          .select("id")
+          .eq("document_id", conflictDoc.id)
+          .limit(1);
+        if (!conflictItems || conflictItems.length === 0) {
+          const { error: fillErr } = await supabaseAdmin.from("sales_document_items").insert({
+            tenant_id: params.tenantId,
+            document_id: conflictDoc.id,
+            name_snapshot: `Flas CRM — ${params.planName || "Subscription"}`,
+            quantity: 1,
+            unit_price: amount,
+            line_total: amount,
+            position: 0,
+          } as any);
+          if (fillErr) {
+            throw new Error(
+              `Could not record subscription line items for concurrent invoice: ${fillErr.message}`,
+            );
+          }
+        }
+        return conflictDoc.id;
+      }
     }
     throw new Error(`Could not record subscription invoice: ${insertError.message}`);
   }
