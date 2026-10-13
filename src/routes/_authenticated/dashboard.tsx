@@ -564,7 +564,11 @@ function DashboardPage() {
                   : t("dashboard.social.empty")}
               </p>
             </div>
-            <Link to="/social" className="text-xs font-medium text-brand hover:underline">
+            <Link
+              to="/social"
+              search={{ tab: "comments" }}
+              className="text-xs font-medium text-brand hover:underline"
+            >
               {t("dashboard.social.hub")}
             </Link>
           </CardHeader>
@@ -578,7 +582,11 @@ function DashboardPage() {
                 {data?.social.accounts.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     {t("dashboard.social.none")}{" "}
-                    <Link to="/social" className="font-medium text-brand hover:underline">
+                    <Link
+                      to="/social"
+                      search={{ tab: "comments" }}
+                      className="font-medium text-brand hover:underline"
+                    >
                       {t("dashboard.social.hub")}
                     </Link>
                     .

@@ -74,6 +74,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, type MessageKey } from "@/lib/i18n";
+import { parseSocialTab, type SocialTab } from "@/lib/social-tabs";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -97,7 +98,13 @@ export const Route = createFileRoute("/_authenticated/social")({
   // The OAuth callback redirects back here with the outcome in the query
   // string. These were previously unread, so a blocked connection showed
   // nothing at all.
-  validateSearch: (search: Record<string, unknown>): ConnectionOutcomeSearch => ({
+  //
+  // `tab` says which of the three tabs is open (write | comments | reach), so
+  // reload, Back and a pasted link keep the place. Anything else is the writer.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): ConnectionOutcomeSearch & { tab?: SocialTab } => ({
+    ...("tab" in search ? { tab: parseSocialTab(search["tab"]) } : {}),
     ...(typeof search["connected"] === "string" ? { connected: search["connected"] } : {}),
     ...(typeof search["connect_blocked"] === "string"
       ? { connect_blocked: search["connect_blocked"] }
@@ -356,14 +363,18 @@ function SocialHubPage() {
   // The composer is where a draft is written, so it is where a draft has to be
   // editable. "Edit" on a draft anywhere else brings it back here rather than
   // leaving it stranded in a list with only a delete icon (QA, 26 Sep).
-  // Opens on the composer: writing a post is what the screen is called, and
-  // what the person came to do. Replies to comments and messages are one tab
-  // along (and in the Inbox).
-  const [tab, setTab] = useState("composer");
+  // Opens on the writer unless the address says otherwise: writing a post is
+  // what the screen is called, and what the person came to do. Replies to
+  // comments and messages are one tab along (and in the Inbox). The tab is kept
+  // in the address, so a reload or Back stays on it and the other two tabs can
+  // be linked to directly (?tab=comments, ?tab=reach).
+  const tab = parseSocialTab(search.tab);
+  const setTab = (next: string) =>
+    void navigate({ search: (prev) => ({ ...prev, tab: parseSocialTab(next) }) });
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const editPost = (post: Post) => {
     setEditingPost(post);
-    setTab("composer");
+    setTab("write");
   };
 
   return (
@@ -390,17 +401,17 @@ function SocialHubPage() {
         search={search}
         accounts={accounts}
         onChanged={refresh}
-        onDismiss={() => void navigate({ to: "/social", search: {}, replace: true })}
+        onDismiss={() => void navigate({ to: "/social", search: { tab }, replace: true })}
       />
 
       <AccountsCard accounts={accounts} onChanged={refresh} />
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList>
-          <TabsTrigger value="composer" className="gap-1.5">
+          <TabsTrigger value="write" className="gap-1.5">
             <PenSquare className="size-3.5" /> {i18n.t("social.aiComposer")}
           </TabsTrigger>
-          <TabsTrigger value="inbox" className="gap-1.5">
+          <TabsTrigger value="comments" className="gap-1.5">
             <MessageCircle className="size-3.5" /> {i18n.t("social.commentsDms")}
             {interactions.filter((i) => i.status === "open").length > 0 && (
               <Badge variant="secondary" className="ms-1 text-[10px]">
@@ -413,10 +424,10 @@ function SocialHubPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="inbox" className="mt-4">
+        <TabsContent value="comments" className="mt-4">
           <InboxTab interactions={interactions} accounts={accounts} onChanged={refresh} />
         </TabsContent>
-        <TabsContent value="composer" className="mt-4">
+        <TabsContent value="write" className="mt-4">
           <ComposerTab
             accounts={accounts}
             posts={posts}

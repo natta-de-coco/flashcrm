@@ -8,7 +8,8 @@
 // screen says honestly that Flas saves and plans posts but does not publish them.
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import * as app from "../node_modules/.cache/flas-i18n.mjs";
 
@@ -722,5 +723,142 @@ describe("the phone bar names every tab in a few letters", () => {
         );
       }
     }
+  });
+});
+
+/* ───────── F5: Social posts can be found, and its tabs keep their place ───────── */
+
+describe("the Social posts tab lives in the address", () => {
+  const social = read("src/routes/_authenticated/social.tsx");
+
+  it("knows exactly three tabs, the writer first", () => {
+    assert.deepEqual([...app.SOCIAL_TABS], ["write", "comments", "reach"]);
+    assert.equal(app.DEFAULT_SOCIAL_TAB, "write");
+  });
+
+  it("opens the writer for a missing, empty or unknown tab", () => {
+    for (const value of [
+      undefined,
+      null,
+      "",
+      "bogus",
+      "Write",
+      " write",
+      0,
+      7,
+      {},
+      [],
+      ["reach"],
+    ]) {
+      assert.equal(app.parseSocialTab(value), "write", JSON.stringify(value));
+    }
+    // The names the tabs had inside the page are not addresses.
+    assert.equal(app.parseSocialTab("composer"), "write");
+    assert.equal(app.parseSocialTab("inbox"), "write");
+  });
+
+  it("keeps the two other tabs directly linkable", () => {
+    assert.equal(app.parseSocialTab("comments"), "comments");
+    assert.equal(app.parseSocialTab("reach"), "reach");
+    assert.equal(app.parseSocialTab("write"), "write");
+  });
+
+  it("the page reads its tab from the address and writes it back when it changes", () => {
+    assert.ok(social.includes('parseSocialTab(search["tab"])'), "validateSearch checks the tab");
+    assert.ok(social.includes("parseSocialTab(search.tab)"), "the page opens on that tab");
+    assert.ok(
+      social.includes("<Tabs value={tab} onValueChange={setTab}"),
+      "the tabs are controlled",
+    );
+    assert.equal(
+      /useState\("composer"\)|useState\("write"\)/.test(social),
+      false,
+      "no private tab state",
+    );
+    // Changing tab navigates (a new history entry, so Back returns to the last tab).
+    const change = social.slice(
+      social.indexOf("const setTab"),
+      social.indexOf("const [editingPost"),
+    );
+    assert.ok(change.includes("navigate({ search:"), "setTab changes the address");
+    assert.equal(change.includes("replace"), false, "Back must be able to return to the last tab");
+  });
+
+  it("the three tab triggers and their bodies use the address values", () => {
+    for (const tab of ["write", "comments", "reach"]) {
+      assert.ok(social.includes(`<TabsTrigger value="${tab}"`), `trigger ${tab}`);
+      assert.ok(social.includes(`<TabsContent value="${tab}"`), `content ${tab}`);
+    }
+    assert.equal(social.includes('value="composer"'), false);
+    assert.equal(social.includes('value="inbox"'), false);
+  });
+
+  it("editing a draft brings the person back to the writer", () => {
+    const edit = social.slice(
+      social.indexOf("const editPost"),
+      social.indexOf("return (\n    <main"),
+    );
+    assert.ok(edit.includes('setTab("write")'));
+  });
+
+  it("dismissing a connection notice keeps the open tab", () => {
+    assert.ok(social.includes("search: { tab }"));
+  });
+
+  it("still says on every tab that Flas does not publish", () => {
+    const notice = social.indexOf("social.noPublishTitle");
+    assert.ok(notice > 0, "the notice is on the page");
+    assert.ok(
+      notice < social.indexOf("<Tabs "),
+      "and it is above the tabs, so it shows on all three",
+    );
+    assert.match(MESSAGES.en["social.noPublishBody"], /does not (send|publish|post)/i);
+    assert.ok(!/automatic(ally)? (post|publish)/i.test(MESSAGES.en["social.noPublishBody"]));
+  });
+});
+
+describe("every way into Social posts lands where its name says", () => {
+  const create = app.QUICK_CREATE_ACTIONS.find((action) => action.label === "Social post");
+
+  it('"+ Create → Social post" opens the writer', () => {
+    assert.equal(create.to, "/social");
+    assert.deepEqual(create.search, { tab: "write" });
+    assert.equal(app.parseSocialTab(create.search.tab), "write");
+    assert.ok(
+      read("src/components/QuickCreate.tsx").includes("search: action.search"),
+      "Create passes the tab on",
+    );
+  });
+
+  it("the menu entry and the phone bar open the writer (the default)", () => {
+    const entry = items.find((item) => item.to === "/social");
+    assert.equal(entry.label, "Social posts");
+    assert.equal(app.parseSocialTab(undefined), "write");
+    assert.ok(app.mobileBarFor("company_admin").some((item) => item.to === "/social"));
+  });
+
+  it("every link that expected the comments view now asks for it by name", () => {
+    const files = [];
+    const walk = (dir) => {
+      for (const name of readdirSync(dir)) {
+        const path = `${dir}/${name}`;
+        if (statSync(path).isDirectory()) walk(path);
+        else if (/\.tsx$/.test(name)) files.push(path);
+      }
+    };
+    walk(fileURLToPath(new URL("../src", import.meta.url)));
+    let links = 0;
+    for (const file of files) {
+      const source = readFileSync(file, "utf8").split("\r\n").join("\n");
+      for (const match of source.matchAll(/to="\/social"/g)) {
+        links += 1;
+        const after = source.slice(match.index, match.index + 80);
+        assert.ok(
+          after.includes('search={{ tab: "comments" }}'),
+          `${file}: a /social link has no tab`,
+        );
+      }
+    }
+    assert.ok(links >= 3, `expected the dashboard and channel links, found ${links}`);
   });
 });
