@@ -42,6 +42,11 @@ class Query {
     this.filters.push((r) => r[k] !== v);
     return this;
   }
+  in(k, values) {
+    const list = Array.isArray(values) ? values : [values];
+    this.filters.push((r) => list.includes(r[k]));
+    return this;
+  }
   is(k, v) {
     return this.eq(k, v);
   }

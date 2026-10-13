@@ -42,6 +42,11 @@ class Query {
     this.filters.push((r) => r[column] === value);
     return this;
   }
+  in(column, values) {
+    const list = Array.isArray(values) ? values : [values];
+    this.filters.push((r) => list.includes(r[column]));
+    return this;
+  }
   not(column, operator, value) {
     if (operator === "is" && value === null) this.filters.push((r) => r[column] != null);
     return this;
