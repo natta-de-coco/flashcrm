@@ -453,7 +453,14 @@ function InboxPage() {
       : [...matching, ...older].sort((a, b) =>
           (b.last_message_at ?? "").localeCompare(a.last_message_at ?? ""),
         );
-  }, [loadedConversations, foundConversations.data, statusFilter, search, assignmentFilter, user?.id]);
+  }, [
+    loadedConversations,
+    foundConversations.data,
+    statusFilter,
+    search,
+    assignmentFilter,
+    user?.id,
+  ]);
 
   const active = list.find((c) => c.id === activeId) ?? null;
 
