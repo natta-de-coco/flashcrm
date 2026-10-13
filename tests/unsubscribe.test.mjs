@@ -468,3 +468,182 @@ describe("lead capture is limited to the company that received it", () => {
     assert.equal(snapshot(), before);
   });
 });
+
+describe("the address is matched however it was stored", () => {
+  // Addresses reach the database in whatever form they were typed or imported: mixed case, a
+  // stray space. The link always carries the plain lower-case form.
+  const mixedSeed = () => ({
+    leads: [
+      {
+        id: "lead-mixed",
+        tenant_id: A,
+        email: "Sam@Example.com",
+        subscribed: true,
+        consent_given: true,
+      },
+      {
+        id: "lead-space",
+        tenant_id: A,
+        email: "sam@example.com ",
+        subscribed: true,
+        consent_given: true,
+      },
+      {
+        id: "lead-plain",
+        tenant_id: A,
+        email: "sam@example.com",
+        subscribed: true,
+        consent_given: true,
+      },
+      {
+        id: "lead-other-co",
+        tenant_id: B,
+        email: "Sam@Example.com",
+        subscribed: true,
+        consent_given: true,
+      },
+      {
+        id: "lead-longer",
+        tenant_id: A,
+        email: "sam@example.com.au",
+        subscribed: true,
+        consent_given: true,
+      },
+      {
+        id: "lead-prefix",
+        tenant_id: A,
+        email: "xsam@example.com",
+        subscribed: true,
+        consent_given: true,
+      },
+    ],
+    contacts: [
+      { id: "contact-mixed", tenant_id: A, email: "Sam@Example.com", consent_given: true },
+      { id: "contact-space", tenant_id: A, email: " sam@example.com", consent_given: true },
+      { id: "contact-other-co", tenant_id: B, email: "SAM@EXAMPLE.COM", consent_given: true },
+      { id: "contact-longer", tenant_id: A, email: "sam@example.com.au", consent_given: true },
+    ],
+  });
+  const linkFor = (email) => link({ email, tenantId: A, exp: inAnHour() });
+
+  it("withdraws consent from every spelling of the address in that company, and from nothing else", async () => {
+    db.reset(mixedSeed());
+
+    const result = await applyUnsubscribe(linkFor("sam@example.com"));
+
+    assert.deepEqual(result, { ok: true, email: "sam@example.com" });
+    for (const id of ["lead-mixed", "lead-space", "lead-plain"]) {
+      assert.equal(row("leads", id).consent_given, false, id);
+      assert.equal(row("leads", id).subscribed, false, id);
+    }
+    for (const id of ["contact-mixed", "contact-space"]) {
+      assert.equal(row("contacts", id).consent_given, false, id);
+    }
+    // Another company's customer, and different addresses that merely contain this one.
+    for (const id of ["lead-other-co", "lead-longer", "lead-prefix"]) {
+      assert.equal(row("leads", id).consent_given, true, id);
+      assert.equal(row("leads", id).subscribed, true, id);
+    }
+    for (const id of ["contact-other-co", "contact-longer"]) {
+      assert.equal(row("contacts", id).consent_given, true, id);
+    }
+  });
+
+  it("a link written in capitals reaches the same rows", async () => {
+    db.reset(mixedSeed());
+    const result = await applyUnsubscribe(linkFor("  SAM@example.COM "));
+    assert.equal(result.ok, true);
+    assert.equal(row("leads", "lead-mixed").consent_given, false);
+    assert.equal(row("contacts", "contact-space").consent_given, false);
+    assert.equal(row("leads", "lead-other-co").consent_given, true);
+  });
+
+  it("the characters % _ and \ in an address mean themselves, not 'anything'", async () => {
+    db.reset({
+      leads: [
+        {
+          id: "under",
+          tenant_id: A,
+          email: "a_b@example.com",
+          subscribed: true,
+          consent_given: true,
+        },
+        {
+          id: "under-lookalike",
+          tenant_id: A,
+          email: "axb@example.com",
+          subscribed: true,
+          consent_given: true,
+        },
+        {
+          id: "percent",
+          tenant_id: A,
+          email: "A%b@example.com",
+          subscribed: true,
+          consent_given: true,
+        },
+        {
+          id: "percent-lookalike",
+          tenant_id: A,
+          email: "aXXb@example.com",
+          subscribed: true,
+          consent_given: true,
+        },
+        {
+          id: "slash",
+          tenant_id: A,
+          email: "a\b@example.com",
+          subscribed: true,
+          consent_given: true,
+        },
+        {
+          id: "slash-lookalike",
+          tenant_id: A,
+          email: "ab@example.com",
+          subscribed: true,
+          consent_given: true,
+        },
+      ],
+      contacts: [],
+    });
+
+    for (const address of ["a_b@example.com", "a%b@example.com", "a\b@example.com"]) {
+      assert.equal((await applyUnsubscribe(linkFor(address))).ok, true, address);
+    }
+    for (const id of ["under", "percent", "slash"]) {
+      assert.equal(row("leads", id).consent_given, false, id);
+    }
+    for (const id of ["under-lookalike", "percent-lookalike", "slash-lookalike"]) {
+      assert.equal(row("leads", id).consent_given, true, id);
+    }
+  });
+
+  it("is not told 'unsubscribed' when the rows could not be found", async () => {
+    db.reset(mixedSeed());
+    for (const table of ["leads", "contacts"]) {
+      db.fail(`${table}:read`, { code: "XX000", message: `broke for ${EMAIL}` });
+      const result = await applyUnsubscribe(linkFor("sam@example.com"));
+      assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE }, table);
+      assert.equal(JSON.stringify(logged).includes("sam@example.com"), false, "not in the log");
+      db.recover(`${table}:read`);
+    }
+  });
+
+  it("is not told 'unsubscribed' when the database changed fewer rows than it found", async () => {
+    for (const table of ["leads", "contacts"]) {
+      db.reset(mixedSeed());
+      db.fail(`${table}:update`, { empty: true });
+      const result = await applyUnsubscribe(linkFor("sam@example.com"));
+      assert.deepEqual(result, { ok: false, error: COULD_NOT_UPDATE }, table);
+    }
+  });
+
+  it("an address nobody holds in that company is a plain success and changes nothing", async () => {
+    db.reset(mixedSeed());
+    const held = () => JSON.stringify([db.table("leads"), db.table("contacts")]);
+    const before = held();
+    const result = await applyUnsubscribe(linkFor("nobody@example.com"));
+    assert.deepEqual(result, { ok: true, email: "nobody@example.com" });
+    assert.equal(held(), before);
+  });
+});

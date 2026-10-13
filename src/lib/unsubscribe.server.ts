@@ -21,6 +21,11 @@ export const UNSUBSCRIBE_COULD_NOT_UPDATE =
 
 type Failure = { step: string; code: string };
 
+/** Makes %, _ and \ in a value mean themselves when it is used inside an ILIKE pattern. */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 export async function applyUnsubscribe(token: string): Promise<UnsubscribeResult> {
   const checked = verifyUnsubscribeToken(token);
 
@@ -54,21 +59,37 @@ export async function applyUnsubscribe(token: string): Promise<UnsubscribeResult
     }
   };
 
-  await attempt("leads", () =>
-    supabaseAdmin
-      .from("leads")
-      .update({ subscribed: false, consent_given: false })
+  // Addresses are stored as they were typed or imported (mixed case, a stray space), and the link
+  // carries the plain lower-case form, so an exact match would silently miss them. The company's
+  // rows that could be this address are found first (case-insensitive, with %, _ and \ meaning
+  // themselves), narrowed to the ones that are this address once trimmed and lower-cased, and then
+  // exactly those rows are changed. "Unsubscribed" is only said if every one of them changed.
+  const withdraw = async (table: "leads" | "contacts", patch: Record<string, boolean>) => {
+    const found = await supabaseAdmin
+      .from(table)
+      .select("id, email")
       .eq("tenant_id", tenantId)
-      .eq("email", email),
-  );
+      .ilike("email", `%${escapeLikePattern(email)}%`);
+    if (found.error) return { error: found.error };
 
-  await attempt("contacts", () =>
-    supabaseAdmin
-      .from("contacts")
-      .update({ consent_given: false })
+    const ids = ((found.data ?? []) as { id: string; email: string | null }[])
+      .filter((r) => typeof r.email === "string" && r.email.trim().toLowerCase() === email)
+      .map((r) => r.id);
+    if (ids.length === 0) return { error: null };
+
+    const changed = await supabaseAdmin
+      .from(table)
+      .update(patch as never)
       .eq("tenant_id", tenantId)
-      .eq("email", email),
-  );
+      .in("id", ids)
+      .select("id");
+    if (changed.error) return { error: changed.error };
+    if ((changed.data ?? []).length < ids.length) return { error: { code: "not_all_changed" } };
+    return { error: null };
+  };
+
+  await attempt("leads", () => withdraw("leads", { subscribed: false, consent_given: false }));
+  await attempt("contacts", () => withdraw("contacts", { consent_given: false }));
 
   await attempt("drip_enrollments", async () => {
     const { cancelDripEnrollmentsForEmail } = await import("./drip-automation.server.ts");
