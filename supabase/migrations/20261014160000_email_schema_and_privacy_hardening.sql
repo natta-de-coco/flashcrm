@@ -1,10 +1,11 @@
 -- Migration: 20261014160000_email_schema_and_privacy_hardening.sql
--- Stage 1: Email schema and privacy repairs (Issue #78)
+-- Stage 1: Email schema and privacy repairs (Issue #78 & PR #81 review hardening)
 -- 1. platform_email_config least-privilege permissions (revoke TRUNCATE/DELETE from authenticated)
 -- 2. tenant_smtp_config column-level grant restriction and removal of cross-tenant NULL fallback in guard_campaign_verified_smtp
--- 3. Uniqueness constraints on drip sequences, steps, and enrollments
--- 4. Explicit tenant RLS policies on drip_steps
--- 5. Safe non-destructive storage budget calculation (drop/replace check_and_prune_tenant_email_storage)
+-- 3. Uniqueness constraints on drip sequences, steps, and enrollments with count-first duplicate reconciliation
+-- 4. Enrollment-to-sequence tenant consistency trigger and evidence log permissions
+-- 5. Explicit tenant RLS policies on drip_steps
+-- 6. Safe non-destructive storage budget calculation with caller isolation and revoked public execution
 
 BEGIN;
 
@@ -23,6 +24,11 @@ CREATE POLICY "platform_email_config_superadmin_all"
   WITH CHECK (public.is_super_admin(auth.uid()));
 
 -- 2. tenant_smtp_config column-level browser grants and trigger hardening
+-- Explicitly revoke prior column-level SELECT grants from 20260830000000_email_audit_otp_smtp.sql
+REVOKE SELECT (tenant_id, provider, from_email, from_name, reply_to, region, domain,
+               verified, last_test_at, last_test_ok, last_test_error, created_at, updated_at)
+  ON public.tenant_smtp_config FROM authenticated;
+
 REVOKE ALL ON public.tenant_smtp_config FROM PUBLIC, anon;
 REVOKE ALL ON public.tenant_smtp_config FROM authenticated;
 
@@ -66,6 +72,12 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+DROP TRIGGER IF EXISTS guard_campaign_verified_smtp_trigger ON public.campaigns;
+CREATE TRIGGER guard_campaign_verified_smtp_trigger
+  BEFORE INSERT OR UPDATE OF status, tenant_id ON public.campaigns
+  FOR EACH ROW
+  EXECUTE FUNCTION public.guard_campaign_verified_smtp();
 
 -- 3. Drip automations uniqueness, pre-checks and foreign key integrity
 DO $$
@@ -132,32 +144,43 @@ BEGIN
   END IF;
 END $$;
 
--- 3c. Safe reconciliation for concurrent active drip_enrollments:
--- Non-destructive: keeps the newest active enrollment and transitions older duplicates to 'paused'
+-- 3c. Count-first duplicate reconciliation for active drip_enrollments:
+-- Inspect count first; only execute reconciliation if duplicates actually exist
 DO $$
 DECLARE
+  _dup_active_count integer;
   _reconciled integer := 0;
 BEGIN
-  WITH duplicates AS (
-    SELECT id,
-           ROW_NUMBER() OVER (
-             PARTITION BY tenant_id, sequence_id, email
-             ORDER BY created_at DESC, id DESC
-           ) as rn
+  SELECT count(*) INTO _dup_active_count
+  FROM (
+    SELECT tenant_id, sequence_id, email
     FROM public.drip_enrollments
     WHERE status IN ('enrolled', 'in_progress')
-  ),
-  updated AS (
-    UPDATE public.drip_enrollments
-    SET status = 'paused',
-        updated_at = NOW()
-    WHERE id IN (SELECT id FROM duplicates WHERE rn > 1)
-    RETURNING id
-  )
-  SELECT count(*) INTO _reconciled FROM updated;
+    GROUP BY tenant_id, sequence_id, email
+    HAVING count(*) > 1
+  ) dups;
 
-  IF _reconciled > 0 THEN
-    RAISE NOTICE 'Reconciled % duplicate active drip enrollment(s) to paused state.', _reconciled;
+  IF _dup_active_count > 0 THEN
+    WITH duplicate_rows AS (
+      SELECT id,
+             ROW_NUMBER() OVER (
+               PARTITION BY tenant_id, sequence_id, email
+               ORDER BY created_at DESC, id DESC
+             ) as rn
+      FROM public.drip_enrollments
+      WHERE status IN ('enrolled', 'in_progress')
+    ),
+    reconciled_rows AS (
+      UPDATE public.drip_enrollments
+      SET status = 'paused',
+          updated_at = NOW()
+      WHERE id IN (SELECT id FROM duplicate_rows WHERE rn > 1)
+      RETURNING id
+    )
+    SELECT count(*) INTO _reconciled FROM reconciled_rows;
+
+    RAISE NOTICE 'Count-first check found % duplicate active group(s); reconciled % older enrollment(s) to paused.',
+      _dup_active_count, _reconciled;
   END IF;
 END $$;
 
@@ -174,7 +197,47 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_drip_enrollments_active_unique
   ON public.drip_enrollments (tenant_id, sequence_id, email)
   WHERE status IN ('enrolled', 'in_progress');
 
--- 4. Explicit tenant RLS policies on drip_steps
+-- 4. Enrollment-to-sequence tenant consistency trigger and evidence permissions
+CREATE OR REPLACE FUNCTION public.enforce_drip_enrollment_tenant_match()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+  seq_tenant_id uuid;
+BEGIN
+  SELECT tenant_id INTO seq_tenant_id
+  FROM public.drip_sequences
+  WHERE id = NEW.sequence_id;
+
+  IF seq_tenant_id IS NULL THEN
+    RAISE EXCEPTION 'Referenced drip sequence does not exist';
+  END IF;
+
+  IF seq_tenant_id <> NEW.tenant_id THEN
+    RAISE EXCEPTION 'Tenant mismatch: drip enrollment tenant (%) does not match sequence tenant (%)',
+      NEW.tenant_id, seq_tenant_id
+      USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS drip_enrollment_tenant_match_trigger ON public.drip_enrollments;
+CREATE TRIGGER drip_enrollment_tenant_match_trigger
+  BEFORE INSERT OR UPDATE OF tenant_id, sequence_id ON public.drip_enrollments
+  FOR EACH ROW
+  EXECUTE FUNCTION public.enforce_drip_enrollment_tenant_match();
+
+-- Evidence permissions on lead_alerts_log: authenticated may read own alerts, but cannot insert/modify/delete logs
+REVOKE ALL ON public.lead_alerts_log FROM PUBLIC, anon;
+REVOKE ALL ON public.lead_alerts_log FROM authenticated;
+GRANT SELECT ON public.lead_alerts_log TO authenticated;
+GRANT ALL ON public.lead_alerts_log TO service_role;
+
+-- 5. Explicit tenant RLS policies on drip_steps
 ALTER TABLE public.drip_steps ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "drip_steps_tenant_isolation" ON public.drip_steps;
@@ -193,7 +256,7 @@ CREATE POLICY "drip_steps_tenant_isolation" ON public.drip_steps
     )
   );
 
--- 5. Safe non-destructive storage calculation: no automated deletion of customer emails
+-- 6. Safe non-destructive storage calculation: no automated deletion of customer emails, caller isolation, revoked public execution
 CREATE OR REPLACE FUNCTION public.check_and_prune_tenant_email_storage(target_tenant_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -205,7 +268,20 @@ DECLARE
   warning_bytes bigint := 912680550;  -- 85% of 1 GB
   total_used_bytes bigint := 0;
   usage_pct numeric := 0;
+  caller_tenant_id uuid;
 BEGIN
+  -- Caller isolation check
+  IF auth.uid() IS NOT NULL AND NOT public.is_super_admin(auth.uid()) THEN
+    SELECT tenant_id INTO caller_tenant_id
+    FROM public.profiles
+    WHERE id = auth.uid();
+
+    IF caller_tenant_id IS NULL OR caller_tenant_id <> target_tenant_id THEN
+      RAISE EXCEPTION 'Forbidden: caller cannot inspect storage for another tenant'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+
   SELECT COALESCE(SUM(storage_bytes), 0)
   INTO total_used_bytes
   FROM public.portal_email_messages
@@ -224,5 +300,8 @@ BEGIN
   );
 END;
 $$;
+
+REVOKE ALL ON FUNCTION public.check_and_prune_tenant_email_storage(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_and_prune_tenant_email_storage(uuid) TO service_role;
 
 COMMIT;
