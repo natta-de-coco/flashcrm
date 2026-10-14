@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/hooks/useI18n";
+import { navMessageKey } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,13 +25,13 @@ import { getTenantSmtpConfig } from "@/lib/tenant-smtp.functions";
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({
     meta: [
-      { title: "Leads & Marketing — Flas CRM" },
+      { title: "Leads & email — Flas CRM" },
       {
         name: "description",
         content:
           "Collect email leads from WordPress and Shopify, then build marketing campaigns for your list.",
       },
-      { property: "og:title", content: "Leads & Marketing — Flas CRM" },
+      { property: "og:title", content: "Leads & email — Flas CRM" },
       {
         property: "og:description",
         content: "WordPress and Shopify lead capture plus email marketing campaigns.",
@@ -101,6 +103,7 @@ type Campaign = {
 
 function MarketingPage() {
   const { isAdmin, user } = useAuth();
+  const { tx } = useI18n();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
@@ -387,7 +390,9 @@ function MarketingPage() {
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold">Leads &amp; marketing</h1>
+        <h1 className="text-2xl font-bold">
+          {tx(navMessageKey("/marketing", "label"), "Leads & email")}
+        </h1>
         <p className="text-sm text-muted-foreground">
           Capture emails from your WordPress or Shopify store and market to them from one place.
         </p>

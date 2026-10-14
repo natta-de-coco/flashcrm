@@ -5,7 +5,7 @@ import { screen } from "../define";
 
 export default screen({
   en: {
-    "seoBlogIndex.seoStudio": "SEO Studio",
+    "seoBlogIndex.seoStudio": "Website & SEO",
     "seoBlogIndex.turnProductImagesIntoRanked":
       "Turn product images into ranked articles and publish them straight to WordPress.",
     "seoBlogIndex.newArticle": "New article",
@@ -24,9 +24,10 @@ export default screen({
     "seoBlogIndex.status.review": "review",
     "seoBlogIndex.status.scheduled": "scheduled",
     "seoBlogIndex.status.published": "published",
+    "seoBlogIndex.savedDrafts": "Saved drafts",
   },
   ar: {
-    "seoBlogIndex.seoStudio": "استوديو SEO",
+    "seoBlogIndex.seoStudio": "الموقع وتحسين البحث",
     "seoBlogIndex.turnProductImagesIntoRanked":
       "حوّل صور المنتجات إلى مقالات تتصدر نتائج البحث وانشرها مباشرة على WordPress.",
     "seoBlogIndex.newArticle": "مقال جديد",
@@ -45,9 +46,10 @@ export default screen({
     "seoBlogIndex.status.review": "قيد المراجعة",
     "seoBlogIndex.status.scheduled": "مجدول",
     "seoBlogIndex.status.published": "منشور",
+    "seoBlogIndex.savedDrafts": "المسودات المحفوظة",
   },
   ms: {
-    "seoBlogIndex.seoStudio": "Studio SEO",
+    "seoBlogIndex.seoStudio": "Laman Web & SEO",
     "seoBlogIndex.turnProductImagesIntoRanked":
       "Tukar imej produk menjadi artikel berkedudukan tinggi dan terbitkannya terus ke WordPress.",
     "seoBlogIndex.newArticle": "Artikel baharu",
@@ -66,9 +68,10 @@ export default screen({
     "seoBlogIndex.status.review": "semakan",
     "seoBlogIndex.status.scheduled": "dijadualkan",
     "seoBlogIndex.status.published": "diterbitkan",
+    "seoBlogIndex.savedDrafts": "Draf tersimpan",
   },
   fil: {
-    "seoBlogIndex.seoStudio": "SEO Studio",
+    "seoBlogIndex.seoStudio": "Website at SEO",
     "seoBlogIndex.turnProductImagesIntoRanked":
       "Gawing mga artikulong nagra-rank ang mga larawan ng produkto at i-publish nang diretso sa WordPress.",
     "seoBlogIndex.newArticle": "Bagong artikulo",
@@ -87,9 +90,10 @@ export default screen({
     "seoBlogIndex.status.review": "nire-review",
     "seoBlogIndex.status.scheduled": "naka-schedule",
     "seoBlogIndex.status.published": "na-publish",
+    "seoBlogIndex.savedDrafts": "Mga naka-save na draft",
   },
   sw: {
-    "seoBlogIndex.seoStudio": "Studio ya SEO",
+    "seoBlogIndex.seoStudio": "Tovuti na SEO",
     "seoBlogIndex.turnProductImagesIntoRanked":
       "Geuza picha za bidhaa kuwa makala zinazopata nafasi za juu na uzichapishe moja kwa moja kwenye WordPress.",
     "seoBlogIndex.newArticle": "Makala mpya",
@@ -108,5 +112,6 @@ export default screen({
     "seoBlogIndex.status.review": "ukaguzi",
     "seoBlogIndex.status.scheduled": "imeratibiwa",
     "seoBlogIndex.status.published": "imechapishwa",
+    "seoBlogIndex.savedDrafts": "Rasimu zilizohifadhiwa",
   },
 });

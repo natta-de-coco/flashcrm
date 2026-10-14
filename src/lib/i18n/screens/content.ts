@@ -8,7 +8,7 @@ export default screen({
     "content.postScheduled": "Post scheduled",
     "content.draftSaved": "Draft saved",
     "content.postDeleted": "Post deleted",
-    "content.contentSeo": "Content & SEO",
+    "content.contentSeo": "Saved drafts",
     "content.writeOnceScheduleToMultiple":
       "Write once, schedule to multiple platforms, and keep SEO metadata attached to every post.",
     "content.newPost": "New post",
@@ -19,7 +19,7 @@ export default screen({
     "content.writeYourPost": "Write your post…",
     "content.publishTo": "Publish to",
     "content.websiteIsTheFlasHosted":
-      "Website is the Flas-hosted blog feed. WordPress pushes the same article into your own site through the Flas plugin. Social targets require the account to be linked in Integrations first.",
+      "Website is the Flas-hosted blog feed. WordPress pushes the same article into your own site through the Flas plugin. Social targets require the account to be linked in Connect accounts first.",
     "content.scheduleFor": "Schedule for",
     "content.seoMetadata": "SEO metadata",
     "content.seoTitle": "SEO title",
@@ -50,7 +50,7 @@ export default screen({
     "content.postScheduled": "جُدول المنشور",
     "content.draftSaved": "حُفظت المسودة",
     "content.postDeleted": "حُذف المنشور",
-    "content.contentSeo": "المحتوى وتحسين محركات البحث",
+    "content.contentSeo": "المسودات المحفوظة",
     "content.writeOnceScheduleToMultiple":
       "اكتب مرة واحدة، وجدول على عدة منصات، وأبقِ بيانات SEO مرفقة بكل منشور.",
     "content.newPost": "منشور جديد",
@@ -61,7 +61,7 @@ export default screen({
     "content.writeYourPost": "اكتب منشورك…",
     "content.publishTo": "النشر على",
     "content.websiteIsTheFlasHosted":
-      "«الموقع» هو خلاصة المدونة المستضافة لدى Flas. وWordPress يدفع المقال نفسه إلى موقعك عبر إضافة Flas. وجهات التواصل الاجتماعي تتطلب ربط الحساب من التكاملات أولًا.",
+      "«الموقع» هو خلاصة المدونة المستضافة لدى Flas. وWordPress يدفع المقال نفسه إلى موقعك عبر إضافة Flas. وجهات التواصل الاجتماعي تتطلب ربط الحساب من «ربط الحسابات» أولًا.",
     "content.scheduleFor": "جدولة لـ",
     "content.seoMetadata": "بيانات SEO الوصفية",
     "content.seoTitle": "عنوان SEO",
@@ -92,7 +92,7 @@ export default screen({
     "content.postScheduled": "Hantaran dijadualkan",
     "content.draftSaved": "Draf disimpan",
     "content.postDeleted": "Hantaran dipadam",
-    "content.contentSeo": "Kandungan & SEO",
+    "content.contentSeo": "Draf tersimpan",
     "content.writeOnceScheduleToMultiple":
       "Tulis sekali, jadualkan ke pelbagai platform, dan kekalkan metadata SEO pada setiap hantaran.",
     "content.newPost": "Hantaran baharu",
@@ -103,7 +103,7 @@ export default screen({
     "content.writeYourPost": "Tulis hantaran anda…",
     "content.publishTo": "Terbitkan ke",
     "content.websiteIsTheFlasHosted":
-      "Laman web ialah suapan blog yang dihoskan Flas. WordPress menolak artikel yang sama ke laman anda sendiri melalui pemalam Flas. Sasaran sosial memerlukan akaun dipautkan di Integrasi dahulu.",
+      "Laman web ialah suapan blog yang dihoskan Flas. WordPress menolak artikel yang sama ke laman anda sendiri melalui pemalam Flas. Sasaran sosial memerlukan akaun dipautkan di Sambung Akaun dahulu.",
     "content.scheduleFor": "Jadualkan untuk",
     "content.seoMetadata": "Metadata SEO",
     "content.seoTitle": "Tajuk SEO",
@@ -135,7 +135,7 @@ export default screen({
     "content.postScheduled": "Na-schedule ang post",
     "content.draftSaved": "Na-save ang draft",
     "content.postDeleted": "Na-delete ang post",
-    "content.contentSeo": "Content at SEO",
+    "content.contentSeo": "Mga naka-save na draft",
     "content.writeOnceScheduleToMultiple":
       "Sumulat nang isang beses, i-schedule sa maraming platform, at panatilihing nakakabit ang SEO metadata sa bawat post.",
     "content.newPost": "Bagong post",
@@ -147,7 +147,7 @@ export default screen({
     "content.writeYourPost": "Isulat ang iyong post…",
     "content.publishTo": "I-publish sa",
     "content.websiteIsTheFlasHosted":
-      "Ang Website ay ang blog feed na naka-host sa Flas. Itinutulak ng WordPress ang parehong artikulo sa sarili mong site sa pamamagitan ng Flas plugin. Kailangang naka-link muna ang account sa Mga Integrasyon para sa mga social target.",
+      "Ang Website ay ang blog feed na naka-host sa Flas. Itinutulak ng WordPress ang parehong artikulo sa sarili mong site sa pamamagitan ng Flas plugin. Kailangang naka-link muna ang account sa Ikonekta ang mga Account para sa mga social target.",
     "content.scheduleFor": "I-schedule para sa",
     "content.seoMetadata": "SEO metadata",
     "content.seoTitle": "SEO title",
@@ -179,7 +179,7 @@ export default screen({
     "content.postScheduled": "Chapisho limeratibiwa",
     "content.draftSaved": "Rasimu imehifadhiwa",
     "content.postDeleted": "Chapisho limefutwa",
-    "content.contentSeo": "Maudhui na SEO",
+    "content.contentSeo": "Rasimu zilizohifadhiwa",
     "content.writeOnceScheduleToMultiple":
       "Andika mara moja, ratibu kwenye majukwaa mengi, na uweke data za SEO zikiwa zimeambatishwa kwenye kila chapisho.",
     "content.newPost": "Chapisho jipya",
@@ -190,7 +190,7 @@ export default screen({
     "content.writeYourPost": "Andika chapisho lako…",
     "content.publishTo": "Chapisha kwenye",
     "content.websiteIsTheFlasHosted":
-      "Tovuti ni mlisho wa blogu unaohifadhiwa na Flas. WordPress husukuma makala ileile kwenye tovuti yako kupitia programu-jalizi ya Flas. Malengo ya mitandao yanahitaji akaunti iunganishwe kwenye Miunganisho kwanza.",
+      "Tovuti ni mlisho wa blogu unaohifadhiwa na Flas. WordPress husukuma makala ileile kwenye tovuti yako kupitia programu-jalizi ya Flas. Malengo ya mitandao yanahitaji akaunti iunganishwe kwenye Unganisha Akaunti kwanza.",
     "content.scheduleFor": "Ratibu kwa",
     "content.seoMetadata": "Data za SEO",
     "content.seoTitle": "Kichwa cha SEO",
