@@ -357,7 +357,10 @@ function DashboardPage() {
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-      <header className="mb-6 flex items-start justify-between gap-3">
+      <header
+        data-slot="page-header"
+        className="crm-brief mb-5 flex flex-wrap items-start justify-between gap-4 rounded-2xl border p-5 sm:p-7"
+      >
         <div>
           <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
             {t("dashboard.title")}
@@ -396,15 +399,17 @@ function DashboardPage() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((s) => (
             <Card key={s.label} className="border-border/70 shadow-none">
-              <CardContent className="flex items-start justify-between gap-3 p-5">
+              <CardContent className="flex flex-col gap-5 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand">
+                    <s.icon className="size-5" />
+                  </span>
+                  <TrendPill trend={s.trend} label={s.trendLabel} />
+                </div>
                 <div className="min-w-0">
                   <p className="stat-label truncate">{s.label}</p>
                   <p className="stat-figure mt-2 text-[2rem] font-bold">{s.value}</p>
-                  <TrendPill trend={s.trend} label={s.trendLabel} />
                 </div>
-                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
-                  <s.icon className="size-[1.125rem]" />
-                </span>
               </CardContent>
             </Card>
           ))}
@@ -413,7 +418,7 @@ function DashboardPage() {
 
       {/* Flas AI daily brief + business health score */}
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+        <Card className="crm-brief lg:col-span-2">
           <CardHeader className="flex-row items-start justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">

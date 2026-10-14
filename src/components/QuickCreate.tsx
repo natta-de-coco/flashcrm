@@ -35,7 +35,7 @@ export function QuickCreate({ compact = false }: { compact?: boolean }) {
             <Plus className="size-4" />
           </Button>
         ) : (
-          <Button className="gap-1.5">
+          <Button className="gap-1.5 rounded-full px-4">
             <Plus className="size-4" />
             {t("quickCreate.create")}
           </Button>
