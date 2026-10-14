@@ -67,7 +67,7 @@ BEGIN
 END;
 $$;
 
--- 3. Drip automations uniqueness and foreign key integrity
+-- 3. Drip automations uniqueness, pre-checks and foreign key integrity
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -89,6 +89,75 @@ BEGIN
     ALTER TABLE public.drip_enrollments
       ADD CONSTRAINT drip_enrollments_tenant_id_fkey
       FOREIGN KEY (tenant_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- 3a. Duplicate pre-check on drip_sequences (tenant_id, trigger_event)
+DO $$
+DECLARE
+  _dup_seqs integer;
+BEGIN
+  SELECT count(*) INTO _dup_seqs FROM (
+    SELECT tenant_id, trigger_event
+    FROM public.drip_sequences
+    GROUP BY tenant_id, trigger_event
+    HAVING count(*) > 1
+  ) s;
+
+  IF _dup_seqs > 0 THEN
+    RAISE EXCEPTION
+      'Cannot create unique index: public.drip_sequences contains % duplicate (tenant_id, trigger_event) group(s). Reconcile definitions before applying migration.',
+      _dup_seqs
+      USING HINT = 'Inspect with: SELECT tenant_id, trigger_event, array_agg(id ORDER BY created_at) FROM public.drip_sequences GROUP BY 1,2 HAVING count(*) > 1;';
+  END IF;
+END $$;
+
+-- 3b. Duplicate pre-check on drip_steps (sequence_id, step_number)
+DO $$
+DECLARE
+  _dup_steps integer;
+BEGIN
+  SELECT count(*) INTO _dup_steps FROM (
+    SELECT sequence_id, step_number
+    FROM public.drip_steps
+    GROUP BY sequence_id, step_number
+    HAVING count(*) > 1
+  ) st;
+
+  IF _dup_steps > 0 THEN
+    RAISE EXCEPTION
+      'Cannot create unique index: public.drip_steps contains % duplicate (sequence_id, step_number) group(s). Reconcile step numbers before applying migration.',
+      _dup_steps
+      USING HINT = 'Inspect with: SELECT sequence_id, step_number, array_agg(id ORDER BY created_at) FROM public.drip_steps GROUP BY 1,2 HAVING count(*) > 1;';
+  END IF;
+END $$;
+
+-- 3c. Safe reconciliation for concurrent active drip_enrollments:
+-- Non-destructive: keeps the newest active enrollment and transitions older duplicates to 'paused'
+DO $$
+DECLARE
+  _reconciled integer := 0;
+BEGIN
+  WITH duplicates AS (
+    SELECT id,
+           ROW_NUMBER() OVER (
+             PARTITION BY tenant_id, sequence_id, email
+             ORDER BY created_at DESC, id DESC
+           ) as rn
+    FROM public.drip_enrollments
+    WHERE status IN ('enrolled', 'in_progress')
+  ),
+  updated AS (
+    UPDATE public.drip_enrollments
+    SET status = 'paused',
+        updated_at = NOW()
+    WHERE id IN (SELECT id FROM duplicates WHERE rn > 1)
+    RETURNING id
+  )
+  SELECT count(*) INTO _reconciled FROM updated;
+
+  IF _reconciled > 0 THEN
+    RAISE NOTICE 'Reconciled % duplicate active drip enrollment(s) to paused state.', _reconciled;
   END IF;
 END $$;
 

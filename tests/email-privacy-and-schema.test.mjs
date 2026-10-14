@@ -193,7 +193,22 @@ describe("Stage 1: Forward Migration Schema Hardening", () => {
     );
   });
 
-  it("ensures drip automations uniqueness constraints", () => {
+  it("ensures drip automations duplicate pre-checks and reconciliation before indexing", () => {
+    assert.match(
+      migrationSource,
+      /-- 3a\. Duplicate pre-check on drip_sequences/,
+      "Must pre-check duplicate drip sequences",
+    );
+    assert.match(
+      migrationSource,
+      /-- 3b\. Duplicate pre-check on drip_steps/,
+      "Must pre-check duplicate drip steps",
+    );
+    assert.match(
+      migrationSource,
+      /SET status = 'paused'/,
+      "Must safely reconcile duplicate active enrollments by pausing older duplicates",
+    );
     assert.match(
       migrationSource,
       /CREATE UNIQUE INDEX IF NOT EXISTS idx_drip_sequences_tenant_trigger\s*ON public\.drip_sequences \(tenant_id, trigger_event\);/,
@@ -208,6 +223,20 @@ describe("Stage 1: Forward Migration Schema Hardening", () => {
       migrationSource,
       /CREATE UNIQUE INDEX IF NOT EXISTS idx_drip_enrollments_active_unique\s*ON public\.drip_enrollments \(tenant_id, sequence_id, email\)\s*WHERE status IN \('enrolled', 'in_progress'\);/,
       "Must ensure unique active enrollment per tenant, sequence, and email",
+    );
+  });
+
+  it("handles concurrent sequence and enrollment creation in drip-automation.server.ts", () => {
+    const dripServerSource = readFileSync("src/lib/drip-automation.server.ts", "utf8");
+    assert.match(
+      dripServerSource,
+      /const \{ data: raced \} = await db\s*\.from\("drip_sequences"\)/,
+      "Must resolve concurrent default sequence race condition",
+    );
+    assert.match(
+      dripServerSource,
+      /const \{ data: activeExisting \} = await db\s*\.from\("drip_enrollments"\)/,
+      "Must resolve concurrent active enrollment race condition",
     );
   });
 
