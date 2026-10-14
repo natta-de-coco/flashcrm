@@ -223,8 +223,10 @@ export const PLATFORM_SPECS: Record<PlatformKey, PlatformSpec> = {
     resolution: "1080 x 1350 px",
     mediaType: "Carousel / Reel / High-Contrast Image",
     charLimit: 2200,
-    recommendedStyle: "Visual hook in line 1, clean line breaks, micro-story/carousel caption, conversational emojis, clear CTA.",
-    hookGuide: "Start with an unexpected question or relatable friction point before the caption cutoff.",
+    recommendedStyle:
+      "Visual hook in line 1, clean line breaks, micro-story/carousel caption, conversational emojis, clear CTA.",
+    hookGuide:
+      "Start with an unexpected question or relatable friction point before the caption cutoff.",
   },
   linkedin: {
     key: "linkedin",
@@ -233,8 +235,10 @@ export const PLATFORM_SPECS: Record<PlatformKey, PlatformSpec> = {
     resolution: "1200 x 627 px (Feed) / 1080 x 1350 px (PDF)",
     mediaType: "Document Carousel / Infographic",
     charLimit: 3000,
-    recommendedStyle: "Professional insight, contrarian industry data point, 3-4 bullet takeaways, discussion-starter question.",
-    hookGuide: "Contrarian statement or high-value data benchmark that challenges standard business assumptions.",
+    recommendedStyle:
+      "Professional insight, contrarian industry data point, 3-4 bullet takeaways, discussion-starter question.",
+    hookGuide:
+      "Contrarian statement or high-value data benchmark that challenges standard business assumptions.",
   },
   tiktok: {
     key: "tiktok",
@@ -243,8 +247,10 @@ export const PLATFORM_SPECS: Record<PlatformKey, PlatformSpec> = {
     resolution: "1080 x 1920 px",
     mediaType: "Vertical Video Script & Caption",
     charLimit: 2200,
-    recommendedStyle: "3-part script: [0-3s Visual Hook] + [Core Voiceover] + [Caption & CTA] + 4-6 viral and niche discovery tags.",
-    hookGuide: "High-energy 3-second pattern interrupt directly addressing a major workflow frustration.",
+    recommendedStyle:
+      "3-part script: [0-3s Visual Hook] + [Core Voiceover] + [Caption & CTA] + 4-6 viral and niche discovery tags.",
+    hookGuide:
+      "High-energy 3-second pattern interrupt directly addressing a major workflow frustration.",
   },
   facebook: {
     key: "facebook",
@@ -253,8 +259,10 @@ export const PLATFORM_SPECS: Record<PlatformKey, PlatformSpec> = {
     resolution: "1200 x 630 px",
     mediaType: "Image with Rich Link Preview",
     charLimit: 63206,
-    recommendedStyle: "Community-driven, conversational storytelling, relatable pain points, clear discussion trigger.",
-    hookGuide: "Relatable business or customer scenario that invites community comments and shares.",
+    recommendedStyle:
+      "Community-driven, conversational storytelling, relatable pain points, clear discussion trigger.",
+    hookGuide:
+      "Relatable business or customer scenario that invites community comments and shares.",
   },
   twitter: {
     key: "twitter",
@@ -263,8 +271,10 @@ export const PLATFORM_SPECS: Record<PlatformKey, PlatformSpec> = {
     resolution: "1200 x 675 px",
     mediaType: "Single Image / Post Card",
     charLimit: 280,
-    recommendedStyle: "Punchy one-liner hook, bold insight, tight concise wording, 1-2 focused hashtags.",
-    hookGuide: "Bold thesis or punchy stat under 100 characters that compels a repost or quote-tweet.",
+    recommendedStyle:
+      "Punchy one-liner hook, bold insight, tight concise wording, 1-2 focused hashtags.",
+    hookGuide:
+      "Bold thesis or punchy stat under 100 characters that compels a repost or quote-tweet.",
   },
 };
 
@@ -315,18 +325,24 @@ Respond in EXACTLY this JSON shape:
 ]}`;
 
   const text = await callFlashAi(system, user, await aiOptionsFor(supabase, "seo_micro_posts"));
-  const parsed = parseJsonBlock<{ posts?: Array<{ platform: string; text: string; hashtags: string[] }> }>(text);
+  const parsed = parseJsonBlock<{
+    posts?: Array<{ platform: string; text: string; hashtags: string[] }>;
+  }>(text);
   if (!parsed?.posts?.length) throw new Error("Flas AI returned no posts — try again.");
 
   return parsed.posts.map((p) => {
     const rawKey = p.platform.toLowerCase();
-    const key: PlatformKey =
-      rawKey.includes("insta") ? "instagram"
-      : rawKey.includes("link") ? "linkedin"
-      : rawKey.includes("tik") ? "tiktok"
-      : rawKey.includes("face") ? "facebook"
-      : rawKey.includes("twit") || rawKey.includes("x") ? "twitter"
-      : "instagram";
+    const key: PlatformKey = rawKey.includes("insta")
+      ? "instagram"
+      : rawKey.includes("link")
+        ? "linkedin"
+        : rawKey.includes("tik")
+          ? "tiktok"
+          : rawKey.includes("face")
+            ? "facebook"
+            : rawKey.includes("twit") || rawKey.includes("x")
+              ? "twitter"
+              : "instagram";
     const specs = PLATFORM_SPECS[key];
     return {
       platform: key,
@@ -390,14 +406,21 @@ export async function publishMicroPostToSocial(
     scheduledAt?: string | null;
   },
 ): Promise<{ ok: boolean; postId?: string | undefined; accountName?: string | undefined }> {
-  const fullCaption = `${input.text.trim()}\n\n${input.hashtags.map((h) => `#${h}`).join(" ")}`.trim();
+  const fullCaption =
+    `${input.text.trim()}\n\n${input.hashtags.map((h) => `#${h}`).join(" ")}`.trim();
 
   // Find matching connected account if one exists
   const client = supabase as unknown as {
     from: (table: string) => {
       select: (cols: string) => {
-        eq: (col: string, val: unknown) => {
-          eq: (col: string, val: unknown) => {
+        eq: (
+          col: string,
+          val: unknown,
+        ) => {
+          eq: (
+            col: string,
+            val: unknown,
+          ) => {
             limit: (n: number) => {
               maybeSingle: () => Promise<{ data: { id: string; label: string } | null }>;
             };
@@ -420,12 +443,16 @@ export async function publishMicroPostToSocial(
     .limit(1)
     .maybeSingle();
 
-  const { data: created, error } = await client.from("social_posts").insert({
-    caption: fullCaption,
-    account_id: account?.id ?? null,
-    status: input.scheduledAt ? "scheduled" : "draft",
-    scheduled_at: input.scheduledAt ?? null,
-  }).select("id").single();
+  const { data: created, error } = await client
+    .from("social_posts")
+    .insert({
+      caption: fullCaption,
+      account_id: account?.id ?? null,
+      status: input.scheduledAt ? "scheduled" : "draft",
+      scheduled_at: input.scheduledAt ?? null,
+    })
+    .select("id")
+    .single();
 
   if (error) throw error;
   return { ok: true, postId: created?.id, accountName: account?.label };

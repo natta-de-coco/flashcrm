@@ -7,7 +7,6 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { verifyUnsubscribeToken } from "@/lib/lead-automation.server";
 import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
@@ -16,53 +15,32 @@ import { z } from "zod";
 const processUnsubscribeFn = createServerFn({ method: "POST" })
   .validator((d: { token: string }) => z.object({ token: z.string() }).parse(d))
   .handler(async ({ data }) => {
-    const res = verifyUnsubscribeToken(data.token);
-    if (!res.valid || !res.email) {
-      return { ok: false, error: res.error || "Invalid or expired unsubscribe link" };
-    }
-
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Revoke marketing consent in leads
-    await supabaseAdmin
-      .from("leads")
-      .update({
-        subscribed: false,
-        consent_given: false,
-      })
-      .eq("email", res.email.toLowerCase().trim());
-
-    // Revoke marketing consent in contacts
-    if (res.tenantId) {
-      await supabaseAdmin
-        .from("contacts")
-        .update({
-          consent_given: false,
-        })
-        .eq("tenant_id", res.tenantId)
-        .eq("email", res.email.toLowerCase().trim());
-
-      const { cancelDripEnrollmentsForEmail } = await import("@/lib/drip-automation.server");
-      await cancelDripEnrollmentsForEmail(res.tenantId, res.email);
-    }
-
-    return {
-      ok: true,
-      email: res.email,
-    };
+    const { applyUnsubscribe } = await import("@/lib/unsubscribe.server");
+    return await applyUnsubscribe(data.token);
   });
 
-export const Route = (createFileRoute as any)("/unsubscribe")({
-  validateSearch: (search: Record<string, unknown>) => ({
+type UnsubscribeLoaderData =
+  { ok: true; email: string; error?: never } | { ok: false; error: string; email?: never };
+
+interface UnsubscribeSearch {
+  token?: string;
+}
+
+export const Route = createFileRoute("/unsubscribe")({
+  validateSearch: (search: Record<string, unknown>): UnsubscribeSearch => ({
     token: typeof search["token"] === "string" ? (search["token"] as string) : "",
   }),
-  loaderDeps: ({ search }: { search: Record<string, any> }) => ({ token: search["token"] }),
-  loader: async ({ deps }: { deps: Record<string, any> }) => {
-    const token = deps["token"];
+  loaderDeps: ({ search }) => ({ token: search.token }),
+  loader: async ({ deps }): Promise<UnsubscribeLoaderData> => {
+    const token = deps.token;
     if (!token) {
       return { ok: false, error: "No unsubscribe token provided" };
     }
-    return await processUnsubscribeFn({ data: { token } });
+    const res = await processUnsubscribeFn({ data: { token } });
+    if (!res.ok) {
+      return { ok: false, error: res.error || "Failed to process unsubscribe" };
+    }
+    return { ok: true, email: res.email || "" };
   },
   head: () => ({
     meta: [
@@ -103,11 +81,13 @@ function UnsubscribePage() {
         <CardContent className="space-y-4 text-center">
           {data.ok ? (
             <p className="text-sm text-muted-foreground">
-              Your preferences have been updated immediately across our systems. You may still receive critical transactional notices regarding your active account or orders.
+              Your preferences have been updated immediately across our systems. You may still
+              receive critical transactional notices regarding your active account or orders.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              If you wish to manage your email preferences, please contact support or reply to the email you received.
+              If you wish to manage your email preferences, please contact support or reply to the
+              email you received.
             </p>
           )}
 

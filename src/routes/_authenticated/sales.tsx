@@ -36,7 +36,19 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertTriangle, ArrowRight, Download, FileText, History, KanbanSquare, LayoutList, Plus, Receipt, Send, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Download,
+  FileText,
+  History,
+  KanbanSquare,
+  LayoutList,
+  Plus,
+  Receipt,
+  Send,
+  ShieldCheck,
+} from "lucide-react";
 import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
 import { DocumentHistoryDialog } from "@/components/sales/DocumentHistoryDialog";
 import { CompanyBillingProfileCard } from "@/components/settings/CompanyBillingProfileCard";
@@ -160,7 +172,7 @@ function SalesPage() {
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
   const [sendFor, setSendFor] = useState<DocRow | null>(null);
   const [sendNote, setSendNote] = useState("");
-const [historyDocId, setHistoryDocId] = useState<string | null>(null);
+  const [historyDocId, setHistoryDocId] = useState<string | null>(null);
   const [showCompanyProfile, setShowCompanyProfile] = useState(false);
 
   // Why the last WhatsApp send did not go, shown in the dialog with the PDF as
@@ -170,7 +182,6 @@ const [historyDocId, setHistoryDocId] = useState<string | null>(null);
   // so a second click or a retry after a lost answer is the same message.
   const sendRef = useRef<SendReference | null>(null);
 
-
   const { data, isLoading } = useQuery({
     queryKey: ["sales-workspace"],
     queryFn: () => loadWorkspace(),
@@ -178,7 +189,9 @@ const [historyDocId, setHistoryDocId] = useState<string | null>(null);
 
   const documents = (data?.documents ?? []) as unknown as DocRow[];
   // Internal SaaS billing receipts (Stripe) must never appear in the customer sales view.
-  const customerDocs = documents.filter((doc) => !isSubscriptionReceipt(doc as { custom_fields?: Record<string, unknown> | null }));
+  const customerDocs = documents.filter(
+    (doc) => !isSubscriptionReceipt(doc as { custom_fields?: Record<string, unknown> | null }),
+  );
   const visible = customerDocs.filter((doc) =>
     tab === "all"
       ? true
@@ -479,7 +492,7 @@ const [historyDocId, setHistoryDocId] = useState<string | null>(null);
         }
       />
 
-{/* Toolbar: view toggle + list-mode filters */}
+      {/* Toolbar: view toggle + list-mode filters */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         {/* Board / List toggle */}
         <div className="flex rounded-lg border p-0.5">
@@ -523,9 +536,7 @@ const [historyDocId, setHistoryDocId] = useState<string | null>(null);
               <CardTitle className="flex items-center gap-2 text-base">
                 <Receipt className="h-4 w-4" /> {t("sales.nothingHereYet")}
               </CardTitle>
-              <CardDescription>
-                {t("sales.createYourFirstQuotationWhen")}
-              </CardDescription>
+              <CardDescription>{t("sales.createYourFirstQuotationWhen")}</CardDescription>
             </CardHeader>
           </Card>
         ) : (
@@ -743,4 +754,3 @@ const [historyDocId, setHistoryDocId] = useState<string | null>(null);
     </div>
   );
 }
-

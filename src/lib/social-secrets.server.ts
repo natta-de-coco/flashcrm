@@ -30,11 +30,7 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
 export type TokenCryptoCode =
-  | "not_configured"
-  | "bad_key_ring"
-  | "unknown_key"
-  | "malformed"
-  | "authentication_failed";
+  "not_configured" | "bad_key_ring" | "unknown_key" | "malformed" | "authentication_failed";
 
 export class TokenCryptoError extends Error {
   readonly code: TokenCryptoCode;
@@ -46,8 +42,7 @@ export class TokenCryptoError extends Error {
 }
 
 type Env = Record<string, string | undefined>;
-const defaultEnv = (): Env =>
-  (typeof process !== "undefined" ? process.env : {}) as Env;
+const defaultEnv = (): Env => (typeof process !== "undefined" ? process.env : {}) as Env;
 
 /* ---------- encoding ---------- */
 
@@ -89,7 +84,10 @@ export function readKeyRing(env: Env = defaultEnv()): KeyRing {
     const id = i > 0 ? entry.slice(0, i).trim() : "";
     const material = i > 0 ? entry.slice(i + 1).trim() : "";
     if (!KEY_ID.test(id)) {
-      throw new TokenCryptoError("bad_key_ring", "SOCIAL_TOKEN_ENCRYPTION_KEYS has an entry with an invalid key id.");
+      throw new TokenCryptoError(
+        "bad_key_ring",
+        "SOCIAL_TOKEN_ENCRYPTION_KEYS has an entry with an invalid key id.",
+      );
     }
     let bytes: Uint8Array<ArrayBuffer>;
     try {
@@ -120,10 +118,7 @@ function cryptoKey(id: string, bytes: Uint8Array<ArrayBuffer>): Promise<CryptoKe
   const cacheKey = `${id}:${toB64url(bytes)}`;
   let key = imported.get(cacheKey);
   if (!key) {
-    key = crypto.subtle.importKey("raw", bytes, { name: "AES-GCM" }, false, [
-      "encrypt",
-      "decrypt",
-    ]);
+    key = crypto.subtle.importKey("raw", bytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
     imported.set(cacheKey, key);
   }
   return key;
@@ -141,7 +136,9 @@ export function tokenAad(
 }
 
 export function isEnvelope(value: unknown): value is string {
-  return typeof value === "string" && value.startsWith(`${VERSION}:`) && value.split(":").length === 5;
+  return (
+    typeof value === "string" && value.startsWith(`${VERSION}:`) && value.split(":").length === 5
+  );
 }
 
 export function envelopeKeyId(envelope: string): string | null {
@@ -159,7 +156,12 @@ export async function encryptSecret(
   crypto.getRandomValues(iv);
   const sealed = new Uint8Array(
     await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(aad), tagLength: TAG_BYTES * 8 },
+      {
+        name: "AES-GCM",
+        iv,
+        additionalData: new TextEncoder().encode(aad),
+        tagLength: TAG_BYTES * 8,
+      },
       key,
       new TextEncoder().encode(plaintext),
     ),
@@ -176,9 +178,18 @@ export async function decryptSecret(
   env: Env = defaultEnv(),
 ): Promise<string> {
   if (!isEnvelope(envelope)) {
-    throw new TokenCryptoError("malformed", "Stored token is not a recognised encryption envelope.");
+    throw new TokenCryptoError(
+      "malformed",
+      "Stored token is not a recognised encryption envelope.",
+    );
   }
-  const [, keyId, ivPart, ctPart, tagPart] = envelope.split(":") as [string, string, string, string, string];
+  const [, keyId, ivPart, ctPart, tagPart] = envelope.split(":") as [
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
   const ring = readKeyRing(env);
   const material = ring.keys.get(keyId);
   if (!material) {
@@ -203,7 +214,12 @@ export async function decryptSecret(
   sealed.set(tag, ct.length);
   try {
     const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv, additionalData: new TextEncoder().encode(aad), tagLength: TAG_BYTES * 8 },
+      {
+        name: "AES-GCM",
+        iv,
+        additionalData: new TextEncoder().encode(aad),
+        tagLength: TAG_BYTES * 8,
+      },
       await cryptoKey(keyId, material),
       sealed,
     );

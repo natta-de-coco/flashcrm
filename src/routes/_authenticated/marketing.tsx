@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
+import { useI18n } from "@/hooks/useI18n";
+import { navMessageKey } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,17 +22,16 @@ import { CampaignBoard, type CampaignItem } from "@/components/marketing/Campaig
 import { DripSequenceBuilder } from "@/components/marketing/DripSequenceBuilder";
 import { getTenantSmtpConfig } from "@/lib/tenant-smtp.functions";
 
-
 export const Route = createFileRoute("/_authenticated/marketing")({
   head: () => ({
     meta: [
-      { title: "Leads & Marketing — Flas CRM" },
+      { title: "Leads & email — Flas CRM" },
       {
         name: "description",
         content:
           "Collect email leads from WordPress and Shopify, then build marketing campaigns for your list.",
       },
-      { property: "og:title", content: "Leads & Marketing — Flas CRM" },
+      { property: "og:title", content: "Leads & email — Flas CRM" },
       {
         property: "og:description",
         content: "WordPress and Shopify lead capture plus email marketing campaigns.",
@@ -102,6 +103,7 @@ type Campaign = {
 
 function MarketingPage() {
   const { isAdmin, user } = useAuth();
+  const { tx } = useI18n();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
@@ -323,22 +325,9 @@ function MarketingPage() {
     toast.success("Copied to clipboard");
   }
 
-  if (leads.isLoading || sites.isLoading || campaigns.isLoading || routingRules.isLoading || waNumbers.isLoading) return (
-  <div className="space-y-3 p-6">
-    {Array.from({ length: 5 }).map((_, i) => (
-      <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
-        <Skeleton className="h-10 w-10 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-1/3" />
-          <Skeleton className="h-3 w-2/3" />
-        </div>
-      </div>
-    ))}
-  </div>
-);
-
   const activeSite =
     (sites.data ?? []).find((s) => s.id === selectedSite) ?? sites.data?.[0] ?? null;
+
   const activateSite = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
@@ -377,10 +366,33 @@ function MarketingPage() {
     ? `<script src="${origin}/lead-capture.js" data-site-key="${activeSite.site_key}" async></script>\n<div data-flas-leads data-heading="Join our newsletter" data-cta="Subscribe"></div>`
     : "";
 
+  if (
+    leads.isLoading ||
+    sites.isLoading ||
+    campaigns.isLoading ||
+    routingRules.isLoading ||
+    waNumbers.isLoading
+  )
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold">Leads &amp; marketing</h1>
+        <h1 className="text-2xl font-bold">
+          {tx(navMessageKey("/marketing", "label"), "Leads & email")}
+        </h1>
         <p className="text-sm text-muted-foreground">
           Capture emails from your WordPress or Shopify store and market to them from one place.
         </p>
@@ -849,7 +861,7 @@ function MarketingPage() {
         <DripSequenceBuilder />
 
         <CampaignBoard
-          campaigns={((campaigns.data ?? []) as unknown) as CampaignItem[]}
+          campaigns={(campaigns.data ?? []) as unknown as CampaignItem[]}
           isSmtpVerified={isSmtpVerified}
           audienceCount={(leads.data ?? []).filter((l) => l.subscribed).length}
         />

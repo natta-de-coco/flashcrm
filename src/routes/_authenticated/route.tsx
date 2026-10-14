@@ -12,14 +12,12 @@ import { ProfileBanner } from "@/components/ProfileBanner";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageLanguage } from "@/components/PageLanguage";
 
-
 import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, navMessageKey, workspaceDefaultLanguage } from "@/lib/i18n";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
-import { canReach } from "@/lib/permissions";
+import { useNavAccess } from "@/hooks/useNavAccess";
 import { sessionOwesSecondFactor } from "@/lib/two-factor";
-import { MANAGER_SECTION, NAV_SECTIONS, type NavSection } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
 import { supabase } from "@/integrations/supabase/client";
@@ -66,35 +64,25 @@ const SIDEBAR_MIN = 224;
 const SIDEBAR_MAX = 360;
 const SIDEBAR_KEY = "flash.sidebar.width";
 
-function NavMenu({
-  sections,
-  onNavigate,
-}: {
-  sections: readonly NavSection[];
-  onNavigate?: () => void;
-}) {
-  const { staffRole, loading } = useTenant();
+function NavMenu({ onNavigate }: { onNavigate?: () => void }) {
+  // The sections arrive already filtered for the signed-in role, by the same rule
+  // as the phone bar, search and "+ Create" (hooks/useNavAccess): platform pages
+  // only for platform staff, nothing privileged for an unknown role. This file
+  // never names a role.
+  const { sections, loading } = useNavAccess();
   const { t } = useI18n();
   // A nav entry with no translation key keeps its English text rather than
   // showing the key itself.
   const text = (key: string, fallback: string) => (hasMessage(key) ? t(key) : fallback);
-  const visible = sections
-    .map((section) => ({
-      ...section,
-      items: section.items.filter(
-        (item) => section.title === "Manager" || canReach(staffRole, item.to),
-      ),
-    }))
-    .filter((section) => section.items.length > 0);
 
   if (loading) return null;
 
   return (
     <>
-      {visible.map((section) => (
+      {sections.map((section) => (
         <div key={section.title}>
           <p className="mb-0.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/45">
-            {text(`nav.section.${section.title.toLowerCase()}`, section.title)}
+            {text(`nav.section.${section.id}`, section.title)}
           </p>
           <div className="flex flex-col gap-0.5">
             {section.items.map((item) => (
@@ -138,7 +126,7 @@ function WorkspaceLanguageDefault() {
 }
 
 function AuthenticatedLayout() {
-  const { session, loading, signOut, user, isSuperAdmin } = useAuth();
+  const { session, loading, signOut, user } = useAuth();
   const { t, dir } = useI18n();
   const navigate = useNavigate();
   // Reads saved locale from DB and applies lang + dir to <html> live.
@@ -151,8 +139,6 @@ function AuthenticatedLayout() {
   // A session that has only given its password is not signed in to this part
   // of the app: it belongs at the code prompt, however it got here.
   const owed = sessionOwesSecondFactor(session);
-
-  const sections = isSuperAdmin ? [...NAV_SECTIONS, MANAGER_SECTION] : NAV_SECTIONS;
 
   useEffect(() => {
     if (loading) return;
@@ -271,7 +257,7 @@ function AuthenticatedLayout() {
           </Link>
 
           <nav className="flash-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain">
-            <NavMenu sections={sections} />
+            <NavMenu />
           </nav>
 
           <div className="border-t border-sidebar-border pt-3">
@@ -320,7 +306,7 @@ function AuthenticatedLayout() {
                   </SheetTitle>
                 </SheetHeader>
                 <nav className="flex flex-col gap-4">
-                  <NavMenu sections={sections} onNavigate={() => setMobileOpen(false)} />
+                  <NavMenu onNavigate={() => setMobileOpen(false)} />
                 </nav>
                 <div className="mt-4 border-t border-sidebar-border pt-3">
                   <p className="truncate px-3 pb-2 text-xs text-sidebar-foreground/60">
@@ -376,8 +362,8 @@ function AuthenticatedLayout() {
             </div>
           </header>
 
-<ProfileBanner />
-          
+          <ProfileBanner />
+
           {shellOwnsMain ? (
             <main id="content" className="min-h-0 flex-1 overflow-y-auto p-6">
               <PageLanguage pathname={pathname}>
@@ -399,4 +385,3 @@ function AuthenticatedLayout() {
     </TenantProvider>
   );
 }
-

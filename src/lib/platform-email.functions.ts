@@ -174,7 +174,11 @@ export const savePlatformEmailConfig = createServerFn({ method: "POST" })
 
     const incomingSmtpPass = data.smtpPassword ?? data.smtpPass;
     let smtpPassEnc = existing?.smtp_pass_enc ?? null;
-    if (incomingSmtpPass && incomingSmtpPass !== "••••••••" && !incomingSmtpPass.startsWith("••••")) {
+    if (
+      incomingSmtpPass &&
+      incomingSmtpPass !== "••••••••" &&
+      !incomingSmtpPass.startsWith("••••")
+    ) {
       smtpPassEnc = await encryptEmailSecret(incomingSmtpPass, "platform", "smtp_password");
     } else if (!smtpPassEnc) {
       throw new Error("SMTP password is required for initial configuration");
@@ -182,7 +186,11 @@ export const savePlatformEmailConfig = createServerFn({ method: "POST" })
 
     const incomingImapPass = data.imapPassword ?? data.imapPass;
     let imapPassEnc = existing?.imap_pass_enc ?? null;
-    if (incomingImapPass && incomingImapPass !== "••••••••" && !incomingImapPass.startsWith("••••")) {
+    if (
+      incomingImapPass &&
+      incomingImapPass !== "••••••••" &&
+      !incomingImapPass.startsWith("••••")
+    ) {
       imapPassEnc = await encryptEmailSecret(incomingImapPass, "platform", "imap_password");
     }
 
@@ -211,13 +219,11 @@ export const savePlatformEmailConfig = createServerFn({ method: "POST" })
         .eq("id", existing.id);
       if (error) throw error;
     } else {
-      const { error } = await supabaseAdmin
-        .from("platform_email_config")
-        .insert({
-          id: "00000000-0000-0000-0000-000000000001",
-          ...payload,
-          created_at: new Date().toISOString(),
-        });
+      const { error } = await supabaseAdmin.from("platform_email_config").insert({
+        id: "00000000-0000-0000-0000-000000000001",
+        ...payload,
+        created_at: new Date().toISOString(),
+      });
       if (error) throw error;
     }
 
@@ -287,24 +293,10 @@ export const testPlatformEmailConnection = createServerFn({ method: "POST" })
 
     // Resolve SMTP settings
     const ephSmtp = data.type === "smtp" ? data.ephemeral : undefined;
-    const smtpHost =
-      ephSmtp?.host ||
-      data.override?.smtpHost ||
-      config?.smtp_host;
-    const smtpPort =
-      ephSmtp?.port ||
-      data.override?.smtpPort ||
-      config?.smtp_port ||
-      465;
-    const smtpSecure =
-      ephSmtp?.secure ??
-      data.override?.smtpSecure ??
-      config?.smtp_secure ??
-      true;
-    const smtpUser =
-      ephSmtp?.user ||
-      data.override?.smtpUser ||
-      config?.smtp_user;
+    const smtpHost = ephSmtp?.host || data.override?.smtpHost || config?.smtp_host;
+    const smtpPort = ephSmtp?.port || data.override?.smtpPort || config?.smtp_port || 465;
+    const smtpSecure = ephSmtp?.secure ?? data.override?.smtpSecure ?? config?.smtp_secure ?? true;
+    const smtpUser = ephSmtp?.user || data.override?.smtpUser || config?.smtp_user;
 
     let smtpPassword = ephSmtp?.pass || data.override?.smtpPassword || data.override?.smtpPass;
     if (!smtpPassword || smtpPassword === "••••••••" || smtpPassword.startsWith("••••")) {
@@ -315,24 +307,10 @@ export const testPlatformEmailConnection = createServerFn({ method: "POST" })
 
     // Resolve IMAP settings
     const ephImap = data.type === "imap" ? data.ephemeral : undefined;
-    const imapHost =
-      ephImap?.host ||
-      data.override?.imapHost ||
-      config?.imap_host;
-    const imapPort =
-      ephImap?.port ||
-      data.override?.imapPort ||
-      config?.imap_port ||
-      993;
-    const imapSecure =
-      ephImap?.secure ??
-      data.override?.imapSecure ??
-      config?.imap_secure ??
-      true;
-    const imapUser =
-      ephImap?.user ||
-      data.override?.imapUser ||
-      config?.imap_user;
+    const imapHost = ephImap?.host || data.override?.imapHost || config?.imap_host;
+    const imapPort = ephImap?.port || data.override?.imapPort || config?.imap_port || 993;
+    const imapSecure = ephImap?.secure ?? data.override?.imapSecure ?? config?.imap_secure ?? true;
+    const imapUser = ephImap?.user || data.override?.imapUser || config?.imap_user;
 
     let imapPassword = ephImap?.pass || data.override?.imapPassword || data.override?.imapPass;
     if (!imapPassword || imapPassword === "••••••••" || imapPassword.startsWith("••••")) {
@@ -374,9 +352,12 @@ export const testPlatformEmailConnection = createServerFn({ method: "POST" })
 
     const overallOk = (smtpResult ? smtpResult.ok : true) && (imapResult ? imapResult.ok : true);
     const latencyMs = Math.max(smtpResult?.latencyMs ?? 0, imapResult?.latencyMs ?? 0);
-    const errorMsg = smtpResult && !smtpResult.ok
-      ? smtpResult.message
-      : (imapResult && !imapResult.ok ? imapResult.message : null);
+    const errorMsg =
+      smtpResult && !smtpResult.ok
+        ? smtpResult.message
+        : imapResult && !imapResult.ok
+          ? imapResult.message
+          : null;
 
     // If config row exists in database, persist the test result
     if (config?.id) {
@@ -397,7 +378,7 @@ export const testPlatformEmailConnection = createServerFn({ method: "POST" })
       status: overallOk ? "verified" : "test_failed",
       message: overallOk
         ? `Connection verified successfully in ${latencyMs}ms`
-        : errorMsg ?? "Connection test failed",
+        : (errorMsg ?? "Connection test failed"),
       error: errorMsg ?? undefined,
       steps: smtpResult?.stepsCompleted ?? imapResult?.stepsCompleted ?? [],
       stepsCompleted: smtpResult?.stepsCompleted ?? imapResult?.stepsCompleted ?? [],
@@ -410,11 +391,18 @@ const SendPlatformTestEmailSchema = z.object({
   recipient: z.string().email("Invalid recipient email address"),
 });
 
-/** Send a real transactional test email to confirm deliverability from flas@mobidigisol.com. */
+/** What the manager is told: this path calls no sender, so no test email can go out yet. */
+const TEST_EMAIL_NOT_SENT_MESSAGE = "No test email was sent. Email sending is not connected yet.";
+
+/**
+ * Meant to send a transactional test email to confirm deliverability from flas@mobidigisol.com.
+ * Nothing in this code can send an email yet, so it sends nothing, records the test as "failed"
+ * (never "sent") and says so plainly (ok: false). A real send replaces the refusal below.
+ */
 export const sendPlatformTestEmail = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => SendPlatformTestEmailSchema.parse(input))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data, context }): Promise<{ ok: boolean; message: string }> => {
     await requireSuperAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -430,7 +418,7 @@ export const sendPlatformTestEmail = createServerFn({ method: "POST" })
       throw new Error("Platform SMTP is not configured yet");
     }
 
-    // Record test delivery in email_delivery_log
+    // Record the test in email_delivery_log as not sent
     const { error: logErr } = await supabaseAdmin.rpc("log_email_delivery", {
       _tenant_id: null,
       _user_id: context.userId,
@@ -439,18 +427,19 @@ export const sendPlatformTestEmail = createServerFn({ method: "POST" })
       _subject: "Flas CRM Platform System Email Test",
       _template: "system_test",
       _provider: "platform",
-      _provider_msg_id: `test-${Date.now()}`,
-      _status: "sent",
-      _error: null,
-      _meta: { initiated_by: context.userId, host: config.smtp_host },
+      _provider_msg_id: `test-unsent-${Date.now()}`,
+      _status: "failed",
+      _error: TEST_EMAIL_NOT_SENT_MESSAGE,
+      _meta: {
+        initiated_by: context.userId,
+        host: config.smtp_host,
+        error: TEST_EMAIL_NOT_SENT_MESSAGE,
+      },
     } as never);
 
     if (logErr) {
       console.warn("Could not log platform test delivery:", logErr);
     }
 
-    return {
-      ok: true,
-      message: `Test email dispatched to ${data.recipient} from flas@mobidigisol.com`,
-    };
+    return { ok: false, message: TEST_EMAIL_NOT_SENT_MESSAGE };
   });

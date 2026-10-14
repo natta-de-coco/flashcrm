@@ -20,26 +20,28 @@ async function fetchRoute(path) {
   const url = `${BASE_URL}${path}`;
   const start = Date.now();
   return new Promise((resolve) => {
-    https.get(url, (res) => {
-      let data = "";
-      res.on("data", (chunk) => (data += chunk));
-      res.on("end", () => {
-        const duration = Date.now() - start;
+    https
+      .get(url, (res) => {
+        let data = "";
+        res.on("data", (chunk) => (data += chunk));
+        res.on("end", () => {
+          const duration = Date.now() - start;
+          resolve({
+            path,
+            status: res.statusCode,
+            headers: res.headers,
+            duration,
+            body: data,
+          });
+        });
+      })
+      .on("error", (err) => {
         resolve({
           path,
-          status: res.statusCode,
-          headers: res.headers,
-          duration,
-          body: data,
+          error: err.message,
+          duration: Date.now() - start,
         });
       });
-    }).on("error", (err) => {
-      resolve({
-        path,
-        error: err.message,
-        duration: Date.now() - start,
-      });
-    });
   });
 }
 
@@ -58,7 +60,9 @@ async function runAudit() {
     const hasH1 = /<h1[^>]*>([\s\S]*?)<\/h1>/i.test(res.body);
     const titleMatch = res.body.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     const title = titleMatch ? titleMatch[1].trim() : "NONE";
-    const descMatch = res.body.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i);
+    const descMatch = res.body.match(
+      /<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i,
+    );
     const desc = descMatch ? descMatch[1] : "NONE";
     const hasCanonical = /<link[^>]*rel=["']canonical["']/i.test(res.body);
     const hasLang = /<html[^>]*lang=["']([^"']*)["']/i.test(res.body);
@@ -66,9 +70,11 @@ async function runAudit() {
 
     console.log(`✅ [${res.status}] ${res.path} (${res.duration}ms)`);
     console.log(`   Title: ${title}`);
-    console.log(`   Has H1: ${hasH1} | Canonical: ${hasCanonical} | Lang: ${hasLang} | Dir: ${hasDir}`);
+    console.log(
+      `   Has H1: ${hasH1} | Canonical: ${hasCanonical} | Lang: ${hasLang} | Dir: ${hasDir}`,
+    );
     console.log(`   Description length: ${desc.length} chars`);
-    
+
     // Check security headers
     const secHeaders = {
       "strict-transport-security": !!res.headers["strict-transport-security"],

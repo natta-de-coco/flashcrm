@@ -4,6 +4,7 @@
 // route, session id and — when signed in — the user and their company.
 
 import { reportErrorEvent } from "@/lib/telemetry.functions";
+import { isStaleChunkError, reloadForStaleChunk } from "@/lib/stale-chunk";
 
 export type ErrorKind =
   "frontend" | "server_action" | "blank_screen" | "network" | "error_boundary";
@@ -46,15 +47,30 @@ function describe(error: unknown): { message: string; stack?: string } {
 /** Navigation commonly aborts in-flight route/server-function fetches. These
  * are control flow, not incidents, and should not drown real failures. */
 export function isAbortLikeError(error: unknown): boolean {
-  if (error instanceof DOMException && error.name === "AbortError") return true;
+  if (error instanceof DOMException && (error.name === "AbortError" || error.code === 20))
+    return true;
   if (error instanceof Error) {
     const text = `${error.name} ${error.message}`.toLowerCase();
     return (
       text.includes("aborterror") ||
-      text.includes("the operation was aborted") ||
+      text.includes("operation was aborted") ||
       text.includes("signal is aborted") ||
       text.includes("request was aborted") ||
-      text.includes("navigation aborted")
+      text.includes("navigation aborted") ||
+      text.includes("user aborted") ||
+      text.trim() === "aborted"
+    );
+  }
+  if (typeof error === "string") {
+    const text = error.toLowerCase().trim();
+    return (
+      text.includes("aborterror") ||
+      text.includes("operation was aborted") ||
+      text.includes("signal is aborted") ||
+      text.includes("request was aborted") ||
+      text.includes("navigation aborted") ||
+      text.includes("user aborted") ||
+      text === "aborted"
     );
   }
   return false;
@@ -70,8 +86,12 @@ export function captureError(
   } = {},
 ) {
   if (typeof window === "undefined" || isAbortLikeError(error)) return;
+  if (isStaleChunkError(error)) {
+    reloadForStaleChunk();
+    return;
+  }
   const { message, stack } = describe(error);
-  if (!message) return;
+  if (!message || message.trim() === "Script error.") return;
 
   const key = `${options.kind ?? "frontend"}:${message}`.slice(0, 200);
   const now = Date.now();
@@ -153,10 +173,12 @@ function installServerActionWatcher() {
       return response;
     } catch (error) {
       if (!isAbortLikeError(error) && isServerAction(url)) {
-        captureError(error, {
-          kind: "network",
-          context: { operation: "server_fetch", url: shortUrl(url) },
-        });
+        if (typeof navigator === "undefined" || navigator.onLine) {
+          captureError(error, {
+            kind: "network",
+            context: { operation: "server_fetch", url: shortUrl(url) },
+          });
+        }
       }
       throw error;
     }

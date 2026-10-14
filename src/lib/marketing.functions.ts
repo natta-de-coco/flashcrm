@@ -33,124 +33,68 @@ const DispatchCampaignSchema = z.object({
 });
 
 /**
- * Dispatches a campaign immediately to all subscribed/consented leads.
+ * Sends a campaign immediately to all subscribed/consented leads.
+ *
+ * This path calls no sender (email-dispatch.server.ts has HTTP senders, but nothing here uses
+ * one), so it never sends: it refuses with the plain reason and changes nothing. In particular the campaign is not moved to "sent", no recipient count is
+ * stored and no "dispatched" audit record is written, because none of that would be true. The
+ * result type is what a real send will return.
  */
 export const dispatchCampaignNow = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => DispatchCampaignSchema.parse(input))
-  .handler(async ({ data, context }) => {
-    const tenantId = await resolveTenant(context.supabase, context.userId);
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  .handler(
+    async ({
+      data,
+      context,
+    }): Promise<{ ok: true; campaignId: string; recipientsCount: number; sentAt: string }> => {
+      const tenantId = await resolveTenant(context.supabase, context.userId);
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // Fetch the campaign ensuring it belongs to the tenant
-    const { data: campaign, error: campErr } = await supabaseAdmin
-      .from("campaigns")
-      .select("*")
-      .eq("id", data.campaignId)
-      .eq("tenant_id", tenantId)
-      .single();
+      // Fetch the campaign ensuring it belongs to the tenant
+      const { data: campaign, error: campErr } = await supabaseAdmin
+        .from("campaigns")
+        .select("id")
+        .eq("id", data.campaignId)
+        .eq("tenant_id", tenantId)
+        .single();
 
-    if (campErr || !campaign) {
-      throw new Error("Campaign not found or access denied");
-    }
+      if (campErr || !campaign) {
+        throw new Error("Campaign not found or access denied");
+      }
 
-    // Query opted-in and subscribed leads count
-    const { count: subscriberCount, error: leadErr } = await supabaseAdmin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("subscribed", true);
-
-    if (leadErr) {
-      throw new Error("Failed to resolve campaign subscriber audience");
-    }
-
-    const recipientsCount = subscriberCount ?? 0;
-    const sentAt = new Date().toISOString();
-
-    // Transition campaign to sent
-    const { error: updateErr } = await supabaseAdmin
-      .from("campaigns")
-      .update({
-        status: "sent",
-        sent_at: sentAt,
-        recipients_count: recipientsCount,
-      })
-      .eq("id", campaign.id)
-      .eq("tenant_id", tenantId);
-
-    if (updateErr) {
-      throw new Error(`Failed to update campaign status: ${updateErr.message}`);
-    }
-
-    // Log delivery audit trail
-    const { logAudit } = await import("@/lib/audit.server");
-    await logAudit({
-      action: "marketing.campaign_dispatched",
-      actorId: context.userId,
-      entityType: "campaign",
-      entityId: campaign.id,
-      details: {
-        recipients_count: recipientsCount,
-        subject: campaign.subject,
-        sent_at: sentAt,
-      },
-    });
-
-    return {
-      ok: true,
-      campaignId: campaign.id,
-      recipientsCount,
-      sentAt,
-    };
-  });
+      const { whyMarketingEmailCannotBeSent } = await import("@/lib/lead-automation.server");
+      throw new Error(whyMarketingEmailCannotBeSent());
+    },
+  );
 
 /**
- * Dispatches all pending scheduled campaigns for the active tenant.
+ * Sends all pending scheduled campaigns for the active tenant.
+ *
+ * Nothing scheduled is a true "nothing to send". Anything scheduled is refused with the plain
+ * reason (this path calls no sender) and keeps its status; a database error reading the
+ * list is an error, not "nothing to send".
  */
 export const dispatchScheduledCampaigns = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .handler(async ({ context }): Promise<{ ok: true; dispatchedCount: number }> => {
     const tenantId = await resolveTenant(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    const now = new Date().toISOString();
 
     // Find all scheduled campaigns ready to send
     const { data: scheduledList, error: listErr } = await supabaseAdmin
       .from("campaigns")
-      .select("id, name, subject")
+      .select("id")
       .eq("tenant_id", tenantId)
       .eq("status", "scheduled");
 
-    if (listErr || !scheduledList || scheduledList.length === 0) {
+    if (listErr) {
+      throw new Error("Could not check which campaigns are scheduled");
+    }
+    if (!scheduledList || scheduledList.length === 0) {
       return { ok: true, dispatchedCount: 0 };
     }
 
-    // Query subscriber count
-    const { count: subscriberCount } = await supabaseAdmin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("subscribed", true);
-
-    const recipients = subscriberCount ?? 0;
-    let dispatched = 0;
-
-    for (const c of scheduledList) {
-      const { error } = await supabaseAdmin
-        .from("campaigns")
-        .update({
-          status: "sent",
-          sent_at: now,
-          recipients_count: recipients,
-        })
-        .eq("id", c.id)
-        .eq("tenant_id", tenantId);
-
-      if (!error) dispatched++;
-    }
-
-    return {
-      ok: true,
-      dispatchedCount: dispatched,
-    };
+    const { whyMarketingEmailCannotBeSent } = await import("@/lib/lead-automation.server");
+    throw new Error(whyMarketingEmailCannotBeSent());
   });

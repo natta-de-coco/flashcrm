@@ -517,7 +517,7 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["LinkedIn Company Page (organization admin)"],
     authMethod: "oauth2",
-// w_organization_social (posting) is not requested: Flas has no publish code.
+    // w_organization_social (posting) is not requested: Flas has no publish code.
     requestedScopes: ["r_organization_social", "rw_organization_admin"],
     optionalScopes: ["w_organization_social"],
     providerReviewRequired: true,
@@ -780,7 +780,7 @@ export const CONNECTOR_DEFINITIONS: readonly ConnectorDefinition[] = [
     category: "social",
     accountTypes: ["X account on a plan whose API tier permits the endpoints used"],
     authMethod: "oauth2_pkce",
-requestedScopes: ["tweet.read", "users.read", "offline.access"],
+    requestedScopes: ["tweet.read", "users.read", "offline.access"],
     optionalScopes: ["dm.read", "dm.write", "tweet.write"],
     providerReviewRequired: false,
     sandboxAvailable: false,
@@ -912,7 +912,7 @@ requestedScopes: ["tweet.read", "users.read", "offline.access"],
     category: "social",
     accountTypes: ["Pinterest business account"],
     authMethod: "oauth2",
-requestedScopes: ["boards:read", "pins:read", "user_accounts:read"],
+    requestedScopes: ["boards:read", "pins:read", "user_accounts:read"],
     optionalScopes: ["pins:write"],
     providerReviewRequired: true,
     sandboxAvailable: true,
@@ -1445,7 +1445,6 @@ export function capabilityCeiling(connectorId: string): Set<CapabilityKey> {
     CAPABILITY_KEYS.filter(
       (k) => def.capabilities[k].providerSupports && def.capabilities[k].flasImplements,
     ),
-
   );
 }
 
@@ -1464,7 +1463,6 @@ export function capabilityCeiling(connectorId: string): Set<CapabilityKey> {
 export function implementsAnything(connector: ConnectorDefinition): boolean {
   return CAPABILITY_KEYS.some(
     (k) => connector.capabilities[k].providerSupports && connector.capabilities[k].flasImplements,
-
   );
 }
 

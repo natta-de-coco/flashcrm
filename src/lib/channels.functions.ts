@@ -7,6 +7,11 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+// social_authorizations is not yet in the generated database types.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const untyped = (client: unknown) => client as SupabaseClient<any, "public", any>;
 
 /** Everything the Social Channels screen renders. No token column is selected. */
 export const getSocialChannels = createServerFn({ method: "GET" })
@@ -20,7 +25,7 @@ export const getSocialChannels = createServerFn({ method: "GET" })
           "id, platform, label, external_id, active, profile, profile_url, account_type, authorization_id, connection_state, state_reason, last_synced_at, last_validation_success_at, last_validation_attempt_at, granted_scopes, missing_scopes, legacy_manual_connection, connect_method, created_at",
         )
         .order("created_at", { ascending: true }),
-      sb
+      untyped(sb)
         .from("social_authorizations")
         .select(
           "id, provider, platform, provider_email_hint, requested_scopes, granted_scopes, authorization_state, expires_at, last_refreshed_at, created_at",
@@ -39,7 +44,7 @@ export const getAuthorizationDiscovery = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => z.object({ authorizationId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    const { data: auth, error } = await context.supabase
+    const { data: auth, error } = await untyped(context.supabase)
       .from("social_authorizations")
       .select(
         "id, platform, provider_email_hint, requested_scopes, granted_scopes, discovered_assets, discovered_at, authorization_state",
@@ -60,7 +65,12 @@ export const getAuthorizationDiscovery = createServerFn({ method: "GET" })
           .select("id, platform, external_id, active")
           .in("external_id", ids)
       : {
-          data: [] as Array<{ id: string; platform: string; external_id: string | null; active: boolean }>,
+          data: [] as Array<{
+            id: string;
+            platform: string;
+            external_id: string | null;
+            active: boolean;
+          }>,
         };
 
     const expired =
@@ -108,16 +118,15 @@ export const connectChannels = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     // Membership: the authorization must be visible through RLS.
-    const { data: visible } = await context.supabase
+    const { data: visible } = await untyped(context.supabase)
       .from("social_authorizations")
       .select("id, tenant_id")
       .eq("id", data.authorizationId)
       .maybeSingle();
     if (!visible) throw new Error("That sign-in was not found in this workspace.");
 
-    const { connectDiscoveredChannels, readTokensForAccount } = await import(
-      "@/lib/social-authorizations.server"
-    );
+    const { connectDiscoveredChannels, readTokensForAccount } =
+      await import("@/lib/social-authorizations.server");
     const result = await connectDiscoveredChannels({
       tenantId: visible.tenant_id,
       userId: context.userId,
@@ -131,7 +140,7 @@ export const connectChannels = createServerFn({ method: "POST" })
     const { syncSocialAccount } = await import("@/lib/social.server");
     for (const c of result.connected) {
       try {
-        const { data: row } = await supabaseAdmin
+        const { data: row } = await untyped(supabaseAdmin)
           .from("social_accounts")
           .select(
             "id, tenant_id, platform, external_id, connect_method, authorization_id, granted_scopes",
@@ -154,5 +163,7 @@ export const connectChannels = createServerFn({ method: "POST" })
         /* the channel is connected; the next scheduled sync will retry */
       }
     }
-    return { connected: result.connected.map((c) => ({ accountId: c.accountId, rebound: c.rebound })) };
+    return {
+      connected: result.connected.map((c) => ({ accountId: c.accountId, rebound: c.rebound })),
+    };
   });

@@ -9,7 +9,11 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { decryptEmailSecret, encryptEmailSecret } from "@/lib/email-crypto.server";
 import { testImapSocket, testSmtpSocket } from "@/lib/email-socket-test.server";
-import type { DnsVerificationReport, TenantSmtpConfigInput, TenantSmtpConfigPublic } from "@/types/tenant-email";
+import type {
+  DnsVerificationReport,
+  TenantSmtpConfigInput,
+  TenantSmtpConfigPublic,
+} from "@/types/tenant-email";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -29,6 +33,37 @@ async function resolveTenantAdmin(supabase: Client, userId: string): Promise<str
   }
 
   return profile.tenant_id;
+}
+
+interface TenantSmtpConfigDbRow {
+  provider?: string | null;
+  from_email?: string | null;
+  from_name?: string | null;
+  reply_to?: string | null;
+  smtp_host?: string | null;
+  smtp_port?: number | null;
+  smtp_secure?: boolean | null;
+  smtp_user?: string | null;
+  smtp_pass_enc?: string | null;
+  imap_host?: string | null;
+  imap_port?: number | null;
+  imap_secure?: boolean | null;
+  imap_user?: string | null;
+  imap_pass_enc?: string | null;
+  imap_enabled?: boolean | null;
+  verified?: boolean | null;
+  last_test_at?: string | null;
+  last_test_ok?: boolean | null;
+  last_test_error?: string | null;
+  welcome_email_enabled?: boolean | null;
+  welcome_discount_code?: string | null;
+  welcome_discount_percent?: number | null;
+  welcome_subject?: string | null;
+  welcome_body_html?: string | null;
+  spf_verified?: boolean | null;
+  dkim_verified?: boolean | null;
+  dmarc_verified?: boolean | null;
+  updated_at?: string | null;
 }
 
 /** Get public view of tenant email marketing configuration (passwords masked) */
@@ -81,7 +116,7 @@ export const getTenantSmtpConfig = createServerFn({ method: "GET" })
       };
     }
 
-    const r = row as any;
+    const r = (row as TenantSmtpConfigDbRow | null) || {};
     return {
       tenantId,
       configured: Boolean(r.smtp_host && r.smtp_user),
@@ -155,7 +190,7 @@ export const saveTenantSmtpConfig = createServerFn({ method: "POST" })
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
-    const existingRow = existing as any;
+    const existingRow = existing as TenantSmtpConfigDbRow | null;
     let smtpPassEnc = existingRow?.smtp_pass_enc || null;
     let imapPassEnc = existingRow?.imap_pass_enc || null;
 
@@ -166,27 +201,32 @@ export const saveTenantSmtpConfig = createServerFn({ method: "POST" })
       imapPassEnc = await encryptEmailSecret(data.imapPassword.trim());
     }
 
-    const payload: Record<string, any> = {
+    const payload: Record<string, string | number | boolean | null | undefined> = {
       tenant_id: tenantId,
       provider: "smtp_relay",
       from_email: data.fromEmail ?? existingRow?.from_email,
       from_name: data.fromName ?? existingRow?.from_name,
-      reply_to: data.replyTo !== undefined ? (data.replyTo || null) : existingRow?.reply_to,
+      reply_to: data.replyTo !== undefined ? data.replyTo || null : existingRow?.reply_to,
       smtp_host: data.smtpHost ?? existingRow?.smtp_host,
       smtp_port: data.smtpPort ?? existingRow?.smtp_port ?? 465,
       smtp_secure: data.smtpSecure ?? existingRow?.smtp_secure ?? true,
       smtp_user: data.smtpUser ?? existingRow?.smtp_user,
       smtp_pass_enc: smtpPassEnc,
-      imap_host: data.imapHost !== undefined ? (data.imapHost || null) : existingRow?.imap_host,
+      imap_host: data.imapHost !== undefined ? data.imapHost || null : existingRow?.imap_host,
       imap_port: data.imapPort ?? existingRow?.imap_port ?? 993,
       imap_secure: data.imapSecure ?? existingRow?.imap_secure ?? true,
-      imap_user: data.imapUser !== undefined ? (data.imapUser || null) : existingRow?.imap_user,
+      imap_user: data.imapUser !== undefined ? data.imapUser || null : existingRow?.imap_user,
       imap_pass_enc: imapPassEnc,
       imap_enabled: data.imapEnabled ?? existingRow?.imap_enabled ?? false,
       welcome_email_enabled: data.welcomeEmailEnabled ?? existingRow?.welcome_email_enabled ?? true,
-      welcome_discount_code: data.welcomeDiscountCode ?? existingRow?.welcome_discount_code ?? "WELCOME20",
-      welcome_discount_percent: data.welcomeDiscountPercent ?? existingRow?.welcome_discount_percent ?? 20,
-      welcome_subject: data.welcomeSubject ?? existingRow?.welcome_subject ?? "Welcome! Here is your exclusive discount",
+      welcome_discount_code:
+        data.welcomeDiscountCode ?? existingRow?.welcome_discount_code ?? "WELCOME20",
+      welcome_discount_percent:
+        data.welcomeDiscountPercent ?? existingRow?.welcome_discount_percent ?? 20,
+      welcome_subject:
+        data.welcomeSubject ??
+        existingRow?.welcome_subject ??
+        "Welcome! Here is your exclusive discount",
       welcome_body_html: data.welcomeBodyHtml ?? existingRow?.welcome_body_html,
       // Any credential alteration resets verification state to ensure verified dispatch guarantee
       verified: false,
@@ -195,7 +235,7 @@ export const saveTenantSmtpConfig = createServerFn({ method: "POST" })
 
     const { error } = await supabaseAdmin
       .from("tenant_smtp_config")
-      .upsert(payload, { onConflict: "tenant_id" });
+      .upsert(payload as never, { onConflict: "tenant_id" });
 
     if (error) throw error;
     return { ok: true };
@@ -205,7 +245,7 @@ export const saveTenantSmtpConfig = createServerFn({ method: "POST" })
 export const testTenantSmtpConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: { type: "smtp" | "imap" }) =>
-    z.object({ type: z.enum(["smtp", "imap"]) }).parse(d)
+    z.object({ type: z.enum(["smtp", "imap"]) }).parse(d),
   )
   .handler(async ({ context, data }) => {
     const tenantId = await resolveTenantAdmin(context.supabase, context.userId);
@@ -221,7 +261,7 @@ export const testTenantSmtpConnection = createServerFn({ method: "POST" })
       throw new Error("No email marketing configuration found. Save your settings first.");
     }
 
-    const r = row as any;
+    const r = (row as TenantSmtpConfigDbRow | null) || {};
 
     if (data.type === "smtp") {
       if (!r.smtp_host || !r.smtp_user) {
@@ -286,15 +326,24 @@ export const testTenantSmtpConnection = createServerFn({ method: "POST" })
 /** Check domain SPF, DKIM, DMARC records via DNS over HTTPS */
 export const verifyTenantDnsRecords = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: { domain: string }) =>
-    z.object({ domain: z.string().min(3).max(255) }).parse(d)
-  )
+  .validator((d: { domain: string }) => z.object({ domain: z.string().min(3).max(255) }).parse(d))
   .handler(async ({ data }): Promise<DnsVerificationReport> => {
-    const domain = data.domain.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+    const domain = data.domain
+      .toLowerCase()
+      .trim()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/.*$/, "");
 
     let hasSpf = false;
     let hasDkim = false;
     let hasDmarc = false;
+
+    interface DnsAnswer {
+      data?: string;
+    }
+    interface DnsResponse {
+      Answer?: DnsAnswer[];
+    }
 
     try {
       // Query Cloudflare DNS-over-HTTPS for TXT records
@@ -302,7 +351,7 @@ export const verifyTenantDnsRecords = createServerFn({ method: "POST" })
         headers: { accept: "application/dns-json" },
       });
       if (dohRes.ok) {
-        const json: any = await dohRes.json();
+        const json = (await dohRes.json()) as DnsResponse;
         const answers = json.Answer || [];
         for (const ans of answers) {
           const txt = String(ans.data || "");
@@ -312,11 +361,14 @@ export const verifyTenantDnsRecords = createServerFn({ method: "POST" })
       }
 
       // Query DMARC at _dmarc.<domain>
-      const dmarcRes = await fetch(`https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`, {
-        headers: { accept: "application/dns-json" },
-      });
+      const dmarcRes = await fetch(
+        `https://cloudflare-dns.com/dns-query?name=_dmarc.${domain}&type=TXT`,
+        {
+          headers: { accept: "application/dns-json" },
+        },
+      );
       if (dmarcRes.ok) {
-        const json: any = await dmarcRes.json();
+        const json = (await dmarcRes.json()) as DnsResponse;
         const answers = json.Answer || [];
         for (const ans of answers) {
           const txt = String(ans.data || "");
@@ -363,4 +415,3 @@ export const setTenantSmtpApiKey = createServerFn({ method: "POST" })
   });
 
 export const testTenantSmtp = testTenantSmtpConnection;
-

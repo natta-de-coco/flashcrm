@@ -256,7 +256,9 @@ export function classifyHealthObservation(o: {
   } else if (/\b429\b|rate[ -]?limit|too many requests/i.test(o.reason)) {
     code = "rate_limited";
     proposed = isUsable(o.from) ? o.from : "provider_unavailable";
-  } else if (/\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(o.reason)) {
+  } else if (
+    /\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(o.reason)
+  ) {
     code = "provider_unavailable";
     proposed = "provider_unavailable";
   } else if (/revok|invalid[_ ]grant|reauthori|\b190\b|\b401\b/i.test(o.reason)) {
@@ -303,7 +305,7 @@ export const CONNECTION_STATE_INFO: Readonly<Record<ConnectionState, StatePresen
   not_configured: {
     label: "Not set up",
     description: "This platform has not been connected in this workspace.",
-    nextAction: "Connect it from Integrations.",
+    nextAction: "Connect it in Connect accounts.",
     actionOwner: "customer",
     tone: "neutral",
   },
@@ -311,7 +313,7 @@ export const CONNECTION_STATE_INFO: Readonly<Record<ConnectionState, StatePresen
     label: "Needs app keys",
     description:
       "This connector needs your own platform app credentials before authorization can start.",
-    nextAction: "Add the App ID and secret under Integrations.",
+    nextAction: "Add the App ID and secret under Connect accounts.",
     actionOwner: "customer",
     tone: "warn",
   },

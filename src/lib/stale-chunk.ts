@@ -29,7 +29,7 @@ export function isStaleChunkError(error: unknown): boolean {
       : typeof error === "string"
         ? error
         : "";
-  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unable to preload CSS|ChunkLoadError/i.test(
+  return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed|Unable to preload CSS|ChunkLoadError|tsr-split|reading 'component'|Unexpected token '\{'|Unexpected token '<'|Minified React error #520/i.test(
     text,
   );
 }
@@ -72,9 +72,30 @@ function safeSessionStorage(): StorageLike | null {
  * fails to load. Reloading there recovers before the error boundary is shown.
  * preventDefault stops the error from also being thrown into the app.
  */
+let installedRecovery = false;
+
 export function installStaleChunkRecovery() {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || installedRecovery) return;
+  installedRecovery = true;
+
   window.addEventListener("vite:preloadError", (event) => {
     if (reloadForStaleChunk()) event.preventDefault();
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    if (isStaleChunkError(event.reason)) {
+      if (reloadForStaleChunk()) {
+        event.preventDefault();
+      }
+    }
+  });
+
+  window.addEventListener("error", (event) => {
+    const err = (event as ErrorEvent).error ?? (event as ErrorEvent).message;
+    if (isStaleChunkError(err)) {
+      if (reloadForStaleChunk()) {
+        event.preventDefault();
+      }
+    }
   });
 }

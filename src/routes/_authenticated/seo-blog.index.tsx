@@ -11,7 +11,7 @@ import { SearchConsoleDashboard } from "@/components/seo/SearchConsoleDashboard"
 
 export const Route = createFileRoute("/_authenticated/seo-blog/")({
   head: () => ({
-    meta: [{ title: "SEO Studio — Flas CRM" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Website & SEO — Flas CRM" }, { name: "robots", content: "noindex" }],
   }),
   component: SeoBlogHub,
 });
@@ -60,18 +60,26 @@ function SeoBlogHub() {
     <main className="min-h-0 flex-1 overflow-y-auto p-6 space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-<h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
+          <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
             {t("seoBlogIndex.seoStudio") || "SEO & Search Studio"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {t("seoBlogIndex.turnProductImagesIntoRanked") || "Rank higher on Google, monitor Search Console organic clicks, and publish AI articles."}
+            {t("seoBlogIndex.turnProductImagesIntoRanked") ||
+              "Rank higher on Google, monitor Search Console organic clicks, and publish AI articles."}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* /content is no longer in the sidebar; it is reached from here. */}
+          <Button variant="outline" asChild>
+            <Link to="/content">
+              <FileText className="size-4 me-1.5" /> {t("seoBlogIndex.savedDrafts")}
+            </Link>
+          </Button>
           {tab === "articles" ? (
             <Button asChild>
               <Link to="/seo-blog/studio" search={{ article: undefined }}>
-                <PenSquare className="size-4 me-1.5" /> {t("seoBlogIndex.newArticle") || "New article"}
+                <PenSquare className="size-4 me-1.5" />{" "}
+                {t("seoBlogIndex.newArticle") || "New article"}
               </Link>
             </Button>
           ) : (
@@ -111,90 +119,90 @@ function SeoBlogHub() {
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardContent className="flex items-center gap-4 pt-6">
-            <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
-              <FileText className="size-5" />
-            </span>
-            <div>
-              <p className="stat-label">{t("seoBlogIndex.articlesDrafted")}</p>
-              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{rows.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 pt-6">
-            <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
-              <Globe className="size-5" />
-            </span>
-            <div>
-              <p className="stat-label">{t("seoBlogIndex.publishedToWordpress")}</p>
-              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{published}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 pt-6">
-            <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
-              <Sparkles className="size-5" />
-            </span>
-            <div>
-              <p className="stat-label">{t("seoBlogIndex.averageSeoScore")}</p>
-              <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{avgScore}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            <Card>
+              <CardContent className="flex items-center gap-4 pt-6">
+                <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
+                  <FileText className="size-5" />
+                </span>
+                <div>
+                  <p className="stat-label">{t("seoBlogIndex.articlesDrafted")}</p>
+                  <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{rows.length}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex items-center gap-4 pt-6">
+                <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
+                  <Globe className="size-5" />
+                </span>
+                <div>
+                  <p className="stat-label">{t("seoBlogIndex.publishedToWordpress")}</p>
+                  <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{published}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex items-center gap-4 pt-6">
+                <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand">
+                  <Sparkles className="size-5" />
+                </span>
+                <div>
+                  <p className="stat-label">{t("seoBlogIndex.averageSeoScore")}</p>
+                  <p className="stat-figure mt-1.5 text-[1.75rem] font-bold">{avgScore}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle className="text-base">{t("seoBlogIndex.articles")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {articles.isLoading && (
-            <p className="text-sm text-muted-foreground">{t("seoBlogIndex.loading")}</p>
-          )}
-          {!articles.isLoading && rows.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              {t("seoBlogIndex.noArticlesYetOpenThe")}
-            </p>
-          )}
-          {rows.map((a) => (
-            <div
-              key={a.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">{a.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {tr("seoBlogIndex.scoreUpdated", {
-                    value: a.primary_keyword ?? t("seoBlogIndex.noKeyword"),
-                    seoscore: a.seo_score,
-                    toLocaleDateString: new Date(a.updated_at).toLocaleDateString(),
-                  })}
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle className="text-base">{t("seoBlogIndex.articles")}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {articles.isLoading && (
+                <p className="text-sm text-muted-foreground">{t("seoBlogIndex.loading")}</p>
+              )}
+              {!articles.isLoading && rows.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {t("seoBlogIndex.noArticlesYetOpenThe")}
                 </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Badge className={`${STATUS_STYLE[a.status]} capitalize`}>
-                  {tx(`seoBlogIndex.status.${a.status}`, a.status)}
-                </Badge>
-                {a.wp_post_url && (
-                  <Button size="sm" variant="ghost" asChild>
-                    <a href={a.wp_post_url} target="_blank" rel="noreferrer">
-                      <ExternalLink className="size-3.5" /> {t("seoBlogIndex.live")}
-                    </a>
-                  </Button>
-                )}
-                <Button size="sm" variant="outline" asChild>
-                  <Link to="/seo-blog/studio" search={{ article: a.id }}>
-                    {t("seoBlogIndex.open")}
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+              )}
+              {rows.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{a.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {tr("seoBlogIndex.scoreUpdated", {
+                        value: a.primary_keyword ?? t("seoBlogIndex.noKeyword"),
+                        seoscore: a.seo_score,
+                        toLocaleDateString: new Date(a.updated_at).toLocaleDateString(),
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge className={`${STATUS_STYLE[a.status]} capitalize`}>
+                      {tx(`seoBlogIndex.status.${a.status}`, a.status)}
+                    </Badge>
+                    {a.wp_post_url && (
+                      <Button size="sm" variant="ghost" asChild>
+                        <a href={a.wp_post_url} target="_blank" rel="noreferrer">
+                          <ExternalLink className="size-3.5" /> {t("seoBlogIndex.live")}
+                        </a>
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to="/seo-blog/studio" search={{ article: a.id }}>
+                        {t("seoBlogIndex.open")}
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </>
       )}
     </main>

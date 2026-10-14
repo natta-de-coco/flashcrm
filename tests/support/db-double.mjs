@@ -6,14 +6,25 @@
 //
 // Shared by the public-endpoint suites so they describe the same database.
 
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// The unique keys the real schema has on tables that the code under test upserts into (see
+// supabase/migrations). Every database starts with them, so an upsert that names any other column
+// list fails here as it would in Postgres, and so does a second row for the same key.
+const schemaKeys = () => ({ leads: [["tenant_id", "email"]] });
+
 export function createDb() {
   const state = {
     rows: {},
     faults: {},
     rpcResults: {},
+    rpcHandlers: {},
     rpcCalls: [],
-    uniques: {},
+    uniques: schemaKeys(),
     ids: 0,
+    // PostgREST answers a read with at most this many rows (1,000 by default) and says nothing
+    // when it stops there. null = no cap. Set it small to put a result beyond it.
+    rowCap: null,
   };
 
   class Query {
@@ -38,6 +49,21 @@ export function createDb() {
       this.filters.push((r) => values.includes(r[key]));
       return this;
     }
+    ilike(key, pattern) {
+      // As in Postgres: case-insensitive, % is any run of characters, _ is any one
+      // character, and a backslash makes the next character an ordinary one.
+      let source = "";
+      for (let i = 0; i < pattern.length; i++) {
+        const c = pattern[i];
+        if (c === "\\" && i + 1 < pattern.length) source += escapeRegExp(pattern[++i]);
+        else if (c === "%") source += "[\\s\\S]*";
+        else if (c === "_") source += "[\\s\\S]";
+        else source += escapeRegExp(c);
+      }
+      const matcher = new RegExp(`^${source}$`, "i");
+      this.filters.push((r) => typeof r[key] === "string" && matcher.test(r[key]));
+      return this;
+    }
     is(key, value) {
       // Only IS NULL is used by the code under test.
       if (value === null) this.filters.push((r) => r[key] == null);
@@ -59,6 +85,11 @@ export function createDb() {
     }
     limit(n) {
       this.take = n;
+      return this;
+    }
+    range(from, to) {
+      this.offset = from;
+      this.take = to - from + 1;
       return this;
     }
     maybeSingle() {
@@ -150,6 +181,25 @@ export function createDb() {
         found = rows;
       }
       if (this.mode === "upsert") {
+        // Postgres only accepts ON CONFLICT (columns) when a unique index is on exactly those
+        // columns; with the primary key (id) as the default. Anything else is error 42P10, so a
+        // test that declares the real unique keys (db.unique) sees the mistake the real database
+        // would make.
+        const wanted = [...this.conflict].sort().join(",");
+        const known = [["id"], ...(state.uniques[this.table] ?? [])].map((u) =>
+          [...u].sort().join(","),
+        );
+        if (!known.includes(wanted)) {
+          return Promise.resolve({
+            data: null,
+            error: {
+              code: "42P10",
+              message:
+                "there is no unique or exclusion constraint matching the ON CONFLICT specification",
+            },
+            count: null,
+          }).then(resolve, reject);
+        }
         const existing = table.find((r) => this.conflict.every((k) => r[k] === this.payload[k]));
         if (existing) Object.assign(existing, this.payload);
         else table.push(this.row(this.payload));
@@ -163,7 +213,12 @@ export function createDb() {
           return ascending ? left.localeCompare(right) : right.localeCompare(left);
         });
       }
-      if (this.take) found = found.slice(0, this.take);
+      if (this.mode === "read") {
+        const start = this.offset ?? 0;
+        let size = this.take ?? Infinity;
+        if (state.rowCap) size = Math.min(size, state.rowCap);
+        if (this.take || state.rowCap || start) found = found.slice(start, start + size);
+      } else if (this.take) found = found.slice(0, this.take);
       // PostgREST's single-row reads are not "the first row": asking for one
       // row and getting several is an error, and code that ignores that error
       // silently stops doing whatever it asked the row for.
@@ -190,17 +245,23 @@ export function createDb() {
       from: (table) => new Query(table),
       rpc: async (name, args) => {
         state.rpcCalls.push({ name, args });
+        // A handler answers like the function would ({ data, error }), or throws like a dropped
+        // connection. Without one, the call succeeds with whatever rpcResults holds.
+        const handler = state.rpcHandlers[name];
+        if (handler) return handler(args);
         return { data: state.rpcResults[name] ?? null, error: null };
       },
     },
     /** Replaces every table's rows; anything not named starts empty. */
     reset(rows = {}) {
       state.rows = rows;
-      state.uniques = {};
+      state.uniques = schemaKeys();
       state.faults = {};
       state.rpcResults = {};
+      state.rpcHandlers = {};
       state.rpcCalls = [];
       state.ids = 0;
+      state.rowCap = null;
     },
     table(name) {
       return (state.rows[name] ??= []);
@@ -214,6 +275,10 @@ export function createDb() {
      */
     unique(table, columns) {
       (state.uniques[table] ??= []).push(columns);
+    },
+    /** Makes a database function answer with `handler(args)` -> { data, error }. */
+    onRpc(name, handler) {
+      state.rpcHandlers[name] = handler;
     },
     /** Lifts a fault set with fail(): the database has recovered. */
     recover(key) {

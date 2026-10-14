@@ -274,7 +274,7 @@ export function SocialConnectionWizard({
             ) : (
               <p className="rounded-lg border p-4 text-sm text-muted-foreground">
                 {def?.displayName ?? platform} still uses the previous connection flow; its guided
-                channel picker arrives in a later update. You will return to the Social Hub.
+                channel picker arrives in a later update. You will return to Social posts.
               </p>
             )}
 
@@ -343,7 +343,7 @@ function PlatformGrid({
         const { available, unavailable } = platformCapabilities(id);
         const disabledReason =
           meta.unavailableReason ??
-          (!meta.oauth ? "Set up from Integrations." : null) ??
+          (!meta.oauth ? "Set up from Connect accounts." : null) ??
           // A platform with no Flas feature at all gets no Connect button:
           // connecting would store access nothing uses.
           (hasNoImplementedCapability(def)

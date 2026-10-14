@@ -155,7 +155,7 @@ export function RegionCard() {
                   onChange={setCurrency}
                 />
               </div>
-<div className="grid content-start gap-1.5">
+              <div className="grid content-start gap-1.5">
                 <Label>
                   {t("regionCard.companyLanguage") || "Interface Language"}
                   <span className="ms-2 text-xs font-normal text-muted-foreground">
@@ -197,8 +197,9 @@ export function RegionCard() {
                     ))}
                   </SelectContent>
                 </Select>
-<p className="text-xs text-muted-foreground">
-                  {t("regionCard.theInterfaceLanguageForTeammates") || "Saved here, applied immediately after saving. Arabic, Urdu, Farsi and Hebrew activate right-to-left layout automatically."}
+                <p className="text-xs text-muted-foreground">
+                  {t("regionCard.theInterfaceLanguageForTeammates") ||
+                    "Saved here, applied immediately after saving. Arabic, Urdu, Farsi and Hebrew activate right-to-left layout automatically."}
                 </p>
               </div>
               <div className="grid content-start gap-1.5">

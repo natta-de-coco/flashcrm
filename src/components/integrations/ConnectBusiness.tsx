@@ -627,7 +627,7 @@ function ConnectorCard({
               </Link>
             </Button>
           ) : connector.unavailableReason ? (
-<Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-[10px]">
               {t("connectBusiness.notAvailableYet") || "Not available"}
             </Badge>
           ) : connector.oauth ? (

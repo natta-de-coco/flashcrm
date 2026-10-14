@@ -11,9 +11,9 @@ export const FLASH_MODEL = "openai/gpt-5.6-sol";
  * Named here rather than inline because it is in the request URL, so a wrong
  * value fails as a 404 from Google rather than as anything self-explanatory.
  */
-// Google restricts older 2.5 models for new projects. Keep an operator override
+// Google Generative AI API v1beta production flash model. Keep an operator override
 // so a provider retirement does not require editing every AI feature.
-const GEMINI_MODEL = process.env["FLAS_GOOGLE_MODEL"] || "gemini-3.8-flash";
+const GEMINI_MODEL = process.env["FLAS_GOOGLE_MODEL"] || "gemini-1.5-flash";
 
 type RlsClient = {
   from: (table: string) => never;
@@ -791,7 +791,6 @@ export async function gatherMessagingAnalytics(
     const local = perNumberLocal.get(n.id) ?? { conversations: 0, unread: 0 };
     const meta: NumberAnalytics["meta"] = { ok: false, sent: 0, delivered: 0 };
     try {
-
       // Stored tokens may be encrypted; sending the stored value as-is sent
       // ciphertext to Meta. Opened here, and sent as a header rather than in
       // the URL.

@@ -226,12 +226,10 @@ export function resolveAllowedOrigin(candidate: string): string | null {
     return null;
   }
   if (
-
     parsed.username ||
     parsed.password ||
     (parsed.protocol !== "https:" &&
       !(parsed.protocol === "http:" && ["localhost", "127.0.0.1"].includes(parsed.hostname)))
-
   ) {
     return null;
   }
@@ -294,7 +292,7 @@ export async function startAuthorization(args: {
     };
   }
 
-// Tokens are stored sealed via secret-box
+  // Tokens are stored sealed via secret-box
   const stateBytes = new Uint8Array(32);
   crypto.getRandomValues(stateBytes);
   const state = [...stateBytes].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -527,7 +525,7 @@ export function applyClientCredentials(
     body.set("client_secret", secret);
     return;
   }
-if (BASIC_AUTH_PROVIDERS.includes(provider)) {
+  if (BASIC_AUTH_PROVIDERS.includes(provider)) {
     // The secret travels only in the Authorization header. X still expects
     // client_id in the body; Pinterest does not use it.
     if (provider === "twitter") body.set("client_id", id);
@@ -580,7 +578,7 @@ export async function exchangeCode(args: {
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
-headers: tokenEndpointHeaders(args.provider, creds.id, creds.secret),
+    headers: tokenEndpointHeaders(args.provider, creds.id, creds.secret),
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
@@ -659,7 +657,7 @@ export async function refreshAccessToken(args: {
 
   const res = await fetch(cfg.tokenUrl, {
     method: "POST",
-headers: tokenEndpointHeaders(args.provider, creds.id, creds.secret),
+    headers: tokenEndpointHeaders(args.provider, creds.id, creds.secret),
     body: body.toString(),
   });
   const json = (await res.json().catch(() => ({}))) as TokenResponse;
