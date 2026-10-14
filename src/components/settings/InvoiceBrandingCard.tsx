@@ -220,7 +220,7 @@ export function InvoiceBrandingCard({
             <Label htmlFor="invoice-logo">{t("invoiceBrandingCard.orUseAHostedLogo")}</Label>
             <Input
               id="invoice-logo"
-            dir="ltr"
+              dir="ltr"
               placeholder="https://your-site.com/logo.png"
               value={logoUrl}
               onChange={(event) => setLogoUrl(event.target.value)}

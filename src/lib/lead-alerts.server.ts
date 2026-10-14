@@ -31,9 +31,7 @@ const ALERT_NOT_EMAILED_REASON =
   "Email sending is not connected yet, so this alert was not emailed.";
 
 /** Store an in-app notification. Never fabricate external delivery evidence. */
-export async function dispatchSalesLeadAlert(
-  args: SalesLeadAlertArgs,
-): Promise<{
+export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<{
   notifiedEmails: number;
   notifiedWhatsApp: boolean;
   notifiedInApp: boolean;
