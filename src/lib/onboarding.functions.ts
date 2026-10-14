@@ -332,6 +332,58 @@ export const listTeam = createServerFn({ method: "GET" })
     return { members: members ?? [], invites: invites ?? [], myId: context.userId };
   });
 
+/** Said when the person named is not in the caller's workspace (or does not exist). */
+const NOT_A_MEMBER = "That person is not a member of this workspace.";
+const LEGACY_ROLE_NOT_UPDATED =
+  "The change was saved, but the older admin record could not be updated. Do it again to finish it.";
+
+const LEGACY_ROLE_NOT_REMOVED =
+  "This person's older admin record could not be removed, so they were not removed. Try again.";
+const MEMBER_CHANGE_FAILED = "The team could not be updated, and nothing was changed. Try again.";
+
+type RpcAnswer = {
+  data: unknown;
+  error: { code?: string; message?: string; details?: string } | null;
+};
+
+/**
+ * True only when the database says THIS function is not installed yet -- the
+ * SQL in 20261014100000_workspace_member_role_atomic.sql has not been applied.
+ * PostgREST reports that as PGRST202 and Postgres as 42883, but both codes are
+ * also what a real failure inside the function, or a call to some other
+ * function, looks like. Only an error that names the function we called counts.
+ */
+function functionNotInstalled(error: RpcAnswer["error"], name: string): boolean {
+  if (!error || (error.code !== "PGRST202" && error.code !== "42883")) return false;
+  return new RegExp(`\\b${name}\\b`).test(`${error.message ?? ""} ${error.details ?? ""}`);
+}
+
+/**
+ * Reads the answer of remove_workspace_member / set_workspace_member_role.
+ *
+ * "done" is the only yes, and it has to be a plain `true`. A no (`false`: the
+ * person is not in this workspace, perhaps because they just joined another one)
+ * and every error refuse, because the alternative is to write anyway -- which is
+ * the race the functions exist to close. The one exception is "not installed":
+ * the caller then runs the earlier ordered writes, so the app keeps working
+ * before the SQL is applied.
+ */
+function readMemberChange(
+  answer: RpcAnswer,
+  name: string,
+  lastAdminMessage: string,
+): "done" | "not_installed" {
+  if (functionNotInstalled(answer.error, name)) return "not_installed";
+  if (answer.error) {
+    if (/last_company_admin/.test(answer.error.message ?? "")) throw new Error(lastAdminMessage);
+    console.error(`[team] ${name} failed`, answer.error.code, answer.error.message);
+    throw new Error(MEMBER_CHANGE_FAILED);
+  }
+  if (answer.data === true) return "done";
+  if (answer.data === false) throw new Error(NOT_A_MEMBER);
+  throw new Error(MEMBER_CHANGE_FAILED);
+}
+
 const RoleChangeSchema = z.object({
   userId: z.string().uuid(),
   staffRole: z.enum(["company_admin", "marketing_manager", "staff", "seo_editor"]),
@@ -383,27 +435,58 @@ export const setStaffRole = createServerFn({ method: "POST" })
     // change a role is decided above, in code; the write itself is the
     // server's. See 20260926090000_profiles_privilege_columns_are_server_only.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
-      .from("profiles")
-      .update({ staff_role: data.staffRole })
-      .eq("id", data.userId)
-      .eq("tenant_id", me.tenant_id);
-    if (error) throw error;
 
-    // This app carries two role systems, and is_tenant_admin() accepts either.
-    // A demotion that rewrote only staff_role left the legacy user_roles.admin
-    // row in place -- which has no tenant column, so the person kept admin
-    // rights here and carried them into the next workspace they joined.
-    if (data.staffRole === "company_admin") {
-      await supabaseAdmin
-        .from("user_roles")
-        .upsert({ user_id: data.userId, role: "admin" }, { onConflict: "user_id,role" });
-    } else {
-      await supabaseAdmin
-        .from("user_roles")
-        .delete()
-        .eq("user_id", data.userId)
-        .eq("role", "admin");
+    // The membership check and both role writes happen inside the database, in
+    // one transaction behind a lock on the profile: a person who accepts an
+    // invitation to another workspace while this runs can no longer have that
+    // workspace's admin role taken away by a delete that was meant for here.
+    // See 20261014100000_workspace_member_role_atomic.sql. Called with a cast
+    // because the generated types do not know it yet.
+    const atomic = await supabaseAdmin.rpc(
+      "set_workspace_member_role" as never,
+      { _tenant_id: me.tenant_id, _user_id: data.userId, _role: data.staffRole } as never,
+    );
+    const outcome = readMemberChange(
+      atomic as RpcAnswer,
+      "set_workspace_member_role",
+      "This is the only company admin. Promote someone else first, then change this role.",
+    );
+
+    if (outcome === "not_installed") {
+      // The SQL is not applied yet: the earlier ordered writes, with the race
+      // window they always had. Everything below is that earlier code.
+      const { data: changed, error } = await supabaseAdmin
+        .from("profiles")
+        .update({ staff_role: data.staffRole })
+        .eq("id", data.userId)
+        .eq("tenant_id", me.tenant_id)
+        .select("id");
+      if (error) throw error;
+      // That update is limited to this workspace, so for anyone outside it it
+      // changes nothing -- and reports no error. What follows is NOT limited: the
+      // legacy role table has no tenant column. Without this check a company
+      // admin could give a user of another workspace the legacy admin role there,
+      // or take it away, just by knowing their id -- including their own second
+      // account, sitting as ordinary staff in a company they wanted to take over.
+      if (!changed || changed.length !== 1) throw new Error(NOT_A_MEMBER);
+
+      // This app carries two role systems, and is_tenant_admin() accepts either.
+      // A demotion that rewrote only staff_role left the legacy user_roles.admin
+      // row in place -- which has no tenant column, so the person kept admin
+      // rights here and carried them into the next workspace they joined.
+      const legacy =
+        data.staffRole === "company_admin"
+          ? await supabaseAdmin
+              .from("user_roles")
+              .upsert({ user_id: data.userId, role: "admin" }, { onConflict: "user_id,role" })
+          : await supabaseAdmin
+              .from("user_roles")
+              .delete()
+              .eq("user_id", data.userId)
+              .eq("role", "admin");
+      // A demotion whose second half failed would leave the admin row behind --
+      // the very thing this half exists to prevent -- so it is not passed over.
+      if (legacy.error) throw new Error(LEGACY_ROLE_NOT_UPDATED);
     }
 
     const { logAudit } = await import("@/lib/audit.server");
@@ -452,17 +535,65 @@ export const removeStaff = createServerFn({ method: "POST" })
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin
-      .from("profiles")
-      .update({ tenant_id: null, staff_role: "staff" })
-      .eq("id", data.userId)
-      .eq("tenant_id", me.tenant_id);
-    if (error) throw error;
 
-    // Removing someone has to revoke both role systems. The legacy
-    // user_roles.admin row is global -- it survived removal and made them an
-    // admin of whichever workspace they joined next.
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId).eq("role", "admin");
+    // Membership check, legacy admin row and profile, in one transaction behind
+    // a lock on the profile (see setStaffRole, and
+    // 20261014100000_workspace_member_role_atomic.sql). A person who accepted an
+    // invitation to another workspace a moment ago is no longer a member here:
+    // the database says so and changes nothing, instead of this code deleting
+    // the admin role they were just given there.
+    const atomic = await supabaseAdmin.rpc(
+      "remove_workspace_member" as never,
+      { _tenant_id: me.tenant_id, _user_id: data.userId } as never,
+    );
+    const outcome = readMemberChange(
+      atomic as RpcAnswer,
+      "remove_workspace_member",
+      "This is the only company admin — promote someone else before removing them.",
+    );
+
+    if (outcome === "not_installed") {
+      // The SQL is not applied yet: the earlier ordered writes, with the race
+      // window they always had. Everything below is that earlier code.
+      //
+      // As in setStaffRole: only a member of THIS workspace is touched. Checked
+      // first, because of the order below.
+      const { data: member, error: memberError } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("id", data.userId)
+        .eq("tenant_id", me.tenant_id)
+        .maybeSingle();
+      if (memberError) throw memberError;
+      if (!member) throw new Error(NOT_A_MEMBER);
+
+      // Removing someone has to revoke both role systems. The legacy
+      // user_roles.admin row is global -- it survived removal and made them an
+      // admin of whichever workspace they joined next.
+      //
+      // It goes FIRST. The two writes cannot share a transaction here, so the
+      // order decides what a failure leaves behind. Taking the person out of the
+      // workspace first meant a failed delete left them removed but still
+      // holding the global admin row -- and "try again" could never fix it,
+      // because they were no longer a member to remove. This way a failure
+      // leaves them a member with less, never an ex-member with more, and doing
+      // it again finishes the job.
+      const legacy = await supabaseAdmin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", data.userId)
+        .eq("role", "admin");
+      if (legacy.error) throw new Error(LEGACY_ROLE_NOT_REMOVED);
+
+      const { data: removed, error } = await supabaseAdmin
+        .from("profiles")
+        .update({ tenant_id: null, staff_role: "staff" })
+        .eq("id", data.userId)
+        .eq("tenant_id", me.tenant_id)
+        .select("id");
+      if (error) throw error;
+      if (!removed || removed.length !== 1) throw new Error(NOT_A_MEMBER);
+    }
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
