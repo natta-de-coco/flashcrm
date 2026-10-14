@@ -1011,6 +1011,9 @@ describe("PR #58: a field that is too long is a sentence, not the validator's JS
   const route = readFileSync("src/routes/_authenticated/marketing.tsx", "utf8")
     .split("\r\n")
     .join("\n");
+  const composer = readFileSync("src/components/marketing/CampaignComposerModal.tsx", "utf8")
+    .split("\r\n")
+    .join("\n");
 
   beforeEach(() => {
     db.reset({ contacts: [aContact("c1", { email: "a@example.com" })], campaigns: [] });
@@ -1064,30 +1067,33 @@ describe("PR #58: a field that is too long is a sentence, not the validator's JS
     }
   });
 
-  test("every limited input on the page carries its limit, from the shared constant", () => {
-    for (const [id, constant] of [
-      ["c_name", "CAMPAIGN_FIELD_LIMITS.name"],
-      ["c_subject", "CAMPAIGN_FIELD_LIMITS.subject"],
-      ["c_body", "CAMPAIGN_FIELD_LIMITS.body"],
-      ["ai_goal", "AI_DRAFT_FIELD_LIMITS.goal"],
-      ["ai_audience", "AI_DRAFT_FIELD_LIMITS.audience"],
+  test("every limited input where a campaign is written carries its limit, from the shared constant", () => {
+    // Campaigns are written in the composer (main replaced the old inline form);
+    // the Flas AI writer's two fields are still on the page.
+    for (const [source, id, constant] of [
+      [composer, "campName", "CAMPAIGN_FIELD_LIMITS.name"],
+      [composer, "campSubject", "CAMPAIGN_FIELD_LIMITS.subject"],
+      [composer, "campBody", "CAMPAIGN_FIELD_LIMITS.body"],
+      [route, "ai_goal", "AI_DRAFT_FIELD_LIMITS.goal"],
+      [route, "ai_audience", "AI_DRAFT_FIELD_LIMITS.audience"],
     ]) {
-      const opening = new RegExp(String.raw`<(?:Input|Textarea)\s+id="${id}"[^>]*?>`, "s");
-      const tag = route.match(opening);
+      const opening = new RegExp(String.raw`<(?:Input|Textarea)\s+id="${id}"[^]*?\/>`);
+      const tag = source.match(opening);
       assert.ok(tag, `${id} is on the page`);
       assert.ok(tag[0].includes(`maxLength={${constant}}`), `${id} has maxLength={${constant}}`);
     }
   });
 
-  test("the page shows a sentence in the reader's language for each code", () => {
-    assert.match(
-      route,
-      /e\.message === CAMPAIGN_TOO_LONG \? t\("marketing\.campaignTooLong"\) : e\.message/,
-    );
-    assert.match(
-      route,
-      /e\.message === AI_DRAFT_TOO_LONG \? t\("marketing\.draftTooLong"\) : e\.message/,
-    );
+  test("the composer refuses an over-long campaign with a sentence in the reader's language", () => {
+    const guard = composer.match(/if \(\s*name\.trim\(\)\.length[^]*?return;\s*\}/);
+    assert.ok(guard, "handleSave checks the lengths before saving");
+    for (const field of ["name", "subject", "body"]) {
+      assert.ok(
+        guard[0].includes(`> CAMPAIGN_FIELD_LIMITS.${field}`),
+        `${field} is checked against the shared limit`,
+      );
+    }
+    assert.ok(guard[0].includes('toast.error(t("marketing.campaignTooLong"))'));
     const screens = readFileSync("src/lib/i18n/screens/marketing.ts", "utf8");
     for (const key of ["marketing.campaignTooLong", "marketing.draftTooLong"]) {
       assert.equal(screens.split(`"${key}"`).length - 1, 5, `${key} in five languages`);
