@@ -9,17 +9,18 @@
  * 5. HMAC-SHA256 one-click unsubscribe token generation & expiry
  */
 
-import { test, describe } from "node:test";
+import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import {
   BUILT_IN_EMAIL_TEMPLATES,
   substituteMergeTags,
   validateEmailMarketingHtml,
-} from "../src/lib/email-templates.ts";
+} from "../node_modules/.cache/flas-email-templates.mjs";
 import {
   generateUnsubscribeToken,
   verifyUnsubscribeToken,
-} from "../src/lib/lead-automation.server.ts";
+} from "../node_modules/.cache/flas-lead-automation.mjs";
 
 describe("Email Marketing: Template Presets & Standards", () => {
   test("All 4 built-in responsive templates exist with complete metadata", () => {
@@ -38,12 +39,17 @@ describe("Email Marketing: Template Presets & Standards", () => {
       assert.ok(tpl.subject.length > 5, "Template must have subject");
       assert.ok(tpl.htmlContent.length > 100, "Template must contain HTML body");
       assert.ok(tpl.defaultImageUrl, "Template must provide default hero image");
-      assert.match(tpl.htmlContent, /\{\{unsubscribe_url\}\}/, "Template must have unsubscribe placeholder");
+      assert.match(
+        tpl.htmlContent,
+        /\{\{unsubscribe_url\}\}/,
+        "Template must have unsubscribe placeholder",
+      );
     }
   });
 
   test("Dynamic merge tags substitution replaces all placeholders", () => {
-    const raw = "Hello {{name}}! Welcome to {{company}}. Your code is {{discount_code}}. Unsub: {{unsubscribe_url}}";
+    const raw =
+      "Hello {{name}}! Welcome to {{company}}. Your code is {{discount_code}}. Unsub: {{unsubscribe_url}}";
     const rendered = substituteMergeTags(raw, {
       name: "Fatima",
       company: "Acme UAE",
@@ -53,7 +59,7 @@ describe("Email Marketing: Template Presets & Standards", () => {
 
     assert.equal(
       rendered,
-      "Hello Fatima! Welcome to Acme UAE. Your code is SPECIAL50. Unsub: https://flas.app/unsubscribe?token=xyz"
+      "Hello Fatima! Welcome to Acme UAE. Your code is SPECIAL50. Unsub: https://flas.app/unsubscribe?token=xyz",
     );
     assert.equal(rendered.includes("{{"), false, "All tags must be substituted");
   });
@@ -104,6 +110,18 @@ describe("Email Marketing: Deliverability Preflight & Validation", () => {
 });
 
 describe("Email Marketing: One-Click Unsubscribe HMAC Security", () => {
+  // The signing key comes from the setting only; there is no built-in value.
+  // This suite sets its own, made fresh on every run, and puts back what it found.
+  let previous;
+  before(() => {
+    previous = process.env["EMAIL_UNSUBSCRIBE_SECRET"];
+    process.env["EMAIL_UNSUBSCRIBE_SECRET"] = crypto.randomBytes(32).toString("hex");
+  });
+  after(() => {
+    if (previous === undefined) delete process.env["EMAIL_UNSUBSCRIBE_SECRET"];
+    else process.env["EMAIL_UNSUBSCRIBE_SECRET"] = previous;
+  });
+
   test("Generates valid HMAC signed token and verifies payload", () => {
     const token = generateUnsubscribeToken("customer@example.com", "tenant_123");
     assert.ok(token.includes("."));

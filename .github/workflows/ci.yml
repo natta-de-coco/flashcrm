@@ -75,3 +75,5 @@ jobs:
         run: node supabase/verify/verify-assistant-opt-in.mjs
       - name: Workspace member removal and role change are atomic
         run: node supabase/verify/verify-workspace-member-role.mjs
+      - name: Unsubscribe withdraws one company's consent in one transaction, server role only
+        run: node supabase/verify/verify-withdraw-marketing-consent.mjs

@@ -7,16 +7,18 @@
  *   - Step 2 (Day 3): Product / Solution Showcase & Demo
  *   - Step 3 (Day 7): Urgency Offer Expiry Reminder (e.g. LASTCHANCE20)
  *
- * Strictly respects unsubscribe requests and verified tenant BYO SMTP guards.
+ * Strictly respects unsubscribe requests. This path does not call a sender (the HTTP senders in
+ * email-dispatch.server.ts are used elsewhere, not here), so a step is never sent and never
+ * recorded as sent: it is logged as not sent and the enrolment stays where it is.
  */
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { BUILT_IN_EMAIL_TEMPLATES, substituteMergeTags } from "./email-templates.ts";
-import { generateUnsubscribeToken } from "./lead-automation.server.ts";
+import { substituteMergeTags } from "./email-templates.ts";
+import { recordEmailNotSent, whyMarketingEmailCannotBeSent } from "./lead-automation.server.ts";
 
 interface UntypedDbResult<T = UntypedRow> {
   data: T | null;
-  error: { message: string } | null;
+  error: { message: string; code?: string } | null;
 }
 
 interface UntypedRow {
@@ -209,7 +211,14 @@ export async function enrollLeadInDripSequence(args: {
 }
 
 /**
- * Dispatches a specific step for an enrollment and advances the timer to the next step.
+ * Tries to send a specific step for an enrollment.
+ *
+ * This path calls no sender, so nothing is sent: the step is logged as not sent (with the
+ * reason) and the enrolment is NOT advanced (current_step, next_run_at and last_sent_at stay as
+ * they are), so a later real send starts at this same step. Returns true only when the step is
+ * done (nothing left to send, or sent); false when it was not sent. A real send must advance the
+ * enrolment only after the provider has accepted the message, and leave it unchanged when the
+ * send is refused or its outcome is uncertain.
  */
 export async function dispatchDripStepForEnrollment(args: {
   enrollmentId: string;
@@ -221,29 +230,44 @@ export async function dispatchDripStepForEnrollment(args: {
   const { enrollmentId, tenantId, email, name, stepNumber } = args;
 
   // 1. Fetch step details
-  const { data: enrollment } = await db
+  const { data: enrollment, error: enrollmentError } = await db
     .from("drip_enrollments")
     .select("sequence_id, status")
     .eq("id", enrollmentId)
     .single();
 
+  if (enrollmentError) {
+    // Could not read it: not the same as "nothing to do", and nothing is changed.
+    console.error("[drip] Could not read the enrolment; the step was left as it was");
+    return false;
+  }
   if (!enrollment || enrollment.status === "unsubscribed" || enrollment.status === "completed") {
     return false;
   }
 
-  const { data: step } = await db
+  const { data: step, error: stepError } = await db
     .from("drip_steps")
     .select("*")
     .eq("sequence_id", enrollment.sequence_id)
     .eq("step_number", stepNumber)
     .maybeSingle();
 
+  if (stepError) {
+    // A step that could not be read is not a step that does not exist: do not finish the enrolment.
+    console.error("[drip] Could not read the step; the enrolment was left as it was");
+    return false;
+  }
+
   if (!step) {
     // Last step reached, complete enrollment
-    await db
+    const { error: completeError } = await db
       .from("drip_enrollments")
       .update({ status: "completed", updated_at: new Date().toISOString() })
       .eq("id", enrollmentId);
+    if (completeError) {
+      console.error("[drip] Could not mark the enrolment completed");
+      return false;
+    }
     return true;
   }
 
@@ -255,13 +279,6 @@ export async function dispatchDripStepForEnrollment(args: {
 
   const companyName = company?.business_name || "Flas CRM";
   const discountCode = step.discount_code || "WELCOME20";
-  const appUrl = process.env["PUBLIC_APP_URL"] || "https://flas.mobidigisol.com";
-  const unsubToken = generateUnsubscribeToken(email, tenantId);
-  const unsubUrl = `${appUrl}/unsubscribe?token=${encodeURIComponent(unsubToken)}`;
-
-  // 3. Render template
-  const template =
-    BUILT_IN_EMAIL_TEMPLATES.find((t) => t.id === step.template_id) || BUILT_IN_EMAIL_TEMPLATES[0]!;
 
   const renderedSubject = substituteMergeTags(step.subject || "", {
     name: name || "there",
@@ -269,79 +286,32 @@ export async function dispatchDripStepForEnrollment(args: {
     discount_code: discountCode,
   });
 
-  const renderedHtml = substituteMergeTags(template.htmlContent, {
-    name: name || "there",
-    company: companyName,
-    discount_code: discountCode,
-    unsubscribe_url: unsubUrl,
+  // Nothing here can send a message yet, so this step is recorded as not sent, with the reason
+  // (a missing unsubscribe link is reported first), and the enrolment is left exactly as it was.
+  const reason = whyMarketingEmailCannotBeSent({ email, tenantId });
+  await recordEmailNotSent({
+    tag: "drip",
+    tenantId,
+    recipient: email,
+    fromAddress: smtp?.from_email || `noreply@${smtp?.domain || "flas.mobidigisol.com"}`,
+    subject: renderedSubject,
+    template: `drip_step_${stepNumber}`,
+    provider: "tenant_smtp",
+    providerMsgId: `drip_${enrollmentId}_s${stepNumber}_unsent`,
+    reason,
+    meta: {
+      step_number: stepNumber,
+      enrollment_id: enrollmentId,
+      discount_code: discountCode,
+      smtp_verified: Boolean(smtp?.verified && smtp.smtp_host),
+    },
   });
-
-  const now = new Date().toISOString();
-  let dispatchSuccess = false;
-
-  // 4. Log or dispatch through verified BYO SMTP
-  if (smtp?.verified && smtp.smtp_host) {
-    try {
-      // In production, dispatch via native nodemailer or verified transport
-      dispatchSuccess = true;
-    } catch (err: unknown) {
-      console.error("[drip] SMTP dispatch failed:", err);
-    }
-  } else {
-    // If SMTP not yet verified, record in delivery log as simulated/pending
-    dispatchSuccess = true;
-  }
-
-  // Log in email_delivery_log
-  await db.rpc("log_email_delivery", {
-    _tenant_id: tenantId,
-    _recipient: email,
-    _from_address: smtp?.from_email || `noreply@${smtp?.domain || "flas.mobidigisol.com"}`,
-    _subject: renderedSubject,
-    _template: `drip_step_${stepNumber}`,
-    _provider: "tenant_smtp",
-    _provider_msg_id: `drip_${enrollmentId}_s${stepNumber}`,
-    _status: dispatchSuccess ? "sent" : "failed",
-    _error: dispatchSuccess ? null : "Tenant SMTP not configured",
-    _meta: { step_number: stepNumber, enrollment_id: enrollmentId, discount_code: discountCode },
-  } as never);
-
-  // 5. Look up next step and compute next_run_at
-  const { data: nextStep } = await db
-    .from("drip_steps")
-    .select("step_number, delay_days")
-    .eq("sequence_id", enrollment.sequence_id)
-    .eq("step_number", stepNumber + 1)
-    .maybeSingle();
-
-  if (nextStep) {
-    const nextRun = new Date(Date.now() + (nextStep.delay_days ?? 0) * 24 * 60 * 60 * 1000);
-    await db
-      .from("drip_enrollments")
-      .update({
-        current_step: nextStep.step_number,
-        status: "in_progress",
-        next_run_at: nextRun.toISOString(),
-        last_sent_at: now,
-        updated_at: now,
-      })
-      .eq("id", enrollmentId);
-  } else {
-    await db
-      .from("drip_enrollments")
-      .update({
-        status: "completed",
-        last_sent_at: now,
-        updated_at: now,
-      })
-      .eq("id", enrollmentId);
-  }
-
-  return true;
+  return false;
 }
 
 /**
  * Instantly cancels all active drip enrollments when a user clicks unsubscribe.
+ * Throws if the database refuses, so the caller cannot report the withdrawal as done.
  */
 export async function cancelDripEnrollmentsForEmail(
   tenantId: string,
@@ -359,9 +329,18 @@ export async function cancelDripEnrollmentsForEmail(
     .in("status", ["enrolled", "in_progress"])
     .select("id");
 
+  // A database where the drip tables were never created (42P01 in Postgres, PGRST205 from the
+  // API) has no enrolments to cancel: that is "nothing to cancel", not a failure. Every other
+  // refusal is still one.
+  if (error?.code === "42P01" || error?.code === "PGRST205") return 0;
+
   if (error) {
-    console.error("[drip] Failed to cancel enrollments on unsubscribe:", error);
-    return 0;
+    // "Nothing to cancel" (0) and "could not cancel" are different answers: the caller is
+    // finishing a withdrawal of consent and must not report it done. The database's own message
+    // is not passed on, because it can quote the address.
+    throw Object.assign(new Error("Could not cancel drip enrollments"), {
+      code: error.code ?? "error",
+    });
   }
 
   return (data as unknown[] | null)?.length ?? 0;
