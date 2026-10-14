@@ -12,7 +12,7 @@ export default screen({
     "wordPressSitesCard.connectionFailed": "Connection failed",
     "wordPressSitesCard.wordpressSites": "WordPress sites",
     "wordPressSitesCard.connectWordpressForOneClick":
-      "Connect WordPress for one-click publishing from the SEO Studio. Create an application password in WordPress → Users → Profile → Application Passwords. Once saved, the password can't be read back through the app or its API — only used server-side to publish on your behalf.",
+      "Connect WordPress for one-click publishing from Website & SEO. Create an application password in WordPress → Users → Profile → Application Passwords. Once saved, the password can't be read back through the app or its API — only used server-side to publish on your behalf.",
     "wordPressSitesCard.noSeoPlugin": "no SEO plugin",
     "wordPressSitesCard.remove": "Remove {label}",
     "wordPressSitesCard.label": "Label",
@@ -36,7 +36,7 @@ export default screen({
     "wordPressSitesCard.connectionFailed": "فشل الاتصال",
     "wordPressSitesCard.wordpressSites": "مواقع WordPress",
     "wordPressSitesCard.connectWordpressForOneClick":
-      "اربط WordPress للنشر بنقرة واحدة من استوديو SEO. أنشئ كلمة مرور تطبيق في WordPress ← Users ← Profile ← Application Passwords. بعد الحفظ لا يمكن قراءة كلمة المرور عبر التطبيق أو واجهته البرمجية — تُستخدم فقط على الخادم للنشر نيابة عنك.",
+      "اربط WordPress للنشر بنقرة واحدة من «الموقع وتحسين البحث». أنشئ كلمة مرور تطبيق في WordPress ← Users ← Profile ← Application Passwords. بعد الحفظ لا يمكن قراءة كلمة المرور عبر التطبيق أو واجهته البرمجية — تُستخدم فقط على الخادم للنشر نيابة عنك.",
     "wordPressSitesCard.noSeoPlugin": "بلا إضافة SEO",
     "wordPressSitesCard.remove": "إزالة {label}",
     "wordPressSitesCard.label": "التسمية",
@@ -60,7 +60,7 @@ export default screen({
     "wordPressSitesCard.connectionFailed": "Sambungan gagal",
     "wordPressSitesCard.wordpressSites": "Laman WordPress",
     "wordPressSitesCard.connectWordpressForOneClick":
-      "Sambungkan WordPress untuk penerbitan satu klik dari Studio SEO. Cipta kata laluan aplikasi di WordPress → Users → Profile → Application Passwords. Setelah disimpan, kata laluan tidak boleh dibaca semula melalui aplikasi atau API-nya — hanya digunakan di pelayan untuk menerbitkan bagi pihak anda.",
+      "Sambungkan WordPress untuk penerbitan satu klik dari Laman Web & SEO. Cipta kata laluan aplikasi di WordPress → Users → Profile → Application Passwords. Setelah disimpan, kata laluan tidak boleh dibaca semula melalui aplikasi atau API-nya — hanya digunakan di pelayan untuk menerbitkan bagi pihak anda.",
     "wordPressSitesCard.noSeoPlugin": "tiada pemalam SEO",
     "wordPressSitesCard.remove": "Buang {label}",
     "wordPressSitesCard.label": "Label",
@@ -84,7 +84,7 @@ export default screen({
     "wordPressSitesCard.connectionFailed": "Nabigo ang koneksyon",
     "wordPressSitesCard.wordpressSites": "Mga WordPress site",
     "wordPressSitesCard.connectWordpressForOneClick":
-      "Ikonekta ang WordPress para sa one-click na pag-publish mula sa SEO Studio. Gumawa ng application password sa WordPress → Users → Profile → Application Passwords. Kapag na-save na, hindi na mababasa muli ang password sa app o sa API nito — ginagamit lang sa server para mag-publish para sa iyo.",
+      "Ikonekta ang WordPress para sa one-click na pag-publish mula sa Website at SEO. Gumawa ng application password sa WordPress → Users → Profile → Application Passwords. Kapag na-save na, hindi na mababasa muli ang password sa app o sa API nito — ginagamit lang sa server para mag-publish para sa iyo.",
     "wordPressSitesCard.noSeoPlugin": "walang SEO plugin",
     "wordPressSitesCard.remove": "Alisin ang {label}",
     "wordPressSitesCard.label": "Label",
@@ -108,7 +108,7 @@ export default screen({
     "wordPressSitesCard.connectionFailed": "Muunganisho umeshindwa",
     "wordPressSitesCard.wordpressSites": "Tovuti za WordPress",
     "wordPressSitesCard.connectWordpressForOneClick":
-      "Unganisha WordPress kwa uchapishaji wa mbofyo mmoja kutoka Studio ya SEO. Unda nenosiri la programu kwenye WordPress → Users → Profile → Application Passwords. Likishahifadhiwa, nenosiri haliwezi kusomwa tena kupitia programu au API yake — hutumika tu kwenye seva kuchapisha kwa niaba yako.",
+      "Unganisha WordPress kwa uchapishaji wa mbofyo mmoja kutoka Tovuti na SEO. Unda nenosiri la programu kwenye WordPress → Users → Profile → Application Passwords. Likishahifadhiwa, nenosiri haliwezi kusomwa tena kupitia programu au API yake — hutumika tu kwenye seva kuchapisha kwa niaba yako.",
     "wordPressSitesCard.noSeoPlugin": "hakuna programu-jalizi ya SEO",
     "wordPressSitesCard.remove": "Ondoa {label}",
     "wordPressSitesCard.label": "Lebo",

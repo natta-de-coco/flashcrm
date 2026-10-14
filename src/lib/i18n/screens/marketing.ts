@@ -106,7 +106,7 @@ export default screen({
     "marketing.automaticallyAssignEachNewWebsite":
       "Automatically assign each new website lead to the right WhatsApp number. Rules are checked in priority order — the first match wins.",
     "marketing.connectAWhatsappNumberIn":
-      "Connect a WhatsApp number in Integrations first, then create routing rules here.",
+      "Connect a WhatsApp number in Connect accounts first, then create routing rules here.",
     "marketing.ruleName": "Rule name",
     "marketing.shopifyLeadsSalesLine": "Shopify leads → sales line",
     "marketing.matchBy": "Match by",
@@ -264,7 +264,7 @@ export default screen({
     "marketing.automaticallyAssignEachNewWebsite":
       "أسند تلقائيًا كل عميل محتمل جديد من الموقع إلى رقم واتساب المناسب. تُفحص القواعد حسب الأولوية — أول تطابق يُعتمد.",
     "marketing.connectAWhatsappNumberIn":
-      "اربط رقم واتساب من التكاملات أولًا، ثم أنشئ قواعد التوجيه هنا.",
+      "اربط رقم واتساب من «ربط الحسابات» أولًا، ثم أنشئ قواعد التوجيه هنا.",
     "marketing.ruleName": "اسم القاعدة",
     "marketing.shopifyLeadsSalesLine": "عملاء Shopify المحتملون ← خط المبيعات",
     "marketing.matchBy": "المطابقة حسب",
@@ -424,7 +424,7 @@ export default screen({
     "marketing.automaticallyAssignEachNewWebsite":
       "Tugaskan setiap prospek laman web baharu secara automatik kepada nombor WhatsApp yang betul. Peraturan disemak mengikut keutamaan — padanan pertama menang.",
     "marketing.connectAWhatsappNumberIn":
-      "Sambungkan nombor WhatsApp di Integrasi dahulu, kemudian cipta peraturan penghalaan di sini.",
+      "Sambungkan nombor WhatsApp di Sambung Akaun dahulu, kemudian cipta peraturan penghalaan di sini.",
     "marketing.ruleName": "Nama peraturan",
     "marketing.shopifyLeadsSalesLine": "Prospek Shopify → talian jualan",
     "marketing.matchBy": "Padan mengikut",
@@ -586,7 +586,7 @@ export default screen({
     "marketing.automaticallyAssignEachNewWebsite":
       "Awtomatikong i-assign ang bawat bagong lead sa website sa tamang WhatsApp number. Sinusuri ang mga panuntunan ayon sa priyoridad — ang unang tumugma ang masusunod.",
     "marketing.connectAWhatsappNumberIn":
-      "Magkonekta muna ng WhatsApp number sa Mga Integrasyon, saka gumawa ng mga panuntunan sa routing dito.",
+      "Magkonekta muna ng WhatsApp number sa Ikonekta ang mga Account, saka gumawa ng mga panuntunan sa routing dito.",
     "marketing.ruleName": "Pangalan ng panuntunan",
     "marketing.shopifyLeadsSalesLine": "Mga lead sa Shopify → linya ng sales",
     "marketing.matchBy": "Itugma ayon sa",
@@ -747,7 +747,7 @@ export default screen({
     "marketing.automaticallyAssignEachNewWebsite":
       "Kabidhi kiotomatiki kila mteja mtarajiwa mpya wa tovuti kwa namba sahihi ya WhatsApp. Kanuni hukaguliwa kwa mpangilio wa kipaumbele — inayolingana kwanza ndiyo hushinda.",
     "marketing.connectAWhatsappNumberIn":
-      "Unganisha namba ya WhatsApp kwenye Miunganisho kwanza, kisha unda kanuni za uelekezaji hapa.",
+      "Unganisha namba ya WhatsApp kwenye Unganisha Akaunti kwanza, kisha unda kanuni za uelekezaji hapa.",
     "marketing.ruleName": "Jina la kanuni",
     "marketing.shopifyLeadsSalesLine": "Wateja watarajiwa wa Shopify → laini ya mauzo",
     "marketing.matchBy": "Linganisha kwa",

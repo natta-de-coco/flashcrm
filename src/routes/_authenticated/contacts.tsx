@@ -1,4 +1,7 @@
+import { Skeleton } from "@/components/ui/skeleton";
+
 import { ContactDetailDialog } from "@/components/contacts/ContactDetailDialog";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,9 +34,10 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertCircle, Download, Plus, Search, Upload } from "lucide-react";
+import { AlertCircle, Download, Plus, Search, Upload, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendly-error";
 
 export const Route = createFileRoute("/_authenticated/contacts")({
   head: () => ({
@@ -132,7 +136,7 @@ function ContactsPage() {
       toast.success(t("contacts.added"));
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const move = useMutation({
@@ -141,7 +145,7 @@ function ContactsPage() {
       if (error) throw error;
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["contacts"] }),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const grantConsent = useMutation({
@@ -159,7 +163,7 @@ function ContactsPage() {
       toast.success(t("contacts.consentRecorded"));
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   function exportContacts() {
@@ -247,7 +251,7 @@ function ContactsPage() {
       );
       void qc.invalidateQueries({ queryKey: ["contacts"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   const filtered = useMemo(() => {
@@ -260,6 +264,21 @@ function ContactsPage() {
         (c.company ?? "").toLowerCase().includes(q),
     );
   }, [contacts.data, search]);
+
+  if (contacts.isLoading)
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -276,6 +295,7 @@ function ContactsPage() {
             <Input
               className="w-56 ps-9"
               placeholder={t("contacts.search")}
+
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -316,6 +336,7 @@ function ContactsPage() {
                 />
               </div>
               <Textarea
+                aria-label="Paste contacts or CSV content"
                 rows={6}
                 placeholder={"+971501234567\nSara Ahmed, +971559876543, sara@example.com"}
                 value={importText}
@@ -490,110 +511,125 @@ function ContactsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {STAGES.map((stage) => {
-          const rows = filtered.filter((c) => c.stage === stage.id);
-          // L1: the column showed a card count and nothing else, so the only way
-          // to answer "how much is sitting in Negotiation?" was to add the cards
-          // up by eye. Totalled over the filtered rows, not all contacts, so the
-          // figure always matches the cards actually on screen.
-          const { total } = stageTotal(rows, stage.id);
-          return (
-            <section key={stage.id} className="rounded-xl bg-muted/50 p-3">
-              <div className="mb-3 flex items-center justify-between gap-2 px-1">
-                <h2 className="text-sm font-semibold">{t(`stage.${stage.id}`)}</h2>
-                <div className="flex items-center gap-2">
-                  {rows.length > 0 && (
-                    <span className="text-xs font-semibold text-brand">
-                      {formatStageMoney(total, tenant?.currency)}
-                    </span>
-                  )}
-                  <Badge variant="secondary" className="text-[10px]">
-                    {rows.length}
-                  </Badge>
+        {!contacts.isPending && (contacts.data ?? []).length === 0 ? (
+          <div className="col-span-full">
+            <Card className="flex flex-col items-center justify-center p-12 text-center border-dashed">
+              <Users className="mx-auto mb-4 size-12 text-muted-foreground" />
+              <h2 className="mb-2 text-xl font-bold">No contacts yet</h2>
+              <p className="mb-4 max-w-sm text-sm text-muted-foreground">
+                Track every WhatsApp lead through your sales pipeline stages.
+              </p>
+              <Button onClick={() => setOpen(true)}>
+                <Plus className="mr-2 size-4" /> Add your first contact
+              </Button>
+            </Card>
+          </div>
+        ) : (
+          STAGES.map((stage) => {
+            const rows = filtered.filter((c) => c.stage === stage.id);
+            // L1: the column showed a card count and nothing else, so the only way
+            // to answer "how much is sitting in Negotiation?" was to add the cards
+            // up by eye. Totalled over the filtered rows, not all contacts, so the
+            // figure always matches the cards actually on screen.
+            const { total } = stageTotal(rows, stage.id);
+            return (
+              <section key={stage.id} className="rounded-xl bg-muted/50 p-3">
+                <div className="mb-3 flex items-center justify-between gap-2 px-1">
+                  <h2 className="text-sm font-semibold">{t(`stage.${stage.id}`)}</h2>
+                  <div className="flex items-center gap-2">
+                    {rows.length > 0 && (
+                      <span className="text-xs font-semibold text-brand">
+                        {formatStageMoney(total, tenant?.currency)}
+                      </span>
+                    )}
+                    <Badge variant="secondary" className="text-[10px]">
+                      {rows.length}
+                    </Badge>
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-2">
-                {rows.length === 0 && (
-                  <p className="px-1 text-xs text-muted-foreground">{t("contacts.emptyStage")}</p>
-                )}
-                {rows.map((c) => (
-                  <Card key={c.id}>
-                    <CardContent className="space-y-2 p-3">
-                      <div>
-                        {/* H13: the card was not openable at all — only the small
+                <div className="space-y-2">
+                  {rows.length === 0 && (
+                    <p className="px-1 text-xs text-muted-foreground">{t("contacts.emptyStage")}</p>
+                  )}
+                  {rows.map((c) => (
+                    <Card key={c.id}>
+                      <CardContent className="space-y-2 p-3">
+                        <div>
+                          {/* H13: the card was not openable at all — only the small
                             "Numbers & branches" link below it was, which nobody
                             found. The name is the button now, so clicking the
                             contact opens the contact. Kept as a button rather
                             than wrapping the whole card, because the card also
                             holds a stage select and a consent action that must
                             stay independently clickable. */}
-                        <button
-                          type="button"
-                          onClick={() => setDetailFor({ id: c.id, name: c.name })}
-                          className="text-start text-sm font-semibold underline-offset-2 hover:underline"
-                        >
-                          {c.name}
-                        </button>
-                        <p className="text-xs text-muted-foreground">
-                          {c.phone ?? c.email ?? t("contacts.noDetails")}
-                          {c.company ? ` · ${c.company}` : ""}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => setDetailFor({ id: c.id, name: c.name })}
-                          className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                        >
-                          {t("contacts.open")}
-                        </button>
-                        {c.consent_given ? (
-                          <Badge variant="outline" className="mt-1 text-[10px]">
-                            {t("contacts.consented")}
-                            {c.consent_at
-                              ? ` · ${new Date(c.consent_at).toLocaleDateString()}`
-                              : ""}
-                          </Badge>
-                        ) : (
                           <button
                             type="button"
-                            onClick={() => grantConsent.mutate(c.id)}
-                            disabled={grantConsent.isPending}
-                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
-                            title={t("contacts.needsConsentTitle")}
+                            onClick={() => setDetailFor({ id: c.id, name: c.name })}
+                            className="text-start text-sm font-semibold underline-offset-2 hover:underline"
                           >
-                            {t("contacts.needsConsent")}
+                            {c.name}
                           </button>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        {/* Same formatter as the column total, so a card and the
+                          <p className="text-xs text-muted-foreground">
+                            {c.phone ?? c.email ?? t("contacts.noDetails")}
+                            {c.company ? ` · ${c.company}` : ""}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setDetailFor({ id: c.id, name: c.name })}
+                            className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          >
+                            {t("contacts.open")}
+                          </button>
+                          {c.consent_given ? (
+                            <Badge variant="outline" className="mt-1 text-[10px]">
+                              {t("contacts.consented")}
+                              {c.consent_at
+                                ? ` · ${new Date(c.consent_at).toLocaleDateString()}`
+                                : ""}
+                            </Badge>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => grantConsent.mutate(c.id)}
+                              disabled={grantConsent.isPending}
+                              className="mt-1 inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-solid hover:text-foreground"
+                              title={t("contacts.needsConsentTitle")}
+                            >
+                              {t("contacts.needsConsent")}
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          {/* Same formatter as the column total, so a card and the
                             heading above it can never disagree about currency
                             or rounding. */}
-                        <span className="text-xs font-semibold text-brand">
-                          {formatStageMoney(Number(c.value ?? 0), tenant?.currency)}
-                        </span>
-                        <Select
-                          value={c.stage}
-                          onValueChange={(v) => move.mutate({ id: c.id, stage: v as LeadStage })}
-                        >
-                          <SelectTrigger className="h-8 w-32 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {STAGES.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>
-                                {t(`stage.${s.id}`)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </section>
-          );
-        })}
+                          <span className="text-xs font-semibold text-brand">
+                            {formatStageMoney(Number(c.value ?? 0), tenant?.currency)}
+                          </span>
+                          <Select
+                            value={c.stage}
+                            onValueChange={(v) => move.mutate({ id: c.id, stage: v as LeadStage })}
+                          >
+                            <SelectTrigger className="h-8 w-32 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {STAGES.map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {t(`stage.${s.id}`)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </section>
+            );
+          })
+        )}
       </div>
     </main>
   );

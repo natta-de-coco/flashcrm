@@ -109,7 +109,7 @@ export default screen({
       "Use Flas AI out of the box, or connect your own OpenAI or Claude key — your data stays in your workspace.",
     "home.step.0.title": "Connect",
     "home.step.0.body":
-      "Add your WhatsApp number and link your social, ads and analytics accounts from the Integrations hub — each one has a step-by-step guide.",
+      "Add your WhatsApp number and link your social, ads and analytics accounts from Connect accounts — each one has a step-by-step guide.",
     "home.step.1.title": "Capture",
     "home.step.1.body":
       "Install the WordPress or Shopify plugin, or drop one script tag on any site. Visitors leave their WhatsApp number and email before chatting.",
@@ -243,7 +243,7 @@ export default screen({
       "استخدم Flas AI كما هو، أو اربط مفتاح OpenAI أو Claude الخاص بك — بياناتك تبقى في مساحة عملك.",
     "home.step.0.title": "اربط",
     "home.step.0.body":
-      "أضف رقم واتساب واربط حسابات التواصل والإعلانات والتحليلات من مركز التكاملات — لكل منها دليل خطوة بخطوة.",
+      "أضف رقم واتساب واربط حسابات التواصل والإعلانات والتحليلات من «ربط الحسابات» — لكل منها دليل خطوة بخطوة.",
     "home.step.1.title": "التقط",
     "home.step.1.body":
       "ثبّت إضافة WordPress أو Shopify، أو ضع وسم سكربت واحدًا في أي موقع. يترك الزوار رقم واتساب والبريد الإلكتروني قبل المحادثة.",
@@ -379,7 +379,7 @@ export default screen({
       "Gunakan Flas AI terus, atau sambungkan kunci OpenAI atau Claude anda sendiri — data anda kekal dalam ruang kerja anda.",
     "home.step.0.title": "Sambung",
     "home.step.0.body":
-      "Tambah nombor WhatsApp anda dan pautkan akaun sosial, iklan dan analitik dari hab Integrasi — setiap satu ada panduan langkah demi langkah.",
+      "Tambah nombor WhatsApp anda dan pautkan akaun sosial, iklan dan analitik dari Sambung Akaun — setiap satu ada panduan langkah demi langkah.",
     "home.step.1.title": "Kumpul",
     "home.step.1.body":
       "Pasang pemalam WordPress atau Shopify, atau letakkan satu tag skrip pada mana-mana laman. Pelawat meninggalkan nombor WhatsApp dan e-mel sebelum bersembang.",
@@ -517,7 +517,7 @@ export default screen({
       "Gamitin ang Flas AI agad, o ikonekta ang sarili mong OpenAI o Claude key — nananatili ang iyong data sa iyong workspace.",
     "home.step.0.title": "Kumonekta",
     "home.step.0.body":
-      "Idagdag ang iyong WhatsApp number at i-link ang iyong mga social, ads at analytics account mula sa Integrations hub — may step-by-step na gabay ang bawat isa.",
+      "Idagdag ang iyong WhatsApp number at i-link ang iyong mga social, ads at analytics account mula sa Ikonekta ang mga Account — may step-by-step na gabay ang bawat isa.",
     "home.step.1.title": "Kumuha",
     "home.step.1.body":
       "I-install ang WordPress o Shopify plugin, o maglagay ng isang script tag sa anumang site. Iniiwan ng mga bisita ang kanilang WhatsApp number at email bago mag-chat.",
@@ -652,7 +652,7 @@ export default screen({
       "Tumia Flas AI ilivyo, au unganisha ufunguo wako wa OpenAI au Claude — data zako hubaki katika eneo lako la kazi.",
     "home.step.0.title": "Unganisha",
     "home.step.0.body":
-      "Ongeza namba yako ya WhatsApp na uunganishe akaunti zako za mitandao, matangazo na takwimu kutoka kitovu cha Miunganisho — kila moja ina mwongozo wa hatua kwa hatua.",
+      "Ongeza namba yako ya WhatsApp na uunganishe akaunti zako za mitandao, matangazo na takwimu kutoka Unganisha Akaunti — kila moja ina mwongozo wa hatua kwa hatua.",
     "home.step.1.title": "Kusanya",
     "home.step.1.body":
       "Sakinisha programu-jalizi ya WordPress au Shopify, au weka lebo moja ya skripti kwenye tovuti yoyote. Wageni huacha namba ya WhatsApp na barua pepe kabla ya gumzo.",

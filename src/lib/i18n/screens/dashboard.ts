@@ -56,9 +56,9 @@ export default screen({
     "dashboard.social.summaryAudience":
       "{audience} audience · {incoming} incoming this week · {pending} to reply",
     "dashboard.social.empty": "Connected accounts and replies",
-    "dashboard.social.hub": "Social Hub",
+    "dashboard.social.hub": "Social posts",
     "dashboard.social.none":
-      "No social accounts connected yet. Link Instagram, Facebook, YouTube, X, LinkedIn, TikTok or Google Business in the",
+      "No social accounts connected yet. Link Instagram, Facebook, YouTube, X, LinkedIn, TikTok or Google Business in",
     "dashboard.social.noStats": "no stats yet",
     "dashboard.social.synced": "synced {date}",
     "dashboard.social.neverSynced": "never synced",
@@ -69,7 +69,7 @@ export default screen({
       "Showing the {counted} most recent of {total} waiting for a reply — open the Inbox for the rest.",
     "dashboard.meta.title": "WhatsApp & Meta sync",
     "dashboard.meta.refresh": "Refresh Meta sync health",
-    "dashboard.meta.fullMonitoring": "Full monitoring",
+    "dashboard.meta.fullMonitoring": "Alerts & health",
     "dashboard.meta.none": "No WhatsApp numbers connected yet. Add one in",
     "dashboard.meta.settings": "Settings",
     "dashboard.meta.default": "default",
@@ -84,7 +84,7 @@ export default screen({
     "dashboard.meta.unreachable": "Meta unreachable",
     "dashboard.recent.title": "Recent conversations",
     "dashboard.recent.none":
-      "No conversations yet. Connect WhatsApp in Integrations or embed the website widget.",
+      "No conversations yet. Connect WhatsApp in Connect accounts or embed the website widget.",
     "dashboard.channel.web": "Website",
     "dashboard.channel.whatsapp": "WhatsApp",
     "dashboard.recent.new": "{count} new",
@@ -141,7 +141,7 @@ export default screen({
     "dashboard.social.summaryAudience":
       "جمهور {audience} · {incoming} واردة هذا الأسبوع · {pending} بانتظار الرد",
     "dashboard.social.empty": "الحسابات المرتبطة والردود",
-    "dashboard.social.hub": "مركز التواصل الاجتماعي",
+    "dashboard.social.hub": "منشورات التواصل الاجتماعي",
     "dashboard.social.none":
       "لم تُربط أي حسابات تواصل اجتماعي بعد. اربط إنستغرام أو فيسبوك أو يوتيوب أو X أو لينكدإن أو تيك توك أو Google Business من",
     "dashboard.social.noStats": "لا توجد إحصاءات بعد",
@@ -154,7 +154,7 @@ export default screen({
       "يُعرض أحدث {counted} من أصل {total} بانتظار الرد — افتح صندوق الوارد لرؤية البقية.",
     "dashboard.meta.title": "مزامنة واتساب وMeta",
     "dashboard.meta.refresh": "تحديث حالة مزامنة Meta",
-    "dashboard.meta.fullMonitoring": "المراقبة الكاملة",
+    "dashboard.meta.fullMonitoring": "التنبيهات والحالة",
     "dashboard.meta.none": "لم تُربط أي أرقام واتساب بعد. أضف رقمًا من",
     "dashboard.meta.settings": "الإعدادات",
     "dashboard.meta.default": "افتراضي",
@@ -168,7 +168,8 @@ export default screen({
     "dashboard.meta.rating.red": "حمراء",
     "dashboard.meta.unreachable": "تعذّر الوصول إلى Meta",
     "dashboard.recent.title": "المحادثات الأخيرة",
-    "dashboard.recent.none": "لا توجد محادثات بعد. اربط واتساب من التكاملات أو أضف أداة الموقع.",
+    "dashboard.recent.none":
+      "لا توجد محادثات بعد. اربط واتساب من «ربط الحسابات» أو أضف أداة الموقع.",
     "dashboard.channel.web": "الموقع",
     "dashboard.channel.whatsapp": "واتساب",
     "dashboard.recent.new": "{count} جديدة",
@@ -229,7 +230,7 @@ export default screen({
     "dashboard.social.summaryAudience":
       "{audience} khalayak · {incoming} masuk minggu ini · {pending} perlu dibalas",
     "dashboard.social.empty": "Akaun bersambung dan balasan",
-    "dashboard.social.hub": "Hab Sosial",
+    "dashboard.social.hub": "Hantaran Sosial",
     "dashboard.social.none":
       "Belum ada akaun sosial disambungkan. Sambungkan Instagram, Facebook, YouTube, X, LinkedIn, TikTok atau Google Business di",
     "dashboard.social.noStats": "belum ada statistik",
@@ -242,7 +243,7 @@ export default screen({
       "Menunjukkan {counted} terkini daripada {total} yang menunggu balasan — buka Peti Masuk untuk selebihnya.",
     "dashboard.meta.title": "Penyegerakan WhatsApp & Meta",
     "dashboard.meta.refresh": "Muat semula kesihatan penyegerakan Meta",
-    "dashboard.meta.fullMonitoring": "Pemantauan penuh",
+    "dashboard.meta.fullMonitoring": "Amaran & Kesihatan",
     "dashboard.meta.none": "Belum ada nombor WhatsApp disambungkan. Tambah satu di",
     "dashboard.meta.settings": "Tetapan",
     "dashboard.meta.default": "lalai",
@@ -257,7 +258,7 @@ export default screen({
     "dashboard.meta.unreachable": "Meta tidak dapat dicapai",
     "dashboard.recent.title": "Perbualan terkini",
     "dashboard.recent.none":
-      "Belum ada perbualan. Sambungkan WhatsApp di Integrasi atau benamkan widget laman web.",
+      "Belum ada perbualan. Sambungkan WhatsApp di Sambung Akaun atau benamkan widget laman web.",
     "dashboard.channel.web": "Laman web",
     "dashboard.channel.whatsapp": "WhatsApp",
     "dashboard.recent.new": "{count} baharu",
@@ -318,7 +319,7 @@ export default screen({
     "dashboard.social.summaryAudience":
       "{audience} audience · {incoming} papasok ngayong linggo · {pending} kailangang sagutin",
     "dashboard.social.empty": "Mga nakakonektang account at sagot",
-    "dashboard.social.hub": "Social Hub",
+    "dashboard.social.hub": "Mga Social Post",
     "dashboard.social.none":
       "Wala pang nakakonektang social account. I-link ang Instagram, Facebook, YouTube, X, LinkedIn, TikTok o Google Business sa",
     "dashboard.social.noStats": "wala pang stats",
@@ -331,7 +332,7 @@ export default screen({
       "Ipinapakita ang {counted} pinakabago sa {total} na naghihintay ng sagot — buksan ang Inbox para sa iba.",
     "dashboard.meta.title": "WhatsApp at Meta sync",
     "dashboard.meta.refresh": "I-refresh ang kalagayan ng Meta sync",
-    "dashboard.meta.fullMonitoring": "Buong monitoring",
+    "dashboard.meta.fullMonitoring": "Mga Alerto at Kalusugan",
     "dashboard.meta.none": "Wala pang nakakonektang WhatsApp number. Magdagdag sa",
     "dashboard.meta.settings": "Mga Setting",
     "dashboard.meta.default": "default",
@@ -346,7 +347,7 @@ export default screen({
     "dashboard.meta.unreachable": "Hindi maabot ang Meta",
     "dashboard.recent.title": "Mga kamakailang usapan",
     "dashboard.recent.none":
-      "Wala pang usapan. Ikonekta ang WhatsApp sa Mga Integrasyon o i-embed ang widget ng website.",
+      "Wala pang usapan. Ikonekta ang WhatsApp sa Ikonekta ang mga Account o i-embed ang widget ng website.",
     "dashboard.channel.web": "Website",
     "dashboard.channel.whatsapp": "WhatsApp",
     "dashboard.recent.new": "{count} bago",
@@ -407,7 +408,7 @@ export default screen({
     "dashboard.social.summaryAudience":
       "Hadhira {audience} · {incoming} zinazoingia wiki hii · {pending} za kujibu",
     "dashboard.social.empty": "Akaunti zilizounganishwa na majibu",
-    "dashboard.social.hub": "Kitovu cha Mitandao",
+    "dashboard.social.hub": "Machapisho ya Mitandao",
     "dashboard.social.none":
       "Bado hakuna akaunti za mitandao zilizounganishwa. Unganisha Instagram, Facebook, YouTube, X, LinkedIn, TikTok au Google Business kwenye",
     "dashboard.social.noStats": "bado hakuna takwimu",
@@ -420,7 +421,7 @@ export default screen({
       "Inaonyesha {counted} za hivi karibuni kati ya {total} zinazosubiri jibu — fungua Kikasha kuona zilizobaki.",
     "dashboard.meta.title": "Usawazishaji wa WhatsApp na Meta",
     "dashboard.meta.refresh": "Onyesha upya hali ya usawazishaji wa Meta",
-    "dashboard.meta.fullMonitoring": "Ufuatiliaji kamili",
+    "dashboard.meta.fullMonitoring": "Tahadhari na Hali",
     "dashboard.meta.none": "Bado hakuna namba za WhatsApp zilizounganishwa. Ongeza moja kwenye",
     "dashboard.meta.settings": "Mipangilio",
     "dashboard.meta.default": "chaguo-msingi",
@@ -435,7 +436,7 @@ export default screen({
     "dashboard.meta.unreachable": "Meta haipatikani",
     "dashboard.recent.title": "Mazungumzo ya hivi karibuni",
     "dashboard.recent.none":
-      "Bado hakuna mazungumzo. Unganisha WhatsApp kwenye Miunganisho au weka kifaa cha tovuti.",
+      "Bado hakuna mazungumzo. Unganisha WhatsApp kwenye Unganisha Akaunti au weka kifaa cha tovuti.",
     "dashboard.channel.web": "Tovuti",
     "dashboard.channel.whatsapp": "WhatsApp",
     "dashboard.recent.new": "{count} mpya",

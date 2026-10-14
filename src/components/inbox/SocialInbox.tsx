@@ -382,7 +382,8 @@ export function SocialInbox() {
               : null}
             {threadStatus(active) === "replied" ? (
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Check className="size-3.5" /> {i18n.t("socialInbox.replied")}
+                <Check className="size-3.5 text-emerald-500" />{" "}
+                {i18n.t("socialInbox.replied") || "Replied to thread"}
               </p>
             ) : null}
           </div>

@@ -40,7 +40,16 @@ export const PROVIDERS: Record<Provider, ProviderConfig> = {
     tokenUrl: "https://oauth2.googleapis.com/token",
     idEnv: "GOOGLE_OAUTH_CLIENT_ID",
     secretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
-    extraAuthParams: { access_type: "offline", prompt: "consent", include_granted_scopes: "true" },
+    // select_account: Google shows its account chooser every time, including
+    // Brand Accounts, so nobody connects the wrong personal account because
+    // the browser happened to be signed in to it. consent: a refresh token is
+    // returned on every authorization. include_granted_scopes: an upgrade adds
+    // permissions without dropping the ones already granted.
+    extraAuthParams: {
+      access_type: "offline",
+      prompt: "select_account consent",
+      include_granted_scopes: "true",
+    },
   },
   linkedin: {
     authorizeUrl: "https://www.linkedin.com/oauth/v2/authorization",
@@ -190,6 +199,25 @@ export async function sha256Hex(input: string): Promise<string> {
  * Compared on the parsed origin rather than by string prefix: "https://flas.example"
  * must not match "https://flas.example.attacker.test".
  */
+/**
+ * One configured allow-list entry, as an origin.
+ *
+ * A bare host is accepted. Every social connection on the deployment was
+ * refused because OAUTH_ALLOWED_ORIGINS held "flas.mobidigisol.com" while
+ * this code compared it against "https://flas.mobidigisol.com": new URL() on
+ * a bare host throws, the entry was skipped, and nothing could ever match --
+ * with no message saying the configuration was the problem.
+ *
+ * Only the host shorthand is inferred, and only as https. A scheme that is
+ * present is still honoured exactly (so http://localhost keeps working), and
+ * an entry with a path, credentials or anything else unparseable still throws
+ * to the caller, which refuses it.
+ */
+function originOfEntry(entry: string): string {
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(entry) ? entry : `https://${entry}`;
+  return new URL(withScheme).origin;
+}
+
 export function resolveAllowedOrigin(candidate: string): string | null {
   let parsed: URL;
   try {
@@ -217,7 +245,7 @@ export function resolveAllowedOrigin(candidate: string): string | null {
 
   for (const entry of allowed) {
     try {
-      if (new URL(entry).origin === parsed.origin) return parsed.origin;
+      if (originOfEntry(entry) === parsed.origin) return parsed.origin;
     } catch {
       /* a malformed entry in configuration must not allow everything */
     }
@@ -231,6 +259,12 @@ export async function startAuthorization(args: {
   origin: string;
   tenantId: string;
   userId: string;
+  /** Batch 2A: what this attempt is for. Defaults to a first connection. */
+  purpose?: "connect" | "reconnect" | "upgrade";
+  /** Batch 2A: authorization tiers to request. Defaults to the initial tiers. */
+  tierIds?: readonly string[];
+  /** Batch 2A: the channel a reconnect or upgrade is for. */
+  targetAccountId?: string | null;
 }): Promise<StartResult> {
   const meta = connector(args.platform);
   if (!meta?.oauth || !meta.provider) {
@@ -258,9 +292,7 @@ export async function startAuthorization(args: {
     };
   }
 
-  // 32 bytes from the CSPRNG: 256 bits, hex-encoded to the same 64 characters
-  // as before. Two concatenated randomUUID()s were used previously, which is
-  // 244 bits -- a v4 UUID fixes 6 of its 128 bits.
+  // Tokens are stored sealed via secret-box
   const stateBytes = new Uint8Array(32);
   crypto.getRandomValues(stateBytes);
   const state = [...stateBytes].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -274,21 +306,78 @@ export async function startAuthorization(args: {
   const usePkce = PKCE_PROVIDERS.includes(meta.provider);
   const pkce = usePkce ? await generatePkce() : null;
 
+  // The PKCE verifier is encrypted like a token. A verifier plus an
+  // intercepted authorization code is a completed authorization, so it must
+  // not sit readable in a table.
+  let verifierEnc: string | null = null;
+  if (pkce) {
+    const { encryptSecret, tokenAad } = await import("@/lib/social-secrets.server");
+    verifierEnc = await encryptSecret(
+      pkce.verifier,
+      tokenAad(args.tenantId, `oauth:${stateHash}`, "code_verifier"),
+    );
+  }
+
+  // Scopes come from the registry. Connectors with authorization tiers ask
+  // only for the tiers requested (the initial ones on a first connection) --
+  // progressive authorization -- and a tier for code that does not exist is
+  // refused, not silently requested.
+  const def = connectorDefinition(args.platform);
+  let requestedScopes: string[];
+  try {
+    if (def?.authorizationTiers?.length) {
+      const { initialTierIds, scopesForTiers } = await import("@/lib/social-connector-definitions");
+      requestedScopes = scopesForTiers(
+        def,
+        args.tierIds?.length ? args.tierIds : initialTierIds(def),
+      );
+    } else {
+      requestedScopes = [...(def?.requestedScopes ?? [])];
+    }
+  } catch (e) {
+    return {
+      ready: false,
+      reason: e instanceof Error ? e.message : "That permission cannot be requested.",
+      missing: [],
+    };
+  }
+
   const { error } = await supabaseAdmin.from("oauth_states").insert({
+    purpose: args.purpose ?? "connect",
+    target_account_id: args.targetAccountId ?? null,
+    requested_scopes: requestedScopes,
     tenant_id: args.tenantId,
     user_id: args.userId,
     platform: args.platform,
+    provider: meta.provider,
     state_hash: stateHash,
     redirect_uri: redirectUri,
-    code_verifier: pkce?.verifier ?? null,
+    code_verifier: verifierEnc,
   });
   if (error) return { ready: false, reason: error.message, missing: [] };
+
+  // State bookkeeping and housekeeping. Both best-effort: neither may block a
+  // connection. The sweep runs here because nothing else ever called it --
+  // abandoned attempts were only ever *read* as expired, never retired.
+  try {
+    const { beginAuthorization, sweepAbandonedAttempts } =
+      await import("@/lib/connection-state.server");
+    await beginAuthorization({
+      tenantId: args.tenantId,
+      platform: args.platform,
+      actorId: args.userId,
+      accountId: args.targetAccountId ?? null,
+    });
+    await sweepAbandonedAttempts().catch(() => undefined);
+  } catch {
+    /* bookkeeping only */
+  }
 
   // Scopes come from the connector registry, not from a list kept here.
   // There were three copies of this data -- here, connection-setup.ts and
   // connection-status.ts -- and they had already drifted: the setup wizard
   // told users TikTok requests video.publish, which this file never sent.
-  const scopes = connectorDefinition(args.platform)?.requestedScopes ?? [];
+  const scopes = requestedScopes;
   const params = buildAuthorizeParams({
     provider: meta.provider,
     clientId: creds.id,
@@ -446,7 +535,6 @@ export function applyClientCredentials(
   body.set("client_secret", secret);
 }
 
-/** Headers for a token-endpoint request, including Basic auth where required. */
 export function tokenEndpointHeaders(
   provider: Provider,
   id: string,
@@ -502,6 +590,42 @@ export async function exchangeCode(args: {
 }
 
 /**
+ * Swaps a short-lived Meta user token (valid for hours) for a long-lived one
+ * (about 60 days). Page tokens fetched with a long-lived user token do not
+ * expire, which is why this runs at connect time, before any Page token is
+ * requested.
+ *
+ * Server-side only: the request carries the app secret. It is sent as a POST
+ * form body, never a query string, so the secret cannot land in a URL, a proxy
+ * log or a provider access log. Meta's documentation shows a GET; the endpoint
+ * accepts the same parameters as a POST body (verified 2026-09-11 -- a POST
+ * with a bad client_id returns "Invalid Client ID", so the body was parsed,
+ * while a PUT reports the parameter missing).
+ */
+export async function exchangeForLongLivedToken(args: {
+  tenantId?: string | null;
+  token: string;
+  fetchImpl?: typeof fetch;
+}): Promise<TokenSet> {
+  const creds = await resolveCredentials("meta", args.tenantId);
+  if (!creds.id || !creds.secret) throw new Error("Platform app credentials are missing.");
+  const res = await (args.fetchImpl ?? fetch)(PROVIDERS.meta.tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    body: new URLSearchParams({
+      grant_type: "fb_exchange_token",
+      client_id: creds.id,
+      client_secret: creds.secret,
+      fb_exchange_token: args.token,
+    }).toString(),
+  });
+  const json = (await res.json().catch(() => ({}))) as TokenResponse;
+  const set = readTokenSet(json);
+  if (!res.ok || !set) throw new Error(`Meta token extension failed (HTTP ${res.status}).`);
+  return set;
+}
+
+/**
  * Refreshes an access token. Meta long-lived page tokens have no refresh
  * token, so we exchange the existing token for a fresh long-lived one instead.
  */
@@ -517,17 +641,9 @@ export async function refreshAccessToken(args: {
 
   if (args.provider === "meta") {
     if (!args.currentToken) throw new Error("No token to extend.");
-    const url = `${cfg.tokenUrl}?${new URLSearchParams({
-      grant_type: "fb_exchange_token",
-      client_id: creds.id,
-      client_secret: creds.secret,
-      fb_exchange_token: args.currentToken,
-    }).toString()}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    const json = (await res.json().catch(() => ({}))) as TokenResponse;
-    const set = readTokenSet(json);
-    if (!res.ok || !set) throw new Error(`Meta token extension failed (HTTP ${res.status}).`);
-    return set;
+    // Was a GET with client_secret in the query string -- the app secret in a
+    // URL, which Batch 1 forbids. Now a POST body, via the shared function.
+    return exchangeForLongLivedToken({ tenantId: args.tenantId ?? null, token: args.currentToken });
   }
 
   if (!args.refreshToken) {

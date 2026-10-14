@@ -103,8 +103,11 @@ export function hasMessage(key: string): key is MessageKey {
   return Object.prototype.hasOwnProperty.call(en, key);
 }
 
-/** "/companies/errors" → "nav.companies.errors.label". */
-export function navMessageKey(to: string, part: "label" | "desc"): string {
+/**
+ * "/companies/errors" → "nav.companies.errors.label". "bar" is the short name
+ * the phone's bottom bar uses where the full label would not fit.
+ */
+export function navMessageKey(to: string, part: "label" | "desc" | "bar"): string {
   return `nav.${to.replace(/^\//, "").replace(/\//g, ".")}.${part}`;
 }
 

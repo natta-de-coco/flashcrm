@@ -143,11 +143,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 function RootShell({ children }: { children: ReactNode }) {
   const { uiLanguage } = Route.useRouteContext();
   return (
-    <html lang={uiLanguage} dir={directionOf(uiLanguage)}>
+    <html lang={uiLanguage} dir={directionOf(uiLanguage)} suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
         <Scripts />
       </body>

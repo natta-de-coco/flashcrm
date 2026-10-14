@@ -6,13 +6,13 @@ export const Route = createFileRoute("/_authenticated/connect")({
   validateSearch: parseConnectionOutcomeSearch,
   head: () => ({
     meta: [
-      { title: "Integrations — Flas CRM" },
+      { title: "Connect accounts — Flas CRM" },
       {
         name: "description",
         content:
           "Connect and manage social channels, messaging, analytics, advertising, websites and commerce integrations in Flas CRM.",
       },
-      { property: "og:title", content: "Integrations — Flas CRM" },
+      { property: "og:title", content: "Connect accounts — Flas CRM" },
       {
         property: "og:description",
         content: "Connect your business tools to Flas CRM from one clear integrations center.",
