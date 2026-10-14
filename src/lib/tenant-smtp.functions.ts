@@ -22,14 +22,19 @@ type Client = SupabaseClient<Database>;
 
 /** Resolve user's active tenant and verify admin privileges */
 async function resolveTenantAdmin(supabase: Client, userId: string): Promise<string> {
-  const { data: profile } = await supabase
+  const { data: profile, error } = await supabase
     .from("profiles")
     .select("tenant_id, staff_role")
     .eq("id", userId)
     .maybeSingle();
 
-  if (!profile?.tenant_id) {
+  if (error || !profile?.tenant_id) {
     throw new Error("No active workspace found for this user account");
+  }
+
+  const role = String(profile.staff_role ?? "");
+  if (!["company_admin", "super_admin"].includes(role)) {
+    throw new Error("Forbidden: requires company admin or super admin privileges");
   }
 
   return profile.tenant_id;
@@ -73,11 +78,15 @@ export const getTenantSmtpConfig = createServerFn({ method: "GET" })
     const tenantId = await resolveTenantAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: row } = await supabaseAdmin
+    const { data: row, error } = await supabaseAdmin
       .from("tenant_smtp_config")
       .select("*")
       .eq("tenant_id", tenantId)
       .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to load email settings: ${error.message}`);
+    }
 
     if (!row) {
       return {
@@ -104,10 +113,10 @@ export const getTenantSmtpConfig = createServerFn({ method: "GET" })
         lastTestAt: null,
         lastTestOk: null,
         lastTestError: null,
-        welcomeEmailEnabled: true,
-        welcomeDiscountCode: "WELCOME20",
-        welcomeDiscountPercent: 20,
-        welcomeSubject: "Welcome! Here is your exclusive discount",
+        welcomeEmailEnabled: false,
+        welcomeDiscountCode: "",
+        welcomeDiscountPercent: 0,
+        welcomeSubject: "",
         welcomeBodyHtml: "",
         spfVerified: false,
         dkimVerified: false,
@@ -141,10 +150,10 @@ export const getTenantSmtpConfig = createServerFn({ method: "GET" })
       lastTestAt: r.last_test_at || null,
       lastTestOk: r.last_test_ok ?? null,
       lastTestError: r.last_test_error || null,
-      welcomeEmailEnabled: r.welcome_email_enabled !== false,
-      welcomeDiscountCode: r.welcome_discount_code || "WELCOME20",
-      welcomeDiscountPercent: r.welcome_discount_percent || 20,
-      welcomeSubject: r.welcome_subject || "Welcome! Here is your exclusive discount",
+      welcomeEmailEnabled: Boolean(r.welcome_email_enabled),
+      welcomeDiscountCode: r.welcome_discount_code || "",
+      welcomeDiscountPercent: r.welcome_discount_percent || 0,
+      welcomeSubject: r.welcome_subject || "",
       welcomeBodyHtml: r.welcome_body_html || "",
       spfVerified: Boolean(r.spf_verified),
       dkimVerified: Boolean(r.dkim_verified),
@@ -218,15 +227,12 @@ export const saveTenantSmtpConfig = createServerFn({ method: "POST" })
       imap_user: data.imapUser !== undefined ? data.imapUser || null : existingRow?.imap_user,
       imap_pass_enc: imapPassEnc,
       imap_enabled: data.imapEnabled ?? existingRow?.imap_enabled ?? false,
-      welcome_email_enabled: data.welcomeEmailEnabled ?? existingRow?.welcome_email_enabled ?? true,
-      welcome_discount_code:
-        data.welcomeDiscountCode ?? existingRow?.welcome_discount_code ?? "WELCOME20",
+      welcome_email_enabled:
+        data.welcomeEmailEnabled ?? existingRow?.welcome_email_enabled ?? false,
+      welcome_discount_code: data.welcomeDiscountCode ?? existingRow?.welcome_discount_code ?? "",
       welcome_discount_percent:
-        data.welcomeDiscountPercent ?? existingRow?.welcome_discount_percent ?? 20,
-      welcome_subject:
-        data.welcomeSubject ??
-        existingRow?.welcome_subject ??
-        "Welcome! Here is your exclusive discount",
+        data.welcomeDiscountPercent ?? existingRow?.welcome_discount_percent ?? 0,
+      welcome_subject: data.welcomeSubject ?? existingRow?.welcome_subject ?? "",
       welcome_body_html: data.welcomeBodyHtml ?? existingRow?.welcome_body_html,
       // Any credential alteration resets verification state to ensure verified dispatch guarantee
       verified: false,
