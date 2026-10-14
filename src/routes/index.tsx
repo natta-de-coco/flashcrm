@@ -250,7 +250,7 @@ const CONNECTIONS = [
 const STEPS = [
   {
     title: "Connect",
-    body: "Add your WhatsApp number and link your social, ads and analytics accounts from the Integrations hub — each one has a step-by-step guide.",
+    body: "Add your WhatsApp number and link your social, ads and analytics accounts from Connect accounts — each one has a step-by-step guide.",
   },
   {
     title: "Capture",

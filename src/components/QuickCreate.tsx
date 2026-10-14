@@ -8,36 +8,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  FileText,
-  Mail,
-  Megaphone,
-  MessageSquare,
-  Package,
-  Plus,
-  Sparkles,
-  UserPlus,
-} from "lucide-react";
+import { Plus } from "lucide-react";
 import { useI18n } from "@/hooks/useI18n";
+import { useNavAccess } from "@/hooks/useNavAccess";
 
 /**
  * "+ Create" menu. Every entry lands on a real working flow — no dead
- * options — so the header shortcut always does something useful.
+ * options — so the header shortcut always does something useful. The entries
+ * live in lib/navigation.ts beside the menu, so what they open and what they
+ * are called cannot drift from it. Only the actions the signed-in role may open
+ * arrive here (the same rule as the sidebar, by hooks/useNavAccess; this file
+ * never names a role), and a role with none gets no button.
  */
-const ACTIONS = [
-  { label: "Lead", desc: "Capture or import leads", to: "/marketing", icon: UserPlus },
-  { label: "Contact", desc: "Add a person to the CRM", to: "/contacts", icon: UserPlus },
-  { label: "Message", desc: "Open a conversation", to: "/inbox", icon: MessageSquare },
-  { label: "Campaign", desc: "Email or WhatsApp campaign", to: "/marketing", icon: Mail },
-  { label: "Social post", desc: "Draft and schedule", to: "/social", icon: Megaphone },
-  { label: "SEO article", desc: "Image-to-post studio", to: "/seo-blog/studio", icon: Sparkles },
-  { label: "Product", desc: "Add to your catalog", to: "/catalog", icon: Package },
-  { label: "Content draft", desc: "Posts & articles", to: "/content", icon: FileText },
-] as const;
-
 export function QuickCreate({ compact = false }: { compact?: boolean }) {
   const { t, tx } = useI18n();
   const navigate = useNavigate();
+  const { quickCreate: actions } = useNavAccess();
+
+  if (actions.length === 0) return null;
 
   return (
     <DropdownMenu>
@@ -56,10 +44,14 @@ export function QuickCreate({ compact = false }: { compact?: boolean }) {
       <DropdownMenuContent align="end" className="w-64">
         <DropdownMenuLabel>{t("quickCreate.create")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {ACTIONS.map((action, index) => (
+        {actions.map(({ action, index }) => (
           <DropdownMenuItem
             key={action.label}
-            onSelect={() => void navigate({ to: action.to })}
+            onSelect={() =>
+              void navigate(
+                action.search ? { to: action.to, search: action.search } : { to: action.to },
+              )
+            }
             className="gap-2.5"
           >
             <action.icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />

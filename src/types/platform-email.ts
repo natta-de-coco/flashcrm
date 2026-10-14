@@ -1,10 +1,29 @@
-import type { Database } from "@/integrations/supabase/types";
-
-export type PlatformEmailConfigRow = Database["public"]["Tables"]["platform_email_config"]["Row"];
-export type PlatformEmailConfigInsert =
-  Database["public"]["Tables"]["platform_email_config"]["Insert"];
-export type PlatformEmailConfigUpdate =
-  Database["public"]["Tables"]["platform_email_config"]["Update"];
+// Declared by hand: the platform_email_config table (migration
+// 20261009010000) is not yet in the generated database types.
+export type PlatformEmailConfigRow = {
+  id: string;
+  from_email: string;
+  from_name: string;
+  smtp_host: string | null;
+  smtp_port: number;
+  smtp_user: string | null;
+  smtp_pass_enc: string | null;
+  smtp_secure: boolean;
+  imap_host: string | null;
+  imap_port: number;
+  imap_user: string | null;
+  imap_pass_enc: string | null;
+  imap_secure: boolean;
+  verified: boolean;
+  last_test_at: string | null;
+  last_test_ok: boolean | null;
+  last_test_error: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export type PlatformEmailConfigInsert = Partial<PlatformEmailConfigRow>;
+export type PlatformEmailConfigUpdate = Partial<PlatformEmailConfigRow>;
 
 /**
  * Public representation exposed to the Super Admin UI.

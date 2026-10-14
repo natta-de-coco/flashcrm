@@ -452,7 +452,7 @@ function CampaignPlannerPage() {
               ))
             ) : (
               <p className="text-xs text-muted-foreground">
-                No connected social accounts yet — connect one from the Social Hub to unlock
+                No connected social accounts yet — connect one in Social posts to unlock
                 channel-ranked recommendations.
               </p>
             )}

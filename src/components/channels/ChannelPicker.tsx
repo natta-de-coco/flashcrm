@@ -130,7 +130,9 @@ export function ChannelPicker({
           </p>
           <div className="flex gap-2">
             <Button asChild size="sm">
-              <Link to="/social">Go to Social Hub</Link>
+              <Link to="/social" search={{ tab: "comments" }}>
+                Go to Social posts
+              </Link>
             </Button>
             <Button size="sm" variant="outline" onClick={onDone}>
               Back to Social Channels

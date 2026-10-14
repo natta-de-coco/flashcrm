@@ -100,6 +100,7 @@ interface UntypedDbQuery {
   in: (col: string, vals: unknown[]) => UntypedDbQuery;
   order: (col: string, opts?: unknown) => UntypedDbQuery;
   limit: (count: number) => UntypedDbQuery;
+  range: (from: number, to: number) => UntypedDbQuery;
   single: <T = AnyRow>() => Promise<UntypedDbResult<T>>;
   maybeSingle: <T = AnyRow>() => Promise<UntypedDbResult<T>>;
   then: <T = AnyRow>(resolve: (val: UntypedDbResult<T>) => void) => Promise<unknown>;
@@ -382,8 +383,21 @@ export const testUserEmailAccount = createServerFn({ method: "POST" })
     }
   });
 
+/** What the settings page is told when the stored mail cannot be counted. */
+const STORAGE_NOT_READ_MESSAGE = "The storage used by your mailboxes could not be read just now.";
+
+/** A storage report is only a report: it never deletes, updates or writes anything. */
+const STORAGE_CAP_BYTES = 1073741824; // 1 GB
+const STORAGE_WARNING_BYTES = 912680550; // 85% of the cap
+const STORAGE_READ_PAGE = 500;
+const STORAGE_READ_MAX_PAGES = 2000;
+
 /**
- * Checks storage footprint and executes 1 GB auto-pruning
+ * Checks the storage footprint. This is a read: it adds up the size of the company's stored
+ * messages and reports it. It does NOT prune. (It used to call check_and_prune_tenant_email_storage,
+ * which deletes mail older than 60 days once a mailbox is 85% full, so merely opening the settings
+ * page could delete a customer's email. That database function still exists but nothing calls it;
+ * deleting old mail should become a deliberate, owner-approved action.)
  */
 export const getStorageBudgetReport = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -409,13 +423,26 @@ export const getStorageBudgetReport = createServerFn({ method: "GET" })
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // Invoke automated pruning RPC
-    const { data: res } = await dbAny(supabaseAdmin).rpc("check_and_prune_tenant_email_storage", {
-      target_tenant_id: profile.tenant_id,
-    });
+    // Add up every message's size, in pages (a single read stops at 1,000 rows without saying
+    // so). The next page starts after the rows actually received; a page with none ends it. A
+    // read that fails is an error: "could not count" must not look like "nothing stored".
+    let used = 0;
+    let received = 0;
+    for (let page = 0; ; page++) {
+      if (page >= STORAGE_READ_MAX_PAGES) throw new Error(STORAGE_NOT_READ_MESSAGE);
+      const { data: rows, error } = await dbAny(supabaseAdmin)
+        .from("portal_email_messages")
+        .select("storage_bytes")
+        .eq("tenant_id", profile.tenant_id)
+        .order("id", { ascending: true })
+        .range(received, received + STORAGE_READ_PAGE - 1);
+      if (error || !Array.isArray(rows)) throw new Error(STORAGE_NOT_READ_MESSAGE);
+      if (rows.length === 0) break;
+      received += rows.length;
+      for (const row of rows) used += Number(row.storage_bytes) || 0;
+    }
 
-    const used = res?.used_bytes || 0;
-    const max = res?.max_cap_bytes || 1073741824;
+    const max = STORAGE_CAP_BYTES;
     const mbUsed = (used / (1024 * 1024)).toFixed(1);
     const mbMax = (max / (1024 * 1024)).toFixed(0);
 
@@ -425,14 +452,21 @@ export const getStorageBudgetReport = createServerFn({ method: "GET" })
       usedFormatted: `${mbUsed} MB`,
       maxCapBytes: max,
       maxCapFormatted: `${mbMax} MB (1 GB)`,
-      usagePercent: res?.usage_percent || 0,
-      isCritical: Boolean(res?.is_critical),
-      purgedCount: res?.purged_count || 0,
+      usagePercent: Math.round((used / max) * 10000) / 100,
+      isCritical: used >= STORAGE_WARNING_BYTES,
+      // Nothing is deleted by a report.
+      purgedCount: 0,
     };
   });
 
+/** What the staff member is told: this path calls no sender, so no reply can go out yet. */
+const REPLY_NOT_SENT_MESSAGE = "Your reply was not sent. Email sending is not connected yet.";
+
 /**
- * Dispatches a 1-on-1 email from the portal using the representative's authenticated mailbox
+ * Meant to dispatch a 1-on-1 email from the portal using the representative's authenticated
+ * mailbox. Nothing in this code can send an email yet, so the reply is kept as a message with the
+ * status "failed" (never "sent", so the thread does not show a reply the customer never got) and
+ * the caller is refused with a plain sentence.
  */
 export const sendPortalEmailReply = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -493,18 +527,20 @@ export const sendPortalEmailReply = createServerFn({ method: "POST" })
         body_text: data.bodyText,
         body_html: bodyHtml,
         in_reply_to_header: data.inReplyTo || null,
-        status: "sent",
+        status: "failed",
+        error_message: REPLY_NOT_SENT_MESSAGE,
         storage_bytes: storageBytes,
       })
       .select("id")
       .single();
 
-    if (msgErr) throw msgErr;
+    // Keeping the unsent text is a courtesy; whether or not it was kept, nothing was sent.
+    if (msgErr || !messageRecord) {
+      console.error("[portal-email] Could not keep the unsent reply");
+      throw new Error(REPLY_NOT_SENT_MESSAGE);
+    }
 
-    // Trigger storage check and pruning
-    await dbAny(supabaseAdmin).rpc("check_and_prune_tenant_email_storage", {
-      target_tenant_id: profile.tenant_id,
-    });
+    // A reply that was not sent starts nothing else: in particular it does not prune (delete) mail.
 
-    return { ok: true, messageId: messageRecord?.id || "" };
+    throw new Error(REPLY_NOT_SENT_MESSAGE);
   });

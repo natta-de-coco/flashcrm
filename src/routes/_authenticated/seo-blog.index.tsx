@@ -11,7 +11,7 @@ import { SearchConsoleDashboard } from "@/components/seo/SearchConsoleDashboard"
 
 export const Route = createFileRoute("/_authenticated/seo-blog/")({
   head: () => ({
-    meta: [{ title: "SEO Studio — Flas CRM" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Website & SEO — Flas CRM" }, { name: "robots", content: "noindex" }],
   }),
   component: SeoBlogHub,
 });
@@ -69,6 +69,12 @@ function SeoBlogHub() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* /content is no longer in the sidebar; it is reached from here. */}
+          <Button variant="outline" asChild>
+            <Link to="/content">
+              <FileText className="size-4 me-1.5" /> {t("seoBlogIndex.savedDrafts")}
+            </Link>
+          </Button>
           {tab === "articles" ? (
             <Button asChild>
               <Link to="/seo-blog/studio" search={{ article: undefined }}>

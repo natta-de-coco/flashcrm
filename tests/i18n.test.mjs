@@ -119,7 +119,7 @@ describe("every navigation entry has its text", () => {
 
   it("covers each section title", () => {
     for (const section of [...NAV_SECTIONS, MANAGER_SECTION]) {
-      assert.ok(i18n.hasMessage(`nav.section.${section.title.toLowerCase()}`), section.title);
+      assert.ok(i18n.hasMessage(`nav.section.${section.id}`), section.title);
     }
   });
 });

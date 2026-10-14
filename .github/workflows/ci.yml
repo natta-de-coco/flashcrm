@@ -77,3 +77,7 @@ jobs:
         run: node supabase/verify/verify-default-wa-number.mjs
       - name: Open WhatsApp on a number held as a phone identity, and the identity-index report
         run: node supabase/verify/verify-open-contact-identities.mjs
+      - name: Workspace member removal and role change are atomic
+        run: node supabase/verify/verify-workspace-member-role.mjs
+      - name: Unsubscribe withdraws one company's consent in one transaction, server role only
+        run: node supabase/verify/verify-withdraw-marketing-consent.mjs
