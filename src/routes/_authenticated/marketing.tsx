@@ -10,10 +10,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/hooks/useI18n";
 import { navMessageKey } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  AI_DRAFT_FIELD_LIMITS,
-  CAMPAIGN_TOO_LONG,
-} from "@/lib/campaign-audience";
+import { AI_DRAFT_FIELD_LIMITS, CAMPAIGN_TOO_LONG } from "@/lib/campaign-audience";
 import { getCampaignAudience, saveCampaignDraft } from "@/lib/campaign-audience.functions";
 import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
