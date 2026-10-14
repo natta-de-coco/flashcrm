@@ -715,14 +715,16 @@ describe("campaign board", () => {
 
   it("never says a scheduled campaign was scheduled successfully, because nothing will send it", () => {
     assert.doesNotMatch(board, /Campaign scheduled successfully/);
-    assert.match(
-      board,
-      /Saved with a date\. Nothing will be sent until email sending is connected\./,
+    assert.match(board, /t\("marketing\.markedAsQueuedFlasCrm"\)/);
+    const translations = readFileSync(
+      new URL("../src/lib/i18n/screens/marketing.ts", import.meta.url),
+      "utf8",
     );
+    assert.match(translations, /Flas CRM does not send campaigns itself yet/);
   });
 
   it("shows that sentence everywhere a campaign is saved or moved to 'scheduled'", () => {
-    const uses = board.match(/toast\.success\([^;]*NOT_SENT_UNTIL_CONNECTED/g) ?? [];
+    const uses = board.match(/toast\.success\([^;]*t\("marketing\.markedAsQueuedFlasCrm"\)/g) ?? [];
     assert.equal(uses.length, 3, "new campaign, edited campaign, and a card moved to scheduled");
   });
 });
