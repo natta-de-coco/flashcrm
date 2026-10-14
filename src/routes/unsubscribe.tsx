@@ -7,7 +7,6 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { verifyUnsubscribeToken } from "@/lib/lead-automation.server";
 import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { CheckCircle2, ShieldAlert, Sparkles } from "lucide-react";
@@ -16,40 +15,8 @@ import { z } from "zod";
 const processUnsubscribeFn = createServerFn({ method: "POST" })
   .validator((d: { token: string }) => z.object({ token: z.string() }).parse(d))
   .handler(async ({ data }) => {
-    const res = verifyUnsubscribeToken(data.token);
-    if (!res.valid || !res.email) {
-      return { ok: false, error: res.error || "Invalid or expired unsubscribe link" };
-    }
-
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-
-    // Revoke marketing consent in leads
-    await supabaseAdmin
-      .from("leads")
-      .update({
-        subscribed: false,
-        consent_given: false,
-      })
-      .eq("email", res.email.toLowerCase().trim());
-
-    // Revoke marketing consent in contacts
-    if (res.tenantId) {
-      await supabaseAdmin
-        .from("contacts")
-        .update({
-          consent_given: false,
-        })
-        .eq("tenant_id", res.tenantId)
-        .eq("email", res.email.toLowerCase().trim());
-
-      const { cancelDripEnrollmentsForEmail } = await import("@/lib/drip-automation.server");
-      await cancelDripEnrollmentsForEmail(res.tenantId, res.email);
-    }
-
-    return {
-      ok: true,
-      email: res.email,
-    };
+    const { applyUnsubscribe } = await import("@/lib/unsubscribe.server");
+    return await applyUnsubscribe(data.token);
   });
 
 type UnsubscribeLoaderData =

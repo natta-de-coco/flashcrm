@@ -280,7 +280,10 @@ test("lead notification dispatcher never claims an email/WA send without transpo
     tenantId: "tenant-A",
     email: "demo@example.test",
   });
-  assert.deepEqual(result, { notifiedEmails: 0, notifiedWhatsApp: false, notifiedInApp: true });
+  assert.equal(result.notifiedEmails, 0);
+  assert.equal(result.notifiedWhatsApp, false);
+  assert.equal(result.notifiedInApp, true);
+  assert.match(result.emailNotSent, /not emailed/);
   const evidence = db.calls.find((q) => q.table === "lead_alerts_log");
   assert.equal(evidence.payload.length, 2);
   assert.ok(evidence.payload.every((row) => row.status === "failed"));

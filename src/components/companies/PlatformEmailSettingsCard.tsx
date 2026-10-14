@@ -232,7 +232,8 @@ export function PlatformEmailSettingsCard() {
         toast.success(`Test email dispatched to ${liveTestRecipient}`);
         setLiveTestRecipient("");
       } else {
-        toast.error(`Dispatch failed: ${res.message}`);
+        // The server's own sentence says what happened ("No test email was sent. ...").
+        toast.error(res.message);
       }
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Test email failed"),
