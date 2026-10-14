@@ -5,6 +5,7 @@
  * Lifecycle stages: Draft -> Scheduled -> In Progress -> Sent | Paused.
  */
 
+import { useI18n } from "@/hooks/useI18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -102,7 +103,11 @@ const STAGES: {
   },
 ];
 
+// Keep disabled until campaign delivery has a real transport and per-recipient evidence.
+const EMAIL_CAMPAIGNS_CAN_SEND = false;
+
 export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: CampaignBoardProps) {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<CampaignItem | null>(null);
@@ -110,13 +115,15 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
   const dispatchNowFn = useServerFn(dispatchCampaignNow);
   const dispatchNowMutation = useMutation({
     mutationFn: async (campaignId: string) => {
+      if (!EMAIL_CAMPAIGNS_CAN_SEND) {
+        throw new Error(t("marketing.sendingIsNotAutomatedYet"));
+      }
       if (!isSmtpVerified) {
         throw new Error("Cannot send broadcast without verified tenant SMTP credentials");
       }
       return await dispatchNowFn({ data: { campaignId } });
     },
-    onSuccess: (res) => {
-      toast.success(`Broadcast sent to ${res.recipientsCount} subscribers!`);
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
@@ -130,19 +137,23 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         );
       }
 
+      if (status === "sent") {
+        throw new Error(t("marketing.sendingIsNotAutomatedYet"));
+      }
+
       const updateData: Record<string, unknown> = { status };
       if (status === "scheduled") {
         updateData["scheduled_at"] = new Date().toISOString();
-      } else if (status === "sent") {
-        updateData["sent_at"] = new Date().toISOString();
       }
 
       const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
       const { error } = await campaignsTable.update(updateData).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      toast.success("Campaign stage updated");
+    onSuccess: (_data, { status }) => {
+      toast.success(
+        status === "scheduled" ? t("marketing.markedAsQueuedFlasCrm") : "Campaign stage updated",
+      );
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
     onError: (e: Error) => toast.error(friendlyError(e)),
@@ -179,7 +190,9 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         .eq("id", editingCampaign.id);
 
       if (error) throw error;
-      toast.success("Campaign updated successfully");
+      toast.success(
+        isScheduled ? t("marketing.markedAsQueuedFlasCrm") : "Campaign updated successfully",
+      );
     } else {
       const { error } = await campaignsTable.insert({
         name: data.name,
@@ -193,7 +206,7 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
       });
 
       if (error) throw error;
-      toast.success(isScheduled ? "Campaign scheduled successfully" : "Draft campaign saved");
+      toast.success(isScheduled ? t("marketing.markedAsQueuedFlasCrm") : "Draft campaign saved");
     }
 
     setEditingCampaign(null);
@@ -210,6 +223,11 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
             Manage your campaigns across 5 lifecycle stages. Audience pool: {audienceCount}{" "}
             consented subscribers.
           </p>
+          {!EMAIL_CAMPAIGNS_CAN_SEND && (
+            <p role="status" className="mt-2 text-xs text-muted-foreground">
+              {t("marketing.sendingIsNotAutomatedYet")}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -338,13 +356,17 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                                       size="icon"
                                       variant="ghost"
                                       className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
-                                      disabled={dispatchNowMutation.isPending}
+                                      disabled={
+                                        !EMAIL_CAMPAIGNS_CAN_SEND || dispatchNowMutation.isPending
+                                      }
                                       onClick={() => dispatchNowMutation.mutate(camp.id)}
                                     >
                                       <Send className="h-3 w-3" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Send broadcast now</TooltipContent>
+                                  <TooltipContent>
+                                    {t("marketing.sendingIsNotAutomatedYet")}
+                                  </TooltipContent>
                                 </Tooltip>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -374,13 +396,17 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                                     size="icon"
                                     variant="ghost"
                                     className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
-                                    disabled={dispatchNowMutation.isPending}
+                                    disabled={
+                                      !EMAIL_CAMPAIGNS_CAN_SEND || dispatchNowMutation.isPending
+                                    }
                                     onClick={() => dispatchNowMutation.mutate(camp.id)}
                                   >
                                     <Send className="h-3 w-3" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Complete & mark sent</TooltipContent>
+                                <TooltipContent>
+                                  {t("marketing.sendingIsNotAutomatedYet")}
+                                </TooltipContent>
                               </Tooltip>
                             )}
 
