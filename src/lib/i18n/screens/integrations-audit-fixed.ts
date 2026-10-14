@@ -7,9 +7,8 @@ export default screen({
   en: {
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "Disconnected. Existing FLAS history is kept.",
-    "integrationsAuditFixed.setupIsManagedFromThis":
-      "{name} setup is managed from this Integrations page.",
-    "integrationsAuditFixed.integrations": "Integrations",
+    "integrationsAuditFixed.setupIsManagedFromThis": "{name} setup is managed from this page.",
+    "integrationsAuditFixed.integrations": "Connect accounts",
     "integrationsAuditFixed.connectTheToolsYourTeam":
       "Connect the tools your team uses and manage every account from one clear place.",
     "integrationsAuditFixed.healthReport": "Health report",
@@ -142,8 +141,8 @@ export default screen({
   ar: {
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "تم قطع الاتصال. سجل FLAS الحالي محفوظ.",
-    "integrationsAuditFixed.setupIsManagedFromThis": "إعداد {name} يُدار من صفحة التكاملات هذه.",
-    "integrationsAuditFixed.integrations": "التكاملات",
+    "integrationsAuditFixed.setupIsManagedFromThis": "إعداد {name} يُدار من هذه الصفحة.",
+    "integrationsAuditFixed.integrations": "ربط الحسابات",
     "integrationsAuditFixed.connectTheToolsYourTeam":
       "اربط الأدوات التي يستخدمها فريقك وأدِر كل الحسابات من مكان واحد واضح.",
     "integrationsAuditFixed.healthReport": "تقرير الحالة",
@@ -274,9 +273,8 @@ export default screen({
   ms: {
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "Diputuskan. Sejarah FLAS sedia ada dikekalkan.",
-    "integrationsAuditFixed.setupIsManagedFromThis":
-      "Persediaan {name} diurus dari halaman Integrasi ini.",
-    "integrationsAuditFixed.integrations": "Integrasi",
+    "integrationsAuditFixed.setupIsManagedFromThis": "Persediaan {name} diurus dari halaman ini.",
+    "integrationsAuditFixed.integrations": "Sambung Akaun",
     "integrationsAuditFixed.connectTheToolsYourTeam":
       "Sambungkan alat yang digunakan pasukan anda dan urus setiap akaun dari satu tempat yang jelas.",
     "integrationsAuditFixed.healthReport": "Laporan kesihatan",
@@ -412,8 +410,8 @@ export default screen({
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "Na-disconnect. Nananatili ang kasalukuyang history sa FLAS.",
     "integrationsAuditFixed.setupIsManagedFromThis":
-      "Pinamamahalaan ang setup ng {name} mula sa page na ito ng Mga Integrasyon.",
-    "integrationsAuditFixed.integrations": "Mga Integrasyon",
+      "Pinamamahalaan ang setup ng {name} mula sa page na ito.",
+    "integrationsAuditFixed.integrations": "Ikonekta ang mga Account",
     "integrationsAuditFixed.connectTheToolsYourTeam":
       "Ikonekta ang mga tool na ginagamit ng iyong team at pamahalaan ang bawat account mula sa iisang malinaw na lugar.",
     "integrationsAuditFixed.healthReport": "Health report",
@@ -549,8 +547,8 @@ export default screen({
     "integrationsAuditFixed.disconnectedExistingFlasHistoryIs":
       "Imetenganishwa. Historia iliyopo ya FLAS imehifadhiwa.",
     "integrationsAuditFixed.setupIsManagedFromThis":
-      "Usanidi wa {name} unasimamiwa kutoka ukurasa huu wa Miunganisho.",
-    "integrationsAuditFixed.integrations": "Miunganisho",
+      "Usanidi wa {name} unasimamiwa kutoka ukurasa huu.",
+    "integrationsAuditFixed.integrations": "Unganisha Akaunti",
     "integrationsAuditFixed.connectTheToolsYourTeam":
       "Unganisha zana ambazo timu yako hutumia na usimamie kila akaunti kutoka mahali pamoja palipo wazi.",
     "integrationsAuditFixed.healthReport": "Ripoti ya hali",
