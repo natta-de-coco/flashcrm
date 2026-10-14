@@ -450,8 +450,18 @@ describe("ordinary values give the same files as before the fix, except the chan
       sha(files["flas-crm-shopify/sections/flas-lead-capture.liquid"]),
       before["flas-crm-shopify/sections/flas-lead-capture.liquid"],
     );
+    // The README changed in one place only: step 6 names the menu entry "Leads &
+    // email" (it was "Leads & Marketing"). Put the old words back and it is what
+    // it was, so no encoder or structure moved.
+    const install = files["flas-crm-shopify/INSTALL.txt"];
+    assert.ok(install.includes("open Leads & email, pick this site"));
     assert.equal(
-      sha(files["flas-crm-shopify/INSTALL.txt"]),
+      sha(
+        install.replace(
+          "open Leads & email, pick this site",
+          "open Leads & Marketing, pick this site",
+        ),
+      ),
       before["flas-crm-shopify/INSTALL.txt"],
     );
   });

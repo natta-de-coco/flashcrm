@@ -119,7 +119,7 @@ describe("every navigation entry has its text", () => {
 
   it("covers each section title", () => {
     for (const section of [...NAV_SECTIONS, MANAGER_SECTION]) {
-      assert.ok(i18n.hasMessage(`nav.section.${section.title.toLowerCase()}`), section.title);
+      assert.ok(i18n.hasMessage(`nav.section.${section.id}`), section.title);
     }
   });
 });
@@ -242,7 +242,7 @@ describe("the page is rendered in the chosen language and direction", () => {
 
   it("reads the language before rendering, on the server too", () => {
     assert.match(root, /beforeLoad: \(\) => \(\{ uiLanguage: readUiLanguage\(\) \}\)/);
-    assert.match(root, /<html lang=\{uiLanguage\} dir=\{directionOf\(uiLanguage\)\}>/);
+    assert.match(root, /<html lang=\{uiLanguage\} dir=\{directionOf\(uiLanguage\)\}/);
     assert.ok(!root.includes('<html lang="en">'), "the language was hard-coded");
   });
 

@@ -152,25 +152,35 @@ export async function generateArticleDraft(
 ): Promise<SeoDraft> {
   const biz = await getBusinessContext(supabase);
   const system =
-    "You are Flas AI, an expert SEO content writer. You write long-form articles that rank and read like a human expert wrote them. " +
+    "You are Flas AI, an elite SEO and growth marketing specialist operating under the Brand & Product Comparison and Benchmark Framework. " +
+    "You write high-authority, data-backed articles designed to win Google Featured Snippets, dominate AI Overviews (SGE), and convert commercial intent searchers into qualified buyers. " +
     "You respond with ONLY valid JSON — no markdown fences, no commentary.";
-  const user = `Write a complete SEO blog article.
 
-Business: ${biz?.business_name ?? "the company"} (${biz?.industry ?? params.industry})
-About the business: ${biz?.description ?? "n/a"}
-Known facts: ${biz?.learned_facts ?? "n/a"}
-Primary keyword: ${params.primaryKeyword}
-Industry/niche: ${params.industry}
-Search intent: ${params.intent}
-Tone of voice: ${params.tone}
-Secondary keywords to weave in naturally: ${params.secondaryKeywords.join(", ") || "choose 4-6 relevant LSI keywords yourself"}
-${params.visionSummary ? `Visual context from product/brand images: ${params.visionSummary}` : ""}
+  const user = `Write a high-ranking, publication-ready SEO article based on our company knowledge base and benchmark methodologies.
 
-Requirements:
-- 900-1400 words of body content in clean HTML using only <h2>, <h3>, <p>, <ul>, <li>, <blockquote>, <strong>, <em> tags. No <h1> (the title is separate) and no markdown.
-- Structure: engaging intro, 4-6 H2 sections (some with H3 subsections), one blockquote highlight, a key-takeaways list, and a closing call-to-action paragraph.
-- Use the primary keyword in the first paragraph and in at least one H2.
-- Suggest 3 FAQ entries related to the topic.
+COMPANY KNOWLEDGE BASE:
+Business Name: ${biz?.business_name ?? "the company"}
+Industry/Niche: ${biz?.industry ?? params.industry}
+Description: ${biz?.description ?? "n/a"}
+Known Facts & Capabilities: ${biz?.learned_facts ?? "n/a"}
+Website / Channels: ${biz?.website_url ?? "n/a"}
+${biz?.qa ? `Common Q&A: ${JSON.stringify(biz.qa)}` : ""}
+
+TARGET KEYWORDS & PARAMETERS:
+Primary Keyword: ${params.primaryKeyword}
+Search Intent: ${params.intent} (Optimize specifically for commercial investigation & decision-making)
+Tone of Voice: ${params.tone}
+Secondary / LSI Keywords to weave in naturally: ${params.secondaryKeywords.join(", ") || "choose 4-6 high-intent LSI keywords"}
+${params.visionSummary ? `Visual Context from Images: ${params.visionSummary}` : ""}
+
+ELITE SEO & BENCHMARK REQUIREMENTS:
+1. 1,000–1,500 words of rich, authoritative body HTML using <h2>, <h3>, <p>, <ul>, <ol>, <li>, <table>, <thead>, <tbody>, <tr>, <th>, <td>, <blockquote>, <strong>, <em> tags. (NO <h1> tags; title is separate).
+2. Featured Snippet Hook: In the very first section under <h2>, include a bold 45–55 word direct answer paragraph that directly addresses the core search query so Google can scrape it for the Featured Snippet / AI Overview.
+3. Benchmark / Comparison Table: Include at least ONE comprehensive semantic HTML <table> with <thead> and <tbody> comparing workflows, metrics, or options side-by-side with clear, objective criteria.
+4. Stress-Test Scenario: Include a real-world scenario (e.g. an order revision, handling incomplete customer info, or shift handoffs) that tests performance under operational reality rather than abstract feature counts.
+5. Defensible Trade-offs (E-E-A-T): Be genuinely helpful and objective—include a clear breakdown of where our business excels and the exact situations where an alternative solution is the better choice.
+6. Keyword Optimization: Maintain natural keyword density (1.2%–2.2%) for "${params.primaryKeyword}" and weave in all secondary keywords seamlessly.
+7. High-Intent FAQ: Suggest 3–4 detailed FAQ entries formulated around "People Also Ask" questions.
 
 Respond in EXACTLY this JSON shape:
 {"title": string, "metaTitle": string (50-60 chars, includes primary keyword), "metaDescription": string (140-155 chars), "slug": string (lowercase-hyphenated), "excerpt": string (1-2 sentences), "contentHtml": string, "secondaryKeywords": string[] (4-6), "faq": [{"q": string, "a": string}]}`;
@@ -192,7 +202,90 @@ Respond in EXACTLY this JSON shape:
   };
 }
 
-export type MicroPost = { platform: string; text: string; hashtags: string[] };
+export type PlatformKey = "instagram" | "linkedin" | "tiktok" | "facebook" | "twitter";
+
+export type PlatformSpec = {
+  key: PlatformKey;
+  platformName: string;
+  aspectRatio: string;
+  resolution: string;
+  mediaType: string;
+  charLimit: number;
+  recommendedStyle: string;
+  hookGuide: string;
+};
+
+export const PLATFORM_SPECS: Record<PlatformKey, PlatformSpec> = {
+  instagram: {
+    key: "instagram",
+    platformName: "Instagram",
+    aspectRatio: "4:5 (Portrait) or 1:1 (Square)",
+    resolution: "1080 x 1350 px",
+    mediaType: "Carousel / Reel / High-Contrast Image",
+    charLimit: 2200,
+    recommendedStyle:
+      "Visual hook in line 1, clean line breaks, micro-story/carousel caption, conversational emojis, clear CTA.",
+    hookGuide:
+      "Start with an unexpected question or relatable friction point before the caption cutoff.",
+  },
+  linkedin: {
+    key: "linkedin",
+    platformName: "LinkedIn",
+    aspectRatio: "1.91:1 (Landscape) or 1:1 (Square)",
+    resolution: "1200 x 627 px (Feed) / 1080 x 1350 px (PDF)",
+    mediaType: "Document Carousel / Infographic",
+    charLimit: 3000,
+    recommendedStyle:
+      "Professional insight, contrarian industry data point, 3-4 bullet takeaways, discussion-starter question.",
+    hookGuide:
+      "Contrarian statement or high-value data benchmark that challenges standard business assumptions.",
+  },
+  tiktok: {
+    key: "tiktok",
+    platformName: "TikTok",
+    aspectRatio: "9:16 (Full Screen Vertical)",
+    resolution: "1080 x 1920 px",
+    mediaType: "Vertical Video Script & Caption",
+    charLimit: 2200,
+    recommendedStyle:
+      "3-part script: [0-3s Visual Hook] + [Core Voiceover] + [Caption & CTA] + 4-6 viral and niche discovery tags.",
+    hookGuide:
+      "High-energy 3-second pattern interrupt directly addressing a major workflow frustration.",
+  },
+  facebook: {
+    key: "facebook",
+    platformName: "Facebook",
+    aspectRatio: "1.91:1 (Landscape) or 1:1 (Square)",
+    resolution: "1200 x 630 px",
+    mediaType: "Image with Rich Link Preview",
+    charLimit: 63206,
+    recommendedStyle:
+      "Community-driven, conversational storytelling, relatable pain points, clear discussion trigger.",
+    hookGuide:
+      "Relatable business or customer scenario that invites community comments and shares.",
+  },
+  twitter: {
+    key: "twitter",
+    platformName: "X (Twitter)",
+    aspectRatio: "16:9 (Landscape)",
+    resolution: "1200 x 675 px",
+    mediaType: "Single Image / Post Card",
+    charLimit: 280,
+    recommendedStyle:
+      "Punchy one-liner hook, bold insight, tight concise wording, 1-2 focused hashtags.",
+    hookGuide:
+      "Bold thesis or punchy stat under 100 characters that compels a repost or quote-tweet.",
+  },
+};
+
+export type MicroPost = {
+  platform: PlatformKey;
+  platformName: string;
+  text: string;
+  hashtags: string[];
+  specs: PlatformSpec;
+  verified?: boolean;
+};
 
 export async function generateMicroPosts(
   supabase: RlsClient,
@@ -200,21 +293,169 @@ export async function generateMicroPosts(
 ): Promise<MicroPost[]> {
   const biz = await getBusinessContext(supabase);
   const system =
-    "You are Flas AI, a social media copywriter. Respond with ONLY valid JSON — no markdown fences.";
-  const user = `Create omnichannel micro-posts for: Meta (Facebook/Instagram), LinkedIn, and TikTok.
+    "You are Flas AI, an elite omnichannel growth marketer specializing in platform-native social copywriting, visual resolution optimization, psychological hooks, and 3-tier hashtag architecture. " +
+    "You write uniquely for every social network according to its exact culture, aspect ratios, and character constraints. " +
+    "You respond with ONLY valid JSON — no markdown fences.";
 
-Business: ${biz?.business_name ?? "the company"} — ${biz?.description ?? params.industry}
-Topic/keyword: ${params.primaryKeyword}
+  const user = `Create high-converting social posts tailored for each platform's unique writing style, resolution specs, and audience:
+
+COMPANY KNOWLEDGE BASE:
+Business Name: ${biz?.business_name ?? "the company"}
+Industry: ${biz?.description ?? params.industry}
+Key Offerings & Facts: ${biz?.learned_facts ?? "n/a"}
+Website: ${biz?.website_url ?? "n/a"}
+Topic/Primary Keyword: ${params.primaryKeyword}
 Tone: ${params.tone}
-${params.visionSummary ? `Visual context: ${params.visionSummary}` : ""}
+${params.visionSummary ? `Visual Context: ${params.visionSummary}` : ""}
+
+PLATFORM SPECIFIC REQUIREMENTS:
+1. Instagram (Resolution: 1080x1350px 4:5): Visual hook in line 1, clean paragraph spacing, storytelling caption, conversational tone, 5-8 hashtags (3-Tier method).
+2. LinkedIn (Resolution: 1200x627px 1.91:1): Thought-leadership or contrarian benchmark hook, 3-4 bullet takeaways, professional tone, engaging closing question, 3-5 tags.
+3. TikTok (Resolution: 1080x1920px 9:16): Script format with [Hook: 0-3s visual text], [Voiceover / demo], and [Caption + CTA], 4-6 tags.
+4. Facebook (Resolution: 1200x630px 1.91:1): Conversational community post, relatable pain point, link/action prompt, 2-3 tags.
+5. Twitter / X (Resolution: 1200x675px 16:9): Sharp, punchy text STRICTLY UNDER 260 characters, bold thesis/stat, 1-2 tags.
 
 Respond in EXACTLY this JSON shape:
-{"posts": [{"platform": "Meta" | "LinkedIn" | "TikTok", "text": string (platform-appropriate length and style), "hashtags": string[] (3-6, no # prefix)}]}`;
+{"posts": [
+  {"platform": "instagram", "text": string, "hashtags": string[]},
+  {"platform": "linkedin", "text": string, "hashtags": string[]},
+  {"platform": "tiktok", "text": string, "hashtags": string[]},
+  {"platform": "facebook", "text": string, "hashtags": string[]},
+  {"platform": "twitter", "text": string, "hashtags": string[]}
+]}`;
 
   const text = await callFlashAi(system, user, await aiOptionsFor(supabase, "seo_micro_posts"));
-  const parsed = parseJsonBlock<{ posts?: MicroPost[] }>(text);
+  const parsed = parseJsonBlock<{
+    posts?: Array<{ platform: string; text: string; hashtags: string[] }>;
+  }>(text);
   if (!parsed?.posts?.length) throw new Error("Flas AI returned no posts — try again.");
-  return parsed.posts;
+
+  return parsed.posts.map((p) => {
+    const rawKey = p.platform.toLowerCase();
+    const key: PlatformKey = rawKey.includes("insta")
+      ? "instagram"
+      : rawKey.includes("link")
+        ? "linkedin"
+        : rawKey.includes("tik")
+          ? "tiktok"
+          : rawKey.includes("face")
+            ? "facebook"
+            : rawKey.includes("twit") || rawKey.includes("x")
+              ? "twitter"
+              : "instagram";
+    const specs = PLATFORM_SPECS[key];
+    return {
+      platform: key,
+      platformName: specs.platformName,
+      text: p.text,
+      hashtags: p.hashtags.map((h) => h.replace(/^#/, "").trim()).filter(Boolean),
+      specs,
+      verified: false,
+    };
+  });
+}
+
+/** Recreates or regenerates copy for a single platform using its specific guidelines. */
+export async function generateSingleMicroPost(
+  supabase: RlsClient,
+  input: { platform: PlatformKey; params: DraftParams },
+): Promise<MicroPost> {
+  const biz = await getBusinessContext(supabase);
+  const specs = PLATFORM_SPECS[input.platform];
+  const system =
+    `You are Flas AI, specializing in ${specs.platformName} marketing, hooks, and format optimization. ` +
+    `Resolution: ${specs.resolution} (${specs.aspectRatio}). Style: ${specs.recommendedStyle}. ` +
+    "Respond with ONLY valid JSON — no markdown fences.";
+
+  const user = `Write a fresh, high-performing post for ${specs.platformName}.
+Topic: ${input.params.primaryKeyword}
+Tone: ${input.params.tone}
+Business: ${biz?.business_name ?? "the company"} (${biz?.industry ?? input.params.industry})
+Known facts: ${biz?.learned_facts ?? "n/a"}
+${input.params.visionSummary ? `Visual Context: ${input.params.visionSummary}` : ""}
+
+Constraints:
+- ${specs.platformName} native format: ${specs.recommendedStyle}
+- Character limit: ${specs.charLimit} chars max
+- Include 3-6 relevant hashtags without '#' prefix
+
+Respond in EXACTLY this JSON shape:
+{"text": string, "hashtags": string[]}`;
+
+  const text = await callFlashAi(system, user, await aiOptionsFor(supabase, "seo_micro_posts"));
+  const parsed = parseJsonBlock<{ text?: string; hashtags?: string[] }>(text);
+  if (!parsed?.text) throw new Error(`Could not generate new post for ${specs.platformName}.`);
+
+  return {
+    platform: input.platform,
+    platformName: specs.platformName,
+    text: parsed.text,
+    hashtags: (parsed.hashtags ?? []).map((h) => h.replace(/^#/, "").trim()).filter(Boolean),
+    specs,
+    verified: false,
+  };
+}
+
+/** Publishes a verified micro-post into the CRM's social pipeline (social_posts). */
+export async function publishMicroPostToSocial(
+  supabase: RlsClient,
+  input: {
+    platform: PlatformKey;
+    text: string;
+    hashtags: string[];
+    scheduledAt?: string | null;
+  },
+): Promise<{ ok: boolean; postId?: string | undefined; accountName?: string | undefined }> {
+  const fullCaption =
+    `${input.text.trim()}\n\n${input.hashtags.map((h) => `#${h}`).join(" ")}`.trim();
+
+  // Find matching connected account if one exists
+  const client = supabase as unknown as {
+    from: (table: string) => {
+      select: (cols: string) => {
+        eq: (
+          col: string,
+          val: unknown,
+        ) => {
+          eq: (
+            col: string,
+            val: unknown,
+          ) => {
+            limit: (n: number) => {
+              maybeSingle: () => Promise<{ data: { id: string; label: string } | null }>;
+            };
+          };
+        };
+      };
+      insert: (record: Record<string, unknown>) => {
+        select: (col: string) => {
+          single: () => Promise<{ data: { id: string } | null; error: unknown }>;
+        };
+      };
+    };
+  };
+
+  const { data: account } = await client
+    .from("social_accounts")
+    .select("id, label")
+    .eq("platform", input.platform)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
+
+  const { data: created, error } = await client
+    .from("social_posts")
+    .insert({
+      caption: fullCaption,
+      account_id: account?.id ?? null,
+      status: input.scheduledAt ? "scheduled" : "draft",
+      scheduled_at: input.scheduledAt ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  return { ok: true, postId: created?.id, accountName: account?.label };
 }
 
 /** One-click pass that rewrites robotic AI phrasing into natural prose. */

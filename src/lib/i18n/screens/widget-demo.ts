@@ -16,7 +16,7 @@ export default screen({
       "The chat launcher in the bottom-right corner is the real widget, loaded from {code}. Open it and you will see exactly what a visitor sees.",
     "widgetDemo.noSiteKeySupplied": "No site key supplied",
     "widgetDemo.integrationsWebsiteChatWidgetPreview":
-      "Integrations → Website chat widget → Preview the widget",
+      "Connect accounts → Website chat widget → Preview the widget",
     "widgetDemo.addYourWebsite": "Add your website",
     "widgetDemo.theWidgetNeedsASite":
       "The widget needs a site key to know which workspace a conversation belongs to, so nothing is loaded on this page. Open this preview from {strong}, which passes your key automatically. If you have no website added yet, create one first under {strong2}.",
@@ -46,7 +46,7 @@ export default screen({
       "زر المحادثة في الزاوية السفلية هو الأداة الحقيقية، محمَّلة من {code}. افتحه وسترى بالضبط ما يراه الزائر.",
     "widgetDemo.noSiteKeySupplied": "لم يُقدَّم مفتاح موقع",
     "widgetDemo.integrationsWebsiteChatWidgetPreview":
-      "التكاملات ← أداة محادثة الموقع ← معاينة الأداة",
+      "ربط الحسابات ← أداة محادثة الموقع ← معاينة الأداة",
     "widgetDemo.addYourWebsite": "أضف موقعك",
     "widgetDemo.theWidgetNeedsASite":
       "تحتاج الأداة مفتاح موقع لتعرف إلى أي مساحة عمل تنتمي المحادثة، فلا يُحمَّل شيء في هذه الصفحة. افتح هذه المعاينة من {strong}، حيث يُمرَّر مفتاحك تلقائيًا. وإن لم تضف موقعًا بعد، فأنشئ واحدًا أولًا من {strong2}.",
@@ -74,7 +74,7 @@ export default screen({
       "Pelancar sembang di penjuru bawah ialah widget sebenar, dimuatkan dari {code}. Buka dan anda akan melihat apa yang dilihat pelawat.",
     "widgetDemo.noSiteKeySupplied": "Tiada kunci laman dibekalkan",
     "widgetDemo.integrationsWebsiteChatWidgetPreview":
-      "Integrasi → Widget sembang laman web → Pratonton widget",
+      "Sambung Akaun → Widget sembang laman web → Pratonton widget",
     "widgetDemo.addYourWebsite": "Tambah laman web anda",
     "widgetDemo.theWidgetNeedsASite":
       "Widget memerlukan kunci laman untuk mengetahui ruang kerja mana sesuatu perbualan dimiliki, jadi tiada apa-apa dimuatkan pada halaman ini. Buka pratonton ini dari {strong}, yang menghantar kunci anda secara automatik. Jika anda belum menambah laman web, cipta satu dahulu di bawah {strong2}.",
@@ -104,7 +104,7 @@ export default screen({
       "Ang chat launcher sa ibabang sulok ay ang totoong widget, na-load mula sa {code}. Buksan ito at makikita mo mismo ang nakikita ng bisita.",
     "widgetDemo.noSiteKeySupplied": "Walang ibinigay na site key",
     "widgetDemo.integrationsWebsiteChatWidgetPreview":
-      "Mga Integrasyon → Website chat widget → I-preview ang widget",
+      "Ikonekta ang mga Account → Website chat widget → I-preview ang widget",
     "widgetDemo.addYourWebsite": "Idagdag ang iyong website",
     "widgetDemo.theWidgetNeedsASite":
       "Kailangan ng widget ng site key para malaman kung saang workspace kabilang ang usapan, kaya walang nilo-load sa page na ito. Buksan ang preview na ito mula sa {strong}, na awtomatikong nagpapasa ng iyong key. Kung wala ka pang naidagdag na website, gumawa muna ng isa sa ilalim ng {strong2}.",
@@ -134,7 +134,7 @@ export default screen({
       "Kitufe cha gumzo kwenye kona ya chini ndicho kifaa halisi, kimepakiwa kutoka {code}. Kifungue na utaona hasa anachoona mgeni.",
     "widgetDemo.noSiteKeySupplied": "Hakuna ufunguo wa tovuti uliotolewa",
     "widgetDemo.integrationsWebsiteChatWidgetPreview":
-      "Miunganisho → Kifaa cha gumzo cha tovuti → Onyesha kifaa",
+      "Unganisha Akaunti → Kifaa cha gumzo cha tovuti → Onyesha kifaa",
     "widgetDemo.addYourWebsite": "Ongeza tovuti yako",
     "widgetDemo.theWidgetNeedsASite":
       "Kifaa kinahitaji ufunguo wa tovuti ili kujua mazungumzo ni ya eneo gani la kazi, kwa hiyo hakuna kinachopakiwa kwenye ukurasa huu. Fungua onyesho hili kutoka {strong}, ambayo hupitisha ufunguo wako kiotomatiki. Ikiwa bado hujaongeza tovuti, unda moja kwanza chini ya {strong2}.",

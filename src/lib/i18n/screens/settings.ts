@@ -33,8 +33,7 @@ export default screen({
     "role.staff.label": "Staff",
     "role.staff.hint": "Inbox, contacts, quotes and products. Cannot change company setup.",
     "role.seo_editor.label": "SEO editor",
-    "role.seo_editor.hint": "Content and SEO Studio only. No inbox, no customer data.",
-
+    "role.seo_editor.hint": "Website & SEO and saved drafts only. No inbox, no customer data.",
     "settings.security.title": "Security — two-factor authentication",
     "settings.security.desc":
       "Require a one-time code from an authenticator app (Google Authenticator, 1Password, …) in addition to your password when signing in.",
@@ -50,7 +49,6 @@ export default screen({
     "settings.security.startFirst": "Start enrollment first",
     "settings.security.enabled": "Two-factor authentication is on",
     "settings.security.removed": "Two-factor authentication removed",
-
     "settings.data.title": "Data & privacy",
     "settings.data.desc":
       "Export everything in this workspace, or ask us to delete it. See our {privacy} and {terms}.",
@@ -78,7 +76,6 @@ export default screen({
     "settings.data.exportTruncated":
       "Export downloaded, but {tables} hit the {limit}-row safety limit and may be incomplete. Contact support for a full export.",
     "settings.data.requested": "Deletion request submitted — we'll process it within 30 days.",
-
     "settings.billing.title": "Subscription & Billing",
     "settings.billing.desc":
       "Flas WhatsApp Tool — normally $30/month. Launch offer: $20/month for your first six months, or $240 a year instead of $360. Manage or cancel anytime.",
@@ -102,7 +99,6 @@ export default screen({
       "Cancellation is self-service from the billing portal — you keep access until the end of the paid period.",
     "settings.billing.activated": "Subscription activated — welcome aboard!",
     "settings.billing.portalFailed": "Could not open the billing portal",
-
     "settings.audit.title": "Audit log",
     "settings.audit.desc":
       "Every consent capture, routing decision, import/export and message action — kept for compliance and troubleshooting. Entries cannot be edited or deleted.",
@@ -127,7 +123,6 @@ export default screen({
     "settings.audit.action.api.access": "External API access",
     "settings.audit.action.webhook.signature_rejected": "Webhook rejected",
     "settings.audit.action.company.subscription_update": "Subscription changed",
-
     "settings.api.title": "API keys",
     "settings.api.desc":
       "Give your other tools read access to this workspace. Each key is scoped — it only sees this company's data, and only what you allow. Endpoint: {endpoint} (also contacts, conversations, numbers) with {header}",
@@ -177,8 +172,8 @@ export default screen({
     "role.staff.hint":
       "صندوق الوارد وجهات الاتصال وعروض الأسعار والمنتجات. لا يمكنه تغيير إعداد الشركة.",
     "role.seo_editor.label": "محرر تحسين البحث",
-    "role.seo_editor.hint": "المحتوى واستوديو تحسين البحث فقط. دون صندوق الوارد أو بيانات العملاء.",
-
+    "role.seo_editor.hint":
+      "الموقع وتحسين البحث والمسودات المحفوظة فقط. دون صندوق الوارد أو بيانات العملاء.",
     "settings.security.title": "الأمان — التحقق بخطوتين",
     "settings.security.desc":
       "اطلب رمزًا لمرة واحدة من تطبيق مصادقة (Google Authenticator أو 1Password أو غيرهما) إضافةً إلى كلمة المرور عند تسجيل الدخول.",
@@ -194,7 +189,6 @@ export default screen({
     "settings.security.startFirst": "ابدأ الإعداد أولًا",
     "settings.security.enabled": "تم تفعيل التحقق بخطوتين",
     "settings.security.removed": "أُزيل التحقق بخطوتين",
-
     "settings.data.title": "البيانات والخصوصية",
     "settings.data.desc":
       "صدّر كل ما في مساحة العمل هذه، أو اطلب منا حذفه. راجع {privacy} و{terms}.",
@@ -222,7 +216,6 @@ export default screen({
     "settings.data.exportTruncated":
       "تم تنزيل التصدير، لكن {tables} بلغت حد الأمان البالغ {limit} صف وقد تكون غير مكتملة. تواصل مع الدعم للحصول على تصدير كامل.",
     "settings.data.requested": "قُدّم طلب الحذف — سنعالجه خلال 30 يومًا.",
-
     "settings.billing.title": "الاشتراك والفوترة",
     "settings.billing.desc":
       "أداة Flas لواتساب — السعر المعتاد 30 دولارًا شهريًا. عرض الإطلاق: 20 دولارًا شهريًا لأول ستة أشهر، أو 240 دولارًا سنويًا بدلًا من 360. يمكنك الإدارة أو الإلغاء في أي وقت.",
@@ -245,7 +238,6 @@ export default screen({
       "الإلغاء ذاتي من بوابة الفوترة — يبقى الوصول متاحًا حتى نهاية الفترة المدفوعة.",
     "settings.billing.activated": "تم تفعيل الاشتراك — أهلًا بك!",
     "settings.billing.portalFailed": "تعذّر فتح بوابة الفوترة",
-
     "settings.audit.title": "سجل التدقيق",
     "settings.audit.desc":
       "كل تسجيل موافقة وقرار توجيه واستيراد/تصدير وإجراء على الرسائل — محفوظ للامتثال واستكشاف الأخطاء. لا يمكن تعديل الإدخالات أو حذفها.",
@@ -270,7 +262,6 @@ export default screen({
     "settings.audit.action.api.access": "وصول خارجي عبر API",
     "settings.audit.action.webhook.signature_rejected": "رُفض ويب هوك",
     "settings.audit.action.company.subscription_update": "تغيّر الاشتراك",
-
     "settings.api.title": "مفاتيح API",
     "settings.api.desc":
       "امنح أدواتك الأخرى صلاحية قراءة مساحة العمل هذه. لكل مفتاح نطاق محدد — يرى بيانات هذه الشركة فقط، وما تسمح به فقط. نقطة الوصول: {endpoint} (وأيضًا جهات الاتصال والمحادثات والأرقام) مع {header}",
@@ -322,8 +313,7 @@ export default screen({
       "Peti masuk, kenalan, sebut harga dan produk. Tidak boleh menukar tetapan syarikat.",
     "role.seo_editor.label": "Editor SEO",
     "role.seo_editor.hint":
-      "Kandungan dan Studio SEO sahaja. Tiada peti masuk, tiada data pelanggan.",
-
+      "Laman Web & SEO dan draf tersimpan sahaja. Tiada peti masuk, tiada data pelanggan.",
     "settings.security.title": "Keselamatan — pengesahan dua faktor",
     "settings.security.desc":
       "Wajibkan kod sekali guna daripada aplikasi pengesah (Google Authenticator, 1Password, …) selain kata laluan anda semasa log masuk.",
@@ -339,7 +329,6 @@ export default screen({
     "settings.security.startFirst": "Mulakan pendaftaran dahulu",
     "settings.security.enabled": "Pengesahan dua faktor kini aktif",
     "settings.security.removed": "Pengesahan dua faktor dibuang",
-
     "settings.data.title": "Data & privasi",
     "settings.data.desc":
       "Eksport semua dalam ruang kerja ini, atau minta kami memadamkannya. Lihat {privacy} dan {terms} kami.",
@@ -369,7 +358,6 @@ export default screen({
       "Eksport dimuat turun, tetapi {tables} mencapai had keselamatan {limit} baris dan mungkin tidak lengkap. Hubungi sokongan untuk eksport penuh.",
     "settings.data.requested":
       "Permintaan pemadaman dihantar — kami akan memprosesnya dalam 30 hari.",
-
     "settings.billing.title": "Langganan & Bil",
     "settings.billing.desc":
       "Alat WhatsApp Flas — biasanya $30/bulan. Tawaran pelancaran: $20/bulan untuk enam bulan pertama, atau $240 setahun dan bukan $360. Urus atau batalkan bila-bila masa.",
@@ -393,7 +381,6 @@ export default screen({
       "Pembatalan dibuat sendiri dari portal bil — anda mengekalkan akses sehingga akhir tempoh berbayar.",
     "settings.billing.activated": "Langganan diaktifkan — selamat datang!",
     "settings.billing.portalFailed": "Tidak dapat membuka portal bil",
-
     "settings.audit.title": "Log audit",
     "settings.audit.desc":
       "Setiap rekod persetujuan, keputusan penghalaan, import/eksport dan tindakan mesej — disimpan untuk pematuhan dan penyelesaian masalah. Entri tidak boleh disunting atau dipadam.",
@@ -418,7 +405,6 @@ export default screen({
     "settings.audit.action.api.access": "Akses API luaran",
     "settings.audit.action.webhook.signature_rejected": "Webhook ditolak",
     "settings.audit.action.company.subscription_update": "Langganan ditukar",
-
     "settings.api.title": "Kunci API",
     "settings.api.desc":
       "Beri alat anda yang lain akses baca kepada ruang kerja ini. Setiap kunci mempunyai skop — ia hanya melihat data syarikat ini, dan hanya apa yang anda benarkan. Titik akhir: {endpoint} (juga kenalan, perbualan, nombor) dengan {header}",
@@ -469,8 +455,8 @@ export default screen({
     "role.staff.hint":
       "Inbox, mga contact, quote at produkto. Hindi mapapalitan ang setup ng kumpanya.",
     "role.seo_editor.label": "SEO editor",
-    "role.seo_editor.hint": "Content at SEO Studio lang. Walang inbox, walang data ng customer.",
-
+    "role.seo_editor.hint":
+      "Website at SEO at mga naka-save na draft lang. Walang inbox, walang data ng customer.",
     "settings.security.title": "Seguridad — two-factor authentication",
     "settings.security.desc":
       "Humingi ng one-time code mula sa authenticator app (Google Authenticator, 1Password, …) bukod sa iyong password kapag nagsa-sign in.",
@@ -486,7 +472,6 @@ export default screen({
     "settings.security.startFirst": "Simulan muna ang enrollment",
     "settings.security.enabled": "Naka-on na ang two-factor authentication",
     "settings.security.removed": "Inalis ang two-factor authentication",
-
     "settings.data.title": "Data at privacy",
     "settings.data.desc":
       "I-export ang lahat sa workspace na ito, o hilingin sa amin na burahin ito. Tingnan ang aming {privacy} at {terms}.",
@@ -516,7 +501,6 @@ export default screen({
       "Na-download ang export, pero naabot ng {tables} ang {limit}-row na safety limit at maaaring kulang. Makipag-ugnayan sa support para sa buong export.",
     "settings.data.requested":
       "Naipadala ang kahilingan sa pagbura — ipoproseso namin ito sa loob ng 30 araw.",
-
     "settings.billing.title": "Subscription at Billing",
     "settings.billing.desc":
       "Flas WhatsApp Tool — karaniwang $30/buwan. Launch offer: $20/buwan sa unang anim na buwan, o $240 bawat taon sa halip na $360. Pamahalaan o kanselahin anumang oras.",
@@ -540,7 +524,6 @@ export default screen({
       "Ikaw mismo ang magkakansela mula sa billing portal — mananatili ang access hanggang matapos ang bayad na panahon.",
     "settings.billing.activated": "Na-activate ang subscription — maligayang pagdating!",
     "settings.billing.portalFailed": "Hindi mabuksan ang billing portal",
-
     "settings.audit.title": "Audit log",
     "settings.audit.desc":
       "Bawat pagtala ng pahintulot, desisyon sa routing, import/export at aksyon sa mensahe — itinatabi para sa pagsunod at pag-troubleshoot. Hindi mababago o mabubura ang mga entry.",
@@ -565,7 +548,6 @@ export default screen({
     "settings.audit.action.api.access": "Panlabas na API access",
     "settings.audit.action.webhook.signature_rejected": "Tinanggihan ang webhook",
     "settings.audit.action.company.subscription_update": "Binago ang subscription",
-
     "settings.api.title": "Mga API key",
     "settings.api.desc":
       "Bigyan ng read access sa workspace na ito ang iba mo pang tool. May saklaw ang bawat key — data lang ng kumpanyang ito ang nakikita nito, at ang pinapayagan mo lang. Endpoint: {endpoint} (pati mga contact, usapan, numero) gamit ang {header}",
@@ -619,8 +601,7 @@ export default screen({
       "Kikasha, anwani, nukuu na bidhaa. Hawezi kubadilisha mipangilio ya kampuni.",
     "role.seo_editor.label": "Mhariri wa SEO",
     "role.seo_editor.hint":
-      "Maudhui na Studio ya SEO pekee. Hakuna kikasha, hakuna data ya wateja.",
-
+      "Tovuti na SEO na rasimu zilizohifadhiwa pekee. Hakuna kikasha, hakuna data ya wateja.",
     "settings.security.title": "Usalama — uthibitishaji wa hatua mbili",
     "settings.security.desc":
       "Hitaji msimbo wa mara moja kutoka kwenye programu ya uthibitishaji (Google Authenticator, 1Password, …) pamoja na nenosiri lako unapoingia.",
@@ -636,7 +617,6 @@ export default screen({
     "settings.security.startFirst": "Anza usajili kwanza",
     "settings.security.enabled": "Uthibitishaji wa hatua mbili umewashwa",
     "settings.security.removed": "Uthibitishaji wa hatua mbili umeondolewa",
-
     "settings.data.title": "Data na faragha",
     "settings.data.desc":
       "Hamisha kila kitu kilicho katika eneo hili la kazi, au utuombe tukifute. Angalia {privacy} na {terms} zetu.",
@@ -665,7 +645,6 @@ export default screen({
     "settings.data.exportTruncated":
       "Uhamishaji umepakuliwa, lakini {tables} imefikia kikomo cha usalama cha safu {limit} na huenda haijakamilika. Wasiliana na usaidizi kwa uhamishaji kamili.",
     "settings.data.requested": "Ombi la kufuta limetumwa — tutalishughulikia ndani ya siku 30.",
-
     "settings.billing.title": "Usajili na Malipo",
     "settings.billing.desc":
       "Zana ya WhatsApp ya Flas — kwa kawaida $30/mwezi. Ofa ya uzinduzi: $20/mwezi kwa miezi sita ya kwanza, au $240 kwa mwaka badala ya $360. Simamia au sitisha wakati wowote.",
@@ -689,7 +668,6 @@ export default screen({
       "Unasitisha mwenyewe kupitia lango la malipo — unaendelea kupata huduma hadi mwisho wa kipindi ulicholipia.",
     "settings.billing.activated": "Usajili umewashwa — karibu!",
     "settings.billing.portalFailed": "Imeshindwa kufungua lango la malipo",
-
     "settings.audit.title": "Kumbukumbu za ukaguzi",
     "settings.audit.desc":
       "Kila idhini iliyorekodiwa, uamuzi wa uelekezaji, uletaji/uhamishaji na kitendo cha ujumbe — huhifadhiwa kwa uzingatiaji na utatuzi wa matatizo. Maingizo hayawezi kuhaririwa wala kufutwa.",
@@ -714,7 +692,6 @@ export default screen({
     "settings.audit.action.api.access": "Ufikiaji wa API kutoka nje",
     "settings.audit.action.webhook.signature_rejected": "Webhook imekataliwa",
     "settings.audit.action.company.subscription_update": "Usajili umebadilishwa",
-
     "settings.api.title": "Funguo za API",
     "settings.api.desc":
       "Zipe zana zako nyingine ruhusa ya kusoma eneo hili la kazi. Kila ufunguo una wigo — huona data ya kampuni hii pekee, na kile unachoruhusu tu. Kiungo: {endpoint} (pia anwani, mazungumzo, namba) kwa {header}",

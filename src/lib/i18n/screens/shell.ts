@@ -13,10 +13,6 @@ export default screen({
     "shell.loading": "Loading your workspace…",
     "shell.primaryNav": "Primary",
     "shell.more": "More",
-    "bottomNav.dashboard": "Home",
-    "bottomNav.inbox": "Inbox",
-    "bottomNav.marketing": "Leads",
-    "bottomNav.social": "Social",
   },
   ar: {
     "language.label": "اللغة",
@@ -29,10 +25,6 @@ export default screen({
     "shell.loading": "جارٍ تحميل مساحة العمل…",
     "shell.primaryNav": "التنقل الرئيسي",
     "shell.more": "المزيد",
-    "bottomNav.dashboard": "الرئيسية",
-    "bottomNav.inbox": "الوارد",
-    "bottomNav.marketing": "المحتملون",
-    "bottomNav.social": "التواصل",
   },
   ms: {
     "language.label": "Bahasa",
@@ -45,10 +37,6 @@ export default screen({
     "shell.loading": "Memuatkan ruang kerja anda…",
     "shell.primaryNav": "Navigasi utama",
     "shell.more": "Lagi",
-    "bottomNav.dashboard": "Utama",
-    "bottomNav.inbox": "Peti masuk",
-    "bottomNav.marketing": "Prospek",
-    "bottomNav.social": "Sosial",
   },
   fil: {
     "language.label": "Wika",
@@ -61,10 +49,6 @@ export default screen({
     "shell.loading": "Nilo-load ang iyong workspace…",
     "shell.primaryNav": "Pangunahing nabigasyon",
     "shell.more": "Iba pa",
-    "bottomNav.dashboard": "Home",
-    "bottomNav.inbox": "Inbox",
-    "bottomNav.marketing": "Leads",
-    "bottomNav.social": "Social",
   },
   sw: {
     "language.label": "Lugha",
@@ -77,9 +61,5 @@ export default screen({
     "shell.loading": "Inapakia eneo lako la kazi…",
     "shell.primaryNav": "Urambazaji mkuu",
     "shell.more": "Zaidi",
-    "bottomNav.dashboard": "Mwanzo",
-    "bottomNav.inbox": "Kikasha",
-    "bottomNav.marketing": "Wateja",
-    "bottomNav.social": "Mitandao",
   },
 });

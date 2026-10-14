@@ -1,8 +1,8 @@
 // Bundles the code that runs for requests nobody signed in for: the WhatsApp
-// send gate, the lead intake pipeline, and the website-plugin activation
-// endpoint. The database, the audit log and the email provider are doubles the
-// test drives through globalThis.publicIntake; everything between them is the
-// code production runs.
+// send gate, the lead intake pipeline, the website-plugin activation endpoint,
+// and the unsubscribe link every marketing email carries. The database, the
+// audit log and the email provider are doubles the test drives through
+// globalThis.publicIntake; everything between them is the code production runs.
 import { build } from "esbuild";
 import { mkdirSync } from "node:fs";
 
@@ -22,21 +22,21 @@ const stubs = {
   "secret-box.server": "export async function openSecret(value) { return value || null; }",
 };
 
-const boundaries = {
+const boundariesFor = (table) => ({
   name: "public-intake-boundaries",
   setup(b) {
     b.onResolve({ filter: /.*/ }, (args) => {
-      const key = Object.keys(stubs).find((k) => args.path === k || args.path.endsWith("/" + k));
+      const key = Object.keys(table).find((k) => args.path === k || args.path.endsWith("/" + k));
       return key ? { path: key, namespace: "intake-stub" } : undefined;
     });
     b.onLoad({ filter: /.*/, namespace: "intake-stub" }, (args) => ({
-      contents: stubs[args.path],
+      contents: table[args.path],
       loader: "js",
     }));
   },
-};
+});
 
-const bundle = (entry, out) =>
+const bundle = (entry, out, table = stubs) =>
   build({
     entryPoints: [entry],
     outfile: `node_modules/.cache/${out}`,
@@ -45,8 +45,18 @@ const bundle = (entry, out) =>
     bundle: true,
     logLevel: "error",
     alias: { "@": "./src" },
-    plugins: [boundaries],
+    plugins: [boundariesFor(table)],
   });
+
+// The campaign send functions are server functions behind the sign-in check. The test calls
+// the handler directly with a signed-in user, so the wrapper and the check are stand-ins.
+const campaignStubs = {
+  ...stubs,
+  "auth-middleware": "export const requireSupabaseAuth = {};",
+  "@tanstack/react-start": `export function createServerFn() {
+      return { middleware() { return this; }, inputValidator() { return this; }, handler(fn) { return fn; } };
+    }`,
+};
 
 await bundle("src/lib/safety.server.ts", "flas-safety.mjs");
 await bundle("src/lib/leads.server.ts", "flas-leads.mjs");
@@ -59,3 +69,15 @@ await bundle("src/routes/api/public/leads/collect.ts", "flas-leads-collect.mjs")
 await bundle("src/routes/api/public/webhooks/wordpress.ts", "flas-webhook-wordpress.mjs");
 await bundle("src/routes/api/public/webhooks/shopify.ts", "flas-webhook-shopify.mjs");
 await bundle("src/routes/api/public/webhooks/custom.ts", "flas-webhook-custom.mjs");
+await bundle("src/lib/unsubscribe.server.ts", "flas-unsubscribe.mjs");
+await bundle("src/lib/lead-automation.server.ts", "flas-lead-automation.mjs");
+await bundle("src/lib/drip-automation.server.ts", "flas-drip-automation.mjs");
+await bundle("src/lib/email-templates.ts", "flas-email-templates.mjs");
+await bundle("src/lib/marketing.functions.ts", "flas-marketing.mjs", campaignStubs);
+await bundle("src/lib/lead-alerts.server.ts", "flas-lead-alerts.mjs");
+await bundle("src/lib/platform-email.functions.ts", "flas-platform-email.mjs", campaignStubs);
+await bundle(
+  "src/lib/user-email-accounts.functions.ts",
+  "flas-user-email-accounts.mjs",
+  campaignStubs,
+);

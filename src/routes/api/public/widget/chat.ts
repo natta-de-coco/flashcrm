@@ -111,6 +111,24 @@ export const Route = createFileRoute("/api/public/widget/chat")({
             text: parsed.message,
           });
 
+          // Ingest lead for welcome automation / drip sequence if marketing consent or email is present
+          if (parsed.email) {
+            try {
+              const { ingestLead } = await import("@/lib/lead-automation.server");
+              await ingestLead({
+                tenantId: site.tenant_id,
+                email: parsed.email,
+                name: parsed.name ?? null,
+                phone: parsed.phone ?? null,
+                source: "website_widget",
+                sourceUrl: request.headers.get("referer") || site.domain || null,
+                consentGiven: Boolean(parsed.marketingConsent),
+              });
+            } catch (error) {
+              console.error("[widget] could not record lead automation", error);
+            }
+          }
+
           // Attach the rest of the identity to the contact this chat created.
           //
           // It used to be written to whichever contact had this phone number in

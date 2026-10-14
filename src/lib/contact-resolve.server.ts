@@ -36,11 +36,17 @@ export async function resolveContactByPhone(
     { contact_id?: string; branch_id?: string | null } | null | undefined;
   if (hit?.contact_id) return { contactId: hit.contact_id, branchId: hit.branch_id ?? null };
 
+  // Fallback: the webhook stores numbers as "+<digits>", so try that form as
+  // well as the raw value -- otherwise a lookup misses and the insert that
+  // follows collides with contacts_tenant_phone_key.
+  const digits = phone.replace(/[^0-9]/g, "");
+  const forms = Array.from(new Set([phone, digits ? `+${digits}` : phone, digits].filter(Boolean)));
   const { data: existing } = await supabaseAdmin
     .from("contacts")
     .select("id")
-    .eq("phone", phone)
     .eq("tenant_id", tenantId)
+    .in("phone", forms)
+    .limit(1)
     .maybeSingle();
   return existing?.id ? { contactId: existing.id, branchId: null } : null;
 }
