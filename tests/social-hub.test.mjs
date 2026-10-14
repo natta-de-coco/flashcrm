@@ -470,6 +470,10 @@ const db = createDb();
 
 function startSuite(rows) {
   db.reset(rows);
+  // The real unique keys (supabase/migrations/20260824161021): the double now refuses an
+  // upsert whose conflict columns are not declared, as Postgres does.
+  db.unique("social_posts", ["account_id", "external_id"]);
+  db.unique("social_interactions", ["account_id", "external_id"]);
   globalThis.socialSuite = { db: db.client, audits: [] };
 }
 
@@ -558,10 +562,10 @@ const accountRow = (fields) => ({
   ...fields,
 });
 
-/** What the person reads when Meta did not confirm the id; "Integrations" is the nav label of /connect. */
+/** What the person reads when Meta did not confirm the id; "Connect accounts" is the nav label of /connect. */
 const UNCONFIRMED_SENTENCE =
   "Meta did not confirm that this is an Instagram account, so nothing was synced. " +
-  "Reconnect Instagram in Integrations and choose the Instagram account again.";
+  "Reconnect Instagram in Connect accounts and choose the Instagram account again.";
 
 /** The two accounts the signed-in person can see (what row-level security lets the lookup return). */
 const visibleAccounts = () => [
@@ -1560,8 +1564,8 @@ describe("R8: when Meta does not confirm an Instagram id, the person is told wha
   it("the label is the one the navigation shows for the connect screen", () => {
     const navigation = read("src/lib/navigation.ts");
     const entry = navigation.slice(navigation.indexOf('to: "/connect"'));
-    assert.match(entry.slice(0, 120), /label: "Integrations"/);
-    assert.ok(UNCONFIRMED_SENTENCE.includes("in Integrations and"));
+    assert.match(entry.slice(0, 120), /label: "Connect accounts"/);
+    assert.ok(UNCONFIRMED_SENTENCE.includes("in Connect accounts and"));
   });
 
   it("the technical reason goes to the server log instead", async () => {

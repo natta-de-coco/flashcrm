@@ -77,7 +77,7 @@ export function isInstagramNodeType(nodeType: string | null | undefined): boolea
  * navigation.ts). Said in English, like every sync message: sync errors are
  * written on the server and have no translation path.
  */
-export const CONNECT_SCREEN_LABEL = "Integrations";
+export const CONNECT_SCREEN_LABEL = "Connect accounts";
 
 /**
  * What the person reads when Meta answered but did not confirm the id is an
