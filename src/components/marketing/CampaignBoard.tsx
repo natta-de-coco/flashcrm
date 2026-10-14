@@ -19,6 +19,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { dispatchCampaignNow } from "@/lib/marketing.functions";
+import { saveCampaignDraft } from "@/lib/campaign-audience.functions";
+import { CAMPAIGN_FIELD_LIMITS, CAMPAIGN_TOO_LONG } from "@/lib/campaign-audience";
 import {
   AlertCircle,
   Clock,
@@ -111,6 +113,8 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
   const qc = useQueryClient();
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<CampaignItem | null>(null);
+  const [draftId, setDraftId] = useState(() => crypto.randomUUID());
+  const saveCampaignFn = useServerFn(saveCampaignDraft);
 
   const dispatchNowFn = useServerFn(dispatchCampaignNow);
   const dispatchNowMutation = useMutation({
@@ -173,44 +177,75 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
 
   async function handleSaveCampaign(data: CampaignComposerData, isScheduled?: boolean) {
     const status: CampaignStatus = isScheduled ? "scheduled" : "draft";
-    const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
 
-    if (editingCampaign) {
-      const { error } = await campaignsTable
-        .update({
-          name: data.name,
-          subject: data.subject,
-          body: data.body,
-          template_id: data.templateId,
-          image_url: data.imageUrl,
-          attachments: data.attachments,
-          status,
-          recipients_count: audienceCount,
-        })
-        .eq("id", editingCampaign.id);
-
-      if (error) throw error;
-      toast.success(
-        isScheduled ? t("marketing.markedAsQueuedFlasCrm") : "Campaign updated successfully",
-      );
-    } else {
-      const { error } = await campaignsTable.insert({
-        name: data.name,
-        subject: data.subject,
-        body: data.body,
-        template_id: data.templateId,
-        image_url: data.imageUrl,
-        attachments: data.attachments,
-        status,
-        recipients_count: audienceCount,
-      });
-
-      if (error) throw error;
-      toast.success(isScheduled ? t("marketing.markedAsQueuedFlasCrm") : "Draft campaign saved");
+    if (
+      data.name.trim().length > CAMPAIGN_FIELD_LIMITS.name ||
+      data.subject.trim().length > CAMPAIGN_FIELD_LIMITS.subject ||
+      data.body.length > CAMPAIGN_FIELD_LIMITS.body
+    ) {
+      toast.error(t("marketing.campaignTooLong"));
+      return;
     }
 
-    setEditingCampaign(null);
-    void qc.invalidateQueries({ queryKey: ["campaigns"] });
+    try {
+      if (editingCampaign) {
+        const res = await saveCampaignFn({
+          data: {
+            id: editingCampaign.id,
+            isUpdate: true,
+            name: data.name,
+            subject: data.subject,
+            body: data.body,
+            templateId: data.templateId,
+            imageUrl: data.imageUrl,
+            attachments: data.attachments as unknown as Record<string, unknown>[],
+            status,
+          },
+        });
+
+        if (!res.ok) {
+          toast.error(t("marketing.campaignNotSaved"));
+          return;
+        }
+
+        toast.success(
+          isScheduled ? t("marketing.markedAsQueuedFlasCrm") : "Campaign updated successfully",
+        );
+      } else {
+        const res = await saveCampaignFn({
+          data: {
+            id: draftId,
+            name: data.name,
+            subject: data.subject,
+            body: data.body,
+            templateId: data.templateId,
+            imageUrl: data.imageUrl,
+            attachments: data.attachments as unknown as Record<string, unknown>[],
+            status,
+          },
+        });
+
+        if (!res.ok) {
+          toast.error(t("marketing.campaignNotSaved"));
+          return;
+        }
+
+        setDraftId(crypto.randomUUID());
+        toast.success(
+          isScheduled ? t("marketing.markedAsQueuedFlasCrm") : t("marketing.campaignSavedAsADraft"),
+        );
+      }
+
+      setEditingCampaign(null);
+      void qc.invalidateQueries({ queryKey: ["campaigns"] });
+    } catch (e: unknown) {
+      const err = e as Error;
+      if (err.message === CAMPAIGN_TOO_LONG) {
+        toast.error(t("marketing.campaignTooLong"));
+      } else {
+        toast.error(friendlyError(err));
+      }
+    }
   }
 
   return (

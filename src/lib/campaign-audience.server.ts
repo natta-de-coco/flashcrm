@@ -71,6 +71,11 @@ export type SaveCampaignInput = {
    * is always a new campaign, as before.
    */
   id?: string | undefined;
+  isUpdate?: boolean | undefined;
+  templateId?: string | null | undefined;
+  imageUrl?: string | null | undefined;
+  attachments?: unknown[] | null | undefined;
+  status?: "draft" | "scheduled" | undefined;
 };
 
 export type SaveCampaignResult =
@@ -107,14 +112,69 @@ export async function saveCampaignDraft(
     return { ok: false, reason: "audience_unavailable" };
   }
 
-  const { error } = await supabase.from("campaigns").insert({
+  // Resolve caller's workspace tenant_id for own-company binding
+  let tenantId: string | null = null;
+  if (actor.userId) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", actor.userId)
+      .maybeSingle();
+    tenantId = (profile as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+  }
+
+  // Guard scheduling without verified tenant SMTP credentials
+  if (input.status === "scheduled") {
+    if (tenantId) {
+      const { data: smtp } = await supabase
+        .from("tenant_smtp_config")
+        .select("verified")
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (!(smtp as { verified?: boolean | null } | null)?.verified) {
+        throw new Error(
+          "Cannot schedule or send campaign without verified tenant SMTP credentials",
+        );
+      }
+    }
+  }
+
+  if (input.isUpdate && input.id) {
+    const updatePayload: Record<string, unknown> = {
+      name: input.name,
+      subject: input.subject,
+      body: input.body,
+      recipients_count: audience.total,
+      status: input.status ?? "draft",
+    };
+    if (input.templateId !== undefined) updatePayload["template_id"] = input.templateId;
+    if (input.imageUrl !== undefined) updatePayload["image_url"] = input.imageUrl;
+    if (input.attachments !== undefined) updatePayload["attachments"] = input.attachments;
+
+    let updateQuery = supabase.from("campaigns").update(updatePayload).eq("id", input.id);
+    if (tenantId) {
+      updateQuery = updateQuery.eq("tenant_id", tenantId);
+    }
+    const { error: updateError } = await updateQuery;
+    if (updateError) throw new Error(updateError.message);
+    return { ok: true, recipientsCount: audience.total };
+  }
+
+  const insertPayload: Record<string, unknown> = {
     ...(input.id ? { id: input.id } : {}),
     name: input.name,
     subject: input.subject,
     body: input.body,
     recipients_count: audience.total,
     created_by: actor.userId ?? null,
-  });
+    status: input.status ?? "draft",
+  };
+  if (tenantId) insertPayload["tenant_id"] = tenantId;
+  if (input.templateId !== undefined) insertPayload["template_id"] = input.templateId;
+  if (input.imageUrl !== undefined) insertPayload["image_url"] = input.imageUrl;
+  if (input.attachments !== undefined) insertPayload["attachments"] = input.attachments;
+
+  const { error } = await supabase.from("campaigns").insert(insertPayload);
   if (error) {
     // 23505 is unique_violation. On a draft's own id it means "already saved",
     // but only if the caller can see that campaign: the row is read back through

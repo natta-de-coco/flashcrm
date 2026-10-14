@@ -1333,3 +1333,129 @@ describe("PR #58: pages follow the last id, and only the first is counted", () =
     assert.deepEqual(addresses(email), ["late@example.com"]);
   });
 });
+
+describe("PR #58 / Issue #78: Campaign Composer server draft integration & tenant binding", () => {
+  const context = { supabase: client, userId: "user-1" };
+  const DRAFT = "6f1c7a1e-4b0d-4c55-8a3e-0a1b2c3d4e5f";
+  const boardSource = readFileSync(
+    "src/components/marketing/CampaignBoard.tsx",
+    "utf8",
+  ).split("\r\n").join("\n");
+
+  beforeEach(() => {
+    db.reset({
+      contacts: [
+        aContact("c1", { email: "a@example.com" }),
+        aContact("c2", { email: "b@example.com" }),
+      ],
+      campaigns: [],
+      profiles: [{ id: "user-1", tenant_id: "tenant-abc" }],
+      tenant_smtp_config: [{ tenant_id: "tenant-abc", verified: true }],
+    });
+    db.unique("campaigns", ["id"]);
+  });
+
+  test("CampaignBoard routes saves through saveCampaignDraft with draftId idempotency and limits", () => {
+    assert.match(
+      boardSource,
+      /useServerFn\(saveCampaignDraft\)/,
+      "CampaignBoard uses saveCampaignDraft",
+    );
+    assert.match(
+      boardSource,
+      /const \[draftId, setDraftId\] = useState\(\(\) => crypto\.randomUUID\(\)\)/,
+      "CampaignBoard manages draftId",
+    );
+    assert.match(
+      boardSource,
+      /saveCampaignFn\(\{\s*data: \{\s*id: draftId,/,
+      "CampaignBoard passes draftId on new saves",
+    );
+    assert.match(
+      boardSource,
+      /setDraftId\(crypto\.randomUUID\(\)\)/,
+      "CampaignBoard rotates draftId after save",
+    );
+    assert.match(
+      boardSource,
+      /data\.name\.trim\(\)\.length > CAMPAIGN_FIELD_LIMITS\.name/,
+      "CampaignBoard enforces name field limit",
+    );
+  });
+
+  test("saveCampaignDraft binds tenant_id from actor profile on insert", async () => {
+    const res = await server.serverFns.saveCampaignDraft({
+      data: {
+        id: DRAFT,
+        name: "Spring Blast",
+        subject: "Exclusive Offer",
+        body: "Hello world",
+        templateId: "tpl_welcome",
+        imageUrl: "https://example.com/hero.jpg",
+      },
+      context,
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.recipientsCount, 2);
+    const row = db.table("campaigns")[0];
+    assert.equal(row.id, DRAFT);
+    assert.equal(row.tenant_id, "tenant-abc");
+    assert.equal(row.template_id, "tpl_welcome");
+    assert.equal(row.image_url, "https://example.com/hero.jpg");
+    assert.equal(row.recipients_count, 2);
+  });
+
+  test("saveCampaignDraft updates existing campaign when isUpdate is true", async () => {
+    db.table("campaigns").push({
+      id: DRAFT,
+      tenant_id: "tenant-abc",
+      name: "Old Name",
+      subject: "Old Subject",
+      body: "Old Body",
+      status: "draft",
+      recipients_count: 1,
+    });
+
+    const res = await server.serverFns.saveCampaignDraft({
+      data: {
+        id: DRAFT,
+        isUpdate: true,
+        name: "New Name",
+        subject: "New Subject",
+        body: "New Body",
+        templateId: "tpl_promo",
+      },
+      context,
+    });
+    assert.equal(res.ok, true);
+    assert.equal(res.recipientsCount, 2);
+    const updated = db.table("campaigns")[0];
+    assert.equal(updated.name, "New Name");
+    assert.equal(updated.template_id, "tpl_promo");
+    assert.equal(updated.recipients_count, 2);
+  });
+
+  test("saveCampaignDraft refuses scheduling when tenant SMTP is not verified", async () => {
+    db.reset({
+      contacts: [aContact("c1", { email: "a@example.com" })],
+      campaigns: [],
+      profiles: [{ id: "user-1", tenant_id: "tenant-unverified" }],
+      tenant_smtp_config: [{ tenant_id: "tenant-unverified", verified: false }],
+    });
+
+    await assert.rejects(
+      server.serverFns.saveCampaignDraft({
+        data: {
+          id: DRAFT,
+          name: "Scheduled blast",
+          subject: "Test",
+          body: "Test",
+          status: "scheduled",
+        },
+        context,
+      }),
+      /without verified tenant SMTP credentials/,
+    );
+    assert.equal(db.table("campaigns").length, 0);
+  });
+});

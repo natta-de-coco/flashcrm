@@ -34,9 +34,14 @@ export const getCampaignAudience = createServerFn({ method: "GET" })
 
 const SaveCampaignSchema = z.object({
   id: z.string().uuid().optional(),
+  isUpdate: z.boolean().optional(),
   name: z.string().trim().min(1).max(CAMPAIGN_FIELD_LIMITS.name),
   subject: z.string().max(CAMPAIGN_FIELD_LIMITS.subject).default(""),
   body: z.string().max(CAMPAIGN_FIELD_LIMITS.body).default(""),
+  templateId: z.string().max(100).optional().nullable(),
+  imageUrl: z.string().max(2000).optional().nullable(),
+  attachments: z.array(z.record(z.unknown())).optional().nullable(),
+  status: z.enum(["draft", "scheduled"]).default("draft"),
 });
 
 /**
