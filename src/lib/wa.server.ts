@@ -292,6 +292,7 @@ async function postWhatsAppMessage(
   }
 }
 
+export const sendWhatsAppText = deliverWhatsAppText;
 export function deliverWhatsAppText(
   to: string,
   body: string,
@@ -612,8 +613,22 @@ export async function ingestInboundMessage(args: IngestArgs) {
         .insert({ phone: storedPhone, name: name || storedPhone, tenant_id: tenantId })
         .select("id")
         .single();
-      if (error) throw error;
-      contactId = created.id;
+      if (error) {
+        // Lost a race or the number exists in this tenant already: reuse it
+        // rather than dropping the customer's message.
+        if ((error as { code?: string }).code !== "23505") throw error;
+        const { data: dup } = await supabaseAdmin
+          .from("contacts")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("phone", storedPhone)
+          .maybeSingle();
+        if (!dup?.id) throw error;
+        contactCreated = false;
+        contactId = dup.id;
+      } else {
+        contactId = created.id;
+      }
     }
 
     // Record the number as an identity so the next message from it resolves
@@ -671,6 +686,13 @@ export async function ingestInboundMessage(args: IngestArgs) {
         .single();
       if (error) throw error;
       conversation = created;
+
+      try {
+        const { assignConversationToNextAgent } = await import("./chat-assignment.server");
+        await assignConversationToNextAgent(tenantId, created.id);
+      } catch (assignErr) {
+        console.error("[chat-assignment] Auto-assignment error:", assignErr);
+      }
     }
   } else {
     const { data } = await supabaseAdmin
@@ -714,6 +736,13 @@ export async function ingestInboundMessage(args: IngestArgs) {
       } else {
         if (error) throw error;
         conversation = created;
+
+        try {
+          const { assignConversationToNextAgent } = await import("./chat-assignment.server");
+          await assignConversationToNextAgent(tenantId, created.id);
+        } catch (assignErr) {
+          console.error("[chat-assignment] Auto-assignment error:", assignErr);
+        }
       }
     }
   }

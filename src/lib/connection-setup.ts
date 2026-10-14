@@ -197,16 +197,16 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
   wordpress: {
     requires: ["A self-hosted WordPress site where you can install plugins"],
     steps: [
-      "Download the Flas plugin from Integrations, upload the ZIP in WordPress → Plugins → Add New.",
+      "Download the Flas plugin from Connect accounts, upload the ZIP in WordPress → Plugins → Add New.",
       "Activate it and paste the activation key emailed to you.",
-      "The chat popup and lead forms then post straight into Flas, and blog posts publish from Content & SEO.",
+      "The chat popup and lead forms then post straight into Flas, and blog posts publish from Website & SEO.",
     ],
     gotchas: ["WordPress.com hosted sites cannot install plugins on the free plan."],
   },
   shopify: {
     requires: ["A Shopify store with theme edit rights"],
     steps: [
-      "Download the Shopify package from Integrations.",
+      "Download the Shopify package from Connect accounts.",
       "Add the snippet to your theme and paste the activation key.",
       "Store visitors and orders then create leads in Flas.",
     ],
@@ -215,7 +215,7 @@ export const SETUP_GUIDES: Partial<Record<ConnectorId, SetupGuide>> = {
     requires: ["WooCommerce with REST API keys"],
     steps: [
       "Install the Flas WordPress plugin (it detects WooCommerce automatically).",
-      "Create read-only WooCommerce REST keys and paste them into Integrations.",
+      "Create read-only WooCommerce REST keys and paste them into Connect accounts.",
     ],
   },
 };

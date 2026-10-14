@@ -1,9 +1,13 @@
 import { BillingCard } from "@/components/settings/BillingCard";
 import { RegionCard } from "@/components/settings/RegionCard";
+import { CompanyBillingProfileCard } from "@/components/settings/CompanyBillingProfileCard";
 import { AuditLogCard } from "@/components/settings/AuditLogCard";
 import { DataPrivacyCard } from "@/components/settings/DataPrivacyCard";
 import { SecurityCard } from "@/components/settings/SecurityCard";
 import { TeamCard } from "@/components/settings/TeamCard";
+import { EmailMarketingCard } from "@/components/settings/EmailMarketingCard";
+import { LeadAlertsSettingsCard } from "@/components/settings/LeadAlertsSettingsCard";
+
 import { InvoiceBrandingCard } from "@/components/settings/InvoiceBrandingCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useTenant } from "@/hooks/useTenant";
@@ -55,11 +59,17 @@ function SettingsPage() {
       <div className="grid max-w-3xl gap-4">
         <RegionCard />
 
+        <CompanyBillingProfileCard />
+
         <BillingCard />
 
         {isCompanyManager(staffRole) && <InvoiceBrandingCard />}
 
         {isAdmin && <AuditLogCard />}
+
+        {isAdmin && <EmailMarketingCard />}
+
+        <LeadAlertsSettingsCard />
 
         <SecurityCard />
 

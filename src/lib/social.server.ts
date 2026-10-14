@@ -22,6 +22,7 @@ export type SocialAccountSecret = {
   access_token: string | null;
   /** "oauth" for a connection made through the provider login; otherwise pasted. */
   connect_method: string | null;
+  granted_scopes?: string[] | null;
 };
 
 import type { SkippedSection } from "@/lib/sync-report";

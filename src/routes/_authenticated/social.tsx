@@ -31,7 +31,7 @@ import {
   submitDraft,
   type ComposerDraft,
 } from "@/lib/social-drafts";
-import { plannedPostNote, publishReality } from "@/lib/social-publishing";
+import { SOCIAL_HUB_CAN_PUBLISH, publishReality } from "@/lib/social-publishing";
 import {
   groupPostsByState,
   humanizePlatformId,
@@ -58,6 +58,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Archive,
+  Copy,
   Facebook,
   Globe,
   Info,
@@ -81,30 +82,37 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, type MessageKey } from "@/lib/i18n";
+import { parseSocialTab, type SocialTab } from "@/lib/social-tabs";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
 export const Route = createFileRoute("/_authenticated/social")({
   head: () => ({
     meta: [
-      { title: "Social Hub — Flas CRM" },
+      { title: "Social posts — Flas CRM" },
       {
         name: "description",
         content:
-          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flas CRM.",
+          "Write and plan social posts, reply to comments and messages, and see how your accounts are doing. Flas does not publish posts for you yet.",
       },
-      { property: "og:title", content: "Social Hub — Flas CRM" },
+      { property: "og:title", content: "Social posts — Flas CRM" },
       {
         property: "og:description",
         content:
-          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flas CRM.",
+          "Write and plan social posts, reply to comments and messages, and see how your accounts are doing. Flas does not publish posts for you yet.",
       },
     ],
   }),
   // The OAuth callback redirects back here with the outcome in the query
   // string. These were previously unread, so a blocked connection showed
   // nothing at all.
-  validateSearch: (search: Record<string, unknown>): ConnectionOutcomeSearch => ({
+  //
+  // `tab` says which of the three tabs is open (write | comments | reach), so
+  // reload, Back and a pasted link keep the place. Anything else is the writer.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): ConnectionOutcomeSearch & { tab?: SocialTab } => ({
+    ...("tab" in search ? { tab: parseSocialTab(search["tab"]) } : {}),
     ...(typeof search["connected"] === "string" ? { connected: search["connected"] } : {}),
     ...(typeof search["connect_blocked"] === "string"
       ? { connect_blocked: search["connect_blocked"] }
@@ -353,11 +361,18 @@ function SocialHubPage() {
   // The composer is where a draft is written, so it is where a draft has to be
   // editable. "Edit" on a draft anywhere else brings it back here rather than
   // leaving it stranded in a list with only a delete icon (QA, 26 Sep).
-  const [tab, setTab] = useState("inbox");
+  // Opens on the writer unless the address says otherwise: writing a post is
+  // what the screen is called, and what the person came to do. Replies to
+  // comments and messages are one tab along (and in the Inbox). The tab is kept
+  // in the address, so a reload or Back stays on it and the other two tabs can
+  // be linked to directly (?tab=comments, ?tab=reach).
+  const tab = parseSocialTab(search.tab);
+  const setTab = (next: string) =>
+    void navigate({ search: (prev) => ({ ...prev, tab: parseSocialTab(next) }) });
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const editPost = (post: Post) => {
     setEditingPost(post);
-    setTab("composer");
+    setTab("write");
   };
 
   return (
@@ -367,18 +382,34 @@ function SocialHubPage() {
         description={i18n.t("social.runYourClientSWhole")}
       />
 
+      {/* Said before anything else, on every tab: Flas saves and plans posts, it
+          does not send them (see lib/social-publishing.ts). The way out is the
+          Copy post button in the composer. */}
+      {SOCIAL_HUB_CAN_PUBLISH ? null : (
+        <div role="note" className="mb-4 flex gap-3 rounded-lg border bg-muted/40 p-3 text-sm">
+          <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <p className="font-medium">{i18n.t("social.noPublishTitle")}</p>
+            <p className="text-muted-foreground">{i18n.t("social.noPublishBody")}</p>
+          </div>
+        </div>
+      )}
+
       <ConnectionOutcome
         search={search}
         accounts={accounts}
         onChanged={refresh}
-        onDismiss={() => void navigate({ to: "/social", search: {}, replace: true })}
+        onDismiss={() => void navigate({ to: "/social", search: { tab }, replace: true })}
       />
 
       <AccountsCard accounts={accounts} onChanged={refresh} />
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList>
-          <TabsTrigger value="inbox" className="gap-1.5">
+          <TabsTrigger value="write" className="gap-1.5">
+            <PenSquare className="size-3.5" /> {i18n.t("social.aiComposer")}
+          </TabsTrigger>
+          <TabsTrigger value="comments" className="gap-1.5">
             <MessageCircle className="size-3.5" /> {i18n.t("social.commentsDms")}
             {interactions.filter((i) => i.status === "open").length > 0 && (
               <Badge variant="secondary" className="ms-1 text-[10px]">
@@ -386,18 +417,15 @@ function SocialHubPage() {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="composer" className="gap-1.5">
-            <PenSquare className="size-3.5" /> {i18n.t("social.aiComposer")}
-          </TabsTrigger>
           <TabsTrigger value="reach" className="gap-1.5">
             <Sparkles className="size-3.5" /> {i18n.t("social.reachAudience")}
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="inbox" className="mt-4">
+        <TabsContent value="comments" className="mt-4">
           <InboxTab interactions={interactions} accounts={accounts} onChanged={refresh} />
         </TabsContent>
-        <TabsContent value="composer" className="mt-4">
+        <TabsContent value="write" className="mt-4">
           <ComposerTab
             accounts={accounts}
             posts={posts}
@@ -910,6 +938,16 @@ function ComposerTab({
     onEdit(null);
   };
 
+  /** Flas does not publish, so the way out is the clipboard. A refusal is said, not swallowed. */
+  const copyCaption = async () => {
+    try {
+      await navigator.clipboard.writeText(draft.caption);
+      toast.success(i18n.t("social.postCopied"));
+    } catch {
+      toast.error(i18n.t("social.copyFailed"));
+    }
+  };
+
   const composeMutation = useMutation({
     mutationFn: () =>
       compose({ data: { topic: form.topic.trim(), tone: form.tone, platform: draft.platform } }),
@@ -1078,22 +1116,43 @@ function ComposerTab({
               value={draft.caption}
               onChange={(e) => setDraft((d) => ({ ...d, caption: e.target.value }))}
             />
-            <p className="text-xs text-muted-foreground">
-              {i18n.tr("social.characters", { length: draft.caption.length })}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {i18n.tr("social.characters", { length: draft.caption.length })}
+              </p>
+              {/* What a person does instead of publishing: copy it, post it
+                  themselves. */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                disabled={draft.caption.trim().length === 0}
+                onClick={() => void copyCaption()}
+              >
+                <Copy className="size-3.5" /> {i18n.t("social.copyPost")}
+              </Button>
+            </div>
           </div>
 
           {/* The honest state of publishing, per platform. Nothing in Flas sends
-              a saved post, so no control here claims it will. */}
-          <div className="flex gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-            <Info className="mt-0.5 size-3.5 shrink-0" />
-            <span>
-              {i18n.tr("social.saveItHereAndPost", {
-                reason: reality.reason,
-                platformDisplayName: platformDisplayName(draft.platform),
-              })}
-            </span>
-          </div>
+              a saved post, so no control here claims it will. Said through
+              translated text, not a sentence built in code. */}
+          {reality.canPublishNow ? null : (
+            <div className="flex gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+              <Info className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                {i18n.t("social.copyThenPost", {
+                  platformDisplayName: platformDisplayName(draft.platform),
+                })}
+                {reality.needsMedia
+                  ? ` ${i18n.t("social.needsMediaNote", {
+                      platformDisplayName: platformDisplayName(draft.platform),
+                    })}`
+                  : null}
+              </span>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-end gap-2">
             <Button
@@ -1133,7 +1192,9 @@ function ComposerTab({
               </Button>
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground">{plannedPostNote(reality.canSchedule)}</p>
+          {reality.canSchedule ? null : (
+            <p className="text-xs text-muted-foreground">{i18n.t("social.plannedDateNote")}</p>
+          )}
         </CardContent>
       </Card>
 

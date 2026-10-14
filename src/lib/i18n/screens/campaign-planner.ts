@@ -48,7 +48,7 @@ export default screen({
       "{postsAnalyzed} posts · avg {avgEngagementPerPost} engagement, {avgReach} reach",
     "campaignPlanner.noPostsSyncedYet": "No posts synced yet",
     "campaignPlanner.noConnectedSocialAccountsYet":
-      "No connected social accounts yet — connect one from the Social Hub to unlock channel-ranked recommendations.",
+      "No connected social accounts yet — connect one in Social posts to unlock channel-ranked recommendations.",
   },
   ar: {
     "campaignPlanner.draftMessageCopied": "نُسخت مسودة الرسالة",
@@ -95,7 +95,7 @@ export default screen({
       "{postsAnalyzed} منشور · متوسط التفاعل {avgEngagementPerPost}، الوصول {avgReach}",
     "campaignPlanner.noPostsSyncedYet": "لم تُزامَن أي منشورات بعد",
     "campaignPlanner.noConnectedSocialAccountsYet":
-      "لا توجد حسابات تواصل مرتبطة بعد — اربط حسابًا من مركز التواصل الاجتماعي لتفعيل التوصيات المرتبة حسب القناة.",
+      "لا توجد حسابات تواصل مرتبطة بعد — اربط حسابًا من «منشورات التواصل الاجتماعي» لتفعيل التوصيات المرتبة حسب القناة.",
   },
   ms: {
     "campaignPlanner.draftMessageCopied": "Draf mesej disalin",
@@ -142,7 +142,7 @@ export default screen({
       "{postsAnalyzed} hantaran · purata {avgEngagementPerPost} interaksi, {avgReach} capaian",
     "campaignPlanner.noPostsSyncedYet": "Belum ada hantaran disegerakkan",
     "campaignPlanner.noConnectedSocialAccountsYet":
-      "Belum ada akaun sosial disambungkan — sambungkan satu dari Hab Sosial untuk membuka cadangan mengikut kedudukan saluran.",
+      "Belum ada akaun sosial disambungkan — sambungkan satu di Hantaran Sosial untuk membuka cadangan mengikut kedudukan saluran.",
   },
   fil: {
     "campaignPlanner.draftMessageCopied": "Nakopya ang draft na mensahe",
@@ -189,7 +189,7 @@ export default screen({
       "{postsAnalyzed} post · avg {avgEngagementPerPost} engagement, {avgReach} reach",
     "campaignPlanner.noPostsSyncedYet": "Wala pang na-sync na post",
     "campaignPlanner.noConnectedSocialAccountsYet":
-      "Wala pang nakakonektang social account — magkonekta ng isa mula sa Social Hub para ma-unlock ang mga rekomendasyong naka-ranggo ayon sa channel.",
+      "Wala pang nakakonektang social account — magkonekta ng isa sa Mga Social Post para ma-unlock ang mga rekomendasyong naka-ranggo ayon sa channel.",
   },
   sw: {
     "campaignPlanner.draftMessageCopied": "Rasimu ya ujumbe imenakiliwa",
@@ -236,6 +236,6 @@ export default screen({
       "Machapisho {postsAnalyzed} · wastani wa ushiriki {avgEngagementPerPost}, ufikiaji {avgReach}",
     "campaignPlanner.noPostsSyncedYet": "Bado hakuna machapisho yaliyosawazishwa",
     "campaignPlanner.noConnectedSocialAccountsYet":
-      "Bado hakuna akaunti za mitandao zilizounganishwa — unganisha moja kutoka Kitovu cha Mitandao ili kufungua mapendekezo yaliyopangwa kwa chaneli.",
+      "Bado hakuna akaunti za mitandao zilizounganishwa — unganisha moja kwenye Machapisho ya Mitandao ili kufungua mapendekezo yaliyopangwa kwa chaneli.",
   },
 });

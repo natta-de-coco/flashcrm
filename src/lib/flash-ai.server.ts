@@ -11,9 +11,9 @@ export const FLASH_MODEL = "openai/gpt-5.6-sol";
  * Named here rather than inline because it is in the request URL, so a wrong
  * value fails as a 404 from Google rather than as anything self-explanatory.
  */
-// Google restricts older 2.5 models for new projects. Keep an operator override
+// Google Generative AI API v1beta production flash model. Keep an operator override
 // so a provider retirement does not require editing every AI feature.
-const GEMINI_MODEL = process.env["FLAS_GOOGLE_MODEL"] || "gemini-3.8-flash";
+const GEMINI_MODEL = process.env["FLAS_GOOGLE_MODEL"] || "gemini-1.5-flash";
 
 type RlsClient = {
   from: (table: string) => never;
@@ -801,6 +801,7 @@ export async function gatherMessagingAnalytics(
         `https://graph.facebook.com/v21.0/${n.phone_number_id}` +
         `?fields=analytics.start(${start}).end(${end}).granularity(DAY)`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+
       const json = (await res.json()) as {
         analytics?: { data_points?: Array<{ sent?: number; delivered?: number }> };
         error?: { message?: string };

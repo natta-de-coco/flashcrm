@@ -1,8 +1,9 @@
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { IncidentsCard } from "@/components/monitoring/IncidentsCard";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { retryWebhookEvent } from "@/lib/crm.functions";
 import { getAnalyticsInsights, getWhatsAppAnalytics } from "@/lib/flash-ai.functions";
@@ -12,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
   CheckCircle2,
@@ -22,6 +24,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { friendlyError } from "@/lib/friendly-error";
+
 import { useI18n } from "@/hooks/useI18n";
 
 /**
@@ -101,6 +105,7 @@ function MonitoringPage() {
   const insightsMutation = useMutation({
     mutationFn: () => fetchInsights(),
     onSuccess: (res) => setInsights(res.insights),
+
     // A model or provider failure used to be toasted verbatim (QA §5).
     onError: (e: Error) => {
       console.error("[monitoring] analytics insights failed", e);
@@ -206,14 +211,35 @@ function MonitoringPage() {
       void qc.invalidateQueries({ queryKey: ["webhook_stats"] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
   async function resolveAlert(id: string) {
     const { error } = await supabase.from("system_alerts").update({ resolved: true }).eq("id", id);
-    if (error) toast.error(error.message);
+    if (error) toast.error(friendlyError(error));
     else void qc.invalidateQueries({ queryKey: ["system_alerts"] });
   }
+
+  if (
+    waAnalytics.isLoading ||
+    events.isLoading ||
+    alerts.isLoading ||
+    stats.isLoading ||
+    numbers.isLoading
+  )
+    return (
+      <div className="space-y-3 p-6">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 rounded-lg border p-4">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="h-3 w-2/3" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
 
   const openAlerts = (alerts.data ?? []).filter((a) => !a.resolved);
 
@@ -280,6 +306,7 @@ function MonitoringPage() {
               </CardTitle>
               <CardDescription>{t("monitoring.deliveryAndEngagementFromYour")}</CardDescription>
             </div>
+
             <Button
               size="sm"
               onClick={() => insightsMutation.mutate()}

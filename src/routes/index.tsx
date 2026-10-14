@@ -6,8 +6,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useReveal } from "@/hooks/useReveal";
 import { InboxPreview } from "@/components/marketing/InboxPreview";
 import { StickyCta } from "@/components/marketing/StickyCta";
+
 import { HomepageChatWidget } from "@/components/marketing/HomepageChatWidget";
 import { POSTS } from "@/content/blog";
+
 import { Link, createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -34,6 +36,20 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { useI18n } from "@/hooks/useI18n";
 
 export const Route = createFileRoute("/")({
+  // Only the three cards' fields. A top-level import of the blog module put
+  // every post's full HTML into the landing page's JavaScript.
+  loader: async () => {
+    const { POSTS } = await import("@/content/blog");
+    return {
+      latest: POSTS.slice(0, 3).map((p) => ({
+        slug: p.slug,
+        title: p.title,
+        excerpt: p.excerpt,
+        category: p.category,
+        readingMinutes: p.readingMinutes,
+      })),
+    };
+  },
   head: () => ({
     meta: [
       { title: "Flas CRM by Mobi Digital Solutions — WhatsApp CRM & AI Growth" },
@@ -234,7 +250,7 @@ const CONNECTIONS = [
 const STEPS = [
   {
     title: "Connect",
-    body: "Add your WhatsApp number and link your social, ads and analytics accounts from the Integrations hub — each one has a step-by-step guide.",
+    body: "Add your WhatsApp number and link your social, ads and analytics accounts from Connect accounts — each one has a step-by-step guide.",
   },
   {
     title: "Capture",
@@ -297,7 +313,7 @@ function Landing() {
   // once embedded here with no key, so every visitor's message was silently
   // rejected; a widget with no working site behind it now simply isn't shown.
 
-  const latest = POSTS.slice(0, 3);
+  const { latest } = Route.useLoaderData();
 
   return (
     <div className="min-h-screen bg-background">

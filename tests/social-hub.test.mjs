@@ -381,8 +381,9 @@ describe("the composer only offers what Flas can actually do", () => {
     const source = read("src/routes/_authenticated/social.tsx");
     assert.equal(source.includes("Publish now"), false);
     assert.equal(source.includes("Schedule post"), false);
-    assert.ok(source.includes("publishTruth"), "the reason is read from the registry");
-    assert.ok(source.includes("reality.reason"), "and shown to the person");
+    assert.ok(source.includes("publishTruth"), "what is possible is read from the registry");
+    // Said through translation keys, not an English sentence built in code.
+    assert.ok(source.includes("social.copyThenPost"), "and shown to the person, translated");
   });
 
   it("offers an account to write for, which the save already accepted", () => {

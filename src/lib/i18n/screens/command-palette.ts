@@ -15,6 +15,7 @@ export default screen({
     "commandPalette.articles": "Articles",
     "commandPalette.contact": "Contact",
     "commandPalette.product": "Product",
+    "commandPalette.searchFailed": "Search could not load. Check your connection and try again.",
   },
   ar: {
     "commandPalette.searchFlasPagesContactsProducts":
@@ -27,6 +28,7 @@ export default screen({
     "commandPalette.articles": "المقالات",
     "commandPalette.contact": "جهة اتصال",
     "commandPalette.product": "منتج",
+    "commandPalette.searchFailed": "تعذّر تحميل نتائج البحث. تحقق من اتصالك وحاول مرة أخرى.",
   },
   ms: {
     "commandPalette.searchFlasPagesContactsProducts":
@@ -40,6 +42,8 @@ export default screen({
     "commandPalette.articles": "Artikel",
     "commandPalette.contact": "Kenalan",
     "commandPalette.product": "Produk",
+    "commandPalette.searchFailed":
+      "Carian tidak dapat dimuatkan. Semak sambungan anda dan cuba lagi.",
   },
   fil: {
     "commandPalette.searchFlasPagesContactsProducts":
@@ -53,6 +57,8 @@ export default screen({
     "commandPalette.articles": "Mga artikulo",
     "commandPalette.contact": "Contact",
     "commandPalette.product": "Produkto",
+    "commandPalette.searchFailed":
+      "Hindi ma-load ang paghahanap. Tingnan ang iyong koneksyon at subukan muli.",
   },
   sw: {
     "commandPalette.searchFlasPagesContactsProducts":
@@ -65,5 +71,7 @@ export default screen({
     "commandPalette.articles": "Makala",
     "commandPalette.contact": "Anwani",
     "commandPalette.product": "Bidhaa",
+    "commandPalette.searchFailed":
+      "Utafutaji haukuweza kupakia. Angalia muunganisho wako na ujaribu tena.",
   },
 });

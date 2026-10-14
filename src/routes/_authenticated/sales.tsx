@@ -36,7 +36,23 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertTriangle, ArrowRight, Download, FileText, Plus, Receipt, Send } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Download,
+  FileText,
+  History,
+  KanbanSquare,
+  LayoutList,
+  Plus,
+  Receipt,
+  Send,
+  ShieldCheck,
+} from "lucide-react";
+import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
+import { DocumentHistoryDialog } from "@/components/sales/DocumentHistoryDialog";
+import { CompanyBillingProfileCard } from "@/components/settings/CompanyBillingProfileCard";
+import { isSubscriptionReceipt } from "@/lib/sales-pipeline";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
@@ -150,11 +166,15 @@ function SalesPage() {
   const convertQuote = useServerFn(convertQuotationToInvoice);
 
   const [tab, setTab] = useState("all");
+  const [viewMode, setViewMode] = useState<"board" | "list">("board");
   const [builder, setBuilder] = useState<BuilderState | null>(null);
   const [payFor, setPayFor] = useState<DocRow | null>(null);
   const [payForm, setPayForm] = useState({ amount: "", reference: "", method: "bank_transfer" });
   const [sendFor, setSendFor] = useState<DocRow | null>(null);
   const [sendNote, setSendNote] = useState("");
+  const [historyDocId, setHistoryDocId] = useState<string | null>(null);
+  const [showCompanyProfile, setShowCompanyProfile] = useState(false);
+
   // Why the last WhatsApp send did not go, shown in the dialog with the PDF as
   // the way to send it by hand.
   const [sendBlocks, setSendBlocks] = useState<{ code: string; message: string }[]>([]);
@@ -168,7 +188,11 @@ function SalesPage() {
   });
 
   const documents = (data?.documents ?? []) as unknown as DocRow[];
-  const visible = documents.filter((doc) =>
+  // Internal SaaS billing receipts (Stripe) must never appear in the customer sales view.
+  const customerDocs = documents.filter(
+    (doc) => !isSubscriptionReceipt(doc as { custom_fields?: Record<string, unknown> | null }),
+  );
+  const visible = customerDocs.filter((doc) =>
     tab === "all"
       ? true
       : tab === "quotations"
@@ -399,6 +423,15 @@ function SalesPage() {
               <Button variant="ghost" onClick={() => setBuilder(null)}>
                 {t("sales.back")}
               </Button>
+              {builder.id && (
+                <Button
+                  variant="outline"
+                  onClick={() => setHistoryDocId(builder.id)}
+                  className="gap-1.5"
+                >
+                  <History className="h-4 w-4" /> Backups &amp; Logs
+                </Button>
+              )}
               <Button
                 variant="outline"
                 disabled={save.isPending || salesDraftBlocker(builder) !== null}
@@ -442,6 +475,13 @@ function SalesPage() {
         description={t("sales.quoteACustomerTurnIt")}
         actions={
           <>
+            <Button
+              variant="outline"
+              onClick={() => setShowCompanyProfile(true)}
+              className="gap-1.5"
+            >
+              <Receipt className="h-4 w-4 text-primary" /> Tax &amp; TRN Profile
+            </Button>
             <Button variant="outline" onClick={() => startNew("quotation")}>
               <Plus className="me-1 h-4 w-4" /> {t("sales.quotation")}
             </Button>
@@ -452,17 +492,75 @@ function SalesPage() {
         }
       />
 
-      <Tabs value={tab} onValueChange={setTab} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="all">{t("sales.all")}</TabsTrigger>
-          <TabsTrigger value="quotations">{t("sales.quotations")}</TabsTrigger>
-          <TabsTrigger value="unpaid">{t("sales.unpaid")}</TabsTrigger>
-          <TabsTrigger value="paid">{t("sales.paid")}</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      {/* Toolbar: view toggle + list-mode filters */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        {/* Board / List toggle */}
+        <div className="flex rounded-lg border p-0.5">
+          <Button
+            variant={viewMode === "board" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            onClick={() => setViewMode("board")}
+          >
+            <KanbanSquare className="h-3.5 w-3.5" /> Board
+          </Button>
+          <Button
+            variant={viewMode === "list" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            onClick={() => setViewMode("list")}
+          >
+            <LayoutList className="h-3.5 w-3.5" /> List
+          </Button>
+        </div>
+
+        {/* Filters — only shown in list mode */}
+        {viewMode === "list" && (
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="all">{t("sales.all")}</TabsTrigger>
+              <TabsTrigger value="quotations">{t("sales.quotations")}</TabsTrigger>
+              <TabsTrigger value="unpaid">{t("sales.unpaid")}</TabsTrigger>
+              <TabsTrigger value="paid">{t("sales.paid")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+      </div>
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">{t("sales.loadingYourSalesDocuments")}</p>
+      ) : viewMode === "board" ? (
+        customerDocs.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Receipt className="h-4 w-4" /> {t("sales.nothingHereYet")}
+              </CardTitle>
+              <CardDescription>{t("sales.createYourFirstQuotationWhen")}</CardDescription>
+            </CardHeader>
+          </Card>
+        ) : (
+          <SalesPipelineBoard
+            documents={customerDocs}
+            currency={
+              (data?.settings as { default_currency?: string } | undefined)?.default_currency ??
+              "AED"
+            }
+            onOpenExisting={(id) => openExisting.mutate(id)}
+            onSendWhatsApp={(doc) => setSendFor(doc)}
+            onConvertQuotation={(id) => convert.mutate(id)}
+            onRecordPayment={(doc) => {
+              setPayFor(doc);
+              setPayForm({
+                amount: String(Number(doc.balance).toFixed(2)),
+                reference: "",
+                method: "bank_transfer",
+              });
+            }}
+            onDownloadPdf={(id) => download.mutate(id)}
+            onViewHistory={(id) => setHistoryDocId(id)}
+          />
+        )
       ) : visible.length === 0 ? (
         <Card>
           <CardHeader>
@@ -476,7 +574,7 @@ function SalesPage() {
         <div className="space-y-3">
           {visible.map((doc) => (
             <Card key={doc.id}>
-              <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
+              <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 items-start">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
@@ -513,6 +611,14 @@ function SalesPage() {
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => openExisting.mutate(doc.id)}>
                     {t("sales.edit2")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setHistoryDocId(doc.id)}
+                    title="View PDF Backups & Audit Trail"
+                  >
+                    <History className="mr-1 h-4 w-4" /> Backups
                   </Button>
                   <Button
                     size="sm"
@@ -631,6 +737,18 @@ function SalesPage() {
               {pay.isPending ? t("sales.saving") : t("sales.savePayment")}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <DocumentHistoryDialog
+        documentId={historyDocId}
+        open={Boolean(historyDocId)}
+        onOpenChange={(open) => !open && setHistoryDocId(null)}
+      />
+
+      <Dialog open={showCompanyProfile} onOpenChange={setShowCompanyProfile}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <CompanyBillingProfileCard />
         </DialogContent>
       </Dialog>
     </div>

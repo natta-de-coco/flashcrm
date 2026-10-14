@@ -7,7 +7,9 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
-import { NAV_SECTIONS } from "@/lib/navigation";
+import type { NavItem } from "@/lib/navigation";
+import { NO_RECORDS } from "@/lib/record-search";
+import { useNavAccess } from "@/hooks/useNavAccess";
 import { useNavigate } from "@tanstack/react-router";
 import { FileText, Package, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -26,25 +28,26 @@ type Hit = {
 };
 
 /**
- * Pages come from the one nav definition, so search can no longer fall behind
- * the sidebar. It previously held its own copy and had drifted: Quotes &
+ * Pages come from the one nav definition (useNavAccess hands over the sidebar's
+ * own entries, filtered by the same permission rule), so search can no longer
+ * fall behind the sidebar, call a page something else, or offer one the person
+ * cannot open. It previously held its own copy and had drifted: Quotes &
  * Invoices, Chatbot, Campaign Planner and Integrations were all reachable from
  * the sidebar but unfindable here.
  */
-const PAGES: Hit[] = NAV_SECTIONS.flatMap((section) =>
-  section.items.map((item) => ({
-    id: `p-${item.to}`,
-    label: item.label,
-    sub: item.desc,
-    to: item.to,
-    keywords: item.keywords,
-    icon: item.icon,
-  })),
-);
+const toHit = (item: NavItem): Hit => ({
+  id: `p-${item.to}`,
+  label: item.label,
+  sub: item.desc,
+  to: item.to,
+  keywords: item.keywords,
+  icon: item.icon,
+});
 
 /**
- * Universal search (Cmd/Ctrl + K). Jumps to any page and searches live
- * CRM records — contacts, products and articles — scoped by RLS to the
+ * Universal search (Cmd/Ctrl + K). Jumps to any page the person may open and
+ * searches live CRM records -- contacts, products and articles -- but only the
+ * kinds their role can open (lib/record-search.ts), scoped by RLS to the
  * signed-in company.
  */
 export function CommandPalette({
@@ -56,12 +59,18 @@ export function CommandPalette({
 }) {
   const { t, tx } = useI18n();
   const navigate = useNavigate();
+  // The pages and the record search both arrive already limited to the signed-in
+  // role (hooks/useNavAccess); this file never names a role.
+  const { palette, findRecords } = useNavAccess();
   const [q, setQ] = useState("");
   const [records, setRecords] = useState<{ contacts: Hit[]; products: Hit[]; articles: Hit[] }>({
     contacts: [],
     products: [],
     articles: [],
   });
+  // True when the last record search could not run (a database error or a dropped
+  // connection). That is not "no matches", and the screen must not say so.
+  const [searchFailed, setSearchFailed] = useState(false);
 
   // Global shortcut.
   useEffect(() => {
@@ -81,49 +90,38 @@ export function CommandPalette({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onOpenChange]);
 
-  // Debounced record search; only fires once the query is meaningful.
+  // Debounced record search; only fires once the query is meaningful, and only
+  // asks about the kinds of record this role may open.
   useEffect(() => {
     const term = q.trim();
     if (term.length < 2) {
       setRecords({ contacts: [], products: [], articles: [] });
+      setSearchFailed(false);
       return;
     }
     let cancelled = false;
     const timer = window.setTimeout(async () => {
-      const like = `%${term}%`;
-      // PostgREST's .or() string splits on commas/parens, so raw user input
-      // could inject extra filter clauses (e.g. a search term containing a
-      // comma). Wrapping the value in double quotes (escaping any inside it)
-      // is PostgREST's documented way to pass a literal value through.
-      const likeSafe = `"${like.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-      const [contacts, products, articles] = await Promise.all([
-        supabase
-          .from("contacts")
-          .select("id, name, phone, email, company")
-          .or(
-            `name.ilike.${likeSafe},phone.ilike.${likeSafe},email.ilike.${likeSafe},company.ilike.${likeSafe}`,
-          )
-          .limit(6),
-        supabase.from("products").select("id, title, sku").ilike("title", like).limit(5),
-        supabase.from("seo_articles").select("id, title, status").ilike("title", like).limit(5),
-      ]);
+      // A search that throws counts as failed, never as empty.
+      const answer = await findRecords(supabase, term).catch(() => null);
       if (cancelled) return;
+      setSearchFailed(answer === null || answer.failed.length > 0);
+      const found = answer ?? NO_RECORDS;
       setRecords({
-        contacts: (contacts.data ?? []).map((c) => ({
+        contacts: found.contacts.map((c) => ({
           id: c.id,
           label: c.name,
           sub: c.phone ?? c.email ?? c.company ?? t("commandPalette.contact"),
           to: "/contacts",
           icon: Users,
         })),
-        products: (products.data ?? []).map((p) => ({
+        products: found.products.map((p) => ({
           id: p.id,
           label: p.title,
           sub: p.sku ?? t("commandPalette.product"),
           to: "/catalog",
           icon: Package,
         })),
-        articles: (articles.data ?? []).map((a) => ({
+        articles: found.articles.map((a) => ({
           id: a.id,
           label: a.title,
           sub: tx(`seoBlogIndex.status.${a.status}`, a.status),
@@ -136,7 +134,7 @@ export function CommandPalette({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [q, t, tx]);
+  }, [q, findRecords, t, tx]);
 
   const go = (to: string) => {
     onOpenChange(false);
@@ -148,7 +146,7 @@ export function CommandPalette({
     {
       heading: t("commandPalette.pages"),
       // Shown in the reader's language; the English name stays searchable.
-      hits: PAGES.map((page) => ({
+      hits: palette.map(toHit).map((page) => ({
         ...page,
         label: tx(navMessageKey(page.to, "label"), page.label),
         ...(page.sub ? { sub: tx(navMessageKey(page.to, "desc"), page.sub) } : {}),
@@ -168,11 +166,17 @@ export function CommandPalette({
         onValueChange={setQ}
       />
       <CommandList>
-        <CommandEmpty>
-          {q.trim().length < 2
-            ? t("commandPalette.typeAtLeast2Characters")
-            : t("commandPalette.noMatchesFound")}
-        </CommandEmpty>
+        {searchFailed ? (
+          <p role="alert" className="px-3 py-3 text-center text-sm text-destructive">
+            {t("commandPalette.searchFailed")}
+          </p>
+        ) : (
+          <CommandEmpty>
+            {q.trim().length < 2
+              ? t("commandPalette.typeAtLeast2Characters")
+              : t("commandPalette.noMatchesFound")}
+          </CommandEmpty>
+        )}
         {groups.map((group) =>
           group.hits.length ? (
             <CommandGroup key={group.heading} heading={group.heading}>
