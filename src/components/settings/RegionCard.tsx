@@ -21,6 +21,7 @@ import {
   CURRENCIES,
   currencyName,
   formatMoney,
+  formatDate,
   LANGUAGES,
   resolveTenantLocale,
   DEFAULT_LOCALE,
@@ -29,38 +30,60 @@ import { getWorkspaceRegion, saveWorkspaceRegion } from "@/lib/workspace.functio
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Globe2, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 import { useTenant } from "@/hooks/useTenant";
+import { useSettingsDraft } from "@/hooks/useSettingsDraft";
+import { isCompanyManager } from "@/lib/permissions";
+import { SettingsLoadError, SettingsSaveStatus } from "./SettingsFeedback";
+
+const EMPTY_REGION = {
+  country: "AE",
+  currency: DEFAULT_LOCALE.currency,
+  locale: "en",
+  timezone: DEFAULT_LOCALE.timezone,
+};
 
 export function RegionCard() {
   const { t, tr, tx, language } = useI18n();
   const { refresh } = useTenant();
+  const { tenant, staffRole } = useTenant();
   const qc = useQueryClient();
   const save = useServerFn(saveWorkspaceRegion);
-  const region = useQuery({ queryKey: ["workspace-region"], queryFn: () => getWorkspaceRegion() });
+  const region = useQuery({
+    queryKey: ["workspace-region", tenant?.id],
+    enabled: !!tenant,
+    queryFn: () => getWorkspaceRegion(),
+  });
 
-  const [country, setCountry] = useState("AE");
-  const [currency, setCurrency] = useState(DEFAULT_LOCALE.currency);
-  const [locale, setLocale] = useState("en");
-  const [timezone, setTimezone] = useState(DEFAULT_LOCALE.timezone);
-
-  useEffect(() => {
-    if (!region.data) return;
-    setCountry(region.data.country);
-    setCurrency(region.data.currency);
-    setLocale(region.data.locale);
-    setTimezone(region.data.timezone);
-  }, [region.data]);
+  const source = useMemo(
+    () =>
+      region.data
+        ? {
+            country: region.data.country ?? "AE",
+            currency: region.data.currency ?? DEFAULT_LOCALE.currency,
+            locale: region.data.locale ?? "en",
+            timezone: region.data.timezone ?? DEFAULT_LOCALE.timezone,
+          }
+        : undefined,
+    [region.data],
+  );
+  const form = useSettingsDraft("region", tenant?.id ?? "", EMPTY_REGION, source);
+  const { country, currency, locale, timezone } = form.draft;
+  const setCountry = (country: string) => form.setDraft((draft) => ({ ...draft, country }));
+  const setCurrency = (currency: string) => form.setDraft((draft) => ({ ...draft, currency }));
+  const setLocale = (locale: string) => form.setDraft((draft) => ({ ...draft, locale }));
+  const setTimezone = (timezone: string) => form.setDraft((draft) => ({ ...draft, timezone }));
 
   const mutation = useMutation({
-    mutationFn: async () => save({ data: { country, currency, locale, timezone } }),
-    onSuccess: () => {
+    mutationFn: async (draft: typeof EMPTY_REGION) => save({ data: draft }),
+    onSuccess: (_result, saved) => {
+      form.acknowledge(saved);
       // It used to promise that AI replies follow the language. They do not:
       // the chatbot answers in the customer's own language.
       toast.success(t("regionCard.regionalSettingsSaved"));
-      void qc.invalidateQueries({ queryKey: ["workspace-region"] });
+      void qc.invalidateQueries({ queryKey: ["workspace-region", tenant?.id] });
       // The workspace record is loaded once per signed-in user, so the saved
       // company language would not reach anyone -- this admin included --
       // until a full reload.
@@ -123,8 +146,13 @@ export function RegionCard() {
       <CardContent className="grid gap-4">
         {region.isLoading ? (
           <Skeleton className="h-40 w-full" />
+        ) : region.isError || !region.data ? (
+          <SettingsLoadError onRetry={() => void region.refetch()} />
         ) : (
-          <>
+          <fieldset
+            disabled={!isCompanyManager(staffRole) || !form.loaded || mutation.isPending}
+            className="contents"
+          >
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid content-start gap-1.5">
                 <Label>{t("regionCard.country")}</Label>
@@ -159,7 +187,7 @@ export function RegionCard() {
                 <Label>
                   {t("regionCard.companyLanguage") || "Interface Language"}
                   <span className="ms-2 text-xs font-normal text-muted-foreground">
-                    — changes site direction &amp; date formatting
+                    {t("settingsWorkspace.languageHint")}
                   </span>
                 </Label>
                 <Select value={locale} onValueChange={setLocale}>
@@ -218,10 +246,7 @@ export function RegionCard() {
             <p className="text-xs text-muted-foreground">
               {tr("regionCard.preview", {
                 formatMoney: formatMoney(1999.5, preview),
-                format: new Intl.DateTimeFormat(`${locale}-${country}`, {
-                  dateStyle: "long",
-                  timeZone: timezone,
-                }).format(new Date()),
+                format: formatDate(new Date(), preview),
               })}
             </p>
 
@@ -241,12 +266,19 @@ export function RegionCard() {
 
             <Button
               className="w-fit"
-              disabled={mutation.isPending}
-              onClick={() => mutation.mutate()}
+              disabled={
+                mutation.isPending || !form.loaded || !form.dirty || !isCompanyManager(staffRole)
+              }
+              onClick={() => mutation.mutate(form.draft)}
             >
               {mutation.isPending ? t("regionCard.saving") : t("regionCard.saveRegionalSettings")}
             </Button>
-          </>
+            <SettingsSaveStatus
+              dirty={form.dirty}
+              onReset={form.reset}
+              disabled={mutation.isPending}
+            />
+          </fieldset>
         )}
       </CardContent>
     </Card>

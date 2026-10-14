@@ -75,3 +75,5 @@ jobs:
         run: node supabase/verify/verify-assistant-opt-in.mjs
       - name: Workspace member removal and role change are atomic
         run: node supabase/verify/verify-workspace-member-role.mjs
+      - name: Lead alert settings and evidence require company admin and server writes
+        run: node supabase/verify/verify-lead-alert-settings.mjs

@@ -510,14 +510,45 @@ export const convertQuotationToInvoice = createServerFn({ method: "POST" })
     return result;
   });
 
-/** Fetches company billing & tax profile for settings and invoice headers. */
+/** Reads company details without writing defaults during a GET. */
 export const getBillingProfile = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { ensureBillingSettings, requireTenantId } = await import("@/lib/billing.server");
+    const { requireTenantId } = await import("@/lib/billing.server");
     const tenantId = await requireTenantId(context.supabase);
-    const settings = await ensureBillingSettings(context.supabase, tenantId);
-    return settings;
+    const { data, error } = await context.supabase
+      .from("billing_settings")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    // This column is installed by 20261008000000; generated types predate it.
+    const profileClient = context.supabase as unknown as {
+      from: (table: string) => {
+        select: (columns: string) => {
+          eq: (
+            column: string,
+            value: string,
+          ) => {
+            maybeSingle: () => Promise<{
+              data: { tax_registration_number: string | null } | null;
+              error: { message: string } | null;
+            }>;
+          };
+        };
+      };
+    };
+    const { data: profile, error: profileError } = await profileClient
+      .from("business_profiles")
+      .select("tax_registration_number")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (profileError) throw profileError;
+    return {
+      ...data,
+      tax_registration_number: data.vat_number ?? profile?.tax_registration_number,
+    };
   });
 
 /** Company details, TRN/tax numbers, payment link and defaults used on every document. */
@@ -594,11 +625,14 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     if (data.online_payment_url !== undefined)
       patch["online_payment_url"] = data.online_payment_url;
 
-    const { error } = await context.supabase
+    const { data: savedSettings, error } = await context.supabase
       .from("billing_settings")
       .update(patch as never)
-      .eq("tenant_id", tenantId);
+      .eq("tenant_id", tenantId)
+      .select("tenant_id")
+      .single();
     if (error) throw error;
+    if (!savedSettings) throw new Error("Company settings could not be saved. Please retry.");
 
     // Keep business_profiles tax_registration_number synchronized if present in DB
     if (trn !== undefined) {

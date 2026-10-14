@@ -57,6 +57,7 @@ import seoBlogStudio from "./screens/seo-blog-studio";
 import settings from "./screens/settings";
 import settingsEmail from "./screens/settings-email";
 import settingsIndex from "./screens/settings-index";
+import settingsWorkspace from "./screens/settings-workspace";
 import shell from "./screens/shell";
 import social from "./screens/social";
 import socialInbox from "./screens/social-inbox";
@@ -124,6 +125,7 @@ const SCREENS = [
   settings,
   settingsEmail,
   settingsIndex,
+  settingsWorkspace,
   shell,
   social,
   socialInbox,

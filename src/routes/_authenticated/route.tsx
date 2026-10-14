@@ -8,6 +8,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { QuickCreate } from "@/components/QuickCreate";
 import { MobileBottomNav } from "@/components/MobileBottomNav";
 import { ProfileBanner } from "@/components/ProfileBanner";
+import { WorkspaceNotificationBell } from "@/components/WorkspaceNotificationBell";
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PageLanguage } from "@/components/PageLanguage";
@@ -334,6 +335,7 @@ function AuthenticatedLayout() {
               <Search className="size-5" />
             </Button>
             <QuickCreate compact />
+            <WorkspaceNotificationBell />
           </header>
 
           <header className="sticky top-0 z-30 hidden h-14 items-center gap-3 border-b bg-background/95 px-6 backdrop-blur lg:flex">
@@ -351,6 +353,7 @@ function AuthenticatedLayout() {
             </button>
             <div className="ms-auto flex items-center gap-2">
               <LanguageSwitcher />
+              <WorkspaceNotificationBell />
 
               <QuickCreate />
             </div>

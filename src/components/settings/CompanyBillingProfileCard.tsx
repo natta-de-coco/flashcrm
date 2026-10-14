@@ -5,238 +5,170 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { getBillingProfile, saveBillingProfile } from "@/lib/billing.functions";
+import {
+  billingProfileDraft,
+  billingProfilePatch,
+  billingProfileProblem,
+  EMPTY_BILLING_PROFILE,
+  type BillingProfileDraft,
+} from "@/lib/settings-billing-profile";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, Check, FileSpreadsheet, Loader2, Receipt } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Receipt } from "lucide-react";
+import { useMemo } from "react";
+import { useI18n } from "@/hooks/useI18n";
+import { useTenant } from "@/hooks/useTenant";
+import { useSettingsDraft } from "@/hooks/useSettingsDraft";
+import { isCompanyManager } from "@/lib/permissions";
+import { SettingsLoadError, SettingsSaveStatus } from "./SettingsFeedback";
 import { toast } from "sonner";
-
+const FIELDS = [
+  "tradeName",
+  "legalName",
+  "trn",
+  "regNo",
+  "taxLabel",
+  "taxRate",
+  "phone",
+  "email",
+  "website",
+  "paymentTerms",
+  "paymentUrl",
+] as const;
+const LIMITS = {
+  tradeName: 200,
+  legalName: 200,
+  trn: 80,
+  regNo: 80,
+  taxLabel: 30,
+  phone: 60,
+  email: 200,
+  website: 200,
+  paymentTerms: 300,
+  paymentUrl: 500,
+};
 export function CompanyBillingProfileCard() {
+  const { tenant, staffRole } = useTenant();
+  const canEdit = isCompanyManager(staffRole);
+  const { t } = useI18n();
   const qc = useQueryClient();
   const fetchProfile = useServerFn(getBillingProfile);
   const saveProfile = useServerFn(saveBillingProfile);
-
   const query = useQuery({
-    queryKey: ["company-billing-profile"],
+    queryKey: ["company-billing-profile", tenant?.id],
+    enabled: !!tenant,
     queryFn: () => fetchProfile(),
   });
-
-  const [legalName, setLegalName] = useState("");
-  const [tradeName, setTradeName] = useState("");
-  const [trn, setTrn] = useState("");
-  const [regNo, setRegNo] = useState("");
-  const [taxLabel, setTaxLabel] = useState("VAT");
-  const [taxRate, setTaxRate] = useState("5");
-  const [address, setAddress] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [website, setWebsite] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState("");
-  const [paymentUrl, setPaymentUrl] = useState("");
-
-  useEffect(() => {
-    if (!query.data) return;
-    const d = query.data as Record<string, unknown>;
-    setLegalName(String(d["legal_name"] ?? ""));
-    setTradeName(String(d["trade_name"] ?? ""));
-    setTrn(String(d["tax_registration_number"] ?? d["vat_number"] ?? ""));
-    setRegNo(String(d["registration_number"] ?? ""));
-    setTaxLabel(String(d["tax_label"] ?? "VAT"));
-    setTaxRate(String(d["default_tax_rate"] ?? 5));
-    setAddress(String(d["address"] ?? ""));
-    setPhone(String(d["phone"] ?? ""));
-    setEmail(String(d["email"] ?? ""));
-    setWebsite(String(d["website"] ?? ""));
-    setPaymentTerms(String(d["default_payment_terms"] ?? ""));
-    setPaymentUrl(String(d["online_payment_url"] ?? ""));
-  }, [query.data]);
-
+  const source = useMemo(
+    () =>
+      query.data === undefined
+        ? undefined
+        : billingProfileDraft(query.data as Record<string, unknown> | null),
+    [query.data],
+  );
+  const form = useSettingsDraft("company-billing", tenant?.id ?? "", EMPTY_BILLING_PROFILE, source);
+  const problem = billingProfileProblem(form.draft);
   const mutation = useMutation({
-    mutationFn: async () => {
-      return saveProfile({
-        data: {
-          legal_name: legalName.trim() || null,
-          trade_name: tradeName.trim() || null,
-          tax_registration_number: trn.trim() || null,
-          vat_number: trn.trim() || null,
-          registration_number: regNo.trim() || null,
-          tax_label: taxLabel.trim() || "VAT",
-          default_tax_rate: Number(taxRate) >= 0 ? Number(taxRate) : 0,
-          address: address.trim() || null,
-          phone: phone.trim() || null,
-          email: email.trim() || null,
-          website: website.trim() || null,
-          default_payment_terms: paymentTerms.trim() || null,
-          online_payment_url: paymentUrl.trim() || null,
-        },
-      });
+    mutationFn: async (draft: BillingProfileDraft) => {
+      await saveProfile({ data: billingProfilePatch(draft) });
+      return draft;
     },
-    onSuccess: () => {
-      toast.success("Company tax and invoicing details updated.");
-      void qc.invalidateQueries({ queryKey: ["company-billing-profile"] });
+    onSuccess: (saved) => {
+      form.acknowledge(saved);
+      toast.success(t("settingsWorkspace.companySaved"));
+      void qc.invalidateQueries({ queryKey: ["company-billing-profile", tenant?.id] });
+      void qc.invalidateQueries({ queryKey: ["invoice-branding", tenant?.id] });
       void qc.invalidateQueries({ queryKey: ["sales-workspace"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (error: Error) => toast.error(error.message),
   });
-
-  if (query.isLoading) {
-    return <Skeleton className="h-64 w-full" />;
-  }
-
+  if (query.isLoading || !tenant) return <Skeleton className="h-64 w-full" />;
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Receipt className="size-4 text-primary" /> Company Tax, TRN &amp; Invoicing Profile
+          <Receipt className="size-4 text-primary" />
+          {t("settingsWorkspace.companyDetails")}
         </CardTitle>
-        <CardDescription>
-          Your company legal details and Tax Registration Number (TRN). These appear on your
-          official quotation and tax invoice PDFs, ZATCA QR codes and WhatsApp payment links.
-        </CardDescription>
+        <CardDescription>{t("settingsWorkspace.companyDetailsDesc")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="trade-name">Company Trade / Display Name</Label>
-            <Input
-              id="trade-name"
-              placeholder="e.g. Acme Trading LLC"
-              value={tradeName}
-              onChange={(e) => setTradeName(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="legal-name">Registered Legal Name</Label>
-            <Input
-              id="legal-name"
-              placeholder="e.g. Acme Group International LLC"
-              value={legalName}
-              onChange={(e) => setLegalName(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="trn-number" className="font-semibold text-primary">
-              Tax Registration Number (TRN / VAT)
-            </Label>
-            <Input
-              id="trn-number"
-              placeholder="e.g. 100234567800003"
-              value={trn}
-              onChange={(e) => setTrn(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="tax-label">Tax Label on Invoices</Label>
-            <Input
-              id="tax-label"
-              placeholder="VAT, TRN, or Tax ID"
-              value={taxLabel}
-              onChange={(e) => setTaxLabel(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="tax-rate">Default Tax Rate (%)</Label>
-            <Input
-              id="tax-rate"
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              placeholder="5"
-              value={taxRate}
-              onChange={(e) => setTaxRate(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="reg-no">Commercial License / Reg. No.</Label>
-            <Input
-              id="reg-no"
-              placeholder="e.g. CN-1029384"
-              value={regNo}
-              onChange={(e) => setRegNo(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="phone">Official Phone</Label>
-            <Input
-              id="phone"
-              placeholder="+971 4 XXX XXXX"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Official Billing Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="billing@yourcompany.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="website">Website</Label>
-            <Input
-              id="website"
-              placeholder="https://yourcompany.com"
-              value={website}
-              onChange={(e) => setWebsite(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="address">Registered Business Address</Label>
-          <Textarea
-            id="address"
-            rows={2}
-            placeholder="Office 402, Business Tower, Downtown, Dubai, UAE"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-          />
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="payment-terms">Default Payment Terms</Label>
-            <Input
-              id="payment-terms"
-              placeholder="e.g. Net 30 days / 50% advance"
-              value={paymentTerms}
-              onChange={(e) => setPaymentTerms(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="payment-url">Online Payment Gateway URL</Label>
-            <Input
-              id="payment-url"
-              placeholder="https://buy.stripe.com/... or custom payment portal"
-              value={paymentUrl}
-              onChange={(e) => setPaymentUrl(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-end pt-2">
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} className="gap-2">
-            {mutation.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Check className="size-4" />
+        {query.isError ? (
+          <SettingsLoadError onRetry={() => void query.refetch()} />
+        ) : (
+          <>
+            <fieldset
+              disabled={!canEdit || !form.loaded || mutation.isPending}
+              className="space-y-4"
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                {FIELDS.map((key) => (
+                  <div className="space-y-1.5" key={key}>
+                    <Label htmlFor={`company-${key}`}>{t(`settingsWorkspace.field.${key}`)}</Label>
+                    <Input
+                      id={`company-${key}`}
+                      type={
+                        key === "taxRate"
+                          ? "number"
+                          : key === "email"
+                            ? "email"
+                            : key === "phone"
+                              ? "tel"
+                              : "text"
+                      }
+                      {...(key === "taxRate"
+                        ? { min: 0, max: 100, step: 0.1 }
+                        : { maxLength: LIMITS[key] })}
+                      dir={
+                        ["email", "phone", "website", "paymentUrl"].includes(key)
+                          ? "ltr"
+                          : undefined
+                      }
+                      value={form.draft[key]}
+                      onChange={(event) =>
+                        form.setDraft((draft) => ({ ...draft, [key]: event.target.value }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="company-address">{t("settingsWorkspace.field.address")}</Label>
+                <Textarea
+                  id="company-address"
+                  rows={3}
+                  maxLength={500}
+                  value={form.draft.address}
+                  onChange={(event) =>
+                    form.setDraft((draft) => ({ ...draft, address: event.target.value }))
+                  }
+                />
+              </div>
+            </fieldset>
+            {problem && form.dirty && (
+              <p role="alert" className="text-sm text-destructive">
+                {t(`settingsWorkspace.invalid.${problem}`)}
+              </p>
             )}
-            Save Tax &amp; Invoicing Profile
-          </Button>
-        </div>
+            {canEdit ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <SettingsSaveStatus
+                  dirty={form.dirty}
+                  onReset={form.reset}
+                  disabled={mutation.isPending}
+                />
+                <Button
+                  disabled={!form.loaded || !form.dirty || !!problem || mutation.isPending}
+                  onClick={() => mutation.mutate(form.draft)}
+                >
+                  {t(mutation.isPending ? "settingsWorkspace.saving" : "settingsWorkspace.save")}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t("settingsWorkspace.adminOnly")}</p>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   );
