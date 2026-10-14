@@ -42,7 +42,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export interface CampaignComposerData {
@@ -84,6 +84,17 @@ export function CampaignComposerModal({
   );
   const [newAttachmentName, setNewAttachmentName] = useState("");
   const [newAttachmentUrl, setNewAttachmentUrl] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setName(initialData?.name || "");
+      setSubject(initialData?.subject || "");
+      setBody(initialData?.body || defaultTpl.htmlContent);
+      setTemplateId(initialData?.templateId || defaultTpl.id);
+      setImageUrl(initialData?.imageUrl || defaultTpl.defaultImageUrl || "");
+      setAttachments(initialData?.attachments || []);
+    }
+  }, [open, initialData, defaultTpl.htmlContent, defaultTpl.id, defaultTpl.defaultImageUrl]);
 
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [activeTab, setActiveTab] = useState<"composer" | "preview">("composer");

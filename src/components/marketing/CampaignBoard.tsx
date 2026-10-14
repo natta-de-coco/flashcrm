@@ -35,7 +35,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export type CampaignStatus = "draft" | "scheduled" | "in_progress" | "sent" | "paused";
@@ -58,6 +58,7 @@ interface CampaignBoardProps {
   campaigns: CampaignItem[];
   isSmtpVerified: boolean;
   audienceCount: number;
+  initialComposerData?: Partial<CampaignComposerData> | undefined;
 }
 
 interface CampaignsTableClient {
@@ -108,13 +109,24 @@ const STAGES: {
 // Keep disabled until campaign delivery has a real transport and per-recipient evidence.
 const EMAIL_CAMPAIGNS_CAN_SEND = false;
 
-export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: CampaignBoardProps) {
+export function CampaignBoard({
+  campaigns,
+  isSmtpVerified,
+  audienceCount,
+  initialComposerData,
+}: CampaignBoardProps) {
   const { t } = useI18n();
   const qc = useQueryClient();
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<CampaignItem | null>(null);
   const [draftId, setDraftId] = useState(() => crypto.randomUUID());
   const saveCampaignFn = useServerFn(saveCampaignDraft);
+
+  useEffect(() => {
+    if (initialComposerData?.name || initialComposerData?.body) {
+      setComposerOpen(true);
+    }
+  }, [initialComposerData]);
 
   const dispatchNowFn = useServerFn(dispatchCampaignNow);
   const dispatchNowMutation = useMutation({
@@ -511,7 +523,7 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                 templateId: editingCampaign.template_id || undefined,
                 imageUrl: editingCampaign.image_url || undefined,
               }
-            : undefined
+            : initialComposerData || undefined
         }
       />
     </div>

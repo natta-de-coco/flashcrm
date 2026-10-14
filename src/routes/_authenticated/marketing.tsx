@@ -338,18 +338,6 @@ function MarketingPage() {
     toast.success("Draft copied into the campaign form below");
   }
 
-  async function queueCampaign(id: string) {
-    const { error } = await supabase
-      .from("campaigns")
-      .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) toast.error(friendlyError(error));
-    else {
-      toast.success("Campaign queued. It sends once your email sending domain is verified.");
-      void qc.invalidateQueries({ queryKey: ["campaigns"] });
-    }
-  }
-
   function copy(value: string) {
     void navigator.clipboard.writeText(value);
     toast.success("Copied to clipboard");
@@ -896,6 +884,7 @@ function MarketingPage() {
           campaigns={(campaigns.data ?? []) as unknown as CampaignItem[]}
           isSmtpVerified={isSmtpVerified}
           audienceCount={emailAudience?.total ?? 0}
+          initialComposerData={campaignForm.name || campaignForm.body ? campaignForm : undefined}
         />
       </div>
     </main>
