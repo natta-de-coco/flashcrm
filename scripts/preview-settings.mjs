@@ -19,6 +19,16 @@ for (const find of [
   "@/lib/notifications.functions",
 ])
   aliases.push({ find, replacement: functions });
+for (const find of [
+  "@/lib/dashboard.functions",
+  "@/lib/brief.functions",
+  "@/lib/meta-health.functions",
+  "@/lib/widget-error-log",
+])
+  aliases.push({
+    find,
+    replacement: path.join(repo, "scripts/settings-preview/dashboard-fixtures.ts"),
+  });
 aliases.push(
   ...[
     "@/integrations/supabase/client",

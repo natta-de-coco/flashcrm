@@ -109,6 +109,6 @@ export function briefSnapshotKind(input: {
   cached: boolean;
   ageMs: number;
 }): "fresh" | "diverged" | "cached" {
-  if (!input.cached) return "fresh";
-  return input.ageMs >= BRIEF_DIVERGENCE_MS ? "diverged" : "cached";
+  if (input.ageMs >= BRIEF_DIVERGENCE_MS) return "diverged";
+  return input.cached ? "cached" : "fresh";
 }

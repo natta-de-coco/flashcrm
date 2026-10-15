@@ -11,6 +11,8 @@ import { AppearanceCard } from "@/components/settings/AppearanceCard";
 import { AppearanceProvider } from "@/hooks/useAppearance";
 import { AppearanceMenu } from "@/components/AppearanceMenu";
 import { InboxPage } from "@/routes/_authenticated/inbox";
+import { DashboardPage } from "@/routes/_authenticated/dashboard";
+import { homePreview } from "./dashboard-fixtures";
 import { useInboxViewport } from "@/hooks/useInboxViewport";
 import { InboxDraftProvider } from "@/components/InboxDraftProvider";
 import { addIncomingPreviewMessage } from "./inbox-fixtures";
@@ -25,7 +27,19 @@ import { Toaster } from "@/components/ui/sonner";
 import "./styles.css";
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 function Preview() {
-  const [view, setView] = useState("settings");
+  const [view, setView] = useState("overview");
+  const [homeMode, setHomeMode] = useState("active");
+  const [destination, setDestination] = useState("");
+  useEffect(() => {
+    const navigate = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      setDestination(detail.to);
+      if (detail.to === "/inbox") setView("inbox");
+    };
+    window.addEventListener("preview:navigate", navigate);
+    return () => window.removeEventListener("preview:navigate", navigate);
+  }, []);
+  homePreview.mode = homeMode;
   useInboxViewport(view === "inbox");
   const [scope, setScope] = useState("demo-A"),
     [role, setRole] = useState("company_admin"),
@@ -33,6 +47,10 @@ function Preview() {
     [fail, setFail] = useState(false);
   fixtureState.scope = scope;
   fixtureState.fail = fail;
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  }, [language]);
   useEffect(() => {
     void queryClient.invalidateQueries();
   }, [fail]);
@@ -65,6 +83,9 @@ function Preview() {
             >
               <option value="company_admin">Company admin</option>
               <option value="staff">Staff</option>
+              <option value="seo_editor">Article editor</option>
+              <option value="marketing_manager">Marketing manager</option>
+              <option value="unknown">Unknown role</option>
             </select>
             <Button
               variant="ghost"
@@ -101,9 +122,30 @@ function Preview() {
                 variant={view === item ? "default" : "ghost"}
                 onClick={() => setView(item)}
               >
-                {item}
+                {item === "overview" ? "Home" : item}
               </Button>
             ))}
+            {view === "overview" && (
+              <select
+                aria-label="Home preview data"
+                value={homeMode}
+                onChange={(e) => {
+                  setHomeMode(e.target.value);
+                  homePreview.mode = e.target.value;
+                  void queryClient.invalidateQueries();
+                }}
+                className="rounded border bg-background px-2 text-foreground"
+              >
+                <option value="active">Active sample workspace</option>
+                <option value="empty">New empty workspace</option>
+                <option value="error">Failed data read</option>
+              </select>
+            )}
+            {destination && (
+              <span role="status" className="p-2 text-xs">
+                Preview destination: {destination}
+              </span>
+            )}
             {view === "inbox" && (
               <Button
                 size="sm"
@@ -124,40 +166,7 @@ function Preview() {
               <InboxPage key={scope + role} />
             </div>
           ) : (
-            <main className="mx-auto max-w-6xl p-5">
-              <header className="flas-hero mb-5 rounded-2xl border bg-card p-7">
-                <p className="text-xs font-medium text-primary">
-                  FLAS overview · synthetic layout preview
-                </p>
-                <h1 className="mt-3 text-3xl font-bold">A clearer view of your business</h1>
-                <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-                  Subtle gradients, calm surfaces and your company’s green identity. Real dashboard
-                  figures are unchanged in the CRM.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-8">
-                  <p className="text-sm">
-                    Conversations <strong className="mt-1 block text-2xl">36 sample</strong>
-                  </p>
-                  <p className="text-sm">
-                    Pending replies <strong className="mt-1 block text-2xl">4 sample</strong>
-                  </p>
-                  <p className="text-sm">
-                    Contacts <strong className="mt-1 block text-2xl">128 sample</strong>
-                  </p>
-                </div>
-              </header>
-              <div className="grid gap-4 sm:grid-cols-3">
-                {["Team inbox", "Customer follow-ups", "Business activity"].map((title) => (
-                  <div key={title} className="rounded-xl border bg-card p-5">
-                    <h2 className="font-semibold">{title}</h2>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      The live CRM keeps its existing workflow and data. This card is a design
-                      fixture.
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </main>
+            <DashboardPage key={scope + role} />
           )}
           <Toaster richColors />
         </div>

@@ -23,6 +23,7 @@ import contacts from "./screens/contacts";
 import content from "./screens/content";
 import credentialsStep from "./screens/credentials-step";
 import dashboard from "./screens/dashboard";
+import homeGuide from "./screens/home-guide";
 import features from "./screens/features";
 import followUpCard from "./screens/follow-up-card";
 import healthReportDialog from "./screens/health-report-dialog";
@@ -92,6 +93,7 @@ const SCREENS = [
   content,
   credentialsStep,
   dashboard,
+  homeGuide,
   features,
   followUpCard,
   healthReportDialog,

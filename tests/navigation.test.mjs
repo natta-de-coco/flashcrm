@@ -1154,7 +1154,17 @@ describe("every way into Social posts lands where its name says", () => {
         );
       }
     }
-    assert.ok(links >= 3, `expected the dashboard and channel links, found ${links}`);
+    assert.equal(links, 2, `expected the dashboard comments link and channel link, found ${links}`);
+    const dashboard = readFileSync(
+      new URL("../src/routes/_authenticated/dashboard.tsx", import.meta.url),
+      "utf8",
+    );
+    const emptySocial = dashboard.slice(
+      dashboard.indexOf("data?.social.accounts.length === 0"),
+      dashboard.indexOf("data?.social.accounts.map"),
+    );
+    assert.match(emptySocial, /to="\/connect"/);
+    assert.doesNotMatch(emptySocial, /to="\/social"/);
   });
 });
 
