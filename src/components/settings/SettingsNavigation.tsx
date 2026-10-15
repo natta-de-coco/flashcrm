@@ -9,6 +9,7 @@ import {
   Shield,
   UserRound,
   Users,
+  Palette,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/hooks/useI18n";
@@ -18,6 +19,7 @@ import { settingsSectionsFor, type SettingsSection } from "@/lib/settings-worksp
 
 const ICONS = {
   profile: UserRound,
+  appearance: Palette,
   security: ShieldCheck,
   company: Building2,
   invoices: FileImage,

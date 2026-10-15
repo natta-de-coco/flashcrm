@@ -9,6 +9,7 @@ import { EmailMarketingCard } from "@/components/settings/EmailMarketingCard";
 import { LeadAlertsSettingsCard } from "@/components/settings/LeadAlertsSettingsCard";
 import { InvoiceBrandingCard } from "@/components/settings/InvoiceBrandingCard";
 import { PersonalProfileCard } from "@/components/settings/PersonalProfileCard";
+import { AppearanceCard } from "@/components/settings/AppearanceCard";
 import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -126,6 +127,7 @@ function SettingsWorkspace() {
                   </header>
                   <div className="grid gap-4">
                     {item.id === "profile" && <PersonalProfileCard />}
+                    {item.id === "appearance" && <AppearanceCard />}
                     {item.id === "security" && <SecurityCard />}
                     {item.id === "company" && (
                       <>

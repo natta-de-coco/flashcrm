@@ -1,0 +1,172 @@
+/* Optional visual layer: FLAS light remains the default and brand green stays. */
+:root[data-theme="grey"] {
+  --background: oklch(0.95 0.006 255);
+  --foreground: oklch(0.24 0.015 255);
+  --card: oklch(0.987 0.003 255);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --muted: oklch(0.924 0.007 255);
+  --muted-foreground: oklch(0.47 0.017 255);
+  --secondary: oklch(0.925 0.012 160);
+  --border: oklch(0.855 0.01 255);
+  --input: var(--border);
+  --sidebar: oklch(0.265 0.015 255);
+  --sidebar-accent: oklch(0.34 0.018 255);
+  --sidebar-border: oklch(0.38 0.018 255);
+  --chat-canvas: oklch(0.92 0.008 255);
+}
+:root[data-theme="dark"] {
+  --background: oklch(0.175 0.014 255);
+  --foreground: oklch(0.96 0.007 255);
+  --card: oklch(0.222 0.017 255);
+  --card-foreground: var(--foreground);
+  --popover: oklch(0.245 0.017 255);
+  --popover-foreground: var(--foreground);
+  --muted: oklch(0.28 0.017 255);
+  --muted-foreground: oklch(0.76 0.014 255);
+  --secondary: oklch(0.28 0.018 255);
+  --secondary-foreground: var(--foreground);
+  --sidebar: oklch(0.155 0.016 255);
+  --sidebar-accent: oklch(0.25 0.021 255);
+  --chat-canvas: oklch(0.19 0.016 255);
+  --bubble-in: oklch(0.27 0.017 255);
+  --bubble-in-foreground: var(--foreground);
+}
+.flas-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.flas-hero > * {
+  position: relative;
+  z-index: 1;
+}
+.flas-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    radial-gradient(
+      ellipse at 95% 0%,
+      color-mix(in oklab, var(--primary) 19%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(ellipse at 45% 120%, oklch(0.72 0.1 205 / 0.14), transparent 65%),
+    repeating-radial-gradient(
+      circle at 100% 0%,
+      transparent 0 32px,
+      color-mix(in oklab, var(--foreground) 5%, transparent) 33px 34px
+    );
+  animation: flas-ambient 18s ease-in-out infinite alternate;
+}
+@keyframes flas-ambient {
+  to {
+    transform: scale(1.07) translateX(-1%);
+  }
+}
+.inbox-app-shell {
+  height: var(--inbox-viewport, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+}
+.inbox-app-shell > aside {
+  height: 100%;
+}
+.inbox-app-shell header,
+.inbox-app-shell nav[aria-label] {
+  flex-shrink: 0;
+}
+.inbox-workspace {
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.conversation-row {
+  min-height: 88px;
+}
+.conversation-row[aria-current="true"] {
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+[dir="rtl"] .conversation-row[aria-current="true"] {
+  box-shadow: inset -3px 0 0 var(--primary);
+}
+:root[data-density="compact"] .conversation-row {
+  min-height: 70px;
+  padding-block: 0.625rem;
+}
+.inbox-thread {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.chat-tools {
+  max-height: 40%;
+  flex-shrink: 1;
+}
+.message-bubble {
+  max-width: min(88%, 42rem);
+}
+@media (min-width: 640px) {
+  .message-bubble {
+    max-width: min(78%, 42rem);
+  }
+}
+:root:not(.dark) .text-brand {
+  color: var(--primary);
+}
+@media (max-width: 639px) {
+  .inbox-composer button {
+    min-height: 2.75rem;
+  }
+}
+.inbox-composer {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+:root[data-inbox-keyboard="open"] .inbox-app-shell [data-mobile-nav] {
+  display: none;
+}
+.theme-swatch-light {
+  background: oklch(0.983 0.007 95);
+}
+.theme-swatch-grey {
+  background: oklch(0.9 0.01 255);
+}
+.theme-swatch-dark {
+  background: oklch(0.2 0.02 255);
+}
+.theme-swatch-dark > span:last-child {
+  background: oklch(0.3 0.02 255);
+}
+.theme-swatch-system {
+  background: linear-gradient(120deg, oklch(0.983 0.007 95) 50%, oklch(0.2 0.02 255) 50%);
+}
+:root[data-wallpaper="off"] .chat-canvas-bg {
+  background-image: none;
+}
+:root[data-effects="off"] .flas-hero::before {
+  display: none;
+}
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media (max-width: 639px) {
+  .inbox-thread {
+    scrollbar-gutter: auto;
+  }
+}

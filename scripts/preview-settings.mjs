@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 const repo = path.resolve(import.meta.dirname, "..");
 const runtime = path.join(repo, "scripts/settings-preview/runtime.tsx");
 const functions = path.join(repo, "scripts/settings-preview/functions.ts");
+const inboxFixtures = path.join(repo, "scripts/settings-preview/inbox-fixtures.ts");
 const aliases = ["@/hooks/useAuth", "@/hooks/useTenant", "@/hooks/useI18n"].map((find) => ({
   find,
   replacement: runtime,
@@ -16,10 +17,19 @@ for (const find of [
   "@/lib/invoice-branding.functions",
   "@/lib/lead-alerts.functions",
   "@/lib/notifications.functions",
-  "@/integrations/supabase/client",
 ])
   aliases.push({ find, replacement: functions });
 aliases.push(
+  ...[
+    "@/integrations/supabase/client",
+    "@/lib/crm.functions",
+    "@/lib/audit.functions",
+    "@/lib/social.functions",
+  ].map((find) => ({ find, replacement: inboxFixtures })),
+  {
+    find: "@tanstack/react-router",
+    replacement: path.join(repo, "scripts/settings-preview/router.tsx"),
+  },
   {
     find: /^@tanstack\/react-start$/,
     replacement: path.join(repo, "scripts/settings-preview/server-fn.ts"),

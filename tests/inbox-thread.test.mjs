@@ -183,7 +183,9 @@ describe("the Inbox screen uses these rules", () => {
 
   it("offers earlier messages and older conversations", () => {
     assert.match(inbox, /messages\.hasNextPage && \(/);
-    assert.match(inbox, /onClick=\{\(\) => loadOlder\(messages\)\}/);
+    assert.match(inbox, /onClick=\{\(\) => void loadEarlierMessages\(\)\}/);
+    assert.match(inbox, /element\.dataset\["messageId"\] === anchor\.messageId/);
+    assert.match(inbox, /node\.scrollTop \+=\s*message\.getBoundingClientRect\(\)\.top/);
     assert.match(inbox, /onClick=\{\(\) => loadOlder\(conversations\)\}/);
     // A page that cannot be loaded is reported, not swallowed.
     assert.match(inbox, /if \(result\.isError\) toast\.error\(/);

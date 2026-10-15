@@ -3,6 +3,12 @@ import { isCompanyManager } from "./permissions";
 export const SETTINGS_SECTIONS = [
   { id: "profile", group: "account", manager: false, keywords: "name personal profile account" },
   {
+    id: "appearance",
+    group: "account",
+    manager: false,
+    keywords: "appearance light grey gray dark system theme motion gradients wallpaper density",
+  },
+  {
     id: "security",
     group: "account",
     manager: false,

@@ -357,7 +357,7 @@ function DashboardPage() {
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-      <header className="mb-6 flex items-start justify-between gap-3">
+      <header className="flas-hero mb-6 flex flex-wrap items-start justify-between gap-4 rounded-2xl border bg-card p-5 sm:p-7">
         <div>
           <h1 className="text-[1.75rem] font-bold leading-tight sm:text-3xl">
             {t("dashboard.title")}

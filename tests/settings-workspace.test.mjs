@@ -24,7 +24,8 @@ test("personal settings are reachable without opening company email setup", () =
     assert.equal(permissions.canOpen(role, "/settings"), true);
     assert.equal(permissions.canOpen(role, "/settings/email"), false);
   }
-  for (const role of [null, undefined, "unknown"]) assert.equal(permissions.canOpen(role, "/settings"), false);
+  for (const role of [null, undefined, "unknown"])
+    assert.equal(permissions.canOpen(role, "/settings"), false);
   assert.equal(permissions.canOpen("company_admin", "/settings/email"), true);
 });
 test("settings deep links accept only real section IDs", () => {
@@ -42,12 +43,12 @@ test("unknown and staff roles cannot discover company configuration", () => {
   for (const role of [null, undefined, "staff", "seo_editor", "marketing_manager", "unknown"]) {
     assert.deepEqual(
       settings.settingsSectionsFor(role).map((x) => x.id),
-      ["profile", "security"],
+      ["profile", "appearance", "security"],
     );
     assert.equal(settings.selectedSettingsSection("invoices", role), "profile");
   }
   for (const role of ["company_admin", "super_admin"])
-    assert.equal(settings.settingsSectionsFor(role).length, 9);
+    assert.equal(settings.settingsSectionsFor(role).length, 10);
 });
 test("a failed or absent read cannot create a loaded/saveable draft", () => {
   const state = settings.createSettingsDraft("A", { country: "AE" });
