@@ -5433,6 +5433,10 @@ export type Database = {
         Args: { _account_id: string }
         Returns: undefined
       }
+      remove_workspace_member: {
+        Args: { _tenant_id: string; _user_id: string }
+        Returns: boolean
+      }
       replace_sales_document_items: {
         Args: { _document_id: string; _items: Json; _tenant_id: string }
         Returns: undefined
@@ -5460,6 +5464,10 @@ export type Database = {
         Args: { _api_key: string }
         Returns: undefined
       }
+      set_workspace_member_role: {
+        Args: { _role: string; _tenant_id: string; _user_id: string }
+        Returns: boolean
+      }
       try_lock_connection_refresh: {
         Args: { _account_id: string }
         Returns: boolean
@@ -5472,6 +5480,10 @@ export type Database = {
           _provider_msg_id: string
         }
         Returns: boolean
+      }
+      withdraw_marketing_consent: {
+        Args: { _email: string; _tenant_id: string }
+        Returns: Json
       }
     }
     Enums: {
