@@ -35,7 +35,7 @@ Preview screenshots are local owner artifacts under `outputs/appearance-inbox-oc
 
 This UI branch adds **no SQL**, credentials, dependency changes, external sends or new provider capabilities. PR #82 has its own two migrations and reviewed rollout; see `CX-00-GREEN-SETTINGS-2026-10-14.md`. Those migrations are not claimed applied by this task.
 
-1. Review and merge #82 first. This PR initially targets its feature branch so the UI diff is reviewable separately. Retarget/reconcile to current main after #82 lands, preserving history and re-running exact-head checks.
+1. Review and merge #82 first. PR #83 initially targeted its feature branch, then moved to main because existing CI runs only for main-targeted PRs. Until #82 lands, review the UI-only commit `901b607` separately from the included Settings base. Reconcile with current main after #82 lands, preserving history and re-running exact-head checks.
 2. Review the UI diff and CI, then merge through the approved PR workflow. No direct main push or automatic production deployment is performed by this task.
 3. After the actual deployment, run disposable-workspace acceptance for each appearance, real shell/mobile navigation, workspace switching, sender refusal, uncertain retry and RTL. Provider delivery needs separate authorized test recipients and receipt evidence.
 4. Coordinate overlaps with AG-01 and CL-03 in issue #73, especially pending inbox/shell/MFA work (#66/#68). Preserve server guards and chosen draft/session behavior; do not replace entire files with an older version.
