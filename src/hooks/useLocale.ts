@@ -10,7 +10,7 @@ import { getWorkspaceRegion } from "@/lib/workspace.functions";
 import { isRtl, LANGUAGES, type LanguageOption } from "@/lib/locale";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 export type ActiveLocale = {
   code: string;
