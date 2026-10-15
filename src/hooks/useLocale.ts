@@ -61,21 +61,9 @@ export function useLocale(): ActiveLocale {
     };
   }, [data]);
 
-  // Apply lang + dir to <html> whenever the locale changes. This is safe in
-  // SSR because this hook only runs in the browser (useEffect is client-only).
-  useEffect(() => {
-    const html = document.documentElement;
-    html.setAttribute("lang", active.code);
-    html.setAttribute("dir", active.rtl ? "rtl" : "ltr");
-
-    // Persist a cookie so the next server render can set the correct lang
-    // attribute before hydration (avoids a flash of wrong direction).
-    try {
-      document.cookie = `flas_locale=${active.code}; path=/; max-age=31536000; SameSite=Lax`;
-    } catch {
-      // Cookie write may be blocked in very strict browser settings — harmless.
-    }
-  }, [active.code, active.rtl]);
+  // The <html> lang/dir belong to the reader's interface language (set from
+  // the UI-language cookie in __root.tsx), not the workspace locale, so this
+  // hook deliberately does not touch them.
 
   return active;
 }

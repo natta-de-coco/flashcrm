@@ -626,10 +626,13 @@ export type Database = {
           id: string
           industry: string | null
           keywords: string | null
+          landline_phone: string | null
+          language: string
           learned_facts: string | null
           locations: string | null
           main_goal: string | null
           marketing_goals: string | null
+          mobile_phone: string | null
           monthly_revenue_target: number | null
           niche: string | null
           preferred_cta: string | null
@@ -642,11 +645,13 @@ export type Database = {
           target_cities: string | null
           target_countries: string | null
           target_customers: string | null
+          tax_registration_number: string | null
           tenant_id: string
           tone: string | null
           updated_at: string
           usp: string | null
           website_url: string | null
+          whatsapp_number: string | null
         }
         Insert: {
           avoid_products?: string | null
@@ -666,10 +671,13 @@ export type Database = {
           id?: string
           industry?: string | null
           keywords?: string | null
+          landline_phone?: string | null
+          language?: string
           learned_facts?: string | null
           locations?: string | null
           main_goal?: string | null
           marketing_goals?: string | null
+          mobile_phone?: string | null
           monthly_revenue_target?: number | null
           niche?: string | null
           preferred_cta?: string | null
@@ -682,11 +690,13 @@ export type Database = {
           target_cities?: string | null
           target_countries?: string | null
           target_customers?: string | null
+          tax_registration_number?: string | null
           tenant_id: string
           tone?: string | null
           updated_at?: string
           usp?: string | null
           website_url?: string | null
+          whatsapp_number?: string | null
         }
         Update: {
           avoid_products?: string | null
@@ -706,10 +716,13 @@ export type Database = {
           id?: string
           industry?: string | null
           keywords?: string | null
+          landline_phone?: string | null
+          language?: string
           learned_facts?: string | null
           locations?: string | null
           main_goal?: string | null
           marketing_goals?: string | null
+          mobile_phone?: string | null
           monthly_revenue_target?: number | null
           niche?: string | null
           preferred_cta?: string | null
@@ -722,11 +735,13 @@ export type Database = {
           target_cities?: string | null
           target_countries?: string | null
           target_customers?: string | null
+          tax_registration_number?: string | null
           tenant_id?: string
           tone?: string | null
           updated_at?: string
           usp?: string | null
           website_url?: string | null
+          whatsapp_number?: string | null
         }
         Relationships: [
           {
