@@ -31,6 +31,24 @@ function inTheirLanguage(key: MessageKey): string {
   return translate(languageFromCookieHeader(document.cookie), key);
 }
 
+/** How long the guard waits for Auth to answer a refresh before it leaves the session alone. */
+const REFRESH_CHECK_LIMIT_MS = 4_000;
+
+/**
+ * Did Auth itself answer a session refresh with "no" (the session or its
+ * refresh token is gone), as opposed to a network failure, a 5xx or a rate
+ * limit, which say nothing about the session?
+ */
+function authRejectedTheSession(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  const { name, status } = error as { name?: unknown; status?: unknown };
+  if (name === "AuthSessionMissingError") return true;
+  return (
+    name === "AuthApiError" &&
+    (status === 400 || status === 401 || status === 403 || status === 404)
+  );
+}
+
 /** Best-effort `sub` claim for logging only — never used for authorization. */
 function peekSubject(token: string): string {
   try {
@@ -78,7 +96,31 @@ export const sessionGuard = createMiddleware({ type: "function" })
       }
       if (typeof window !== "undefined" && isUnauthorized(error)) {
         const { supabase } = await import("@/integrations/supabase/client");
-        const { data } = await supabase.auth.getSession();
+        let { data } = await supabase.auth.getSession();
+        if (data.session) {
+          // The browser still holds a session, but the server just said it is no
+          // good. Auth may have ended it (a sign-out everywhere, a code verified
+          // on another device, a dashboard "sign out user"), which this browser
+          // cannot know until it asks. Ask by refreshing; if Auth itself rejects
+          // the refresh the session is gone, so forget it and go to sign-in
+          // instead of leaving the person among errors until the token lapses.
+          // A refresh that fails any other way (network, rate limit) says
+          // nothing about the session, so it is left alone.
+          // The library retries a failing network for many seconds, so the wait
+          // is capped; an answer that has not come is no answer.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const outcome = await Promise.race([
+            supabase.auth.refreshSession(),
+            new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), REFRESH_CHECK_LIMIT_MS);
+            }),
+          ]);
+          clearTimeout(timer);
+          if (outcome && authRejectedTheSession(outcome.error)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+            data = { session: null };
+          }
+        }
         if (!data.session) {
           const { toast } = await import("sonner");
           toast.error(FRIENDLY);

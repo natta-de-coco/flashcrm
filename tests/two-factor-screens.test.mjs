@@ -200,7 +200,8 @@ beforeEach(() => {
   browser.location.search = "";
   fake.clearCalls();
   fake.confirmEmailOnSignUp(false);
-  for (const name of ["user", "user:update", "jwks", "rpc:access_state"]) fake.recover(name);
+  for (const name of ["user", "user:update", "token:refresh_token", "jwks", "rpc:access_state"])
+    fake.recover(name);
   watchedSelectors = new Map();
   observer?.disconnect();
   observer = null;
@@ -683,6 +684,110 @@ describe("when the server turns a call back", () => {
       watched.toasts.some((toast) => toast.message === error.message),
       "no message was shown",
     );
+  });
+});
+
+describe("when Auth has dropped a session the browser still stores", () => {
+  // Signing out everywhere, "Back" at the prompt, a dashboard "sign out user",
+  // or a code verified on another device all end a session at Auth. The
+  // browser keeps the tokens until something tells it, so every server call
+  // fails until the stored token runs out. Whatever the first failed call
+  // learns must send the person to sign in, not leave them among errors.
+  const EXPIRED = "Your session has expired. Please sign in again to continue.";
+  const refreshes = () => fake.count("token:refresh_token");
+
+  async function callFromTheBrowser(fn = app.serverFunction("probe")) {
+    try {
+      await fn({ data: undefined });
+      return null;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  for (const [what, factors] of [
+    ["an account without two-factor", []],
+    ["an account with two-factor that has not entered its code", [VERIFIED]],
+  ]) {
+    test(`${what}: the browser forgets the session and goes to sign in`, async () => {
+      const me = person({ factors });
+      const stored = await arriveWithSession(me, { aal: "aal1" });
+      fake.revoke(stored.id);
+      browser.location.pathname = "/contacts";
+      const error = await callFromTheBrowser();
+      assert.equal(error.message, EXPIRED);
+      assert.deepEqual(browser.location.assigned, ["/auth?redirect=%2Fcontacts"]);
+      assert.equal(
+        (await supabase.auth.getSession()).data.session,
+        null,
+        "the dead session is still stored",
+      );
+      assert.ok(watched.toasts.some((toast) => toast.message === EXPIRED));
+    });
+  }
+
+  test("a screen that is open leaves for the sign-in page by itself", async (t) => {
+    const me = person();
+    const stored = await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "the account was not let in");
+    assert.ok(await until(() => watched.served.length > 0), "no heartbeat");
+    fake.revoke(stored.id);
+    browser.location.pathname = "/inbox";
+    // The server remembers for a minute that this account has no second factor,
+    // so it only notices the dropped session after that. (The clock is ours for
+    // the length of the call only: `until` waits on the real one.)
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    t.mock.timers.tick(61_000);
+    const error = await callFromTheBrowser();
+    t.mock.timers.reset();
+    assert.equal(error?.message, EXPIRED);
+    assert.ok(await until(() => watched.navigations.includes("/auth")), "never left the screen");
+    await settle(200);
+    assert.equal(signedInScreen(), null, "the signed-in screen is still showing");
+    assert.deepEqual(browser.location.assigned, ["/auth?redirect=%2Finbox"]);
+  });
+
+  test("an 'Unauthorized' answer that is not about the session leaves a live session alone", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.clearCalls();
+    const error = await callFromTheBrowser(
+      app.serverFunction("boom", { throws: "Unauthorized: you may not change this invoice." }),
+    );
+    assert.ok(error, "the call was let through");
+    assert.ok((await supabase.auth.getSession()).data.session, "a live session was removed");
+    assert.deepEqual(browser.location.assigned, []);
+    assert.equal(refreshes(), 1, "the session was not checked exactly once");
+  });
+
+  test("a refresh that fails because Auth cannot be reached does not sign the person out", async () => {
+    const me = person();
+    const stored = await arriveWithSession(me, { aal: "aal1" });
+    fake.revoke(stored.id);
+    fake.fail("token:refresh_token", { network: true });
+    const started = Date.now();
+    const error = await callFromTheBrowser();
+    // The library would retry a dead network for about twenty-five seconds.
+    assert.ok(Date.now() - started < 10_000, "waited out the library's whole retry schedule");
+    assert.ok(error, "the call was let through");
+    assert.ok(
+      (await supabase.auth.getSession()).data.session,
+      "a session was removed because the network failed, not because Auth dropped it",
+    );
+    assert.deepEqual(browser.location.assigned, []);
+    fake.recover("token:refresh_token");
+  });
+
+  test("a refresh that Auth answers with a rate limit does not sign the person out", async () => {
+    const me = person();
+    const stored = await arriveWithSession(me, { aal: "aal1" });
+    fake.revoke(stored.id);
+    fake.fail("token:refresh_token", { status: 429, body: { code: 429, msg: "slow down" } });
+    await callFromTheBrowser();
+    assert.ok((await supabase.auth.getSession()).data.session);
+    assert.deepEqual(browser.location.assigned, []);
+    fake.recover("token:refresh_token");
   });
 });
 
