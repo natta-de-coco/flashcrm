@@ -20,6 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useI18n } from "@/hooks/useI18n";
+import { CAMPAIGN_FIELD_LIMITS } from "@/lib/campaign-audience";
 import {
   BUILT_IN_EMAIL_TEMPLATES,
   substituteMergeTags,
@@ -68,6 +70,7 @@ export function CampaignComposerModal({
   isSmtpVerified,
   initialData,
 }: CampaignComposerModalProps) {
+  const { t } = useI18n();
   const defaultTpl = BUILT_IN_EMAIL_TEMPLATES[0]!;
   const [name, setName] = useState(initialData?.name || "");
   const [subject, setSubject] = useState(initialData?.subject || "");
@@ -140,6 +143,15 @@ export function CampaignComposerModal({
     }
     if (!subject.trim()) {
       toast.error("Please provide an email subject line");
+      return;
+    }
+    // The same limits the server enforces (PR #58), said in the reader's language.
+    if (
+      name.trim().length > CAMPAIGN_FIELD_LIMITS.name ||
+      subject.trim().length > CAMPAIGN_FIELD_LIMITS.subject ||
+      body.length > CAMPAIGN_FIELD_LIMITS.body
+    ) {
+      toast.error(t("marketing.campaignTooLong"));
       return;
     }
     if (schedule && !isSmtpVerified) {
@@ -233,6 +245,7 @@ export function CampaignComposerModal({
                 <Label htmlFor="campName">Campaign Name (Internal)</Label>
                 <Input
                   id="campName"
+                  maxLength={CAMPAIGN_FIELD_LIMITS.name}
                   placeholder="e.g. Q4 Black Friday Welcome Blast"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -243,6 +256,7 @@ export function CampaignComposerModal({
                 <Label htmlFor="campSubject">Email Subject Line</Label>
                 <Input
                   id="campSubject"
+                  maxLength={CAMPAIGN_FIELD_LIMITS.subject}
                   placeholder="e.g. Welcome {{name}}! Claim 20% off your first order"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
@@ -340,6 +354,7 @@ export function CampaignComposerModal({
               <Label htmlFor="campBody">HTML Body Content</Label>
               <Textarea
                 id="campBody"
+                maxLength={CAMPAIGN_FIELD_LIMITS.body}
                 rows={10}
                 className="font-mono text-xs"
                 value={body}

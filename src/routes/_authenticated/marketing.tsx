@@ -10,6 +10,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/hooks/useI18n";
 import { navMessageKey } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
+import { AI_DRAFT_FIELD_LIMITS, CAMPAIGN_TOO_LONG } from "@/lib/campaign-audience";
+import { getCampaignAudience, saveCampaignDraft } from "@/lib/campaign-audience.functions";
 import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -102,8 +104,8 @@ type Campaign = {
 };
 
 function MarketingPage() {
-  const { isAdmin, user } = useAuth();
-  const { tx } = useI18n();
+  const { isAdmin } = useAuth();
+  const { t, tx } = useI18n();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
@@ -124,6 +126,12 @@ function MarketingPage() {
   });
   const [aiDraft, setAiDraft] = useState("");
   const draftWithFlashAi = useServerFn(draftCampaignMessage);
+  const loadAudience = useServerFn(getCampaignAudience);
+  const saveCampaign = useServerFn(saveCampaignDraft);
+  // One id for the draft on screen. The server stores the campaign under it, so
+  // a second click, or a retry after an answer that never arrived, cannot make a
+  // second campaign. It is replaced once the draft has been saved.
+  const [draftId, setDraftId] = useState(() => crypto.randomUUID());
   const getSmtpConfigFn = useServerFn(getTenantSmtpConfig);
   const smtpConfigQuery = useQuery({
     queryKey: ["tenant-smtp-config-marketing"],
@@ -151,6 +159,15 @@ function MarketingPage() {
       return data as unknown as Lead[];
     },
   });
+
+  // One number for who a campaign reaches: people with a consented, reachable
+  // email, counted once each. It used to be `leads.filter(l => l.subscribed)`,
+  // which counts rows, and `subscribed` defaults to true.
+  const audience = useQuery({
+    queryKey: ["campaign-audience"],
+    queryFn: () => loadAudience(),
+  });
+  const emailAudience = audience.data?.email ?? null;
 
   const sites = useQuery({
     queryKey: ["lead_sites"],
@@ -261,23 +278,36 @@ function MarketingPage() {
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
+  // The recipient count is worked out on the server as part of the save. It used
+  // to be `emailAudience?.total ?? 0`, taken from this page's own audience
+  // request: zero while that was still loading and zero again if it had failed,
+  // and the list below showed that zero as the audience "when saved".
   const createCampaign = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("campaigns").insert({
-        name: campaignForm.name,
-        subject: campaignForm.subject,
-        body: campaignForm.body,
-        recipients_count: (leads.data ?? []).filter((l) => l.subscribed).length,
-        created_by: user?.id ?? null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
+    mutationFn: () =>
+      saveCampaign({
+        data: {
+          id: draftId,
+          name: campaignForm.name,
+          subject: campaignForm.subject,
+          body: campaignForm.body,
+        },
+      }),
+    onSuccess: (res) => {
+      // `ok: false` means the audience could not be read, so nothing was saved.
+      // The form is left as it is for another try.
+      if (!res.ok) {
+        toast.error(t("marketing.campaignNotSaved"));
+        return;
+      }
       setCampaignForm({ name: "", subject: "", body: "" });
-      toast.success("Campaign saved as a draft");
+      setDraftId(crypto.randomUUID());
+      toast.success(t("marketing.campaignSavedAsADraft"));
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
-    onError: (e: Error) => toast.error(friendlyError(e)),
+    // A field that got past `maxLength` is refused by the server with a code,
+    // which is shown as a sentence and not as the validator's own text.
+    onError: (e: Error) =>
+      toast.error(e.message === CAMPAIGN_TOO_LONG ? t("marketing.campaignTooLong") : e.message),
   });
 
   const generateDraft = useMutation({
@@ -580,6 +610,7 @@ function MarketingPage() {
               <Textarea
                 id="ai_goal"
                 rows={2}
+                maxLength={AI_DRAFT_FIELD_LIMITS.goal}
                 placeholder="e.g. Re-engage wholesale leads who went quiet last month with a 10% reorder offer"
                 value={aiForm.goal}
                 onChange={(e) => setAiForm({ ...aiForm, goal: e.target.value })}
@@ -590,6 +621,7 @@ function MarketingPage() {
                 <Label htmlFor="ai_audience">Audience (optional)</Label>
                 <Input
                   id="ai_audience"
+                  maxLength={AI_DRAFT_FIELD_LIMITS.audience}
                   placeholder="e.g. popup-chat leads"
                   value={aiForm.audience}
                   onChange={(e) => setAiForm({ ...aiForm, audience: e.target.value })}
@@ -863,7 +895,7 @@ function MarketingPage() {
         <CampaignBoard
           campaigns={(campaigns.data ?? []) as unknown as CampaignItem[]}
           isSmtpVerified={isSmtpVerified}
-          audienceCount={(leads.data ?? []).filter((l) => l.subscribed).length}
+          audienceCount={emailAudience?.total ?? 0}
         />
       </div>
     </main>
