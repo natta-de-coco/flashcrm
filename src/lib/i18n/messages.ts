@@ -23,6 +23,7 @@ import contacts from "./screens/contacts";
 import content from "./screens/content";
 import credentialsStep from "./screens/credentials-step";
 import dashboard from "./screens/dashboard";
+import homeGuide from "./screens/home-guide";
 import features from "./screens/features";
 import followUpCard from "./screens/follow-up-card";
 import healthReportDialog from "./screens/health-report-dialog";
@@ -57,6 +58,8 @@ import seoBlogStudio from "./screens/seo-blog-studio";
 import settings from "./screens/settings";
 import settingsEmail from "./screens/settings-email";
 import settingsIndex from "./screens/settings-index";
+import appearanceScreen from "./screens/appearance";
+import settingsWorkspace from "./screens/settings-workspace";
 import shell from "./screens/shell";
 import social from "./screens/social";
 import socialInbox from "./screens/social-inbox";
@@ -90,6 +93,7 @@ const SCREENS = [
   content,
   credentialsStep,
   dashboard,
+  homeGuide,
   features,
   followUpCard,
   healthReportDialog,
@@ -124,6 +128,8 @@ const SCREENS = [
   settings,
   settingsEmail,
   settingsIndex,
+  settingsWorkspace,
+  appearanceScreen,
   shell,
   social,
   socialInbox,

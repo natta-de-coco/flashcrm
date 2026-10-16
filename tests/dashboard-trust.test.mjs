@@ -147,6 +147,13 @@ describe("social interactions waiting for a reply (M7: 27 against an Inbox badge
 });
 
 describe("the AI brief is a snapshot, not a live figure (M7)", () => {
+  test("a manually generated brief stops saying just now when the page stays open", () => {
+    assert.equal(
+      figures.briefSnapshotKind({ cached: false, ageMs: figures.BRIEF_DIVERGENCE_MS }),
+      "diverged",
+    );
+    assert.equal(figures.briefSnapshotKind({ cached: false, ageMs: 0 }), "fresh");
+  });
   test("a cached brief older than the divergence window warns and offers Regenerate", () => {
     const note = figures.briefSnapshotNote({
       generatedAtTime: "08:14",

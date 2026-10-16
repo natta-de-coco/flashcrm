@@ -203,7 +203,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       {
         to: "/settings",
         label: "Settings",
-        desc: "Billing, team, security & data",
+        desc: "Account and company preferences",
         icon: Settings,
         keywords: "settings billing team security data profile account subscription",
       },

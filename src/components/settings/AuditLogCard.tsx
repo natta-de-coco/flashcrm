@@ -1,3 +1,5 @@
+import { Skeleton } from "@/components/ui/skeleton";
+import { SettingsLoadError } from "./SettingsFeedback";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { listAuditLog } from "@/lib/audit.functions";
@@ -44,35 +46,43 @@ export function AuditLogCard() {
         <CardDescription>{t("settings.audit.desc")}</CardDescription>
       </CardHeader>
       <CardContent>
-        {(entries.data ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("settings.audit.empty")}</p>
+        {entries.isLoading ? (
+          <Skeleton className="h-24 w-full" />
+        ) : entries.isError ? (
+          <SettingsLoadError onRetry={() => void entries.refetch()} />
         ) : (
-          <div className="max-h-96 space-y-1.5 overflow-y-auto">
-            {(entries.data ?? []).map((e) => (
-              <div
-                key={e.id}
-                className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
-              >
-                <Badge variant="secondary" className="text-[10px]">
-                  {hasMessage(`settings.audit.action.${e.action}`)
-                    ? t(`settings.audit.action.${e.action}` as MessageKey)
-                    : (ACTION_LABELS[e.action] ?? e.action)}
-                </Badge>
-                <span className="text-muted-foreground">
-                  {e.actor_label ?? t("settings.audit.system")}
-                  {e.entity_id ? ` · ${e.entity_id.slice(0, 18)}` : ""}
-                </span>
-                <span className="ms-auto shrink-0 text-muted-foreground">
-                  {new Date(e.created_at).toLocaleString()}
-                </span>
-                {e.action === "message.blocked" && (
-                  <span className="w-full text-destructive">
-                    {((e.details as { reasons?: string[] })?.reasons ?? []).join(" ")}
-                  </span>
-                )}
+          <>
+            {(entries.data ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("settings.audit.empty")}</p>
+            ) : (
+              <div className="max-h-96 space-y-1.5 overflow-y-auto">
+                {(entries.data ?? []).map((e) => (
+                  <div
+                    key={e.id}
+                    className="flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs"
+                  >
+                    <Badge variant="secondary" className="text-[10px]">
+                      {hasMessage(`settings.audit.action.${e.action}`)
+                        ? t(`settings.audit.action.${e.action}` as MessageKey)
+                        : (ACTION_LABELS[e.action] ?? e.action)}
+                    </Badge>
+                    <span className="text-muted-foreground">
+                      {e.actor_label ?? t("settings.audit.system")}
+                      {e.entity_id ? ` · ${e.entity_id.slice(0, 18)}` : ""}
+                    </span>
+                    <span className="ms-auto shrink-0 text-muted-foreground">
+                      {new Date(e.created_at).toLocaleString()}
+                    </span>
+                    {e.action === "message.blocked" && (
+                      <span className="w-full text-destructive">
+                        {((e.details as { reasons?: string[] })?.reasons ?? []).join(" ")}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
