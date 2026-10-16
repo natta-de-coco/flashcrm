@@ -296,3 +296,77 @@ describe("Auth refusing a password change until the code has been entered", () =
     }
   });
 });
+
+describe("telling a factor that was just turned on from one that has been there a while", () => {
+  const NOW = Date.parse("2026-10-17T12:00:00Z");
+  const MINUTE = 60_000;
+  const at = (offsetMs) => new Date(NOW + offsetMs).toISOString();
+  const verified = (id, updated, extra = {}) => ({
+    id,
+    status: "verified",
+    factor_type: "totp",
+    created_at: at(-60 * MINUTE),
+    updated_at: updated,
+    ...extra,
+  });
+
+  test("finds a verified authenticator app that became verified in the last ten minutes", () => {
+    assert.deepEqual(rule.newlyVerifiedFactor([verified("f1", at(-2 * MINUTE))], NOW), {
+      id: "f1",
+    });
+    assert.deepEqual(rule.newlyVerifiedFactor([verified("f1", at(0))], NOW), { id: "f1" });
+  });
+
+  test("the window is ten minutes: in a millisecond before, out at ten", () => {
+    assert.ok(rule.newlyVerifiedFactor([verified("f1", at(-10 * MINUTE + 1))], NOW));
+    assert.equal(rule.newlyVerifiedFactor([verified("f1", at(-10 * MINUTE))], NOW), null);
+  });
+
+  test("allows a minute of difference between Auth's clock and ours, not more", () => {
+    assert.ok(rule.newlyVerifiedFactor([verified("f1", at(MINUTE - 1))], NOW));
+    assert.equal(rule.newlyVerifiedFactor([verified("f1", at(MINUTE + 1))], NOW), null);
+  });
+
+  test("ignores a factor that has been verified for a long time", () => {
+    assert.equal(rule.newlyVerifiedFactor([verified("f1", at(-3 * 24 * 60 * MINUTE))], NOW), null);
+  });
+
+  test("ignores one that was only started, and kinds the app cannot ask for", () => {
+    assert.equal(
+      rule.newlyVerifiedFactor([verified("f1", at(-MINUTE), { status: "unverified" })], NOW),
+      null,
+    );
+    assert.equal(
+      rule.newlyVerifiedFactor([verified("f1", at(-MINUTE), { factor_type: "phone" })], NOW),
+      null,
+    );
+  });
+
+  test("takes the newest when there are several, and falls back to the creation time", () => {
+    assert.deepEqual(
+      rule.newlyVerifiedFactor(
+        [verified("old", at(-9 * MINUTE)), verified("new", at(-MINUTE))],
+        NOW,
+      ),
+      { id: "new" },
+    );
+    const noUpdate = { id: "f2", status: "verified", factor_type: "totp", created_at: at(-MINUTE) };
+    assert.deepEqual(rule.newlyVerifiedFactor([noUpdate], NOW), { id: "f2" });
+  });
+
+  test("finds nothing it cannot prove: no times, unreadable times, no id, not a list", () => {
+    for (const factors of [
+      [{ id: "f1", status: "verified", factor_type: "totp" }],
+      [verified("f1", "yesterday-ish")],
+      [verified("f1", 12345)],
+      [{ status: "verified", factor_type: "totp", updated_at: at(-MINUTE) }],
+      [],
+      null,
+      undefined,
+      "verified",
+      {},
+    ]) {
+      assert.equal(rule.newlyVerifiedFactor(factors, NOW), null, JSON.stringify(factors));
+    }
+  });
+});

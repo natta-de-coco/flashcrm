@@ -130,3 +130,30 @@ export function isCodeRequiredFirst(error: unknown): boolean {
   }
   return /\baal2 session is required\b/i.test(messageOf(error));
 }
+
+/**
+ * The verified authenticator app that became verified within `withinMs` before
+ * `now`, or null. This is how "two-factor was just turned on" is told from "has
+ * been on for months", for the audit entry written when somebody turns it on
+ * through the app. The time is the one Auth stamps on the factor when it
+ * becomes verified (`updated_at`, else `created_at`); a minute of difference
+ * between Auth's clock and ours is allowed. Anything it cannot prove (no time,
+ * an unreadable time, no id) is not "new".
+ */
+export function newlyVerifiedFactor(
+  factors: unknown,
+  now: number,
+  withinMs = 10 * 60_000,
+): { id: string } | null {
+  let newest: { id: string; at: number } | null = null;
+  for (const factor of verifiedTotpFactors(factors)) {
+    const id = factor["id"];
+    const stamp = factor["updated_at"] ?? factor["created_at"];
+    const at = typeof stamp === "string" ? Date.parse(stamp) : Number.NaN;
+    if (typeof id !== "string" || Number.isNaN(at)) continue;
+    const age = now - at;
+    if (age < -60_000 || age >= withinMs) continue;
+    if (newest === null || at > newest.at) newest = { id, at };
+  }
+  return newest === null ? null : { id: newest.id };
+}

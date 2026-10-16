@@ -110,3 +110,8 @@ export const touchPresence = serverFunction("touchPresence", {
 export const getWorkspaceRegion = serverFunction("getWorkspaceRegion", {
   file: "src/lib/workspace.functions.ts",
 });
+
+/** What the layout sends when a second-factor code has just been verified in this browser, so the server can write the audit entry. */
+export const recordTwoFactorEnabled = serverFunction("recordTwoFactorEnabled", {
+  file: "src/lib/two-factor-audit.functions.ts",
+});

@@ -27,6 +27,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { buildServerBundle } from "./support/two-factor-build.mjs";
 import { createFakeSupabase } from "./support/fake-supabase.mjs";
+import { createDb } from "./support/db-double.mjs";
 
 const fake = await createFakeSupabase();
 process.env.SUPABASE_URL = fake.url;
@@ -1140,5 +1141,218 @@ describe("the draft keeper on the server", () => {
     const scope = "10000000-0000-4000-8000-000000000001:company-1";
     mod.keepDrafts(scope, mod.emptyDrafts(scope), new mod.InboxSendSession());
     assert.equal(mod.recallDrafts(scope), null);
+  });
+});
+
+describe("the audit entry written when somebody turns two-factor on through the app", () => {
+  // Enrolling a factor needs only a password-level session, and it ends every
+  // other password-level session of that account. So someone who has only the
+  // password can lock the real owner out by enrolling their own phone. That
+  // cannot be prevented from here, but it must not be silent: the company's
+  // admins are shown an entry, and it must be true (a factor really was turned
+  // on just now, for the account that asked) and appear once per factor.
+  const MINUTE = 60_000;
+  const SOON = () => new Date(Date.now() - 2 * MINUTE).toISOString();
+  const LONG_AGO = () => new Date(Date.now() - 3 * 24 * 60 * MINUTE).toISOString();
+  const entriesFor = () => db.table("audit_log").filter((row) => row.action === "mfa.enabled");
+
+  let db;
+  beforeEach(() => {
+    db = createDb();
+  });
+
+  /** A person with a company, a verified factor (turned on `updatedAt`), and a real client holding their token. */
+  async function turnedOn({
+    updatedAt = SOON(),
+    tenant = "company-1",
+    factors,
+    aal = "aal2",
+  } = {}) {
+    const user = account(factors ?? [{ ...VERIFIED, type: "totp", code: "123456", updatedAt }]);
+    const email = fake.user(user).email;
+    if (tenant !== null)
+      db.table("profiles").push({ id: user, tenant_id: tenant, email, full_name: "Pat Example" });
+    const session = await fake.session(user, { aal });
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(fake.url, "sb_publishable_fake_for_tests", {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    return { user, email, token: session.token, supabase };
+  }
+  const record = (who, extra = {}) =>
+    mod.recordNewTwoFactor({
+      userId: who.user,
+      token: who.token,
+      supabase: who.supabase,
+      admin: db.client,
+      ...extra,
+    });
+
+  test("writes one entry, in the person's company, naming the account", async () => {
+    const who = await turnedOn();
+    assert.deepEqual(await record(who), { recorded: true });
+    const rows = entriesFor();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].tenant_id, "company-1");
+    assert.equal(rows[0].actor_id, who.user);
+    assert.equal(rows[0].actor_label, who.email);
+    assert.equal(rows[0].entity_type, "mfa_factor");
+    assert.equal(rows[0].entity_id, VERIFIED.id);
+    assert.deepEqual(rows[0].details, { email: who.email, factor_type: "totp" });
+  });
+
+  test("the entry is in the company of the account that asked, never another's", async () => {
+    const mine = await turnedOn({ tenant: "company-1" });
+    const theirs = await turnedOn({
+      tenant: "company-2",
+      factors: [{ id: "factor-theirs", status: "verified", updatedAt: SOON() }],
+    });
+    await record(theirs);
+    await record(mine);
+    const rows = entriesFor();
+    assert.deepEqual(
+      rows.map((row) => [row.tenant_id, row.actor_id]).sort(),
+      [
+        ["company-1", mine.user],
+        ["company-2", theirs.user],
+      ].sort(),
+    );
+  });
+
+  test("writes nothing for two-factor that has been on for days", async () => {
+    const who = await turnedOn({ updatedAt: LONG_AGO() });
+    assert.deepEqual(await record(who), { recorded: false, why: "nothing was turned on just now" });
+    assert.equal(entriesFor().length, 0);
+  });
+
+  test("writes nothing for an account with no two-factor, a half-finished set-up, or a kind the app cannot ask for", async () => {
+    for (const factors of [
+      [],
+      [{ ...UNVERIFIED, updatedAt: SOON() }],
+      [{ id: "factor-phone", status: "verified", type: "phone", updatedAt: SOON() }],
+    ]) {
+      const who = await turnedOn({ factors });
+      assert.equal((await record(who)).recorded, false);
+    }
+    assert.equal(entriesFor().length, 0);
+  });
+
+  test("writes one entry per factor, however often it is asked", async () => {
+    const who = await turnedOn();
+    assert.equal((await record(who)).recorded, true);
+    for (let i = 0; i < 3; i += 1)
+      assert.deepEqual(await record(who), { recorded: false, why: "already recorded" });
+    assert.equal(entriesFor().length, 1);
+    // A different factor, turned on later, is a new entry.
+    fake.user(who.user).factors.push({
+      id: "factor-second",
+      status: "verified",
+      type: "totp",
+      code: "123456",
+      updatedAt: new Date().toISOString(),
+    });
+    assert.equal((await record(who)).recorded, true);
+    assert.deepEqual(
+      entriesFor()
+        .map((row) => row.entity_id)
+        .sort(),
+      ["factor-second", VERIFIED.id],
+    );
+  });
+
+  test("still writes when it cannot tell whether the entry exists: a repeated line is harmless, a missing one hides the change", async () => {
+    const who = await turnedOn();
+    db.fail("audit_log:read", { message: "connection reset" });
+    assert.equal((await record(who)).recorded, true);
+    assert.equal(entriesFor().length, 1);
+  });
+
+  test("does not say it recorded anything when the database refuses", async () => {
+    const who = await turnedOn();
+    db.fail("audit_log:insert", { message: "permission denied" });
+    await assert.rejects(record(who), /not recorded/i);
+    assert.equal(entriesFor().length, 0);
+  });
+
+  test("does not say it recorded anything when it cannot find the person's company", async () => {
+    const who = await turnedOn();
+    db.fail("profiles:read", { message: "connection reset" });
+    await assert.rejects(record(who), /not recorded/i);
+    assert.equal(entriesFor().length, 0);
+  });
+
+  test("an account with no profile row is still recorded, with no company, under the address Auth holds", async () => {
+    const who = await turnedOn({ tenant: null });
+    assert.equal((await record(who)).recorded, true);
+    const [row] = entriesFor();
+    assert.equal(row.tenant_id, null);
+    assert.equal(row.actor_label, who.email);
+  });
+
+  test("does not take anybody's word for it: it asks Auth, with the caller's own token", async () => {
+    const who = await turnedOn();
+    fake.clearCalls();
+    await record(who);
+    const asked = fake.calls.filter((call) => call.name === "user");
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0].authorization, `Bearer ${who.token}`);
+  });
+
+  for (const [what, fault] of Object.entries({
+    "Auth is down": { status: 500 },
+    "the network fails": { network: true },
+    "the session is gone": { status: 403, body: authSaysGone(403) },
+  })) {
+    test(`writes nothing, and says so, when Auth cannot be asked (${what})`, async () => {
+      const who = await turnedOn();
+      fake.fail("user", fault);
+      await assert.rejects(record(who), /not recorded/i);
+      assert.equal(entriesFor().length, 0);
+    });
+  }
+
+  test("writes nothing when Auth describes somebody else than the account that asked", async () => {
+    const who = await turnedOn();
+    const other = account([{ ...VERIFIED, type: "totp", code: "123456", updatedAt: SOON() }]);
+    fake.fail("user", { asUser: other });
+    await assert.rejects(record(who), /not recorded/i);
+    assert.equal(entriesFor().length, 0);
+  });
+
+  test("writes nothing without a token", async () => {
+    const who = await turnedOn();
+    await assert.rejects(record(who, { token: undefined }), /not recorded/i);
+    assert.equal(entriesFor().length, 0);
+  });
+});
+
+describe("the function that writes that entry", () => {
+  // The handler is thin on purpose, and the compiler is what turns it into a
+  // server function, which this suite does not run. So its wiring is checked
+  // where it can be read: it needs a sign-in (and so the second-factor gate),
+  // takes the account from the verified token and never from the request, asks
+  // Auth with the caller's own token, and writes with the service-role client.
+  const source = readFileSync(
+    new URL("../src/lib/two-factor-audit.functions.ts", import.meta.url),
+    "utf8",
+  )
+    .split("\r\n")
+    .join("\n");
+
+  test("needs a sign-in, takes no input, and passes the verified account and the caller's own token", () => {
+    assert.match(source, /\.middleware\(\[requireSupabaseAuth\]\)/);
+    assert.doesNotMatch(source, /inputValidator/, "it must not trust anything the browser sends");
+    assert.doesNotMatch(source, /\bdata\b\./, "it reads something the browser sent");
+    assert.match(source, /userId: context\.userId/);
+    assert.match(source, /supabase: context\.supabase/);
+    assert.match(source, /headers\.get\("authorization"\)/);
+    assert.match(source, /admin: supabaseAdmin/);
+  });
+
+  test("is not on the list of public functions", () => {
+    assert.ok(
+      !mod.OPEN_SERVER_FUNCTIONS.some((entry) => entry.includes("two-factor-audit")),
+      "an audit-writing function was made public",
+    );
   });
 });

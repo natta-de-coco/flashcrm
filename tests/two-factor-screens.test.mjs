@@ -1316,6 +1316,70 @@ describe("nobody is locked out: finishing two-factor set-up", () => {
     assert.equal(fake.user(me.id).factors[0].status, "verified");
   });
 
+  test("... and the layout then asks the server to write the audit entry, once, as the account that did it", async () => {
+    const me = person({ factors: [UNVERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "the half-set-up account was kept out");
+    assert.deepEqual(servedBy("recordTwoFactorEnabled"), [], "asked before anything was turned on");
+
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: UNVERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    assert.ok(
+      await until(() => servedBy("recordTwoFactorEnabled").length > 0),
+      "the server was never asked to record it",
+    );
+    await settle(300);
+    assert.equal(servedBy("recordTwoFactorEnabled").length, 1);
+    assert.equal(servedBy("recordTwoFactorEnabled")[0].userId, me.id);
+  });
+
+  test("entering the code at the sign-in page asks for no entry: nothing was turned on", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen()), "never got in");
+    await settle(400);
+    assert.deepEqual(servedBy("recordTwoFactorEnabled"), []);
+  });
+
+  test("an ordinary working session asks for no entry", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(heartbeatServed));
+    await settle(400);
+    assert.deepEqual(servedBy("recordTwoFactorEnabled"), []);
+  });
+
+  test("a code entered while the layout still shows its placeholder asks for no entry either", async () => {
+    // With the router slow to move, the layout is still up (drawing only its
+    // placeholder) when the code is verified; it must not take that for a factor
+    // having been turned on.
+    watched.holdNavigation = true;
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0), "never asked to move");
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: VERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    assert.ok(await until(() => signedInScreen()), "the screen never came back");
+    await settle(400);
+    assert.deepEqual(servedBy("recordTwoFactorEnabled"), []);
+  });
+
   test("a person who has only started set-up can sign in with the password alone", async () => {
     const me = person({ factors: [UNVERIFIED] });
     await show();

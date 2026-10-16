@@ -79,7 +79,8 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
               factor_type: factor.type,
               status: factor.status,
               created_at: stamp,
-              updated_at: stamp,
+              // Auth stamps a factor again when it becomes verified.
+              updated_at: factor.updatedAt ?? stamp,
             })),
           }
         : {}),
@@ -295,6 +296,7 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
           msg: "Invalid TOTP code entered",
         });
       factor.status = "verified";
+      factor.updatedAt = new Date().toISOString();
       who.session.aal = "aal2";
       who.session.amr = [...who.session.amr, { method: "totp", timestamp: seconds() }];
       return json(200, await sessionBody(who.session));
@@ -317,7 +319,7 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
     count: (name) => calls.filter((call) => call.name === name).length,
     clearCalls: () => calls.splice(0),
 
-    /** factors: [{ id, status: "verified" | "unverified", type?: "totp", code? }] */
+    /** factors: [{ id, status: "verified" | "unverified", type?: "totp", code?, updatedAt? }] */
     addUser({ id, email, password = "correct horse", factors = [] }) {
       const user = {
         id,

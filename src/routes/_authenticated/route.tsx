@@ -24,6 +24,7 @@ import { useNavAccess } from "@/hooks/useNavAccess";
 import { sessionOwesSecondFactor } from "@/lib/two-factor";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
+import { recordTwoFactorEnabled } from "@/lib/two-factor-audit.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -190,6 +191,27 @@ function AuthenticatedLayout() {
       window.clearInterval(timer);
     };
   }, [session, owed]);
+
+  // Turning two-factor on in the security card ends with a code verified in this
+  // browser. Tell the server, which checks with Auth that a factor really was
+  // turned on a moment ago and writes the audit entry the company's admins can
+  // read (lib/two-factor-audit.server.ts). Listening only while the session may
+  // use the app means a code entered at the sign-in prompt is never mistaken
+  // for it.
+  const mayUseApp = !!session && !owed;
+  useEffect(() => {
+    if (!mayUseApp) return;
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== "MFA_CHALLENGE_VERIFIED") return;
+      // Not inside the callback: the auth client can deadlock on its own lock.
+      window.setTimeout(() => {
+        recordTwoFactorEnabled({ data: undefined }).catch((error: unknown) => {
+          console.warn("[two-factor] could not record that two-factor was turned on", error);
+        });
+      }, 0);
+    });
+    return () => data.subscription.unsubscribe();
+  }, [mayUseApp]);
 
   useEffect(() => {
     try {

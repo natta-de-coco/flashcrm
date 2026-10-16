@@ -81,6 +81,7 @@ export async function buildServerBundle() {
         export { runWithStartContext } from "@tanstack/start-storage-context";
         export { OPEN_SERVER_FUNCTIONS } from "./src/lib/two-factor.server";
         export { keepDrafts, recallDrafts } from "./src/lib/inbox-draft-keeper";
+        export { recordNewTwoFactor } from "./src/lib/two-factor-audit.server";
         export { emptyDrafts } from "./src/lib/inbox-drafts";
         export { InboxSendSession } from "./src/lib/inbox-send-session";
       `,
@@ -173,6 +174,10 @@ export async function buildScreensBundle() {
         // through the app's client and server middleware.
         "lib/presence.functions": {
           contents: `export { touchPresence } from "./tests/support/two-factor-wire.mjs";`,
+        },
+        // The audit entry for two-factor turned on, which the layout asks for.
+        "lib/two-factor-audit.functions": {
+          contents: `export { recordTwoFactorEnabled } from "./tests/support/two-factor-wire.mjs";`,
         },
         // The workspace's region, which the layout reads through useLocale.
         "lib/workspace.functions": {
