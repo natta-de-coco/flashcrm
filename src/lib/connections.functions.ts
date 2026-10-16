@@ -439,7 +439,7 @@ export const retryConnections = createServerFn({ method: "POST" })
             actorId: context.userId,
           }),
         ]
-      : await retryDueConnections({ tenantId, trigger: "manual" });
+      : await retryDueConnections({ tenantId, trigger: "manual", actorId: context.userId });
 
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
@@ -448,7 +448,18 @@ export const retryConnections = createServerFn({ method: "POST" })
       actorId: context.userId,
       entityType: "social_account",
       entityId: data.accountId ?? "all",
-      details: { results } as never,
+      // What happened, never what the platform said or what the account holds: the result's
+      // sentences and statuses are for the screen, not for the audit trail.
+      details: {
+        results: results.map((r) => ({
+          platform: r.platform,
+          account_id: r.account_id ?? null,
+          outcome: r.outcome,
+          stage: r.stage ?? null,
+          http_status: r.http_status ?? null,
+          reference: r.correlation_id ?? null,
+        })),
+      } as never,
     });
     return { results };
   });

@@ -138,6 +138,7 @@ export type RetryResult = {
     params: StatusParams;
     reason: string;
     fix: string;
+    action: NextAction;
   };
   saved_at?: string | null;
   /** Short reference of this check; quote it to support. */
@@ -148,6 +149,68 @@ export type RetryResult = {
   /** Values the screen needs to fill the sentence for this outcome. */
   params?: { permissions?: string[]; retry_at?: string | null };
 };
+
+/**
+ * The English sentence for one outcome. It is what gets stored and exported; the screens
+ * translate by outcome code and fill the same blanks, so the two always say the same thing.
+ * `platform` is the platform's display name. None of these promise an automatic check: nothing
+ * scheduled runs one.
+ */
+export function describeOutcome(
+  outcome: RetryOutcomeCode,
+  p: {
+    platform: string;
+    httpStatus?: number | null | undefined;
+    features?: string[] | undefined;
+    retryAt?: string | null | undefined;
+    reference?: string | undefined;
+  },
+): string {
+  const at = p.retryAt ? new Date(p.retryAt).toLocaleString() : "a few minutes from now";
+  const ref = p.reference ?? "";
+  switch (outcome) {
+    case "healthy":
+    case "recovered":
+    case "refreshed":
+      return `Verified. ${p.platform} accepted the token and Flas saved the result.`;
+    case "scopes_missing":
+      return `The token works, but ${p.platform} did not grant: ${(p.features ?? []).join(", ")}. Reconnect and keep every permission switched on.`;
+    case "scopes_unknown":
+      return `${p.platform} accepts the token but did not list its permissions, so Flas cannot confirm them. Reconnect and keep every permission switched on.`;
+    case "provider_unavailable":
+      return p.httpStatus
+        ? `${p.platform} did not answer (HTTP ${p.httpStatus}). Nothing was changed and the account was not marked verified. Try again after ${at}.`
+        : `${p.platform} did not answer. Nothing was changed and the account was not marked verified. Try again after ${at}.`;
+    case "rate_limited":
+      return `${p.platform} is limiting requests right now. Nothing was changed. Try again in a few minutes.`;
+    case "needs_reconnect":
+      return `${p.platform} no longer accepts this token. Reconnect the account.`;
+    case "forbidden":
+      return `${p.platform} refused the check (HTTP 403). A permission is probably missing. Reconnect and keep every permission switched on.`;
+    case "not_checkable":
+      return `Flas has no live check for ${p.platform} yet, so it cannot verify this account.`;
+    case "save_failed":
+      return `The check ran, but Flas could not save the result, so nothing was marked verified. Reference ${ref}.`;
+    case "evidence_unavailable":
+      return `${p.platform} accepted the token, but this workspace cannot store verification results yet. Reference ${ref}.`;
+    case "skipped_disconnected":
+      return "This account was disconnected on purpose. Connect it again to use it.";
+    case "in_progress":
+      return "Another check for this account is already running. Try again in a minute.";
+    case "recently_checked":
+      return "Checked a moment ago. Showing the saved result.";
+    case "reconnect_needed":
+      return "This account was added with a pasted token. Reconnect it so Flas can verify it.";
+    case "not_identified":
+      return "This sign-in is saved, but no account was chosen yet. Choose which account to connect.";
+    case "not_found":
+      return "That account was not found in this workspace.";
+    case "failed":
+      return ref
+        ? `The check could not finish, so nothing was changed. Reference ${ref}.`
+        : "The check could not finish, so nothing was changed.";
+  }
+}
 
 const VERIFIED_OUTCOMES: readonly RetryOutcomeCode[] = ["healthy", "recovered", "refreshed"];
 /** Outcomes where nothing was asked of the platform, so there is nothing to say went wrong. */

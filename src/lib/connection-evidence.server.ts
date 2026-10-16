@@ -195,14 +195,22 @@ export async function writeCheck(args: {
   accountId: string;
   tenantId: string;
   patch: Record<string, unknown>;
-  evidence: { attemptAt: string; successAt: string | null };
+  /** Laid over `patch` when the evidence columns turn out not to exist and the write is repeated. */
+  fallbackPatch?: Record<string, unknown> | undefined;
+  /** What to record about the check itself; null records nothing (a write of tokens alone). */
+  evidence: { attemptAt: string; successAt: string | null } | null;
   /** Raw stored token columns read at the start; the write only lands if both are unchanged. */
   guard?: { access_token: string | null; refresh_token: string | null } | undefined;
   returning: string;
 }): Promise<CheckWrite> {
-  const attempt = async (withEvidence: boolean) => {
-    const patch: Record<string, unknown> = { ...args.patch };
-    if (withEvidence) {
+  const attempt = async (wantEvidence: boolean) => {
+    const recording = wantEvidence && args.evidence !== null;
+    const withEvidence = recording;
+    const patch: Record<string, unknown> = {
+      ...args.patch,
+      ...(wantEvidence ? {} : (args.fallbackPatch ?? {})),
+    };
+    if (recording && args.evidence) {
       patch["last_validation_attempt_at"] = args.evidence.attemptAt;
       if (args.evidence.successAt) patch["last_validation_success_at"] = args.evidence.successAt;
     }
@@ -221,10 +229,13 @@ export async function writeCheck(args: {
           ? query.is("refresh_token", null)
           : query.eq("refresh_token", args.guard.refresh_token);
     }
-    return await query.select(args.returning);
+    // The evidence columns are only asked for back when they are part of this attempt.
+    return await query.select(
+      withEvidence ? `${args.returning}, ${EVIDENCE_COLUMNS.join(", ")}` : args.returning,
+    );
   };
 
-  let evidence: "ok" | "unavailable" = "ok";
+  let evidence: "ok" | "unavailable" = args.evidence === null ? "unavailable" : "ok";
   let result;
   try {
     result = await attempt(true);

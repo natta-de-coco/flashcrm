@@ -42,6 +42,14 @@ export const json = (status, body, headers = {}) =>
     headers: { "content-type": "application/json", ...headers },
   });
 
+/** What a token refresh answers unless a test says otherwise: a new access token, same refresh token. */
+const defaultRefresh = async (args) => ({
+  token: SECRET.metaNew,
+  refreshToken: args.refreshToken,
+  expiresAt: iso(HOUR),
+  scopes: [],
+});
+
 export function createWorld() {
   const db = createDb();
   const world = {
@@ -50,13 +58,8 @@ export function createWorld() {
     /** Every request the code made to a "platform": { url, method, headers, body, signal }. */
     fetches: [],
     refreshCalls: [],
-    /** Replace to change what a token refresh answers (or throws). */
-    refreshImpl: async (args) => ({
-      token: SECRET.metaNew,
-      refreshToken: args.refreshToken,
-      expiresAt: iso(HOUR),
-      scopes: [],
-    }),
+    /** Replace to change what a token refresh answers (or throws); reset() puts it back. */
+    refreshImpl: defaultRefresh,
     /** Everything written to the console while capture() is on. */
     consoleLines: [],
   };
@@ -121,6 +124,7 @@ export function createWorld() {
     world.audits.length = 0;
     world.fetches.length = 0;
     world.refreshCalls.length = 0;
+    world.refreshImpl = defaultRefresh;
     world.consoleLines.length = 0;
     globalThis.healthTest.openFails = false;
     // The lease: granted unless a test says otherwise.
