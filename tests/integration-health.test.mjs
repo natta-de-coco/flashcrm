@@ -2123,3 +2123,208 @@ describe("every check lands on a state the database accepts (finding 3)", () => 
     assert.equal(BATCH1_EDGES.has("disconnected>connected"), false);
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, finding 5: a token kept somewhere other than access_token is still a token
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// Invented key ring for the encrypted columns; nothing here is a real secret.
+process.env["SOCIAL_TOKEN_ENCRYPTION_KEYS"] = `k1:${Buffer.alloc(32, 7).toString("base64")}`;
+process.env["SOCIAL_TOKEN_ACTIVE_KEY_ID"] = "k1";
+const tokenStore = await import("../node_modules/.cache/flas-health-token-store.mjs");
+
+describe("an account that keeps its token elsewhere is checked, not called disconnected (finding 5)", () => {
+  const AUTH_ID = "aaaaaaaa-0000-4000-8000-0000000000a2";
+
+  /** A channel whose Google token lives on its authorization, as the channel picker stores it. */
+  const onAuthorization = async ({ authorization = {}, account = {} } = {}) => {
+    const tokens = await authorizations.encryptAuthorizationTokens({
+      tenantId: A,
+      authorizationId: AUTH_ID,
+      accessToken: SECRET.googleAccess,
+      refreshToken: SECRET.googleRefresh,
+    });
+    world.db.table("social_authorizations").push({
+      id: AUTH_ID,
+      tenant_id: A,
+      provider: "google",
+      platform: "youtube",
+      authorization_state: "active",
+      expires_at: null,
+      granted_scopes: requiredScopesFor("youtube"),
+      requested_scopes: requiredScopesFor("youtube"),
+      ...tokens,
+      ...authorization,
+    });
+    return world.account({
+      platform: "youtube",
+      external_id: "UC1",
+      label: "Channel",
+      access_token: null,
+      refresh_token: null,
+      authorization_id: AUTH_ID,
+      access_token_enc: null,
+      refresh_token_enc: null,
+      token_expires_at: null,
+      ...account,
+    });
+  };
+
+  test("the token on the sign-in is read and used, and the result is saved", async () => {
+    const account = await onAuthorization();
+    world.provider([googleOk()]);
+    const patches = [];
+    world.db.fail("social_accounts:update", (q) => {
+      patches.push(q.patch);
+      return undefined;
+    });
+    const result = await check(account.id);
+
+    assert.equal(result.outcome, "healthy");
+    assert.match(
+      String(world.fetches[0].body),
+      new RegExp(SECRET.googleAccess.replace(".", "\\.")),
+    );
+    const row = world.stored(account.id);
+    assert.ok(row.last_validation_success_at);
+    assert.equal(row.access_token, null, "no plaintext token appears on the account");
+    for (const column of [
+      "access_token",
+      "refresh_token",
+      "access_token_enc",
+      "refresh_token_enc",
+    ]) {
+      assert.ok(!(column in patches[0]), `${column} is not the check's to write`);
+    }
+    assert.doesNotMatch(
+      everything(world, result),
+      new RegExp(SECRET.googleAccess.replace(".", "\\.")),
+    );
+  });
+
+  test("a Facebook Page token kept encrypted on the account itself is read and used", async () => {
+    const tokens = await tokenStore.encryptTokensForStorage({
+      tenantId: A,
+      platform: "facebook",
+      accessToken: SECRET.meta,
+      refreshToken: null,
+    });
+    const account = world.account({
+      access_token: null,
+      authorization_id: AUTH_ID,
+      ...tokens,
+    });
+    world.provider(facebookHealthy());
+    const result = await check(account.id);
+    assert.equal(result.outcome, "healthy");
+    assert.equal(world.fetches[0].headers.Authorization, `Bearer ${SECRET.meta}`);
+    assert.ok(world.stored(account.id).last_validation_success_at);
+  });
+
+  test("the group check includes it", async () => {
+    await onAuthorization();
+    world.provider([googleOk()]);
+    const results = await checkAll();
+    assert.equal(results.length, 1);
+    assert.equal(results[0].outcome, "healthy");
+  });
+
+  test("a deliberate disconnect of such an account is still left alone", async () => {
+    const account = await onAuthorization({
+      account: { active: false, connection_state: "disconnected", health: "disconnected" },
+    });
+    world.provider([]);
+    const before = clone(world.stored(account.id));
+    assert.equal((await check(account.id)).outcome, "skipped_disconnected");
+    assert.deepEqual(clone(world.stored(account.id)), before);
+    assert.equal(world.fetches.length, 0);
+    assert.deepEqual(await checkAll(), []);
+  });
+
+  test("a sign-in that was disconnected on purpose reads as that", async () => {
+    const account = await onAuthorization({
+      authorization: { authorization_state: "disconnected" },
+    });
+    world.provider([]);
+    const result = await check(account.id);
+    assert.equal(result.outcome, "skipped_disconnected");
+    assert.equal(world.fetches.length, 0);
+  });
+
+  test("an expired token on the sign-in is renewed through the sign-in, not on the account", async () => {
+    const account = await onAuthorization();
+    world.db.onRpc("acquire_authorization_refresh_lease", async () => ({
+      data: "lease-1",
+      error: null,
+    }));
+    world.db.onRpc("release_authorization_refresh_lease", async () => ({
+      data: true,
+      error: null,
+    }));
+    let asked = 0;
+    world.provider([
+      tokeninfo(() =>
+        asked++ === 0
+          ? json(401, { error: "invalid_token" })
+          : json(200, { scope: requiredScopesFor("youtube").join(" ") }),
+      ),
+    ]);
+    const before = world.db.table("social_authorizations")[0].access_token_enc;
+    const result = await check(account.id);
+
+    assert.equal(result.outcome, "refreshed");
+    assert.equal(world.refreshCalls.length, 1);
+    assert.notEqual(
+      world.db.table("social_authorizations")[0].access_token_enc,
+      before,
+      "the new token is kept",
+    );
+    assert.match(String(world.fetches[1].body), new RegExp(SECRET.metaNew));
+    const row = world.stored(account.id);
+    assert.equal(row.access_token, null, "nothing is written to the account's own token columns");
+    assert.equal(row.refresh_token, null);
+    assert.ok(row.last_validation_success_at);
+  });
+
+  test("a read that fails is not a disconnect", async () => {
+    const account = await onAuthorization();
+    world.provider([]);
+    world.db.fail("social_accounts:read", (q) =>
+      String(q.columns ?? "").includes("authorization_id")
+        ? { code: "57014", message: "canceling statement due to statement timeout" }
+        : undefined,
+    );
+    const before = clone(world.stored(account.id));
+    const result = await check(account.id);
+    assert.equal(result.outcome, "failed");
+    assert.doesNotMatch(result.reason, /on purpose/);
+    assert.deepEqual(clone(world.stored(account.id)), before);
+    assert.equal(world.fetches.length, 0);
+  });
+
+  test("a stored token that cannot be decrypted ends the check without writing", async () => {
+    const account = await onAuthorization({
+      authorization: { access_token_enc: "v1:k1:AAAA:AAAA:AAAA" },
+    });
+    world.provider([]);
+    const before = clone(world.stored(account.id));
+    const result = await check(account.id);
+    assert.equal(result.outcome, "failed");
+    assert.equal(result.stage, "credentials");
+    assert.deepEqual(clone(world.stored(account.id)), before);
+    assert.equal(world.fetches.length, 0);
+  });
+
+  test("where those columns do not exist (the database today) an empty token is still 'no sign-in'", async () => {
+    const account = world.account({ access_token: null });
+    world.provider([]);
+    world.db.fail("social_accounts:read", (q) =>
+      String(q.columns ?? "").includes("authorization_id")
+        ? { code: "42703", message: "column social_accounts.authorization_id does not exist" }
+        : undefined,
+    );
+    const result = await check(account.id);
+    assert.equal(result.outcome, "skipped_disconnected");
+    assert.equal(world.fetches.length, 0);
+  });
+});

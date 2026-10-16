@@ -50,18 +50,23 @@ type DbError =
   { code?: string; message?: string; details?: string; hint?: string } | null | undefined;
 
 /**
- * True when a database error says one of the two evidence columns does not exist.
+ * True when a database error says one of these named columns does not exist.
  * PostgREST answers PGRST204 ("Could not find the 'x' column ... in the schema cache") to a write
  * and Postgres 42703 ("column ... does not exist") to a read. A different error that merely
- * mentions another column is NOT this: only a missing evidence column may be tolerated.
+ * mentions another column is NOT this: only a missing column that was named may be tolerated.
  */
-export function isMissingEvidenceColumn(error: DbError): boolean {
+export function isMissingColumnError(error: DbError, columns: readonly string[]): boolean {
   if (!error) return false;
   const text = [error.message, error.details, error.hint].filter(Boolean).join(" ");
-  if (!EVIDENCE_COLUMNS.some((column) => text.includes(column))) return false;
+  if (!columns.some((column) => text.includes(column))) return false;
   return (
     error.code === "PGRST204" || error.code === "42703" || /does not exist|schema cache/i.test(text)
   );
+}
+
+/** True when a database error says one of the two evidence columns does not exist. */
+export function isMissingEvidenceColumn(error: DbError): boolean {
+  return isMissingColumnError(error, EVIDENCE_COLUMNS);
 }
 
 export type EvidenceRow = {

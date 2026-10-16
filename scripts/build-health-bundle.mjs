@@ -80,6 +80,8 @@ await bundle("src/lib/integration-health.server.ts", "flas-health-engine.mjs");
 await bundle("src/lib/connections.server.ts", "flas-health-connections-server.mjs");
 // The channel picker's connect write (connectDiscoveredChannels), which must not stamp a verification.
 await bundle("src/lib/social-authorizations.server.ts", "flas-health-authorizations.mjs");
+// How a channel's token is stored encrypted on the account itself (the tests store one the real way).
+await bundle("src/lib/social-token-store.server.ts", "flas-health-token-store.mjs");
 // The browser-safe model: counts, outcome summary, CSV.
 await bundle("src/lib/integration-health.ts", "flas-health-model.mjs");
 // The words: which sentence each status and outcome is, and the messages of all five languages.

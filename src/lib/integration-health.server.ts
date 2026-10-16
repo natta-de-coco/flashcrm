@@ -29,6 +29,8 @@ import {
   writeCheck,
 } from "./connection-evidence.server";
 import type { CheckStart } from "./connection-evidence.server";
+import { readChannelTokens } from "./connection-tokens.server";
+import type { ChannelTokens } from "./connection-tokens.server";
 import { normalizeProviderError } from "./integration-errors.server";
 import { connectorDefinition } from "./social-connector-definitions";
 import { describeOutcome, needsAttention } from "./integration-health";
@@ -552,7 +554,31 @@ async function runCheck(
 
   const evidence = await readEvidence(row.tenant_id, row.id);
   const stored = evidenceFor(evidence, row.id);
-  const renewsAsStored = Boolean(row.refresh_token);
+
+  // Where is this account's token? An account connected the old way keeps it, sealed, in
+  // access_token. One connected through the channel picker keeps it encrypted on the account itself
+  // or on its sign-in and leaves access_token empty -- which is not "disconnected on purpose". Look
+  // where sync looks before saying so. (A deliberate disconnect says so in its state, and needs no look.)
+  let channel: Extract<ChannelTokens, { kind: "found" }> | null = null;
+  if (!row.access_token && from !== "disconnected") {
+    const found = await readChannelTokens(row);
+    if (found.kind === "error") {
+      console.error(
+        `[integration-health] ${check.reference} ${row.platform} ${found.stage} failed`,
+      );
+      return {
+        platform: row.platform,
+        account_id: row.id,
+        outcome: "failed",
+        reason: describeOutcome("failed", { platform: name, reference: check.reference }),
+        stage: found.stage,
+        status: statusOf(row, {}, stored, false),
+        correlation_id: check.reference,
+      };
+    }
+    if (found.kind === "found") channel = found;
+  }
+  const renewsAsStored = Boolean(row.refresh_token) || Boolean(channel?.refresh);
 
   // Gate: reasons not to ask the platform at all. No request, no write.
   const gate = (outcome: RetryOutcomeCode): RetryOutcome => ({
@@ -565,7 +591,9 @@ async function runCheck(
     saved_at: stored.last_validation_attempt_at,
     correlation_id: check.reference,
   });
-  if (from === "disconnected" || !row.access_token) return gate("skipped_disconnected");
+  if (from === "disconnected" || (!row.access_token && !channel)) {
+    return gate("skipped_disconnected");
+  }
   if (row.connect_method === "manual") return gate("reconnect_needed");
   // A revoked account can only come back through a new sign-in, so asking the platform again would
   // change nothing. (The database as it is today would still accept revoked -> connected; this gate,
@@ -583,8 +611,8 @@ async function runCheck(
   let token: string | null;
   let refreshToken: string | null;
   try {
-    token = await openSecret(row.access_token);
-    refreshToken = await openSecret(row.refresh_token);
+    token = channel ? channel.access : await openSecret(row.access_token);
+    refreshToken = channel ? channel.refresh : await openSecret(row.refresh_token);
   } catch (thrown) {
     console.error(
       `[integration-health] ${check.reference} ${row.platform} credentials: ${safeText(thrown instanceof Error ? thrown.message : thrown)}`,
@@ -634,7 +662,45 @@ async function runCheck(
       : await runProbe(row.platform, token, row.external_id);
 
   // Refresh: only when the platform said the token is not valid.
+  //
+  // A token that belongs to the account's sign-in is renewed through that sign-in, which has its own
+  // lease and stores the new tokens itself; this check then writes none. A channel's own token (a
+  // Facebook Page's) has nothing to renew it with, so a refusal of it is final.
   if (
+    channel &&
+    channel.source === "authorization" &&
+    channel.authorizationId &&
+    probe.kind === "refused" &&
+    probe.unauthorized &&
+    provider
+  ) {
+    stage = "refresh";
+    const { refreshAuthorization } = await import("@/lib/social-authorizations.server");
+    const renewed = await refreshAuthorization({
+      authorizationId: channel.authorizationId,
+      tenantId: row.tenant_id,
+    });
+    if (renewed.ok) {
+      token = renewed.token;
+      expiresAt = renewed.expiresAt;
+      refreshedScopes = renewed.scopes.length ? renewed.scopes : undefined;
+      refreshed = true;
+      probe = await runProbe(row.platform, token, row.external_id);
+    } else if (renewed.code === "refresh_in_progress") {
+      return {
+        platform: row.platform,
+        account_id: row.id,
+        outcome: "in_progress",
+        reason: describeOutcome("in_progress", { platform: name }),
+        stage,
+        status: statusOf(row, {}, stored, renewsAsStored),
+        correlation_id: check.reference,
+      };
+    } else {
+      refreshError = safeText(renewed.reason, [token, refreshToken]);
+    }
+  } else if (
+    !channel &&
     probe.kind === "refused" &&
     probe.unauthorized &&
     provider &&
@@ -862,7 +928,7 @@ async function runCheck(
   };
   const listed = probe.kind === "ok" ? (probe.scopes ?? refreshedScopes) : undefined;
   if (listed?.length) patch["granted_scopes"] = listed;
-  if (refreshed) {
+  if (refreshed && !channel) {
     patch["access_token"] = await sealSecret(token);
     patch["refresh_token"] = await sealSecret(refreshToken);
     patch["token_expires_at"] = expiresAt;
@@ -910,7 +976,7 @@ async function runCheck(
     // be saved but the new tokens could be, keep them: losing them would break the connection. Only
     // onto the very account the renewal was for -- still switched on, same tokens -- so a rotated
     // token can never bring back an account somebody disconnected meanwhile.
-    if (refreshed) {
+    if (refreshed && !channel) {
       await writeCheck({
         accountId: row.id,
         tenantId: row.tenant_id,
@@ -1052,16 +1118,22 @@ export async function retryDueConnections(args: {
   trigger: "manual" | "auto";
   actorId?: string | null;
 }): Promise<RetryOutcome[]> {
-  const { data, error } = await supabaseAdmin
-    .from("social_accounts")
-    .select("id, active, token_expires_at, next_retry_at, external_id, connection_state")
-    .eq("tenant_id", args.tenantId)
-    // Nothing to check without a stored token: a deliberate disconnect clears it.
-    .not("access_token", "is", null);
+  const columns = "id, active, token_expires_at, next_retry_at, external_id, connection_state";
+  const base = () =>
+    supabaseAdmin.from("social_accounts").select(columns).eq("tenant_id", args.tenantId);
+  // Two kinds of account can be checked: one with a stored token, and one that is still switched on
+  // and keeps its token elsewhere (the channel picker's accounts leave access_token empty). A
+  // deliberate disconnect is neither: it clears its tokens and switches the account off.
+  const [withToken, channelModel] = await Promise.all([
+    base().not("access_token", "is", null),
+    base().is("access_token", null).eq("active", true),
+  ]);
+  const error = withToken.error ?? channelModel.error;
   // A failed read must stop here: an empty list would read as "everything is fine".
   if (error) {
     throw new Error("Flas could not read this workspace's connections. Try again in a moment.");
   }
+  const data = [...(withToken.data ?? []), ...(channelModel.data ?? [])];
   const evidence = await readEvidence(args.tenantId);
 
   const due = ((data ?? []) as unknown as Partial<AccountRow>[])
