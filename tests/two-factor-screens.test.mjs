@@ -41,7 +41,7 @@ const realFetch = globalThis.fetch;
 globalThis.fetch = fake.fetch;
 
 const app = await import(await buildScreensBundle());
-const { supabase, watched } = app;
+const { supabase, watched, lastQueryClient } = app;
 
 before(() => {
   // The server guard logs every call; and useServerFn warns that there is no
@@ -214,6 +214,8 @@ afterEach(async () => {
     root?.unmount();
   });
   root = null;
+  delete globalThis.__flasTestCompany;
+  app.forgetDraftsExcept(null);
   await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
   browser.window.localStorage.clear();
   doc.cookie = "flas_lang=; path=/; max-age=0";
@@ -639,6 +641,268 @@ describe("the workspace's region, which the signed-in layout reads for the langu
 });
 
 // ---------------------------------------------------------------------------
+
+describe("the inbox drafts and send locks (InboxDraftProvider), across the two-factor code prompt", () => {
+  // The drafts are in memory, under the signed-in person and company. A session
+  // that turns out to owe a code in the middle of a working day is sent to the
+  // sign-in page, which takes the whole signed-in layout, and the drafts, off the
+  // screen. They must come back for the same person and company, once the code is
+  // entered, with the same send lock (a send whose answer was never seen keeps
+  // its reference, and a fresh lock would send it twice), and for nobody else.
+  const REPLY = "Thanks, your order ships tomorrow.";
+  const KEY = "conv-1\nbody";
+  const screenDraft = () => signedInScreen()?.getAttribute("data-draft");
+  const screenLoaded = () => signedInScreen()?.getAttribute("data-loaded");
+  const settledOnIdentity = () => {
+    const scope = signedInScreen()?.getAttribute("data-scope") ?? "undefined";
+    return !/undefined|null/.test(scope);
+  };
+  const typeReply = (text) =>
+    act(async () => {
+      watched.drafts.setDraft(text);
+    });
+
+  /** Somebody working in the inbox: signed in without two-factor, with a reply typed and a send waiting for its answer. */
+  async function workingInTheInbox(me) {
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never settled");
+    await typeReply(REPLY);
+    assert.ok(await until(() => screenDraft() === REPLY), "the reply was not typed");
+    const sends = watched.drafts.sends;
+    const attempt = sends.begin(KEY, "conv-1", () => "ref-1");
+    assert.equal(attempt?.ref, "ref-1");
+    return sends;
+  }
+  /** Two-factor is switched on from another device; this browser hears at its next token refresh. */
+  async function twoFactorSwitchedOnElsewhere(me) {
+    fake.user(me.id).factors.push({ ...VERIFIED, type: "totp", code: RIGHT_CODE });
+    await act(async () => {
+      await supabase.auth.refreshSession();
+    });
+    assert.ok(await until(() => codeField()), "never sent to the code prompt");
+    assert.equal(signedInScreen(), null, "the signed-in screen stayed up");
+  }
+  async function backAtThePrompt() {
+    await press(buttonSaying("Back"));
+    assert.ok(
+      await until(() => doc.getElementById("password")),
+      "the password form did not come back",
+    );
+  }
+
+  test("a person sent to the code prompt mid-session finds their reply and their waiting send as they left them", async () => {
+    const me = person();
+    const sends = await workingInTheInbox(me);
+    await twoFactorSwitchedOnElsewhere(me);
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen()), "never came back");
+    assert.ok(await until(() => screenDraft() === REPLY), `the reply was lost: "${screenDraft()}"`);
+    assert.equal(watched.drafts.sends, sends, "the send lock was replaced by a new one");
+    assert.equal(sends.isPending("conv-1"), true, "the waiting send was released");
+    assert.equal(
+      sends.begin(KEY, "conv-1", () => "ref-2"),
+      null,
+      "a second send was allowed",
+    );
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox", "/inbox"]);
+  });
+
+  test("a send whose answer was never seen is retried as the same message, not a new one", async () => {
+    const me = person();
+    const sends = await workingInTheInbox(me);
+    await twoFactorSwitchedOnElsewhere(me);
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()));
+    // The request never got an answer: the lock is released but the reference is kept.
+    sends.finish(KEY, "ref-1", false);
+    const retry = watched.drafts.sends.begin(KEY, "conv-1", () => "ref-2");
+    assert.equal(retry?.ref, "ref-1", "the retry would be sent as a different message");
+  });
+
+  test("an answer that arrives while the prompt is up releases the lock the person comes back to", async () => {
+    const me = person();
+    const sends = await workingInTheInbox(me);
+    await twoFactorSwitchedOnElsewhere(me);
+    // The send's callbacks still hold the lock the layout had; the server answered.
+    sends.finish(KEY, "ref-1", true);
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()));
+    assert.equal(
+      watched.drafts.sends.isPending("conv-1"),
+      false,
+      "still waiting for an answer it had",
+    );
+    assert.equal(watched.drafts.sends.begin(KEY, "conv-1", () => "ref-2")?.ref, "ref-2");
+  });
+
+  test("a session that never owed a code keeps its drafts through ordinary navigation, as before", async () => {
+    const me = person();
+    await workingInTheInbox(me);
+    await settle(300);
+    assert.equal(screenDraft(), REPLY);
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("somebody who signs in after 'Back' sees none of it: no reply, no lock, nothing the first person's screens loaded", async () => {
+    const first = person();
+    const firstSends = await workingInTheInbox(first);
+    assert.ok(await until(() => screenLoaded() === `loaded for ${first.id}`), "nothing loaded");
+    await twoFactorSwitchedOnElsewhere(first);
+    await backAtThePrompt();
+    assert.equal(lastQueryClient.current.getQueryData(["loaded-by-the-screen"]), undefined);
+
+    const second = person();
+    await signInWithPassword(second);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never got in");
+    assert.equal(screenDraft(), "", "the first person's reply is on screen");
+    assert.notEqual(
+      watched.drafts.sends,
+      firstSends,
+      "the first person's send lock was handed over",
+    );
+    assert.equal(watched.drafts.sends.isPending("conv-1"), false);
+    assert.ok(await until(() => screenLoaded()), "the screen loaded nothing");
+    assert.equal(
+      screenLoaded(),
+      `loaded for ${second.id}`,
+      "the first person's cached data was shown",
+    );
+  });
+
+  test("... and the first person, signing in again later, does not get their old reply back either", async () => {
+    const first = person();
+    await workingInTheInbox(first);
+    await twoFactorSwitchedOnElsewhere(first);
+    await backAtThePrompt();
+    await signInWithPassword(first);
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never got in");
+    assert.equal(screenDraft(), "", "a reply survived a sign-out");
+    assert.equal(watched.drafts.sends.isPending("conv-1"), false);
+  });
+
+  test("somebody else who signs in on this browser while the prompt is up sees none of it", async () => {
+    const first = person();
+    await workingInTheInbox(first);
+    await twoFactorSwitchedOnElsewhere(first);
+    const second = person();
+    await arriveWithSession(second, { aal: "aal1" });
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never got in");
+    assert.equal(screenDraft(), "");
+    assert.equal(watched.drafts.sends.isPending("conv-1"), false);
+    assert.ok(await until(() => screenLoaded()), "the screen loaded nothing");
+    assert.equal(
+      screenLoaded(),
+      `loaded for ${second.id}`,
+      "the first person's cached data was shown",
+    );
+  });
+
+  test("the same person in another company does not get them", async () => {
+    const me = person();
+    await workingInTheInbox(me);
+    await twoFactorSwitchedOnElsewhere(me);
+    globalThis.__flasTestCompany = "company-2";
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never got in");
+    assert.match(signedInScreen().getAttribute("data-scope"), /:company-2$/);
+    assert.equal(screenDraft(), "", "a reply from another company is on screen");
+    assert.equal(watched.drafts.sends.isPending("conv-1"), false);
+  });
+
+  test("after 'Back', a person with two-factor who signs in on the same server is asked for their code, whatever was remembered for the first", async () => {
+    // The server remembers, for a minute, that the first person has no second
+    // factor. That is theirs alone.
+    const first = person();
+    await arriveWithSession(first, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(heartbeatServed), "no heartbeat, so nothing was remembered");
+    await act(async () => {
+      await supabase.auth.signOut();
+    });
+    assert.ok(await until(() => watched.navigations.includes("/auth")));
+
+    const second = person({ factors: [VERIFIED] });
+    await signInWithPassword(second);
+    assert.ok(await until(() => codeField()), "the second person was not asked for their code");
+    await settle(300);
+    assert.equal(signedInScreen(), null);
+    let refusal = null;
+    try {
+      await app.serverFunction("probe")({ data: undefined });
+    } catch (error) {
+      refusal = error;
+    }
+    assert.equal(refusal?.message, INTRO, "the second person's call was accepted");
+  });
+});
+
+describe("what the draft keeper will and will not hold", () => {
+  const key = (scope) => app.emptyDrafts(scope);
+  const keep = (scope) => {
+    const sends = new app.InboxSendSession();
+    app.keepDrafts(scope, key(scope), sends);
+    return sends;
+  };
+  beforeEach(() => app.forgetDraftsExcept(null));
+
+  test("hands back exactly what was kept for exactly that person and company", () => {
+    const sends = keep("u1:c1");
+    const back = app.recallDrafts("u1:c1");
+    assert.equal(back?.sends, sends);
+    assert.equal(back?.state.scope, "u1:c1");
+    assert.equal(app.recallDrafts("u1:c2"), null, "another company got it");
+    assert.equal(app.recallDrafts("u2:c1"), null, "another person got it");
+  });
+
+  test("keeps nothing while the person or the company is still unknown", () => {
+    for (const scope of [
+      "undefined:undefined",
+      "u1:undefined",
+      "undefined:c1",
+      "u1:null",
+      "u1:",
+      ":c1",
+      "a:b:c",
+      "",
+    ]) {
+      keep(scope);
+      assert.equal(app.recallDrafts(scope), null, scope);
+    }
+  });
+
+  test("a company that has not loaded yet cannot overwrite or pick up what is kept", () => {
+    const sends = keep("u1:c1");
+    keep("u1:undefined");
+    assert.equal(app.recallDrafts("u1:undefined"), null);
+    assert.equal(app.recallDrafts("u1:c1")?.sends, sends);
+  });
+
+  test("keeps only one identity: the newest replaces the last", () => {
+    keep("u1:c1");
+    const second = keep("u1:c2");
+    assert.equal(app.recallDrafts("u1:c1"), null);
+    assert.equal(app.recallDrafts("u1:c2")?.sends, second);
+  });
+
+  test("is emptied as soon as anybody else, or nobody, is signed in; not by the same person", () => {
+    const sends = keep("u1:c1");
+    app.forgetDraftsExcept("u1");
+    assert.equal(app.recallDrafts("u1:c1")?.sends, sends, "the same person's refresh forgot it");
+    app.forgetDraftsExcept("u2");
+    assert.equal(app.recallDrafts("u1:c1"), null);
+    keep("u1:c1");
+    app.forgetDraftsExcept(null);
+    assert.equal(app.recallDrafts("u1:c1"), null);
+  });
+
+  test("refuses state whose own scope is not the identity it is kept under", () => {
+    app.keepDrafts("u1:c1", app.emptyDrafts("u9:c9"), new app.InboxSendSession());
+    assert.equal(app.recallDrafts("u1:c1"), null);
+  });
+});
 
 describe("when the server turns a call back", () => {
   // These calls go through the app's own browser middleware (src/lib/session-guard.ts,

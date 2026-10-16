@@ -1,7 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
+import { forgetDraftsExcept } from "@/lib/inbox-draft-keeper";
 import type { Session, User } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 type AuthState = {
   user: User | null;
@@ -23,6 +24,7 @@ const AuthContext = createContext<AuthState>({
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const signedInAs = useRef<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -30,15 +32,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      // Drafts kept for the two-factor code prompt belong to the person who
+      // typed them: nobody else, and nobody signed out, may find them later.
+      // Neither may what the previous person's screens had loaded (every query
+      // is cached without a per-person key), however they stopped being signed
+      // in: sign-out, an expired session, or another tab signing in as someone
+      // else while this one waited at the code prompt.
+      const nowSignedInAs = next?.user?.id ?? null;
+      forgetDraftsExcept(nowSignedInAs);
+      if (signedInAs.current !== null && signedInAs.current !== nowSignedInAs) queryClient.clear();
+      signedInAs.current = nowSignedInAs;
       setSession(next);
       setLoading(false);
     });
     supabase.auth.getSession().then(({ data }) => {
+      signedInAs.current ??= data.session?.user?.id ?? null;
       setSession(data.session);
       setLoading(false);
     });
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     const userId = session?.user?.id;

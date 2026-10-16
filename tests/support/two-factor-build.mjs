@@ -80,6 +80,9 @@ export async function buildServerBundle() {
         export { createServerFn } from "@tanstack/react-start";
         export { runWithStartContext } from "@tanstack/start-storage-context";
         export { OPEN_SERVER_FUNCTIONS } from "./src/lib/two-factor.server";
+        export { keepDrafts, recallDrafts } from "./src/lib/inbox-draft-keeper";
+        export { emptyDrafts } from "./src/lib/inbox-drafts";
+        export { InboxSendSession } from "./src/lib/inbox-send-session";
       `,
       resolveDir: process.cwd(),
     },
@@ -120,12 +123,29 @@ export async function buildScreensBundle() {
         "@tanstack/react-start/server": { contents: REQUEST_OF_THE_MOMENT },
         // The layout's children that load a company's data. None of them
         // decides who gets in; the layout decides that before rendering them.
+        // Like the real provider, the company is unknown on the first draw and
+        // known right after, for every consumer at once. So the draft provider
+        // (keyed by user and company) is drawn twice, as it is in the app.
+        // Tests choose the company with globalThis.__flasTestCompany.
         "hooks/useTenant": {
           contents: `
-            export function TenantProvider({ children }) { return children; }
-            export function useTenant() {
-              return { tenant: null, staffRole: "admin", needsOnboarding: false, loading: false, refresh: async () => {} };
+            import { createContext, createElement, useContext, useEffect, useState } from "react";
+            const Tenant = createContext({ tenant: null, staffRole: null, needsOnboarding: false, loading: true, refresh: async () => {} });
+            export function TenantProvider({ children }) {
+              const [loaded, setLoaded] = useState(false);
+              useEffect(() => setLoaded(true), []);
+              const id = globalThis.__flasTestCompany ?? "company-1";
+              const tenant = loaded
+                ? { id, name: "Test company", slug: "test", plan: "free", subscription_status: "active",
+                    subscription_renews_at: null, suspended: false, currency: "USD", timezone: null, locale: null }
+                : null;
+              return createElement(
+                Tenant.Provider,
+                { value: { tenant, staffRole: "admin", needsOnboarding: false, loading: !loaded, refresh: async () => {} } },
+                children,
+              );
             }
+            export function useTenant() { return useContext(Tenant); }
           `,
         },
         // Toasts have no screen here; the suite reads them from what was shown.

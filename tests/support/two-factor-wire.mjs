@@ -28,8 +28,11 @@ export const watched = {
    * stays where it is, which is how a test sees what the page does meanwhile.
    */
   holdNavigation: false,
+  /** The inbox draft hook as the signed-in screen last saw it: { draft, sends, setDraft, ... }, or null. */
+  drafts: null,
   reset() {
     this.holdNavigation = false;
+    this.drafts = null;
     this.navigations.length = 0;
     this.served.length = 0;
     this.sent.length = 0;

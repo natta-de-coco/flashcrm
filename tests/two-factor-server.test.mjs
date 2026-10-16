@@ -1130,3 +1130,15 @@ describe("a token that does not say clearly that the code was entered", () => {
     });
   }
 });
+
+describe("the draft keeper on the server", () => {
+  // One module serves every request on a server, so anything kept there would
+  // be handed to whoever asks next. The keeper must do nothing at all outside a
+  // browser. (The browser behaviour is in tests/two-factor-screens.test.mjs.)
+  test("keeps nothing and hands nothing back", () => {
+    assert.equal(typeof window, "undefined", "this suite is meant to run without a browser");
+    const scope = "10000000-0000-4000-8000-000000000001:company-1";
+    mod.keepDrafts(scope, mod.emptyDrafts(scope), new mod.InboxSendSession());
+    assert.equal(mod.recallDrafts(scope), null);
+  });
+});

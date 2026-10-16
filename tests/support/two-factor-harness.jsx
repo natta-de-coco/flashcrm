@@ -12,6 +12,9 @@ import { RouterContext } from "./two-factor-router-double.jsx";
 import { watched } from "./two-factor-wire.mjs";
 
 export { supabase } from "@/integrations/supabase/client";
+export { forgetDraftsExcept, keepDrafts, recallDrafts } from "@/lib/inbox-draft-keeper";
+export { emptyDrafts } from "@/lib/inbox-drafts";
+export { InboxSendSession } from "@/lib/inbox-send-session";
 export { translate } from "@/lib/i18n";
 export { startInstance } from "@/start";
 export { serverAnswer, serverFunction, watched } from "./two-factor-wire.mjs";
@@ -37,16 +40,20 @@ function pageAt(pathname) {
   return ShellRoute.options.component;
 }
 
+/** The query cache of the app that was last drawn, so a test can put data in it and see what a sign-out leaves. */
+export const lastQueryClient = { current: null };
+
 /** The app, as far as sign-in is concerned. */
 export function App({ startAt, language = "en" }) {
   const [location, setLocation] = useState(() => parse(startAt));
   // gcTime 0: the default keeps every query for five minutes after its page is
   // gone, which holds a timer open and made `node --test` wait about five
   // minutes after the last test had finished.
-  const queryClient = useMemo(
-    () => new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } }),
-    [],
-  );
+  const queryClient = useMemo(() => {
+    const client = new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
+    lastQueryClient.current = client;
+    return client;
+  }, []);
   const navigate = useCallback((target) => {
     const address = addressOf(target);
     watched.navigations.push(address);
