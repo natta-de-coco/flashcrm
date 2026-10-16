@@ -21,6 +21,7 @@ export function MobileBottomNav({ onMore }: { onMore: () => void }) {
   const { mobileBar } = useNavAccess();
   return (
     <nav
+      data-mobile-nav
       aria-label={t("shell.primaryNav")}
       className="sticky bottom-0 z-40 flex items-stretch border-t border-sidebar-border bg-sidebar text-sidebar-foreground lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
