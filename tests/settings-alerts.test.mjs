@@ -64,6 +64,7 @@ const alerts = await bundle("src/lib/lead-alerts.functions.ts", "settings-alert-
 const dispatcher = await bundle("src/lib/lead-alerts.server.ts", "settings-alert-dispatch");
 const profile = await bundle("src/lib/profile-settings.functions.ts", "settings-profile-endpoints");
 const billing = await bundle("src/lib/billing.functions.ts", "settings-billing-endpoints");
+const billingForm = await bundle("src/lib/settings-billing-profile.ts", "settings-billing-form");
 const notifications = await bundle(
   "src/lib/notifications.functions.ts",
   "settings-notification-endpoints",
@@ -240,6 +241,119 @@ test("opening company settings is read-only, and failed reads are surfaced", asy
     /read failed/,
   );
 });
+test("the first company settings edit preserves existing business details and tax without a GET write", async () => {
+  const db = client((q) => {
+    assert.equal(q.op, "select", "Opening Settings must not initialize billing rows");
+    const rows = {
+      billing_settings: null,
+      business_profiles: {
+        business_name: "Existing sample company",
+        city: "Dubai",
+        country: "AE",
+        website_url: "https://example.test",
+        tax_registration_number: "EXISTING-TAX",
+      },
+      organizations: { name: "Workspace name" },
+    };
+    return { data: rows[q.table], error: null };
+  });
+  const loaded = await billing.getBillingProfile({ context: { userId: "caller-A", supabase: db } });
+  const draft = billingForm.billingProfileDraft(loaded);
+  // The actual Settings form sends every draft field, even for an unrelated edit.
+  const firstSave = billingForm.billingProfilePatch({ ...draft, phone: "+971500000001" });
+  assert.equal(firstSave.legal_name, "Existing sample company");
+  assert.equal(firstSave.trade_name, "Existing sample company");
+  assert.equal(firstSave.address, "Dubai");
+  assert.equal(firstSave.website, "https://example.test");
+  assert.equal(firstSave.vat_number, "EXISTING-TAX");
+  assert.equal(firstSave.tax_registration_number, "EXISTING-TAX");
+  assert.equal(firstSave.phone, "+971500000001");
+  assert.equal(firstSave.tax_label, "VAT");
+  assert.equal(firstSave.default_tax_rate, 5);
+  assert.equal(firstSave.default_payment_terms, "Net 30");
+  assert.equal(loaded.country, "AE");
+  for (const call of db.calls)
+    assert.deepEqual(call.filters, [
+      [call.table === "organizations" ? "id" : "tenant_id", "tenant-A"],
+    ]);
+});
+
+test("company settings without billing or business details use the scoped workspace name", async () => {
+  const db = client((q) => ({
+    data: q.table === "organizations" ? { name: "New sample company" } : null,
+    error: null,
+  }));
+  const result = await billing.getBillingProfile({ context: { userId: "caller-A", supabase: db } });
+  assert.equal(result.legal_name, "New sample company");
+  assert.equal(result.trade_name, "New sample company");
+  assert.equal(result.tax_registration_number, null);
+  const firstSave = billingForm.billingProfilePatch({
+    ...billingForm.billingProfileDraft(result),
+    phone: "+971500000001",
+  });
+  assert.equal(firstSave.tax_label, "VAT");
+  assert.equal(firstSave.default_tax_rate, 5);
+  assert.equal(firstSave.default_payment_terms, "Net 30");
+  assert.ok(db.calls.every((call) => call.op === "select"));
+});
+
+test("saved billing values remain authoritative over business-profile seed values", async () => {
+  for (const vat of ["SAVED-TAX", ""]) {
+    const saved = {
+      legal_name: "Saved invoice company",
+      address: null,
+      website: "",
+      vat_number: vat,
+      tax_label: "GST",
+      default_tax_rate: 0,
+      default_payment_terms: "Payment on receipt",
+    };
+    const db = client((q) => {
+      assert.notEqual(
+        q.table,
+        "organizations",
+        "Saved billing does not need an initialization seed",
+      );
+      return {
+        data:
+          q.table === "billing_settings"
+            ? saved
+            : {
+                business_name: "Different business name",
+                city: "Different city",
+                website_url: "https://other.test",
+                tax_registration_number: "PROFILE-TAX",
+              },
+        error: null,
+      };
+    });
+    const result = await billing.getBillingProfile({
+      context: { userId: "caller-A", supabase: db },
+    });
+    assert.equal(result.legal_name, saved.legal_name);
+    assert.equal(result.address, null);
+    assert.equal(result.website, "");
+    assert.equal(result.tax_registration_number, vat);
+    assert.equal(result.tax_label, saved.tax_label);
+    assert.equal(result.default_tax_rate, saved.default_tax_rate);
+    assert.equal(result.default_payment_terms, saved.default_payment_terms);
+  }
+});
+
+test("failed business or workspace seed reads cannot become a blank saveable company form", async () => {
+  for (const unavailable of ["business_profiles", "organizations"]) {
+    const db = client((q) => ({
+      data: null,
+      error: q.table === unavailable ? new Error(`${unavailable} unavailable`) : null,
+    }));
+    await assert.rejects(
+      billing.getBillingProfile({ context: { userId: "caller-A", supabase: db } }),
+      new RegExp(`${unavailable} unavailable`),
+    );
+    assert.ok(db.calls.every((call) => call.op === "select"));
+  }
+});
+
 test("a zero-row billing update cannot acknowledge a successful settings save", async () => {
   const db = client((q) =>
     q.table === "profiles"
