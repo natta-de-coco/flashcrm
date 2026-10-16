@@ -28,6 +28,7 @@ import {
   safeText,
   writeCheck,
 } from "./connection-evidence.server";
+import type { CheckStart } from "./connection-evidence.server";
 import { normalizeProviderError } from "./integration-errors.server";
 import { connectorDefinition } from "./social-connector-definitions";
 import { describeOutcome, needsAttention } from "./integration-health";
@@ -602,7 +603,15 @@ async function runCheck(
   const provider = connector(row.platform)?.provider;
   const now = new Date().toISOString();
   let expiresAt = row.token_expires_at;
-  let guard: { access_token: string | null; refresh_token: string | null } | undefined;
+  // The account as this check found it. The one write at the end lands only on an account that
+  // still looks exactly like this: a person who disconnects, revokes or reconnects it while the
+  // platform is being asked is never overwritten by an answer about the account as it used to be.
+  const unchangedSince: CheckStart = {
+    active: row.active,
+    connection_state: row.connection_state,
+    access_token: row.access_token,
+    refresh_token: row.refresh_token,
+  };
   let refreshed = false;
   let refreshError: string | null = null;
   let refreshedScopes: string[] | undefined;
@@ -688,11 +697,13 @@ async function runCheck(
         };
       }
       expiresAt = cur.token_expires_at;
+      // The answer is about somebody else's renewed token, so that is the token to match.
+      unchangedSince.access_token = cur.access_token;
+      unchangedSince.refresh_token = cur.refresh_token;
       probe = token
         ? await runProbe(row.platform, token, row.external_id)
         : ({ kind: "unreachable", message: "No token." } as const);
     } else {
-      guard = { access_token: row.access_token, refresh_token: row.refresh_token };
       try {
         const set = await refreshAccessToken({
           provider,
@@ -830,6 +841,11 @@ async function runCheck(
     retryAt,
     reference: check.reference,
   });
+  // What is stored if the proof turns out to be impossible to store (see fallbackPatch below).
+  const unstoredReason = describeOutcome("evidence_unavailable", {
+    platform: name,
+    reference: check.reference,
+  });
   const patch: Record<string, unknown> = {
     active: classified.active,
     connection_state: classified.state,
@@ -855,11 +871,14 @@ async function runCheck(
     tenantId: row.tenant_id,
     patch,
     // Where the evidence columns do not exist the write is repeated without them, and then nothing
-    // may say "connected".
-    fallbackPatch: { health: "attention" },
+    // may say "connected" or "verified": not the old health column, and not the stored sentences.
+    fallbackPatch: {
+      health: "attention",
+      state_reason: unstoredReason.slice(0, 500),
+      status_reason: unstoredReason,
+    },
     evidence: { attemptAt: now, successAt: verifiedCandidate ? now : null },
-    // Tokens are only written after a renewal, and then only if nobody else changed them meanwhile.
-    guard: refreshed ? guard : undefined,
+    unchangedSince,
     returning:
       "id, active, connection_state, token_expires_at, granted_scopes, last_error_at, next_retry_at",
   });
@@ -874,10 +893,14 @@ async function runCheck(
     console.error(
       `[integration-health] ${check.reference} ${row.platform} save failed (${written.kind})`,
     );
-    outcome = "save_failed";
+    // Nothing matched: the account is no longer what the check started from. That is not a
+    // failure of the check, and nothing was written.
+    outcome = written.kind === "no_row" ? "changed_while_checking" : "save_failed";
     stage = "save";
     // A provider that rotates refresh tokens has already retired the old one. If the result could not
-    // be saved but the new tokens could be, keep them: losing them would break the connection.
+    // be saved but the new tokens could be, keep them: losing them would break the connection. Only
+    // onto the very account the renewal was for -- still switched on, same tokens -- so a rotated
+    // token can never bring back an account somebody disconnected meanwhile.
     if (refreshed) {
       await writeCheck({
         accountId: row.id,
@@ -888,12 +911,27 @@ async function runCheck(
           token_expires_at: expiresAt,
         },
         evidence: null,
-        guard,
+        unchangedSince: { ...unchangedSince, connection_state: undefined },
         returning: "id",
       }).catch(() => undefined);
     }
   }
   if (written.ok) stage = outcome === "evidence_unavailable" ? "save" : "done";
+
+  // The sentence for the log and for the caller follows what finally happened, never what was
+  // hoped for before the write: a result that could not be saved is not logged as "Verified".
+  const said = safeText(
+    describeOutcome(outcome, {
+      platform: name,
+      httpStatus,
+      features,
+      retryAt,
+      reference: check.reference,
+    }),
+    known,
+    1000,
+  );
+  const changedMeanwhile = outcome === "changed_while_checking";
 
   // Read back: the status is built from the row the write returned, with the same function every
   // screen uses. When nothing was saved it is the row as it still stands.
@@ -937,7 +975,7 @@ async function runCheck(
       account_id: row.id,
       platform: row.platform,
       outcome,
-      reason: safeText(reason, known, 1000),
+      reason: said,
       trigger: args.trigger,
       details: {
         stage,
@@ -982,20 +1020,16 @@ async function runCheck(
     platform: row.platform,
     account_id: row.id,
     outcome,
-    reason: safeText(
-      describeOutcome(outcome, {
-        platform: name,
-        httpStatus,
-        features,
-        retryAt,
-        reference: check.reference,
-      }),
-      known,
-      1000,
-    ),
+    reason: said,
     stage,
-    status,
-    saved_at: written.ok && evidenceSaved ? now : (stored.last_validation_attempt_at ?? null),
+    // An account that changed while it was checked has no status to claim: the row this check read
+    // is not the row that is there now, and nothing was written. The screen reads it afresh.
+    ...(changedMeanwhile
+      ? {}
+      : {
+          status,
+          saved_at: written.ok && evidenceSaved ? now : (stored.last_validation_attempt_at ?? null),
+        }),
     correlation_id: check.reference,
     http_status: httpStatus,
     log_saved: logSaved,

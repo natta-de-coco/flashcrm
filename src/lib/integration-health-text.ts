@@ -176,6 +176,8 @@ export function describeResult(result: RetryResult, format: Format): Described[]
       return [{ key: "healthReportDialog.outcomeInProgress", values: {} }];
     case "recently_checked":
       return [{ key: "healthReportDialog.outcomeRecentlyChecked", values: {} }];
+    case "changed_while_checking":
+      return [{ key: "healthReportDialog.outcomeChanged", values: {} }];
     case "reconnect_needed":
       return [{ key: "healthReportDialog.outcomeReconnectNeeded", values: {} }];
     case "not_identified":
@@ -247,6 +249,7 @@ export const ALL_OUTCOMES: readonly RetryOutcomeCode[] = [
   "reconnect_needed",
   "in_progress",
   "recently_checked",
+  "changed_while_checking",
   "not_found",
   "failed",
 ];

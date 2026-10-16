@@ -104,6 +104,8 @@ export default screen({
     "healthReportDialog.diagStorageMissing": "Verification storage: not available",
     "healthReportDialog.diagScopes": "Permissions not granted: {scopes}",
     "healthReportDialog.diagMessage": "Platform said: {message}",
+    "healthReportDialog.outcomeChanged":
+      "This account changed while Flas was checking it, so the result was not saved and nothing was marked verified.",
   },
   ar: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -202,6 +204,8 @@ export default screen({
     "healthReportDialog.diagStorageMissing": "تخزين التحقق: غير متاح",
     "healthReportDialog.diagScopes": "الأذونات غير الممنوحة: {scopes}",
     "healthReportDialog.diagMessage": "ما قالته المنصة: {message}",
+    "healthReportDialog.outcomeChanged":
+      "تغيّر هذا الحساب أثناء فحص Flas له، لذلك لم تُحفظ النتيجة ولم يُوسَم أي شيء بأنه موثّق.",
   },
   ms: {
     "healthReportDialog.encryptedStoredCredentialS": "{sealedNow} kelayakan tersimpan disulitkan.",
@@ -306,6 +310,8 @@ export default screen({
     "healthReportDialog.diagStorageMissing": "Storan pengesahan: tidak tersedia",
     "healthReportDialog.diagScopes": "Kebenaran tidak diberikan: {scopes}",
     "healthReportDialog.diagMessage": "Platform berkata: {message}",
+    "healthReportDialog.outcomeChanged":
+      "Akaun ini berubah semasa Flas sedang memeriksanya, jadi keputusan tidak disimpan dan tiada apa-apa yang ditandakan sebagai disahkan.",
   },
   fil: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -412,6 +418,8 @@ export default screen({
     "healthReportDialog.diagStorageMissing": "Imbakan ng beripikasyon: hindi available",
     "healthReportDialog.diagScopes": "Mga pahintulot na hindi ibinigay: {scopes}",
     "healthReportDialog.diagMessage": "Sabi ng platform: {message}",
+    "healthReportDialog.outcomeChanged":
+      "Nagbago ang account na ito habang sinusuri ito ng Flas, kaya hindi na-save ang resulta at walang minarkahang na-verify.",
   },
   sw: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -518,5 +526,7 @@ export default screen({
     "healthReportDialog.diagStorageMissing": "Hifadhi ya uthibitisho: haipatikani",
     "healthReportDialog.diagScopes": "Ruhusa ambazo hazikutolewa: {scopes}",
     "healthReportDialog.diagMessage": "Jukwaa lilisema: {message}",
+    "healthReportDialog.outcomeChanged":
+      "Akaunti hii ilibadilika wakati Flas ilipokuwa inaikagua, kwa hiyo matokeo hayakuhifadhiwa na hakuna kilichowekwa alama kuwa kimethibitishwa.",
   },
 });

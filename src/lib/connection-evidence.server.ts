@@ -194,13 +194,51 @@ export function plainOrNull(input: unknown, scopes: readonly string[] = []): str
 
 export type CheckWrite =
   | { ok: true; row: Record<string, unknown>; evidence: "ok" | "unavailable" }
-  | { ok: false; kind: "database_error" | "no_row"; message: string };
+  | {
+      ok: false;
+      /**
+       * database_error: the database refused or did not answer.
+       * no_row: nothing matched -- the account is no longer what the check started from (a person
+       *         disconnected or reconnected it meanwhile, or it is gone). Nothing was written.
+       * several_rows: more than one account matched, which a single id never does.
+       */
+      kind: "database_error" | "no_row" | "several_rows";
+      message: string;
+    };
+
+/**
+ * What an account looked like when a check began, as the database stores it (raw, so a token is
+ * the sealed value). The write only lands on an account that still looks exactly like this: a
+ * person who disconnects, revokes or reconnects it while the platform is being asked is not
+ * overwritten by an answer that was about the account as it used to be.
+ */
+export type CheckStart = {
+  active: boolean;
+  /** Left out (undefined) when the write is not about the state, only about keeping a new token. */
+  connection_state?: string | null | undefined;
+  access_token: string | null;
+  refresh_token: string | null;
+};
+
+type Matchable<Q> = {
+  is(column: string, value: null): Q;
+  eq(column: string, value: string | boolean): Q;
+};
+
+/** `column = value`, or `column IS NULL` -- an equality test on a null never matches in SQL. */
+function equalsOrNull<Q extends Matchable<Q>>(
+  query: Q,
+  column: string,
+  value: string | boolean | null,
+): Q {
+  return value === null ? query.is(column, null) : query.eq(column, value);
+}
 
 /**
  * The one write that stores the result of a check. It is checked three ways: the database must
- * not return an error, exactly one row must come back, and (for a refresh) the stored tokens must
- * still be the ones the check started from. Anything else is a failure the caller reports; a
- * failed or empty write never reads as "saved".
+ * not return an error, exactly one row must come back, and the account must still be what the
+ * check started from (`unchangedSince`). Anything else is a failure the caller reports; a failed or
+ * empty write never reads as "saved".
  *
  * `evidence` says what to record about the check itself. When the evidence columns do not exist
  * the write is repeated once without them and the result says "unavailable".
@@ -213,8 +251,8 @@ export async function writeCheck(args: {
   fallbackPatch?: Record<string, unknown> | undefined;
   /** What to record about the check itself; null records nothing (a write of tokens alone). */
   evidence: { attemptAt: string; successAt: string | null } | null;
-  /** Raw stored token columns read at the start; the write only lands if both are unchanged. */
-  guard?: { access_token: string | null; refresh_token: string | null } | undefined;
+  /** The account as the check found it; the write lands only if it still looks exactly so. */
+  unchangedSince: CheckStart;
   returning: string;
 }): Promise<CheckWrite> {
   const attempt = async (wantEvidence: boolean) => {
@@ -228,21 +266,18 @@ export async function writeCheck(args: {
       patch["last_validation_attempt_at"] = args.evidence.attemptAt;
       if (args.evidence.successAt) patch["last_validation_success_at"] = args.evidence.successAt;
     }
+    const start = args.unchangedSince;
     let query = untyped()
       .from("social_accounts")
       .update(patch)
       .eq("id", args.accountId)
       .eq("tenant_id", args.tenantId);
-    if (args.guard) {
-      query =
-        args.guard.access_token === null
-          ? query.is("access_token", null)
-          : query.eq("access_token", args.guard.access_token);
-      query =
-        args.guard.refresh_token === null
-          ? query.is("refresh_token", null)
-          : query.eq("refresh_token", args.guard.refresh_token);
+    query = equalsOrNull(query, "active", start.active);
+    if (start.connection_state !== undefined) {
+      query = equalsOrNull(query, "connection_state", start.connection_state);
     }
+    query = equalsOrNull(query, "access_token", start.access_token);
+    query = equalsOrNull(query, "refresh_token", start.refresh_token);
     // The evidence columns are only asked for back when they are part of this attempt.
     return await query.select(
       withEvidence ? `${args.returning}, ${EVIDENCE_COLUMNS.join(", ")}` : args.returning,
@@ -269,14 +304,13 @@ export async function writeCheck(args: {
   }
   const rows = Array.isArray(result.data) ? result.data : [];
   if (rows.length !== 1) {
-    return {
-      ok: false,
-      kind: "no_row",
-      message:
-        rows.length === 0
-          ? "The write matched no account (it may have changed while the check ran)."
-          : "The write matched more than one account.",
-    };
+    return rows.length === 0
+      ? {
+          ok: false,
+          kind: "no_row",
+          message: "The account changed while the check ran, so nothing was written.",
+        }
+      : { ok: false, kind: "several_rows", message: "The write matched more than one account." };
   }
   return { ok: true, row: rows[0] as unknown as Record<string, unknown>, evidence };
 }

@@ -661,13 +661,14 @@ describe("a result that was not saved is never reported as saved (T3)", () => {
     assert.equal(connectionStatus(screen).state, "unverified");
   });
 
-  test("the write matches no row", async () => {
+  test("the write matches no account: it changed meanwhile, nothing is marked verified", async () => {
     const account = world.account();
     world.provider(facebookHealthy());
     world.db.fail("social_accounts:update", { empty: true });
     const result = await check(account.id);
-    assert.equal(result.outcome, "save_failed");
+    assert.equal(result.outcome, "changed_while_checking");
     assert.equal(world.stored(account.id).last_validation_success_at, null);
+    assert.notEqual(result.outcome, "healthy");
   });
 
   test("a log entry that cannot be written does not undo a verification that was saved", async () => {
@@ -810,7 +811,7 @@ describe("renewing a token (T5)", () => {
       };
     };
     const result = await check(account.id);
-    assert.equal(result.outcome, "save_failed");
+    assert.equal(result.outcome, "changed_while_checking");
     assert.equal(world.stored(account.id).access_token, "sealed:from-the-reconnect");
     assert.equal(world.stored(account.id).refresh_token, "sealed:also-from-the-reconnect");
     assert.equal(world.stored(account.id).last_validation_success_at, null);
@@ -1632,5 +1633,257 @@ describe("the report reads only its own company's check log (finding 15)", () =>
       ["log-mine"],
     );
     assert.doesNotMatch(JSON.stringify(rep), /Beta Co secret|bbbbbbbb/);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, finding 2: a change made while a check runs is never overwritten
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("a change made while a check runs is not overwritten (finding 2)", () => {
+  /** Facebook answers a healthy token, and runs `flip` the first time it is asked (the person acts meanwhile). */
+  const duringTheCheck = (flip) => {
+    let done = false;
+    return [
+      on(`${GRAPH}/1000?fields=id`, () => {
+        if (!done) {
+          done = true;
+          flip();
+        }
+        return json(200, { id: "1000" });
+      }),
+      on(`${GRAPH}/me/permissions`, () =>
+        json(200, {
+          data: requiredScopesFor("facebook").map((permission) => ({
+            permission,
+            status: "granted",
+          })),
+        }),
+      ),
+    ];
+  };
+
+  // The three steps of a disconnect, as disconnectConnection takes them one after the other. A check
+  // can finish between any two of them.
+  const steps = {
+    "switched off": { active: false, health: "disconnected" },
+    "tokens cleared": {
+      active: false,
+      health: "disconnected",
+      access_token: null,
+      refresh_token: null,
+    },
+    disconnected: {
+      active: false,
+      health: "disconnected",
+      access_token: null,
+      refresh_token: null,
+      connection_state: "disconnected",
+    },
+  };
+
+  for (const [name, change] of Object.entries(steps)) {
+    test(`a disconnect that lands ${name} while the platform is being asked is kept`, async () => {
+      const account = world.account({ health: "connected" });
+      let snapshot;
+      world.provider(
+        duringTheCheck(() => {
+          Object.assign(world.stored(account.id), change);
+          snapshot = clone(world.stored(account.id));
+        }),
+      );
+      const result = await check(account.id);
+
+      assert.equal(result.outcome, "changed_while_checking");
+      assert.match(result.reason, /changed while Flas was checking it/);
+      assert.equal(result.status, undefined, "no status is claimed from a row that moved");
+      assert.deepEqual(
+        clone(world.stored(account.id)),
+        snapshot,
+        "the check wrote nothing over the person's change",
+      );
+      const row = world.stored(account.id);
+      assert.equal(row.active, false);
+      assert.equal(row.last_validation_success_at, null, "and verified nothing");
+      assert.equal(row.last_validation_attempt_at, null);
+      assert.equal(
+        world.audits.some((a) => a.action === "connection.state_changed"),
+        false,
+      );
+      assert.equal(world.logRows().length, 1, "the check is still on record");
+      assert.equal(world.logRows()[0].outcome, "changed_while_checking");
+      assert.match(world.logRows()[0].reason, /changed while Flas was checking it/);
+      assert.doesNotMatch(world.logRows()[0].reason, /Verified/);
+    });
+  }
+
+  test("the same holds for the check that runs before a sync (trigger: auto)", async () => {
+    const account = world.account();
+    let snapshot;
+    world.provider(
+      duringTheCheck(() => {
+        Object.assign(world.stored(account.id), steps["disconnected"]);
+        snapshot = clone(world.stored(account.id));
+      }),
+    );
+    const result = await engine.retryConnection({
+      accountId: account.id,
+      tenantId: A,
+      trigger: "auto",
+    });
+    assert.equal(result.outcome, "changed_while_checking");
+    assert.deepEqual(clone(world.stored(account.id)), snapshot);
+  });
+
+  test("an account whose sign-in was revoked meanwhile is not brought back to life", async () => {
+    // The database itself would accept revoked -> connected today, so only this guard stops it.
+    const account = world.account();
+    world.provider(
+      duringTheCheck(() => {
+        Object.assign(world.stored(account.id), { active: false, connection_state: "revoked" });
+      }),
+    );
+    const result = await check(account.id);
+    assert.equal(result.outcome, "changed_while_checking");
+    assert.equal(world.stored(account.id).connection_state, "revoked");
+    assert.equal(world.stored(account.id).active, false);
+  });
+
+  test("a token somebody else stored meanwhile is not overwritten", async () => {
+    const account = world.account();
+    world.provider(
+      duringTheCheck(() => {
+        world.stored(account.id).access_token = "sealed:stored-by-a-reconnect";
+      }),
+    );
+    const result = await check(account.id);
+    assert.equal(result.outcome, "changed_while_checking");
+    assert.equal(world.stored(account.id).access_token, "sealed:stored-by-a-reconnect");
+    assert.equal(world.stored(account.id).last_validation_success_at, null);
+  });
+
+  test("a failed answer is not written over the change either", async () => {
+    const account = world.account();
+    let snapshot;
+    world.provider([
+      on(`${GRAPH}/1000?fields=id`, () => {
+        Object.assign(world.stored(account.id), steps["disconnected"]);
+        snapshot = clone(world.stored(account.id));
+        return json(503, { error: { message: "down" } });
+      }),
+    ]);
+    const result = await check(account.id);
+    assert.equal(result.outcome, "changed_while_checking");
+    assert.deepEqual(clone(world.stored(account.id)), snapshot);
+  });
+
+  test("a renewed token is not stored on an account that was disconnected while it renewed", async () => {
+    const account = channel({ token_expires_at: iso(-HOUR) });
+    world.provider([googleOk()]);
+    world.refreshImpl = async (args) => {
+      Object.assign(world.stored(account.id), steps["disconnected"]);
+      return {
+        token: SECRET.metaNew,
+        refreshToken: args.refreshToken,
+        expiresAt: iso(HOUR),
+        scopes: [],
+      };
+    };
+    const result = await check(account.id);
+    assert.equal(world.refreshCalls.length, 1);
+    assert.equal(result.outcome, "changed_while_checking");
+    const row = world.stored(account.id);
+    assert.equal(row.access_token, null, "the new token must not revive a disconnected account");
+    assert.equal(row.refresh_token, null);
+    assert.equal(row.connection_state, "disconnected");
+  });
+
+  test("the group check leaves the changed account alone and still verifies the others", async () => {
+    const moved = world.account({ external_id: "1000" });
+    const other = world.account({ external_id: "2000" });
+    world.provider([
+      on(`${GRAPH}/1000?fields=id`, () => {
+        Object.assign(world.stored(moved.id), steps["disconnected"]);
+        return json(200, { id: "1000" });
+      }),
+      on(`${GRAPH}/2000?fields=id`, () => json(200, { id: "2000" })),
+      on(`${GRAPH}/me/permissions`, () =>
+        json(200, {
+          data: requiredScopesFor("facebook").map((permission) => ({
+            permission,
+            status: "granted",
+          })),
+        }),
+      ),
+    ]);
+    const results = await checkAll();
+    const byId = Object.fromEntries(results.map((r) => [r.account_id, r.outcome]));
+    assert.equal(byId[moved.id], "changed_while_checking");
+    assert.equal(byId[other.id], "healthy");
+    assert.equal(world.stored(moved.id).connection_state, "disconnected");
+    assert.ok(world.stored(other.id).last_validation_success_at);
+  });
+});
+
+describe("the new outcome reads calmly and counts as not saved", () => {
+  test("it is a sentence in all five languages, and is counted as not checked", () => {
+    const said = modelMod.describeOutcome("changed_while_checking", { platform: "Facebook" });
+    assert.match(said, /changed while Flas was checking it/);
+    assert.doesNotMatch(said, /fail|error|problem/i);
+    assert.deepEqual(modelMod.summariseOutcomes([{ outcome: "changed_while_checking" }]), {
+      checked: 1,
+      verified: 0,
+      attention: 0,
+      skipped: 1,
+    });
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, finding 4: what a check stores and logs follows what finally happened
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("a result that was not saved is never logged or stored as verified (finding 4)", () => {
+  test("a refused write is logged as it was, not as 'Verified'", async () => {
+    const account = world.account();
+    world.provider(facebookHealthy());
+    world.db.fail("social_accounts:update", { code: "XX000", message: "disk full" });
+    const result = await check(account.id);
+
+    assert.equal(result.outcome, "save_failed");
+    const [log] = world.logRows();
+    assert.equal(log.outcome, "save_failed");
+    assert.match(
+      log.reason,
+      /could not save the result, so nothing was marked verified\. Reference/,
+    );
+    assert.doesNotMatch(log.reason, /Verified/);
+    // What the dialog's "Recent checks" and the PDF print comes from here.
+    const printed = (await report()).retries.map((r) => r.reason).join(" ");
+    assert.doesNotMatch(printed, /Verified\./);
+  });
+
+  test("where verification results cannot be stored, neither the row nor the log says verified", async () => {
+    withoutEvidenceColumns(world);
+    const account = world.account();
+    world.provider(facebookHealthy());
+    const result = await check(account.id);
+
+    assert.equal(result.outcome, "evidence_unavailable");
+    const row = world.stored(account.id);
+    for (const text of [row.state_reason, row.status_reason, world.logRows()[0].reason]) {
+      assert.doesNotMatch(String(text), /Verified/);
+      assert.match(String(text), /cannot store verification results yet/);
+    }
+    assert.equal(world.logRows()[0].outcome, "evidence_unavailable");
+  });
+
+  test("a check that was saved still says so", async () => {
+    const account = world.account();
+    world.provider(facebookHealthy());
+    const result = await check(account.id);
+    assert.equal(result.outcome, "healthy");
+    assert.equal(world.stored(account.id).state_reason, "Verified by a live check.");
+    assert.match(world.logRows()[0].reason, /^Verified\. Facebook accepted the token/);
   });
 });

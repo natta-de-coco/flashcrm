@@ -118,6 +118,7 @@ export type RetryOutcomeCode =
   | "reconnect_needed"
   | "in_progress"
   | "recently_checked"
+  | "changed_while_checking"
   | "not_found"
   | "failed";
 
@@ -199,6 +200,8 @@ export function describeOutcome(
       return "Another check for this account is already running. Try again in a minute.";
     case "recently_checked":
       return "Checked a moment ago. Showing the saved result.";
+    case "changed_while_checking":
+      return "This account changed while Flas was checking it, so the result was not saved and nothing was marked verified.";
     case "reconnect_needed":
       return "This account was added with a pasted token. Reconnect it so Flas can verify it.";
     case "not_identified":
@@ -213,7 +216,10 @@ export function describeOutcome(
 }
 
 const VERIFIED_OUTCOMES: readonly RetryOutcomeCode[] = ["healthy", "recovered", "refreshed"];
-/** Outcomes where nothing was asked of the platform, so there is nothing to say went wrong. */
+/**
+ * Outcomes that leave nothing to act on: nothing was asked of the platform, or what it said was
+ * thrown away because the account changed meanwhile (changed_while_checking).
+ */
 const NOT_CHECKED_OUTCOMES: readonly RetryOutcomeCode[] = [
   "not_checkable",
   "skipped_disconnected",
@@ -221,6 +227,7 @@ const NOT_CHECKED_OUTCOMES: readonly RetryOutcomeCode[] = [
   "reconnect_needed",
   "in_progress",
   "recently_checked",
+  "changed_while_checking",
   "not_found",
 ];
 
