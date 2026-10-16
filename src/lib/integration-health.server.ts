@@ -567,8 +567,9 @@ async function runCheck(
   });
   if (from === "disconnected" || !row.access_token) return gate("skipped_disconnected");
   if (row.connect_method === "manual") return gate("reconnect_needed");
-  // A revoked account can only come back through a new sign-in (the database refuses any other
-  // route), so asking the platform again would change nothing.
+  // A revoked account can only come back through a new sign-in, so asking the platform again would
+  // change nothing. (The database as it is today would still accept revoked -> connected; this gate,
+  // and the match on the account's state at the final write, are what stop a check from doing it.)
   if (from === "revoked") return gate("needs_reconnect");
   if (!row.external_id) return gate("not_identified");
   if (!hasLiveCheck(row.platform)) return gate("not_checkable");
@@ -749,12 +750,12 @@ async function runCheck(
       missingScopes: missing.length,
       reason: "",
       httpStatus: probe.status,
+      writeSafe: true,
     });
-    verifiedCandidate =
-      missing.length === 0 &&
-      !unknownScopes &&
-      classified.state === "connected" &&
-      classified.active;
+    // Verified is a fact about the token and its permissions, not about which state the database
+    // lets this account move to: a state that has no way out (an authorization that never finished)
+    // is kept, and the proof is still true.
+    verifiedCandidate = missing.length === 0 && !unknownScopes && classified.active;
     outcome = verifiedCandidate
       ? refreshed
         ? "refreshed"
@@ -780,6 +781,7 @@ async function runCheck(
     classified = classifyHealthObservation({
       from,
       validated: false,
+      writeSafe: true,
       missingScopes: 0,
       reason: refreshError ?? (probe.kind === "unreachable" ? probe.message : ""),
       // What the platform answered decides. After a failed renewal the renewal's own error is what
@@ -877,7 +879,14 @@ async function runCheck(
       state_reason: unstoredReason.slice(0, 500),
       status_reason: unstoredReason,
     },
-    evidence: { attemptAt: now, successAt: verifiedCandidate ? now : null },
+    evidence: {
+      attemptAt: now,
+      successAt: verifiedCandidate ? now : null,
+      // The platform refused this token (or its permission): whatever an earlier check proved no
+      // longer stands, whichever state the database lets the account move to. An outage, a rate
+      // limit or no answer says nothing about the token, so the earlier proof is left alone.
+      withdrawProof: outcome === "needs_reconnect" || outcome === "forbidden",
+    },
     unchangedSince,
     returning:
       "id, active, connection_state, token_expires_at, granted_scopes, last_error_at, next_retry_at",

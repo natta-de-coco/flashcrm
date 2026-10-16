@@ -161,9 +161,14 @@ export type AttemptState = (typeof ATTEMPT_STATES)[number];
 
 /**
  * Legal transitions, mirroring is_legal_connection_transition() in
- * 20260910100000. Both exist on purpose: this one produces the message a person
- * reads, and the database one holds when something writes around the
- * application. A test asserts the two sets are identical.
+ * 20260910100000 (the batch-1 foundation). Both exist on purpose: this one
+ * produces the message a person reads, and the database one holds when something
+ * writes around the application. A test asserts the two sets are identical.
+ *
+ * That migration may not be applied yet. The database as it is today has the older
+ * trigger from 20260908100000, which is LIVE_TRANSITIONS below. A health check
+ * writes only edges that BOTH accept (resolveWriteSafeState); nothing that talks
+ * to the database should assume the edges of this table are accepted.
  *
  * Re-asserting the same state is always allowed; that is how a refresh which
  * changes nothing else records a heartbeat.
@@ -203,9 +208,8 @@ const TRANSITIONS: Readonly<Record<ConnectionState, readonly ConnectionState[]>>
   ],
   authorization_cancelled: ["authorization_started", "ready_to_authorize", "disconnected"],
   callback_error: ["authorization_started", "ready_to_authorize", "disconnected"],
-  // refresh_failed is reachable from connected: a health check that fails to
-  // refresh a connected account must be able to say so. Without this edge the
-  // database refused the whole update and the failure was lost.
+  // refresh_failed is reachable from connected in this (target) model. The older
+  // trigger the database has today refuses it (see LIVE_TRANSITIONS).
   connected: [
     "scope_incomplete",
     "token_expiring",
@@ -267,6 +271,92 @@ export function allTransitions(): ReadonlyArray<readonly [ConnectionState, Conne
 export function isLegalTransition(from: ConnectionState, to: ConnectionState): boolean {
   if (from === to) return true;
   return TRANSITIONS[from].includes(to);
+}
+
+/**
+ * The edges the database accepts TODAY: is_legal_connection_transition() as 20260908100000 defines
+ * it, which is the trigger that is applied. (The batch-1 replacement, TRANSITIONS above, is not.)
+ * Differences that matter to a health check: no connected -> refresh_failed, nothing leaves
+ * scope_incomplete or refresh_failed for provider_unavailable, nothing leaves provider_unavailable
+ * for revoked, refresh_failed or scope_incomplete, and the three authorization states have no way out.
+ * A test reads the SQL and keeps this equal to it.
+ */
+const LIVE_TRANSITIONS: Readonly<Record<ConnectionState, readonly ConnectionState[]>> = {
+  not_configured: [
+    "missing_app_credentials",
+    "ready_to_authorize",
+    "connected",
+    "scope_incomplete",
+    "token_expiring",
+    "disconnected",
+  ],
+  missing_app_credentials: ["ready_to_authorize", "not_configured"],
+  ready_to_authorize: ["connected", "scope_incomplete", "missing_app_credentials"],
+  authorization_started: [],
+  authorization_cancelled: [],
+  callback_error: [],
+  connected: [
+    "scope_incomplete",
+    "token_expiring",
+    "revoked",
+    "disconnected",
+    "provider_unavailable",
+  ],
+  scope_incomplete: ["connected", "revoked", "disconnected", "token_expiring"],
+  token_expiring: [
+    "connected",
+    "refresh_failed",
+    "revoked",
+    "disconnected",
+    "provider_unavailable",
+  ],
+  refresh_failed: ["connected", "revoked", "disconnected", "token_expiring"],
+  provider_unavailable: ["connected", "token_expiring", "disconnected"],
+  revoked: ["ready_to_authorize", "connected", "disconnected"],
+  disconnected: ["ready_to_authorize", "connected"],
+};
+
+/** Every edge the live database accepts, flattened -- for the test that compares this with SQL. */
+export function liveTransitions(): ReadonlyArray<readonly [ConnectionState, ConnectionState]> {
+  return (Object.keys(LIVE_TRANSITIONS) as ConnectionState[]).flatMap((from) =>
+    LIVE_TRANSITIONS[from].map((to) => [from, to] as const),
+  );
+}
+
+/**
+ * True when the database accepts this move whether or not the batch-1 trigger has replaced the one
+ * it has today: an edge in BOTH tables. A health check writes only these, so it works before and
+ * after that migration. (The older trigger also accepts revoked -> connected and
+ * disconnected -> connected, which batch 1 removes; neither is ever a health check's to take.)
+ */
+export function isWriteSafeTransition(from: ConnectionState, to: ConnectionState): boolean {
+  if (from === to) return true;
+  return LIVE_TRANSITIONS[from].includes(to) && TRANSITIONS[from].includes(to);
+}
+
+/**
+ * The state a health check writes when the observation's own state may not be reachable.
+ *
+ * If the database accepts the observed state from here, that is it. If not, the account STAYS
+ * where it is: never a stand-in state that says something untrue (a refused sign-in is not "token
+ * expiring"). The saved evidence carries the rest -- a refusal withdraws the proof, so the account
+ * can no longer read as verified. The one exception is a state that says the opposite of what the
+ * platform just said, which is left by the one neutral step the database offers:
+ *   provider_unavailable ("not answering") after the platform DID answer -> connected if the token
+ *     worked, else token_expiring;
+ *   refresh_failed ("sign-in failed") after the token worked -> connected.
+ * (Whether the account then reads as fully connected is decided by its saved evidence, never by
+ * this state.)
+ */
+export function resolveWriteSafeState(
+  from: ConnectionState,
+  proposed: ConnectionState,
+  validated: boolean,
+): ConnectionState {
+  if (isWriteSafeTransition(from, proposed)) return proposed;
+  if (from === "provider_unavailable") return validated ? "connected" : "token_expiring";
+  if (from === "refresh_failed" && validated) return "connected";
+  return from;
 }
 
 /**
@@ -364,6 +454,12 @@ export function classifyHealthObservation(o: {
   providerCode?: string | null;
   /** The request never got an answer (network error, timeout). */
   unreachable?: boolean;
+  /**
+   * Resolve the state against the edges the database accepts both today and after batch 1
+   * (resolveWriteSafeState), instead of against the batch-1 table alone. A caller that is going to
+   * WRITE the state must set this.
+   */
+  writeSafe?: boolean;
 }): { code: HealthCode; state: ConnectionState; active: boolean } {
   let code: HealthCode;
   let proposed: ConnectionState;
@@ -386,7 +482,9 @@ export function classifyHealthObservation(o: {
     code = "refresh_failed";
     proposed = "refresh_failed";
   }
-  const state = resolveHealthState(o.from, proposed);
+  const state = o.writeSafe
+    ? resolveWriteSafeState(o.from, proposed, o.validated)
+    : resolveHealthState(o.from, proposed);
   // An observation that could not legally become revoked (an outage in
   // progress) is reported as a refresh failure, and the connection stays on.
   if (code === "revoked" && state !== "revoked") code = "refresh_failed";

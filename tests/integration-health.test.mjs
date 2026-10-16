@@ -15,14 +15,19 @@ import {
   A,
   ADMIN_A,
   B,
+  BATCH1_EDGES,
+  CONNECTION_STATES,
   DAY,
   EVIDENCE,
   GRAPH,
   HOUR,
+  LIVE_EDGES,
   SECRET,
+  accepts,
   createWorld,
   everything,
   facebookHealthy,
+  installTrigger,
   iso,
   json,
   on,
@@ -499,7 +504,6 @@ describe("reconnecting clears what the old token proved (T-reconnect)", () => {
 
 const stateMod = await import("../node_modules/.cache/flas-connection-state.mjs");
 const modelMod = await import("../node_modules/.cache/flas-health-model.mjs");
-const isLegalTransition = stateMod.isLegalTransition;
 
 const check = async (id, session = world.admin()) =>
   (await retryConnections({ data: { accountId: id }, context: session })).results[0];
@@ -888,7 +892,9 @@ describe("what the platform answered decides what is saved (T6)", () => {
       name: "403: a permission is missing; the sign-in is kept and not renewed",
       reply: () => json(403, { error: { message: "Forbidden", status: "PERMISSION_DENIED" } }),
       outcome: "forbidden",
-      state: "refresh_failed",
+      // The database today refuses connected -> refresh_failed, so the state is kept; the refusal
+      // withdraws the proof instead (see the matrix further down).
+      state: "connected",
       active: true,
       renewals: 0,
       http: 403,
@@ -966,7 +972,8 @@ describe("what the platform answered decides what is saved (T6)", () => {
       assert.equal(result.outcome, c.outcome);
       assert.equal(row.connection_state, c.state);
       assert.ok(
-        isLegalTransition("connected", row.connection_state),
+        accepts(LIVE_EDGES, "connected", row.connection_state) &&
+          accepts(BATCH1_EDGES, "connected", row.connection_state),
         "the database would refuse this state",
       );
       assert.equal(row.active, c.active);
@@ -993,18 +1000,21 @@ describe("what the platform answered decides what is saved (T6)", () => {
     assert.ok(wait > 590_000 && wait < 610_000, "waited " + wait);
   });
 
-  test("a refusal while the account is marked 'platform unavailable' still lands on a legal state", async () => {
+  test("a refusal while the account is marked 'platform unavailable' leaves that state and lands on a legal one", async () => {
     const account = channel({ connection_state: "provider_unavailable" });
+    installTrigger(world, LIVE_EDGES);
     world.refreshImpl = async () => {
       throw new Error("Token refresh failed for google (HTTP 400): invalid_grant");
     };
     world.provider([tokeninfo(() => json(401, { error: "invalid_token" }))]);
     const result = await check(account.id);
     // provider_unavailable -> revoked is not an edge the database accepts: the whole write would be
-    // lost. The nearest legal state is kept, and the answer is still reported as a refusal.
-    assert.equal(world.stored(account.id).connection_state, "refresh_failed");
+    // lost. The platform DID answer, so "not answering" is no longer true: the one neutral step out
+    // is taken, and the answer is still reported as a refusal.
+    assert.equal(world.stored(account.id).connection_state, "token_expiring");
     assert.equal(result.outcome, "needs_reconnect");
-    assert.equal(result.status.state, "failing");
+    assert.notEqual(result.status.state, "provider_unavailable");
+    assert.notEqual(result.status.state, "connected");
   });
 
   test("a failure that succeeds on the next press clears the error and the wait", async () => {
@@ -1885,5 +1895,231 @@ describe("a result that was not saved is never logged or stored as verified (fin
     assert.equal(result.outcome, "healthy");
     assert.equal(world.stored(account.id).state_reason, "Verified by a live check.");
     assert.match(world.logRows()[0].reason, /^Verified\. Facebook accepted the token/);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, finding 3: a check only moves an account along edges the database accepts
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("every check lands on a state the database accepts (finding 3)", () => {
+  // What a pretend Google answers, one reply per kind of answer the engine tells apart.
+  const scopes = requiredScopesFor("youtube");
+  const replies = {
+    "worked, every permission": () => json(200, { scope: scopes.join(" ") }),
+    "worked, a permission missing": () => json(200, { scope: scopes.slice(1).join(" ") }),
+    401: () => json(401, { error: "invalid_token" }),
+    403: () => json(403, { error: { message: "Forbidden" } }),
+    429: () => json(429, {}, { "retry-after": "120" }),
+    500: () => json(500, { error: { message: "oops" } }),
+    "no answer": () => {
+      throw new TypeError("fetch failed");
+    },
+  };
+  const REFUSALS = ["401", "403"];
+
+  // Where the account ends up, from where it starts, for each answer. The same in both worlds,
+  // because the engine only takes edges BOTH triggers accept. "kept" = the state is left as it is.
+  const expected = {
+    connected: {
+      "worked, every permission": "connected",
+      "worked, a permission missing": "scope_incomplete",
+      401: "revoked",
+      403: "connected",
+      429: "connected",
+      500: "provider_unavailable",
+      "no answer": "provider_unavailable",
+    },
+    scope_incomplete: {
+      "worked, every permission": "connected",
+      "worked, a permission missing": "scope_incomplete",
+      401: "revoked",
+      403: "scope_incomplete",
+      429: "scope_incomplete",
+      500: "scope_incomplete",
+      "no answer": "scope_incomplete",
+    },
+    token_expiring: {
+      "worked, every permission": "connected",
+      "worked, a permission missing": "token_expiring",
+      401: "revoked",
+      403: "refresh_failed",
+      429: "token_expiring",
+      500: "provider_unavailable",
+      "no answer": "provider_unavailable",
+    },
+    refresh_failed: {
+      "worked, every permission": "connected",
+      "worked, a permission missing": "connected",
+      401: "revoked",
+      403: "refresh_failed",
+      429: "refresh_failed",
+      500: "refresh_failed",
+      "no answer": "refresh_failed",
+    },
+    provider_unavailable: {
+      "worked, every permission": "connected",
+      "worked, a permission missing": "connected",
+      401: "token_expiring",
+      403: "token_expiring",
+      429: "provider_unavailable",
+      500: "provider_unavailable",
+      "no answer": "provider_unavailable",
+    },
+    not_configured: {
+      "worked, every permission": "connected",
+      "worked, a permission missing": "scope_incomplete",
+      401: "not_configured",
+      403: "not_configured",
+      429: "not_configured",
+      500: "not_configured",
+      "no answer": "not_configured",
+    },
+    ready_to_authorize: {
+      "worked, every permission": "connected",
+      "worked, a permission missing": "scope_incomplete",
+      401: "ready_to_authorize",
+      403: "ready_to_authorize",
+      429: "ready_to_authorize",
+      500: "ready_to_authorize",
+      "no answer": "ready_to_authorize",
+    },
+  };
+  // States with no way out in the database today: the check keeps them and still saves its answer.
+  const FROZEN = [
+    "missing_app_credentials",
+    "authorization_started",
+    "authorization_cancelled",
+    "callback_error",
+  ];
+  // Never asked: the gate stops a deliberate disconnect and a revoked sign-in before any request.
+  const GATED = ["disconnected", "revoked"];
+
+  const triggers = [
+    ["the database as it is today", LIVE_EDGES],
+    ["the database after batch 1", BATCH1_EDGES],
+  ];
+
+  for (const [world_, edges] of triggers) {
+    for (const from of CONNECTION_STATES.filter((s) => !GATED.includes(s))) {
+      for (const [answer, reply] of Object.entries(replies)) {
+        test(`${world_}: ${from} + ${answer}`, async () => {
+          installTrigger(world, edges);
+          const proved = iso(-DAY);
+          const account = channel({
+            connection_state: from,
+            last_validation_success_at: proved,
+            last_validation_attempt_at: proved,
+          });
+          world.refreshImpl = async () => {
+            throw new Error("Token refresh failed for google (HTTP 400): invalid_grant");
+          };
+          world.provider([tokeninfo(reply)]);
+          const result = await check(account.id);
+          const row = world.stored(account.id);
+          const where = `${from} + ${answer}`;
+
+          // 1. The write was accepted, so the answer, the wait and the attempt were not lost.
+          assert.notEqual(
+            result.outcome,
+            "save_failed",
+            `${where}: the database refused the write`,
+          );
+          assert.notEqual(result.outcome, "changed_while_checking");
+          assert.notEqual(row.last_validation_attempt_at, proved);
+          assert.ok(Date.parse(row.last_validation_attempt_at) > Date.now() - 60_000, where);
+          const failed =
+            answer !== "worked, every permission" && answer !== "worked, a permission missing";
+          assert.equal(row.retry_count, failed ? 1 : 0, `${where}: the retry count was lost`);
+
+          // 2. The state is an edge BOTH triggers accept (read from the migrations, not from the code).
+          assert.ok(
+            accepts(LIVE_EDGES, from, row.connection_state) &&
+              accepts(BATCH1_EDGES, from, row.connection_state),
+            `${where}: wrote ${row.connection_state}`,
+          );
+
+          // 3. Where it ends up.
+          if (expected[from]) {
+            assert.equal(row.connection_state, expected[from][answer], where);
+          } else {
+            assert.equal(row.connection_state, from, `${where}: a state with no way out is kept`);
+          }
+
+          // 4. Nothing says something the answer did not.
+          const shown = rowFor(await report(), account.id);
+          if (REFUSALS.includes(answer)) {
+            assert.equal(
+              row.last_validation_success_at,
+              null,
+              `${where}: a refusal withdraws the proof`,
+            );
+            assert.ok(
+              shown.state !== "connected" && shown.state !== "provider_unavailable",
+              `${where}: the report reads ${shown.state}`,
+            );
+            assert.notEqual(row.connection_state, "provider_unavailable", where);
+          } else if (answer === "worked, every permission") {
+            assert.ok(row.last_validation_success_at > iso(-HOUR), `${where}: no proof was saved`);
+            assert.notEqual(row.connection_state, "provider_unavailable", where);
+            assert.notEqual(row.connection_state, "refresh_failed", where);
+          } else if (answer === "worked, a permission missing") {
+            assert.notEqual(row.connection_state, "provider_unavailable", where);
+            assert.notEqual(row.connection_state, "refresh_failed", where);
+            // (A row that says no app credentials exist, yet holds a token, is not something the app
+            // writes; the report reads its state, not its token. Every other state reads by evidence.)
+            if (from !== "missing_app_credentials") {
+              assert.equal(
+                shown.state,
+                "needs_verification",
+                `${where}: the report reads ${shown.state}`,
+              );
+            }
+          } else {
+            // 429, an outage, no answer: the platform said nothing about the token.
+            assert.equal(row.last_validation_success_at, proved, `${where}: the proof stands`);
+          }
+        });
+      }
+    }
+  }
+
+  test("the proof an outage leaves alone is the one it found", async () => {
+    // A platform that does not answer says nothing about the token: what was proved stays proved.
+    const proved = iso(-DAY);
+    const account = channel({
+      last_validation_success_at: proved,
+      last_validation_attempt_at: proved,
+    });
+    world.provider([tokeninfo(replies["500"])]);
+    await check(account.id);
+    assert.equal(world.stored(account.id).last_validation_success_at, proved);
+  });
+
+  test("a 403 on a verified, connected account no longer reads as verified", async () => {
+    // The database today refuses connected -> refresh_failed. The state stays, and the account
+    // reads as not verified because the refusal withdrew its proof.
+    installTrigger(world, LIVE_EDGES);
+    const account = channel({
+      last_validation_success_at: iso(-HOUR),
+      last_validation_attempt_at: iso(-HOUR),
+    });
+    world.provider([tokeninfo(replies["403"])]);
+    const result = await check(account.id);
+    assert.equal(result.outcome, "forbidden");
+    assert.equal(world.stored(account.id).connection_state, "connected");
+    assert.equal(result.status.state, "unverified");
+    assert.equal(rowFor(await report(), account.id).state, "unverified");
+    const screen = (await connections()).accounts.find((a) => a.id === account.id);
+    assert.equal(connectionStatus(screen).state, "unverified");
+  });
+
+  test("the SQL each world reads is the trigger it claims (the parsing finds what is known)", () => {
+    // The database today has no connected -> refresh_failed; batch 1 adds it. And only the older
+    // trigger lets a disconnected or revoked account go straight back to connected.
+    assert.equal(LIVE_EDGES.has("connected>refresh_failed"), false);
+    assert.equal(BATCH1_EDGES.has("connected>refresh_failed"), true);
+    assert.equal(LIVE_EDGES.has("disconnected>connected"), true);
+    assert.equal(BATCH1_EDGES.has("disconnected>connected"), false);
   });
 });

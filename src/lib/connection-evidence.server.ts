@@ -249,8 +249,12 @@ export async function writeCheck(args: {
   patch: Record<string, unknown>;
   /** Laid over `patch` when the evidence columns turn out not to exist and the write is repeated. */
   fallbackPatch?: Record<string, unknown> | undefined;
-  /** What to record about the check itself; null records nothing (a write of tokens alone). */
-  evidence: { attemptAt: string; successAt: string | null } | null;
+  /**
+   * What to record about the check itself; null records nothing (a write of tokens alone).
+   * `successAt` stamps the proof; `withdrawProof` (a refusal) clears the earlier one; with neither,
+   * the earlier proof is left exactly as it was.
+   */
+  evidence: { attemptAt: string; successAt: string | null; withdrawProof?: boolean } | null;
   /** The account as the check found it; the write lands only if it still looks exactly so. */
   unchangedSince: CheckStart;
   returning: string;
@@ -265,6 +269,7 @@ export async function writeCheck(args: {
     if (recording && args.evidence) {
       patch["last_validation_attempt_at"] = args.evidence.attemptAt;
       if (args.evidence.successAt) patch["last_validation_success_at"] = args.evidence.successAt;
+      else if (args.evidence.withdrawProof) patch["last_validation_success_at"] = null;
     }
     const start = args.unchangedSince;
     let query = untyped()

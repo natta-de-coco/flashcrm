@@ -705,3 +705,130 @@ describe("the Connect card's Last verified is the last verification (B9)", () =>
     assert.doesNotMatch(shown, /last_synced_at/);
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, finding 3: the edges a check may take, read from the migrations
+   ══════════════════════════════════════════════════════════════════════════ */
+import {
+  allTransitions as targetEdges,
+  isWriteSafeTransition,
+  liveTransitions,
+  resolveWriteSafeState,
+} from "../node_modules/.cache/flas-connection-state.mjs";
+import { BATCH1_EDGES, CONNECTION_STATES, LIVE_EDGES, accepts } from "./support/health-world.mjs";
+
+describe("which state a check may write (finding 3)", () => {
+  const key = ([from, to]) => `${from}>${to}`;
+
+  test("the live table in the code is the SQL of the trigger the database has today", () => {
+    assert.deepEqual(liveTransitions().map(key).sort(), [...LIVE_EDGES].sort());
+  });
+
+  test("the target table in the code is the SQL of batch 1", () => {
+    assert.deepEqual(targetEdges().map(key).sort(), [...BATCH1_EDGES].sort());
+  });
+
+  test("a move is write-safe exactly when both triggers accept it", () => {
+    for (const from of CONNECTION_STATES) {
+      for (const to of CONNECTION_STATES) {
+        assert.equal(
+          isWriteSafeTransition(from, to),
+          accepts(LIVE_EDGES, from, to) && accepts(BATCH1_EDGES, from, to),
+          `${from} -> ${to}`,
+        );
+      }
+    }
+  });
+
+  const observations = {
+    "worked, every permission": { validated: true, missingScopes: 0, httpStatus: 200 },
+    "worked, a permission missing": { validated: true, missingScopes: 1, httpStatus: 200 },
+    401: { validated: false, missingScopes: 0, httpStatus: 401 },
+    403: { validated: false, missingScopes: 0, httpStatus: 403 },
+    404: { validated: false, missingScopes: 0, httpStatus: 404 },
+    429: { validated: false, missingScopes: 0, httpStatus: 429 },
+    500: { validated: false, missingScopes: 0, httpStatus: 500 },
+    "no answer": { validated: false, missingScopes: 0, unreachable: true },
+  };
+  const classify = (from, o) =>
+    classifyHealthObservation({ from, reason: "", ...o, writeSafe: true });
+
+  test("no observation, from any state, is written along an edge either trigger refuses", () => {
+    for (const from of CONNECTION_STATES) {
+      for (const [name, o] of Object.entries(observations)) {
+        const out = classify(from, o);
+        assert.ok(
+          accepts(LIVE_EDGES, from, out.state) && accepts(BATCH1_EDGES, from, out.state),
+          `${from} + ${name} -> ${out.state}`,
+        );
+      }
+    }
+  });
+
+  test("a check never brings back a disconnected or revoked account", () => {
+    for (const from of ["disconnected", "revoked"]) {
+      for (const [name, o] of Object.entries(observations)) {
+        assert.equal(classify(from, o).state, from, `${from} + ${name}`);
+      }
+    }
+  });
+
+  test("the cells that used to be refused by the database today", () => {
+    // 403, an unknown refusal and a failed renewal: connected -> refresh_failed is not an edge.
+    assert.equal(classify("connected", observations["403"]).state, "connected");
+    assert.equal(classify("scope_incomplete", observations["403"]).state, "scope_incomplete");
+    assert.equal(classify("token_expiring", observations["403"]).state, "refresh_failed");
+    // An outage on a sign-in that already failed, or on one with a missing permission, keeps its state.
+    assert.equal(classify("refresh_failed", observations["500"]).state, "refresh_failed");
+    assert.equal(classify("scope_incomplete", observations["500"]).state, "scope_incomplete");
+    // A missing permission found from a state that cannot become scope_incomplete.
+    assert.equal(
+      classify("token_expiring", observations["worked, a permission missing"]).state,
+      "token_expiring",
+    );
+  });
+
+  test("a state is left only when it says the opposite of what the platform just said", () => {
+    // "Not answering" after the platform answered; "sign-in failed" after the token worked.
+    for (const name of ["worked, every permission", "worked, a permission missing"]) {
+      assert.equal(classify("provider_unavailable", observations[name]).state, "connected", name);
+      assert.equal(classify("refresh_failed", observations[name]).state, "connected", name);
+    }
+    for (const name of ["401", "403", "404"]) {
+      assert.equal(
+        classify("provider_unavailable", observations[name]).state,
+        "token_expiring",
+        name,
+      );
+    }
+    // ...but an outage, a rate limit and no answer do not contradict "not answering".
+    for (const name of ["429", "500", "no answer"]) {
+      assert.equal(
+        classify("provider_unavailable", observations[name]).state,
+        "provider_unavailable",
+        name,
+      );
+    }
+  });
+
+  test("resolveWriteSafeState keeps an observed state the database accepts", () => {
+    assert.equal(resolveWriteSafeState("connected", "revoked", false), "revoked");
+    assert.equal(
+      resolveWriteSafeState("connected", "provider_unavailable", false),
+      "provider_unavailable",
+    );
+    assert.equal(resolveWriteSafeState("provider_unavailable", "connected", true), "connected");
+  });
+
+  test("without the option the old batch-1 answer is unchanged (callers that do not write)", () => {
+    const old = classifyHealthObservation({
+      from: "connected",
+      validated: false,
+      missingScopes: 0,
+      reason: "",
+      httpStatus: 403,
+    });
+    assert.equal(old.state, "refresh_failed");
+    assert.equal(accepts(LIVE_EDGES, "connected", "refresh_failed"), false);
+  });
+});

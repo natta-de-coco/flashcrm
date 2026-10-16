@@ -5,6 +5,7 @@
 // The code under test is the real bundle (scripts/build-health-bundle.mjs). It reads
 // globalThis.healthTest for its four doubles: the database, the audit log, the token refresh call
 // and the "unable to decrypt" switch.
+import { readFileSync } from "node:fs";
 import { createDb } from "./db-double.mjs";
 import { missingScopesFor } from "../../node_modules/.cache/flas-connection-state.mjs";
 
@@ -292,4 +293,65 @@ export function withoutEvidenceColumns(world) {
         }
       : undefined,
   );
+}
+
+/* ── the connection-state trigger, read from the migrations ──────────────────
+   The database has ONE of two triggers: the one in 20260908100000 (applied today) or, once it is
+   pasted in, the replacement in 20260910100000. The edges each accepts are read from the SQL text
+   itself, so a test about "what the database would accept" cannot drift from the migrations. */
+function edgesIn(file) {
+  const sql = readFileSync(file, "utf8").split("\r\n").join("\n");
+  const start = sql.indexOf("FUNCTION public.is_legal_connection_transition");
+  const afterAs = sql.indexOf("AS $$", start) + "AS $$".length;
+  const body = sql.slice(afterAs, sql.indexOf("$$;", afterAs));
+  return new Set(
+    [...body.matchAll(/\('([a-z_]+)'\s*,\s*'([a-z_]+)'\)/g)].map((m) => `${m[1]}>${m[2]}`),
+  );
+}
+
+/** Edges (as "from>to") the database accepts today. */
+export const LIVE_EDGES = edgesIn("supabase/migrations/20260908100000_oauth_connection_state.sql");
+/** Edges it accepts once the batch-1 replacement is applied. */
+export const BATCH1_EDGES = edgesIn(
+  "supabase/migrations/20260910100000_social_batch1_foundation.sql",
+);
+
+export const CONNECTION_STATES = [
+  "not_configured",
+  "missing_app_credentials",
+  "ready_to_authorize",
+  "authorization_started",
+  "authorization_cancelled",
+  "callback_error",
+  "connected",
+  "scope_incomplete",
+  "token_expiring",
+  "refresh_failed",
+  "revoked",
+  "disconnected",
+  "provider_unavailable",
+];
+
+/** True when this edge is accepted by a trigger with these edges (staying put is always accepted). */
+export const accepts = (edges, from, to) => from === to || edges.has(`${from}>${to}`);
+
+/**
+ * Puts the trigger in the database double: an UPDATE that changes connection_state along an edge
+ * `edges` does not have is refused, and the whole statement is lost, as in Postgres.
+ */
+export function installTrigger(world, edges) {
+  world.db.fail("social_accounts:update", (q) => {
+    const patch = q.patch ?? {};
+    if (!("connection_state" in patch)) return undefined;
+    for (const row of world.db.table("social_accounts")) {
+      if (!q.filters.every((f) => f(row))) continue;
+      if (!accepts(edges, row.connection_state, patch.connection_state)) {
+        return {
+          code: "23514",
+          message: `Illegal connection state transition: ${row.connection_state} -> ${patch.connection_state} (account ${row.id})`,
+        };
+      }
+    }
+    return undefined;
+  });
 }
