@@ -20,6 +20,7 @@ import {
   TOKEN_READ_COLUMNS,
 } from "@/lib/social-token-store.server";
 import { isLegalTransition, type ConnectionState } from "@/lib/connection-state";
+import { withEvidenceReset } from "@/lib/connection-evidence.server";
 import { linkedInHeaders } from "@/lib/linkedin-api";
 
 /** A discovery result may be acted on for this long; after that, re-authorize. */
@@ -808,7 +809,8 @@ export async function completeChannelAuthorization(args: {
     state_reason: exchangeNote,
     discovered_assets: discovery.channels as never,
     discovered_at: now,
-    last_validation_success_at: discovery.error ? null : now,
+    // No verification time is stamped here. Listing the channels a person manages is not a check
+    // of a stored token; only a live check that was saved (connection-evidence.server.ts) says so.
   });
   if (error) throw new Error(`Could not store the authorization: ${error.message}`);
 
@@ -1004,7 +1006,8 @@ export async function connectDiscoveredChannels(args: {
       last_error_at: null,
       retry_count: 0,
       next_retry_at: null,
-      last_validation_success_at: new Date().toISOString(),
+      // Choosing a channel does not check its token, so nothing here says it was verified. A new
+      // channel starts with no proof; a rebound one loses the proof its old token had (below).
     };
 
     // Reconnect never duplicates: the (tenant, platform, external_id) row, if
@@ -1018,11 +1021,15 @@ export async function connectDiscoveredChannels(args: {
       .maybeSingle();
 
     if (existing) {
-      const { error } = await supabaseAdmin
-        .from("social_accounts")
-        .update(common)
-        .eq("id", existing.id)
-        .eq("tenant_id", args.tenantId);
+      // The new token has not been checked by anyone: the old one's proof goes in the same write
+      // (and is simply not part of it where the two evidence columns do not exist yet).
+      const { error } = await withEvidenceReset((reset) =>
+        supabaseAdmin
+          .from("social_accounts")
+          .update({ ...common, ...reset } as never)
+          .eq("id", existing.id)
+          .eq("tenant_id", args.tenantId),
+      );
       if (error) throw new Error(`Could not reconnect ${ch.name}: ${error.message}`);
       await moveAccountTo(existing.id, args.tenantId, target, args.userId);
       connected.push({ accountId: existing.id, externalId: ch.externalId, rebound: true });

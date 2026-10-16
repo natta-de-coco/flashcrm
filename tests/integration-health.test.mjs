@@ -30,6 +30,9 @@ import {
   withoutEvidenceColumns,
 } from "./support/health-world.mjs";
 import { connectionStatus } from "../node_modules/.cache/flas-connection-status.mjs";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import ts from "typescript";
 
 /** The rule, stated here on purpose rather than imported: a row needs attention unless it is fine or left alone. */
 const needsAttention = (state) => state !== "connected" && state !== "not_connected";
@@ -1404,5 +1407,230 @@ describe("callers that renew a token before syncing keep working", () => {
       [change.details.from, change.details.to],
       ["connected", "provider_unavailable"],
     );
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, finding 1 (and 15): only a real, saved check says "verified"
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const EVIDENCE_COLUMNS = ["last_validation_success_at", "last_validation_attempt_at"];
+/** The one file that may set the two evidence columns. */
+const EVIDENCE_MODULE = "src/lib/connection-evidence.server.ts";
+
+/**
+ * Every place in a source text that SETS one of the two evidence columns: an object property or an
+ * assignment whose value does not come from reading those columns. A line that merely copies a value
+ * read from them (`saved.last_validation_success_at`) is not a writer.
+ */
+function evidenceWriters(fileName, text) {
+  const file = ts.createSourceFile(
+    fileName,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    fileName.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  const named = (n) =>
+    n && (ts.isIdentifier(n) || ts.isStringLiteralLike(n)) && EVIDENCE_COLUMNS.includes(n.text);
+  const mentionsColumn = (node) => {
+    let found = false;
+    const visit = (n) => {
+      if (named(n)) found = true;
+      else ts.forEachChild(n, visit);
+    };
+    visit(node);
+    return found;
+  };
+  const found = [];
+  const at = (n) => `${fileName}:${file.getLineAndCharacterOfPosition(n.getStart()).line + 1}`;
+  const walk = (n) => {
+    if (
+      ts.isPropertyAssignment(n) &&
+      ts.isObjectLiteralExpression(n.parent) &&
+      named(n.name) &&
+      !mentionsColumn(n.initializer)
+    ) {
+      found.push(at(n));
+    } else if (ts.isShorthandPropertyAssignment(n) && named(n.name)) {
+      found.push(at(n));
+    } else if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      const left = n.left;
+      const target = ts.isPropertyAccessExpression(left)
+        ? left.name
+        : ts.isElementAccessExpression(left)
+          ? left.argumentExpression
+          : null;
+      if (named(target) && !mentionsColumn(n.right)) found.push(at(n));
+    }
+    ts.forEachChild(n, walk);
+  };
+  walk(file);
+  return found;
+}
+
+function sourceFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.tsx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
+const lf = (text) => text.split("\r\n").join("\n");
+
+describe("only the evidence module writes a verification (finding 1, 15)", () => {
+  test("the scan sees a writer, and tells a writer from a reader", () => {
+    const old = "const x = { label: 'a', last_validation_success_at: new Date().toISOString() };";
+    assert.equal(evidenceWriters("old.ts", old).length, 1, "the connect-time stamp must be found");
+    assert.equal(
+      evidenceWriters("assign.ts", "patch['last_validation_attempt_at'] = now;").length,
+      1,
+    );
+    assert.equal(
+      evidenceWriters(
+        "read.ts",
+        "const y = { last_validation_success_at: saved.last_validation_success_at ?? null };",
+      ).length,
+      0,
+      "copying a value that was read is not a write",
+    );
+    assert.equal(
+      evidenceWriters("type.ts", "type T = { last_validation_success_at?: string | null };").length,
+      0,
+    );
+  });
+
+  test("the evidence module is a writer, so the scan is not looking at nothing", () => {
+    const text = lf(readFileSync(EVIDENCE_MODULE, "utf8"));
+    assert.ok(evidenceWriters(EVIDENCE_MODULE, text).length >= 2);
+  });
+
+  test("no other file under src sets either column", () => {
+    const offenders = sourceFiles("src")
+      .map((path) => path.split("\\").join("/"))
+      .filter((path) => path !== EVIDENCE_MODULE && path !== "src/integrations/supabase/types.ts")
+      .flatMap((path) => evidenceWriters(path, lf(readFileSync(path, "utf8"))));
+    assert.deepEqual(
+      offenders,
+      [],
+      "these lines set a verification time; only a real, saved check may (connection-evidence.server.ts)",
+    );
+  });
+});
+
+const authorizations = await import("../node_modules/.cache/flas-health-authorizations.mjs");
+
+describe("choosing channels does not say a channel was checked (finding 1)", () => {
+  const AUTH = "aaaaaaaa-0000-4000-8000-0000000000a1";
+  const authorize = () => {
+    world.db.table("social_authorizations").push({
+      id: AUTH,
+      tenant_id: A,
+      platform: "youtube",
+      provider: "google",
+      granted_scopes: requiredScopesFor("youtube"),
+      requested_scopes: requiredScopesFor("youtube"),
+      authorization_state: "active",
+      discovered_at: new Date().toISOString(),
+      discovered_assets: [
+        {
+          externalId: "UC1",
+          platform: "youtube",
+          accountType: "YouTube channel",
+          name: "Channel",
+          handle: null,
+          avatarUrl: null,
+          description: null,
+          metrics: { audience: null, content: null, views: null },
+          eligible: true,
+          ineligibleReason: null,
+          linkedTo: null,
+        },
+      ],
+      access_token_enc: null,
+      refresh_token_enc: null,
+    });
+  };
+  const choose = async () =>
+    await authorizations.connectDiscoveredChannels({
+      tenantId: A,
+      userId: ADMIN_A,
+      authorizationId: AUTH,
+      externalIds: ["UC1"],
+    });
+
+  test("a new channel has no proof and no attempt, and no screen calls it verified", async () => {
+    authorize();
+    const { connected } = await choose();
+    assert.equal(connected.length, 1);
+    const id = connected[0].accountId;
+    const row = world.stored(id);
+    assert.ok(row, "the channel was connected");
+    assert.equal(row.last_validation_success_at ?? null, null, "nobody asked the platform yet");
+    assert.equal(row.last_validation_attempt_at ?? null, null);
+    const shown = rowFor(await report(), id);
+    assert.notEqual(shown.state, "connected");
+    assert.doesNotMatch(shown.reason, /Verified/);
+  });
+
+  test("a reconnected channel loses the proof its old token had", async () => {
+    authorize();
+    const old = channel({
+      last_validation_success_at: iso(-DAY),
+      last_validation_attempt_at: iso(-DAY),
+    });
+    const { connected } = await choose();
+    assert.equal(connected[0].rebound, true);
+    assert.equal(connected[0].accountId, old.id);
+    const row = world.stored(old.id);
+    assert.equal(row.last_validation_success_at, null);
+    assert.equal(row.last_validation_attempt_at, null);
+  });
+
+  test("a reconnect still works where the evidence columns do not exist", async () => {
+    authorize();
+    withoutEvidenceColumns(world);
+    const old = channel();
+    const { connected } = await choose();
+    assert.equal(connected[0].rebound, true);
+    assert.equal(world.stored(old.id).authorization_id, AUTH, "the rebind was saved");
+  });
+});
+
+describe("the report reads only its own company's check log (finding 15)", () => {
+  test("another company's log lines never reach this company's report", async () => {
+    const mine = world.account();
+    const theirs = world.account({ tenant_id: B, external_id: "B1" });
+    world.db.table("connection_retry_log").push(
+      {
+        id: "log-mine",
+        tenant_id: A,
+        account_id: mine.id,
+        platform: "facebook",
+        outcome: "healthy",
+        reason: "Verified. Facebook accepted the token and Flas saved the result.",
+        trigger: "manual",
+        created_at: iso(-2000),
+        details: { stage: "done", correlation_id: "aaaaaaaa-1111-4111-8111-111111111111" },
+      },
+      {
+        id: "log-beta",
+        tenant_id: B,
+        account_id: theirs.id,
+        platform: "facebook",
+        outcome: "forbidden",
+        reason: "Beta Co secret check line",
+        trigger: "manual",
+        created_at: iso(-1000),
+        details: { stage: "probe", correlation_id: "bbbbbbbb-2222-4222-8222-222222222222" },
+      },
+    );
+    const rep = await report();
+    assert.deepEqual(
+      rep.retries.map((r) => r.id),
+      ["log-mine"],
+    );
+    assert.doesNotMatch(JSON.stringify(rep), /Beta Co secret|bbbbbbbb/);
   });
 });

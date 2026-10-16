@@ -78,6 +78,8 @@ await bundle("src/lib/connections.functions.ts", "flas-health-functions.mjs");
 await bundle("src/lib/integration-health.server.ts", "flas-health-engine.mjs");
 // The reconnect write (saveAuthorizedConnection), which must clear stale evidence.
 await bundle("src/lib/connections.server.ts", "flas-health-connections-server.mjs");
+// The channel picker's connect write (connectDiscoveredChannels), which must not stamp a verification.
+await bundle("src/lib/social-authorizations.server.ts", "flas-health-authorizations.mjs");
 // The browser-safe model: counts, outcome summary, CSV.
 await bundle("src/lib/integration-health.ts", "flas-health-model.mjs");
 // The words: which sentence each status and outcome is, and the messages of all five languages.

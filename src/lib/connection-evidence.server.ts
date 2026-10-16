@@ -27,6 +27,20 @@ export const EVIDENCE_RESET = {
   last_validation_success_at: null,
 } as const;
 
+/**
+ * Runs the write of a (re)connected account together with the reset of what its old token proved,
+ * and repeats it without the reset where the evidence columns do not exist (there is nothing to
+ * clear). `run` receives the columns to lay over its own values. This module and nothing else names
+ * them: a test keeps every other file from setting either column.
+ */
+export async function withEvidenceReset<T extends { error: DbError }>(
+  run: (reset: typeof EVIDENCE_RESET | Record<string, never>) => PromiseLike<T>,
+): Promise<T> {
+  const first = await run(EVIDENCE_RESET);
+  if (first.error && isMissingEvidenceColumn(first.error)) return await run({});
+  return first;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type UntypedClient = SupabaseClient<any, "public", any>;
 /* eslint-enable @typescript-eslint/no-explicit-any */
