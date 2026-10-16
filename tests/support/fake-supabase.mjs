@@ -206,10 +206,17 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
     if (name === "user:update") {
       const who = authenticate(request);
       if (who.refusal) return who.refusal;
-      // This double lets any signed-in session change its password. Whether the
-      // real service asks an account with two-factor for its code first is not
-      // known from here (see the pull request).
       const body = await request.json();
+      // Like the real service (supabase/auth internal/api/user.go): an account
+      // with a verified second factor may change its password or e-mail only
+      // from a session that entered its code. A recovery link gives aal1.
+      const hasSecondFactor = who.user.factors.some((factor) => factor.status === "verified");
+      if ((body.password || body.email) && hasSecondFactor && who.session.aal !== "aal2")
+        return json(401, {
+          code: 401,
+          error_code: "insufficient_aal",
+          msg: "AAL2 session is required to update email or password when MFA is enabled",
+        });
       if (body.password) who.user.password = body.password;
       return json(200, userBody(who.user));
     }

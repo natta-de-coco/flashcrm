@@ -200,7 +200,7 @@ beforeEach(() => {
   browser.location.search = "";
   fake.clearCalls();
   fake.confirmEmailOnSignUp(false);
-  for (const name of ["user", "jwks", "rpc:access_state"]) fake.recover(name);
+  for (const name of ["user", "user:update", "jwks", "rpc:access_state"]) fake.recover(name);
   watchedSelectors = new Map();
   observer?.disconnect();
   observer = null;
@@ -691,8 +691,12 @@ describe("when the server turns a call back", () => {
 
 describe("nobody is locked out: password reset", () => {
   const NEW_PASSWORD = "a-brand-new-password";
+  const CODE_FIRST =
+    "Your account uses two-factor sign-in. Enter your code first, then choose your new password.";
+  const CODE_FIRST_AR =
+    "يستخدم حسابك تسجيل الدخول بالتحقق الثنائي. أدخل رمزك أولاً، ثم اختر كلمة المرور الجديدة.";
 
-  async function resetPassword() {
+  async function submitNewPassword() {
     assert.ok(
       await until(() => doc.getElementById("new-password")),
       "the reset form did not appear",
@@ -700,25 +704,84 @@ describe("nobody is locked out: password reset", () => {
     await type("new-password", NEW_PASSWORD);
     await type("confirm-password", NEW_PASSWORD);
     await submit("new-password");
+  }
+  async function resetPassword() {
+    await submitNewPassword();
     assert.ok(await until(() => watched.navigations.length > 0), "never left the reset page");
     await settle(200);
   }
 
-  test("an account with two-factor reaches the reset form from its recovery link, and gets in afterwards with the new password and its code", async () => {
+  test("an account with two-factor is taken to the code prompt, not left at a dead end, and finishes the reset after the code", async () => {
+    // The real Auth service refuses to change the password of such an account
+    // from a recovery session (it only gave aal1): the double does too.
     const me = person({ factors: [VERIFIED] });
     await arriveWithSession(me, { aal: "aal1", method: "recovery" });
     await show({ at: "/reset-password" });
     await resetPassword();
-    // The reset page signs the recovery session out and sends the person to sign in.
-    assert.deepEqual(watched.navigations, ["/auth"]);
-    assert.equal(fake.user(me.id).password, NEW_PASSWORD);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Freset-password"]);
+    assert.equal(fake.user(me.id).password, me.password, "the password changed without the code");
+    assert.ok(
+      watched.toasts.some((toast) => toast.message === CODE_FIRST),
+      "the person was not told why they are being asked for a code",
+    );
+    assert.ok(
+      !watched.toasts.some((toast) => /AAL2|MFA/.test(toast.message)),
+      "Auth's own English text was shown",
+    );
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+
+    await enterCode(RIGHT_CODE);
+    // Back at the reset page, now with the code entered: the change goes through.
+    await submitNewPassword();
+    assert.ok(await until(() => fake.user(me.id).password === NEW_PASSWORD), "never changed");
+    assert.ok(await until(() => watched.navigations.includes("/auth")));
+    await settle(200);
+    assert.deepEqual(watched.navigations, [
+      "/auth?redirect=%2Freset-password",
+      "/reset-password",
+      "/auth",
+    ]);
     assert.equal((await supabase.auth.getSession()).data.session, null);
 
+    // And the new password works, with the code, as for anybody.
     await signInWithPassword({ ...me, password: NEW_PASSWORD });
     assert.ok(await until(() => codeField()), "the code form never appeared");
     await enterCode(RIGHT_CODE);
     assert.ok(await until(() => signedInScreen()), "never got in");
-    assert.deepEqual(watched.navigations, ["/auth", "/inbox"]);
+    assert.equal(watched.navigations.at(-1), "/inbox");
+  });
+
+  test("the sentence about the code is said in the person's language", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/reset-password", language: "ar" });
+    await resetPassword();
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Freset-password"]);
+    assert.ok(watched.toasts.some((toast) => toast.message === CODE_FIRST_AR));
+    assert.ok(!watched.toasts.some((toast) => toast.message === CODE_FIRST));
+  });
+
+  test("any other refusal from Auth stays on the page with Auth's own message", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    fake.fail("user:update", {
+      status: 422,
+      body: {
+        code: 422,
+        error_code: "same_password",
+        msg: "New password should be different from the old password.",
+      },
+    });
+    await show({ at: "/reset-password" });
+    await submitNewPassword();
+    assert.ok(await until(() => watched.toasts.length > 0), "no message was shown");
+    await settle(200);
+    assert.equal(
+      watched.toasts[0].message,
+      "New password should be different from the old password.",
+    );
+    assert.deepEqual(watched.navigations, []);
+    assert.ok(doc.getElementById("new-password"), "the form went away");
   });
 
   test("an account without two-factor does the same and is never asked for a code", async () => {

@@ -116,3 +116,17 @@ export function isTwoFactorRequired(error: unknown): boolean {
 export function isTwoFactorUnchecked(error: unknown): boolean {
   return messageOf(error).includes(TWO_FACTOR_UNCHECKED);
 }
+
+/**
+ * Did Auth refuse to change a password or e-mail because the session has not
+ * entered its second-factor code? Auth answers 401 with the error code
+ * `insufficient_aal` ("AAL2 session is required to update email or password
+ * when MFA is enabled"). Matched on the code, with the wording as a fallback for
+ * a version that does not send the code.
+ */
+export function isCodeRequiredFirst(error: unknown): boolean {
+  if (error !== null && typeof error === "object") {
+    if ((error as { code?: unknown }).code === "insufficient_aal") return true;
+  }
+  return /\baal2 session is required\b/i.test(messageOf(error));
+}

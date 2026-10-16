@@ -262,3 +262,37 @@ describe("the two refusal messages", () => {
     }
   });
 });
+
+describe("Auth refusing a password change until the code has been entered", () => {
+  test("is recognised by the error code", () => {
+    assert.equal(rule.isCodeRequiredFirst({ code: "insufficient_aal", status: 401 }), true);
+    assert.equal(
+      rule.isCodeRequiredFirst(Object.assign(new Error("anything"), { code: "insufficient_aal" })),
+      true,
+    );
+  });
+
+  test("is recognised by the wording when a version of Auth sends no code", () => {
+    assert.equal(
+      rule.isCodeRequiredFirst(
+        new Error("AAL2 session is required to update email or password when MFA is enabled"),
+      ),
+      true,
+    );
+  });
+
+  test("is not mistaken for any other refusal", () => {
+    for (const other of [
+      null,
+      undefined,
+      "",
+      new Error("New password should be different from the old password."),
+      { code: "same_password", message: "New password should be different." },
+      { code: "weak_password", message: "Password should be at least 8 characters." },
+      { code: "session_not_found" },
+      { code: "mfa_verification_failed", message: "Invalid TOTP code entered" },
+    ]) {
+      assert.equal(rule.isCodeRequiredFirst(other), false, JSON.stringify(other));
+    }
+  });
+});
