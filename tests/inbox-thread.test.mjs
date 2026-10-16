@@ -193,7 +193,25 @@ describe("the Inbox screen uses these rules", () => {
   });
 
   it("follows the newest message, not the number of messages loaded", () => {
-    assert.match(inbox, /\}, \[newestMessageId, activeId\]\);/);
+    assert.match(inbox, /\}, \[newestMessageId, activeId, syncVisibleDate, threadNode\]\);/);
+    assert.match(inbox, /ref=\{mountThread\}/);
+    assert.match(inbox, /lastThreadNode\.current !== node/);
+  });
+
+  it("keeps dates visible and leaves history space when a WhatsApp reply window closes", () => {
+    assert.match(inbox, /data-testid="visible-message-date"/);
+    assert.match(inbox, /data-message-date=\{m\.created_at\}/);
+    assert.match(inbox, /syncVisibleDate\(node\)/);
+    assert.match(inbox, /<time\s+dateTime=\{c\.last_message_at\}/);
+    assert.match(
+      inbox,
+      /\{formatDate\(m\.created_at, locale\)\} · \{formatTime\(m\.created_at, locale\)\}/,
+    );
+    assert.doesNotMatch(
+      inbox,
+      /if \(active\?\.channel === "whatsapp" && !whatsappReplyWindowOpen\) setShowTools\(true\)/,
+    );
+    assert.match(inbox, /onClick=\{\(\) => setShowTools\(true\)\}/);
   });
 
   it("works out the 24-hour window from the newest messages", () => {

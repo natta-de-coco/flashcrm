@@ -67,8 +67,9 @@ import {
   PanelLeftOpen,
   ArrowDown,
   MessageSquare,
+  CalendarDays,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-parameters";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
@@ -175,7 +176,33 @@ export function InboxPage() {
   const activeConversationRef = useRef(activeId);
   activeConversationRef.current = activeId;
   const [waitingForLatest, setWaitingForLatest] = useState(false);
+  const [visibleDate, setVisibleDate] = useState<{
+    conversationId: string | null;
+    value: string;
+  } | null>(null);
+  const syncVisibleDate = useCallback(
+    (node: HTMLDivElement) => {
+      const top = node.getBoundingClientRect().top;
+      const first = [...node.querySelectorAll<HTMLElement>("[data-message-date]")].find(
+        (element) => element.getBoundingClientRect().bottom > top,
+      );
+      const value = first?.dataset["messageDate"];
+      if (value)
+        setVisibleDate((current) =>
+          current?.conversationId === activeId && current.value === value
+            ? current
+            : { conversationId: activeId, value },
+        );
+    },
+    [activeId],
+  );
   const threadViewport = useRef<HTMLDivElement>(null);
+  const [threadNode, setThreadNode] = useState<HTMLDivElement | null>(null);
+  const mountThread = useCallback((node: HTMLDivElement | null) => {
+    threadViewport.current = node;
+    setThreadNode(node);
+  }, []);
+  const lastThreadNode = useRef<HTMLDivElement | null>(null);
   const pinnedToBottom = useRef(true);
   const lastVisibleConversation = useRef<string | null>(null);
   const earlierAnchor = useRef<{
@@ -203,6 +230,7 @@ export function InboxPage() {
   useEffect(() => {
     setTemplateId("");
     setTemplateVariables([]);
+    setShowTools(false);
   }, [activeId]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
@@ -430,14 +458,17 @@ export function InboxPage() {
   const newestMessageId = thread.at(-1)?.id ?? null;
   useEffect(() => {
     const node = threadViewport.current;
-    const changed = lastVisibleConversation.current !== activeId;
+    if (!node) return;
+    const changed = lastVisibleConversation.current !== activeId || lastThreadNode.current !== node;
+    lastThreadNode.current = node;
     lastVisibleConversation.current = activeId;
     if (node && (changed || pinnedToBottom.current)) {
       node.scrollTop = node.scrollHeight;
       pinnedToBottom.current = true;
       setWaitingForLatest(false);
     } else if (node) setWaitingForLatest(true);
-  }, [newestMessageId, activeId]);
+    if (node) syncVisibleDate(node);
+  }, [newestMessageId, activeId, syncVisibleDate, threadNode]);
   useLayoutEffect(() => {
     const node = threadViewport.current,
       anchor = earlierAnchor.current;
@@ -572,11 +603,8 @@ export function InboxPage() {
   // The closed 24-hour window already has its own notice and next step below.
   const sendBlocks = (sendContext.data?.blocks ?? []).filter((b) => b.code !== "window_closed");
 
-  // Tools should stay out of the way while an agent is reading a thread, but
-  // a closed WhatsApp window has one clear next step: an approved template.
-  useEffect(() => {
-    if (active?.channel === "whatsapp" && !whatsappReplyWindowOpen) setShowTools(true);
-  }, [active?.channel, whatsappReplyWindowOpen]);
+  // A closed reply window offers a template action below; it does not open
+  // the entire tools panel and squeeze the message history automatically.
 
   // Auto-open the newest thread on desktop only. On mobile the list is a full
   // screen of its own, so auto-selecting would trap the user inside a chat.
@@ -1110,9 +1138,13 @@ export function InboxPage() {
                     </span>
                   )}
                 </span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
-                  {formatTime(c.last_message_at, locale)}
-                </span>
+                <time
+                  dateTime={c.last_message_at}
+                  className="shrink-0 text-end text-[11px] leading-relaxed text-muted-foreground"
+                >
+                  <span className="block">{formatTime(c.last_message_at, locale)}</span>
+                  <span className="block">{formatDate(c.last_message_at, locale)}</span>
+                </time>
               </div>
               <span className="truncate text-xs text-muted-foreground">
                 {c.last_message_preview ?? i18n.t("inbox.noMessagesYet")}
@@ -1527,14 +1559,37 @@ export function InboxPage() {
               )}
             </div>
 
+            {thread.length > 0 && (
+              <div
+                className="inbox-date-bar flex items-center justify-center gap-2 border-b bg-card px-3 py-1.5 text-xs font-medium text-foreground"
+                data-testid="visible-message-date"
+              >
+                <CalendarDays className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <time
+                  dateTime={
+                    visibleDate?.conversationId === activeId
+                      ? visibleDate.value
+                      : thread.at(-1)!.created_at
+                  }
+                >
+                  {formatDate(
+                    visibleDate?.conversationId === activeId
+                      ? visibleDate.value
+                      : thread.at(-1)!.created_at,
+                    locale,
+                  )}
+                </time>
+              </div>
+            )}
             <div
-              ref={threadViewport}
+              ref={mountThread}
               tabIndex={0}
               role="region"
               aria-label={i18n.t("inbox.messagesRegion")}
               onScroll={() => {
                 const node = threadViewport.current;
                 if (!node) return;
+                syncVisibleDate(node);
                 if (earlierAnchor.current && messages.isFetchingNextPage) {
                   const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")].find(
                     (element) =>
@@ -1592,12 +1647,15 @@ export function InboxPage() {
                 const showTranslation = expandedTranslations.has(m.id);
                 const hasTranslation = Boolean(m.translated_body);
                 return (
-                  <div key={m.id} data-message-id={m.id}>
+                  <div key={m.id} data-message-id={m.id} data-message-date={m.created_at}>
                     {(index === 0 ||
                       formatDate(m.created_at, locale) !==
                         formatDate(thread[index - 1]!.created_at, locale)) && (
                       <div className="mb-3 text-center">
-                        <time className="inline-flex rounded-full border bg-card/90 px-3 py-1 text-[11px] text-muted-foreground">
+                        <time
+                          dateTime={m.created_at}
+                          className="inline-flex rounded-full border bg-card px-3 py-1 text-xs font-medium text-foreground"
+                        >
                           {formatDate(m.created_at, locale)}
                         </time>
                       </div>
@@ -1662,12 +1720,15 @@ export function InboxPage() {
                                 ? i18n.t("inbox.showTranslation")
                                 : i18n.t("inbox.translate")}
                           </button>
-                          <span className="inline-flex items-center gap-1 text-[10px] opacity-60">
-                            {formatTime(m.created_at, locale)}
+                          <time
+                            dateTime={m.created_at}
+                            className="inline-flex flex-wrap items-center justify-end gap-1 text-[11px] text-muted-foreground"
+                          >
+                            {formatDate(m.created_at, locale)} · {formatTime(m.created_at, locale)}
                             {m.direction === "outbound" && (
                               <MessageDeliveryStatus status={m.status} />
                             )}
-                          </span>
+                          </time>
                           {m.direction === "outbound" && (
                             <DeliveryState
                               status={m.status}
@@ -1772,9 +1833,14 @@ export function InboxPage() {
                 }}
               />
               {!whatsappReplyWindowOpen && (
-                <p role="status" className="text-sm text-muted-foreground">
-                  {i18n.t("inbox.thisCustomerHasNotMessaged")}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p role="status" className="min-w-0 flex-1 text-xs text-muted-foreground">
+                    {i18n.t("inbox.thisCustomerHasNotMessaged")}
+                  </p>
+                  <Button size="sm" variant="outline" onClick={() => setShowTools(true)}>
+                    {i18n.t("inbox.sendApprovedTemplate")}
+                  </Button>
+                </div>
               )}
               <div className="flex items-center justify-between">
                 <Button

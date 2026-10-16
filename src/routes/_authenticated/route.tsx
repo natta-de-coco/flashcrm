@@ -425,7 +425,7 @@ function AuthenticatedLayout() {
               </div>
             </header>
 
-            <ProfileBanner />
+            {pathname !== "/inbox" && <ProfileBanner />}
 
             {shellOwnsMain ? (
               <main

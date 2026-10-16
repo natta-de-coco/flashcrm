@@ -12,7 +12,7 @@ const conversations = (scope: string) =>
     bot_enabled: false,
     tags: [],
     unread_count: index ? 1 : 0,
-    last_message_at: new Date(Date.now() - index * 60000).toISOString(),
+    last_message_at: new Date(Date.now() - (index ? 2 * 86400000 : 60000)).toISOString(),
     last_message_preview: index
       ? "Could you share a quotation?"
       : "Thank you. Can we arrange a demonstration?",
@@ -40,7 +40,10 @@ function rows(id: string) {
             : index % 3 === 1
               ? "Yes, I can help with the product details and a quotation."
               : `Sample message ${index + 1}. Could you tell me more about the available options?`,
-      created_at: new Date(Date.now() - (145 - index) * 600000).toISOString(),
+      // Omar is an old conversation, exercising the closed reply window.
+      created_at: new Date(
+        Date.now() - (145 - index) * 600000 - (id.endsWith("-chat-1") ? 2 * 86400000 : 0),
+      ).toISOString(),
       status: index === 142 ? "unconfirmed" : index % 3 === 1 ? "read" : "received",
       translated_body: null,
       detected_language: null,

@@ -101,6 +101,19 @@
 .inbox-thread {
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 65%, transparent) transparent;
+  overflow-anchor: none;
+}
+.inbox-thread::-webkit-scrollbar {
+  width: 12px;
+}
+.inbox-thread::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
+}
+.inbox-date-bar {
+  flex-shrink: 0;
+  min-height: 2.25rem;
 }
 .chat-tools {
   max-height: 40%;
