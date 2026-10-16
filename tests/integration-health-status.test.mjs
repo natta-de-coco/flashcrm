@@ -688,3 +688,20 @@ describe("the agreed English, and the promises it must not make", () => {
     assert.doesNotMatch(source, /nothingToRetryEveryConnection/);
   });
 });
+
+describe("the Connect card's Last verified is the last verification (B9)", () => {
+  test("it prints the saved check, not the last sync that the next line already shows", () => {
+    const source = read("src/components/integrations-v2/IntegrationsAuditFixed.tsx");
+    const verifiedLine = source
+      .split("\n")
+      .findIndex((line) => line.includes('"integrationsAuditFixed.lastVerified"'));
+    assert.ok(verifiedLine > 0, "the Last verified label is gone");
+    // The value sits in the lines under the label, up to the end of its block.
+    const shown = source
+      .split("\n")
+      .slice(verifiedLine + 1, verifiedLine + 4)
+      .join("\n");
+    assert.match(shown, /last_validation_success_at/);
+    assert.doesNotMatch(shown, /last_synced_at/);
+  });
+});
