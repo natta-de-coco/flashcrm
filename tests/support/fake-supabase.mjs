@@ -186,6 +186,9 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
         );
       });
     }
+    // text: an answer that is not JSON at all (a proxy's error page).
+    if (fault?.status && fault.text !== undefined)
+      return new Response(fault.text, { status: fault.status });
     if (fault?.status) return json(fault.status, fault.body ?? { msg: "upstream error" });
     if (fault?.garbled) return new Response("<html>bad gateway</html>", { status: 200 });
 
@@ -357,7 +360,7 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
         ...claims,
       }),
 
-    /** fail("user", { status: 500 } | { network: true } | { hang: true } | { garbled: true } | { asUser: id } | { wrapped: true }) */
+    /** fail("user", { status: 500, body?, text? } | { network: true } | { hang: true } | { garbled: true } | { asUser: id } | { wrapped: true }) */
     fail: (name, fault) => faults.set(name, fault),
     recover: (name) => faults.delete(name),
   };

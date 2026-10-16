@@ -117,6 +117,21 @@ const accepted = (result, target, userId) => {
   assert.deepEqual(target.ran, [userId]);
 };
 
+/** What the Auth service itself sends when it no longer vouches for a token (the shape its errors have). */
+const authSaysGone = (status) => ({
+  code: status,
+  error_code: status === 401 ? "bad_jwt" : "session_not_found",
+  msg:
+    status === 401
+      ? "invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired"
+      : "Session from session_id claim in JWT does not exist",
+});
+/** What the gateway in front of Auth sends when the project key is wrong: not about the person's session at all. */
+const GATEWAY_REFUSES_THE_KEY = {
+  message: "Invalid API key",
+  hint: "Double check your Supabase `anon` or `service_role` API key.",
+};
+
 const PUBLIC_BILLING = "src/lib/public-billing.functions.ts";
 const TELEMETRY = "src/lib/telemetry.functions.ts";
 const NEEDS_CODE = /two-factor code/i;
@@ -494,10 +509,10 @@ describe("what the factor lookup says", () => {
   });
 
   for (const status of [401, 403, 404]) {
-    test(`tells the person to sign in again when Auth answers ${status}, not to enter a code`, async () => {
+    test(`tells the person to sign in again when Auth itself answers ${status} about the session, not to enter a code`, async () => {
       const user = account([VERIFIED]);
       const session = await fake.session(user);
-      fake.fail("user", { status });
+      fake.fail("user", { status, body: authSaysGone(status) });
       const target = serverFn("listInvoices");
       const result = await call(target, session.token);
       refused(result, target, SIGN_IN_AGAIN);
@@ -806,5 +821,279 @@ describe("a token the generated middleware reads differently from the gate", () 
       target,
       SIGN_IN_AGAIN,
     );
+  });
+});
+
+describe("when the factor lookup fails: people Auth has already answered for", () => {
+  // Most people have no second factor, and Auth is asked about them once a
+  // minute. A slow or failing Auth must not turn that into an outage for
+  // everyone, so a person Auth confirmed has none, within the last ten minutes,
+  // keeps that answer while the lookup fails. Anybody Auth has not confirmed is
+  // refused, as before.
+  const MINUTE = 60_000;
+  const VERIFIED_TOTP = { ...VERIFIED, type: "totp", code: "123456" };
+  const NO_ANSWER = {
+    "the Auth service answers 500": { status: 500 },
+    "the Auth service answers 429": { status: 429 },
+    "the network fails": { network: true },
+    "the answer is not what Auth sends": { garbled: true },
+    "the gateway refuses the project key with a 401 that is not about the session": {
+      status: 401,
+      body: GATEWAY_REFUSES_THE_KEY,
+    },
+    "a proxy answers 404 with a page instead of Auth's error": {
+      status: 404,
+      text: "<html>Not Found</html>",
+    },
+  };
+
+  /** One accepted call, so Auth has said "no second factor" for this person. The clock is now ours. */
+  async function confirmed(t, factors = []) {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    const user = account(factors);
+    const session = await fake.session(user);
+    const first = serverFn("listInvoices");
+    accepted(await call(first, session.token), first, user);
+    return { user, session };
+  }
+  const written = (level) =>
+    console[level].mock.calls.map((entry) => entry.arguments.join(" ")).join("\n");
+
+  for (const [what, fault] of Object.entries(NO_ANSWER)) {
+    test(`keeps serving a person Auth confirmed has no two-factor (${what})`, async (t) => {
+      const { user, session } = await confirmed(t);
+      t.mock.timers.tick(5 * MINUTE);
+      fake.fail("user", fault);
+      const target = serverFn("listInvoices");
+      accepted(await call(target, session.token), target, user);
+      assert.equal(fake.count("user"), 2, "the lookup was not even tried");
+    });
+
+    test(`refuses a person Auth has never answered for, as "could not check" (${what})`, async (t) => {
+      t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+      const user = account();
+      const session = await fake.session(user);
+      fake.fail("user", fault);
+      const target = serverFn("listInvoices");
+      const result = await call(target, session.token);
+      refused(result, target, COULD_NOT_CHECK);
+      assert.doesNotMatch(
+        result.error.message,
+        SIGN_IN_AGAIN,
+        "told to sign in again for no reason",
+      );
+    });
+  }
+
+  test("the allowance lasts ten minutes from Auth's answer: still there a millisecond before, gone at ten", async (t) => {
+    const { user, session } = await confirmed(t);
+    fake.fail("user", { status: 500 });
+    t.mock.timers.tick(10 * MINUTE - 1);
+    const inside = serverFn("listInvoices");
+    accepted(await call(inside, session.token), inside, user);
+    t.mock.timers.tick(1);
+    const outside = serverFn("listInvoices");
+    refused(await call(outside, session.token), outside, COULD_NOT_CHECK);
+  });
+
+  test("using the allowance does not renew it", async (t) => {
+    const { user, session } = await confirmed(t);
+    fake.fail("user", { status: 500 });
+    t.mock.timers.tick(5 * MINUTE);
+    const during = serverFn("listInvoices");
+    accepted(await call(during, session.token), during, user);
+    t.mock.timers.tick(5 * MINUTE);
+    const after = serverFn("listInvoices");
+    refused(await call(after, session.token), after, COULD_NOT_CHECK);
+  });
+
+  test("a lookup that works again renews it", async (t) => {
+    const { user, session } = await confirmed(t);
+    fake.fail("user", { status: 500 });
+    t.mock.timers.tick(5 * MINUTE);
+    fake.recover("user");
+    const answered = serverFn("listInvoices");
+    accepted(await call(answered, session.token), answered, user);
+    fake.fail("user", { status: 500 });
+    t.mock.timers.tick(9 * MINUTE);
+    const stillIn = serverFn("listInvoices");
+    accepted(await call(stillIn, session.token), stillIn, user);
+    t.mock.timers.tick(MINUTE);
+    const gone = serverFn("listInvoices");
+    refused(await call(gone, session.token), gone, COULD_NOT_CHECK);
+  });
+
+  test("somebody else is refused while the person Auth confirmed is let through", async (t) => {
+    const { user, session } = await confirmed(t);
+    const other = account();
+    const otherSession = await fake.session(other);
+    t.mock.timers.tick(5 * MINUTE);
+    fake.fail("user", { status: 500 });
+    const mine = serverFn("listInvoices");
+    accepted(await call(mine, session.token), mine, user);
+    const theirs = serverFn("listInvoices");
+    refused(await call(theirs, otherSession.token), theirs, COULD_NOT_CHECK);
+  });
+
+  test("a person who signs in after another does not inherit the other's answer, fresh or allowed", async (t) => {
+    const { session: first } = await confirmed(t);
+    const second = account([VERIFIED]);
+    const secondSession = await fake.session(second);
+    // Auth works: the second person is asked for a code at once.
+    const asked = serverFn("listInvoices");
+    refused(await call(asked, secondSession.token), asked, NEEDS_CODE);
+    // Auth fails, long after the first person's answer: still nothing for the second.
+    t.mock.timers.tick(5 * MINUTE);
+    fake.fail("user", { status: 500 });
+    const failing = serverFn("listInvoices");
+    refused(await call(failing, secondSession.token), failing, COULD_NOT_CHECK);
+    const stillFirst = serverFn("listInvoices");
+    assert.equal((await call(stillFirst, first.token)).error, undefined);
+  });
+
+  test("a person seen with a verified factor loses the allowance at once", async (t) => {
+    const { user, session } = await confirmed(t);
+    fake.user(user).factors.push(VERIFIED_TOTP);
+    t.mock.timers.tick(90_000); // the minute is over, the allowance is not
+    const asked = serverFn("listInvoices");
+    refused(await call(asked, session.token), asked, NEEDS_CODE);
+    fake.fail("user", { status: 500 });
+    const failing = serverFn("listInvoices");
+    refused(await call(failing, session.token), failing, COULD_NOT_CHECK);
+  });
+
+  test("two-factor switched on through the app drops the answer at once, at the enrolling session's next call", async (t) => {
+    const { user, session } = await confirmed(t);
+    fake.user(user).factors.push(VERIFIED_TOTP);
+    // Verifying the first code makes that session aal2; its next call carries it.
+    const enrolling = await fake.session(user, { aal: "aal2" });
+    const theirs = serverFn("listInvoices");
+    accepted(await call(theirs, enrolling.token), theirs, user);
+    // Within the remembered minute, and with Auth working, the old session is
+    // asked for a code straight away rather than waved on by the old answer.
+    const asked = serverFn("listInvoices");
+    refused(await call(asked, session.token), asked, NEEDS_CODE);
+  });
+
+  test("... and the allowance goes with it when Auth then fails", async (t) => {
+    const { user, session } = await confirmed(t);
+    fake.user(user).factors.push(VERIFIED_TOTP);
+    const enrolling = await fake.session(user, { aal: "aal2" });
+    const theirs = serverFn("listInvoices");
+    accepted(await call(theirs, enrolling.token), theirs, user);
+    t.mock.timers.tick(5 * MINUTE);
+    fake.fail("user", { status: 500 });
+    const failing = serverFn("listInvoices");
+    refused(await call(failing, session.token), failing, COULD_NOT_CHECK);
+  });
+
+  test("a token claiming the code was entered, that nobody at Auth signed, does not drop anybody's answer", async (t) => {
+    const { user, session } = await confirmed(t);
+    const forged = await fake.forge({ sub: user, aal: "aal2", session_id: session.id });
+    const attempt = serverFn("listInvoices");
+    refused(await call(attempt, forged), attempt, SIGN_IN_AGAIN);
+    t.mock.timers.tick(5 * MINUTE);
+    fake.fail("user", { status: 500 });
+    const real = serverFn("listInvoices");
+    accepted(await call(real, session.token), real, user);
+  });
+
+  test("... nor does a forged one sent to a public function, which checks no signature at all", async (t) => {
+    const { user, session } = await confirmed(t);
+    const forged = await fake.forge({ sub: user, aal: "aal2", session_id: session.id });
+    const open = serverFn("getPublicDocument", { open: true, file: PUBLIC_BILLING });
+    accepted(await call(open, forged), open, null);
+    t.mock.timers.tick(5 * MINUTE);
+    fake.fail("user", { status: 500 });
+    const real = serverFn("listInvoices");
+    accepted(await call(real, session.token), real, user);
+  });
+
+  for (const status of [401, 403, 404]) {
+    test(`a session Auth says is gone (${status}) is refused as "sign in again", allowance or not`, async (t) => {
+      const { session } = await confirmed(t);
+      t.mock.timers.tick(5 * MINUTE);
+      fake.fail("user", { status, body: authSaysGone(status) });
+      const target = serverFn("listInvoices");
+      refused(await call(target, session.token), target, SIGN_IN_AGAIN);
+    });
+  }
+
+  test("a session that was signed out after the answer is refused as 'sign in again'", async (t) => {
+    const { session } = await confirmed(t);
+    t.mock.timers.tick(5 * MINUTE);
+    fake.revoke(session.id);
+    const target = serverFn("listInvoices");
+    refused(await call(target, session.token), target, SIGN_IN_AGAIN);
+  });
+
+  test("an answer about somebody else gets no allowance either", async (t) => {
+    const { session } = await confirmed(t);
+    const other = account();
+    t.mock.timers.tick(5 * MINUTE);
+    fake.fail("user", { asUser: other });
+    const target = serverFn("listInvoices");
+    refused(await call(target, session.token), target, COULD_NOT_CHECK);
+  });
+
+  test("a lookup that hangs is given up on after two seconds for a person with an allowance, five for anybody else", async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: Date.now() });
+    const user = account();
+    const session = await fake.session(user);
+    const stranger = account();
+    const strangerSession = await fake.session(stranger);
+    const first = serverFn("listInvoices");
+    accepted(await call(first, session.token), first, user);
+    t.mock.timers.tick(5 * MINUTE);
+    fake.fail("user", { hang: true });
+    const drain = async () => {
+      for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+    };
+
+    let settled = false;
+    const mine = serverFn("listInvoices");
+    const pending = call(mine, session.token).then((result) => {
+      settled = true;
+      return result;
+    });
+    await drain();
+    t.mock.timers.tick(1_900);
+    await drain();
+    assert.equal(settled, false, "gave up before two seconds");
+    t.mock.timers.tick(200);
+    await drain();
+    assert.equal(settled, true, "still waiting after two seconds, with an answer to fall back on");
+    accepted(await pending, mine, user);
+
+    let strangerSettled = false;
+    const theirs = serverFn("listInvoices");
+    const strangerPending = call(theirs, strangerSession.token).then((result) => {
+      strangerSettled = true;
+      return result;
+    });
+    await drain();
+    t.mock.timers.tick(2_500);
+    await drain();
+    assert.equal(
+      strangerSettled,
+      false,
+      "gave up on somebody with nothing to fall back on at 2.5 s",
+    );
+    t.mock.timers.tick(2_600);
+    refused(await strangerPending, theirs, COULD_NOT_CHECK);
+  });
+
+  test("a call let through on the allowance is a warning that names the user, and holds no token", async (t) => {
+    const { user, session } = await confirmed(t);
+    t.mock.timers.tick(5 * MINUTE);
+    fake.fail("user", { status: 500 });
+    const target = serverFn("listInvoices");
+    accepted(await call(target, session.token), target, user);
+    assert.equal(console.error.mock.calls.length, 0);
+    assert.ok(written("warn").includes(user), "the warning does not say whose call it was");
+    assert.match(written("warn"), /letting the call through/i);
+    const logged = ["info", "warn", "error"].map(written).join("\n");
+    assert.ok(!logged.includes(session.token), "the token was logged");
+    assert.ok(!logged.includes("example.test"), "an e-mail address was logged");
   });
 });

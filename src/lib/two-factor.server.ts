@@ -22,9 +22,12 @@ import {
  * answering nonsense).
  *
  *   "refuse"  The call is refused with "could not check, try again" and nobody
- *             is signed out. Nothing is let in on a failed check. While Auth is
- *             failing, people WITHOUT two-factor cannot use server functions
- *             either, once their remembered answer runs out. (Recommended.)
+ *             is signed out. Nothing is let in on a failed check, with ONE
+ *             exception: a person Auth itself confirmed, in the last ten
+ *             minutes, has no second factor keeps that answer while the lookup
+ *             fails (see ALLOWANCE_MS), so a slow Auth is not an outage for
+ *             everybody. Anybody Auth has not confirmed is refused.
+ *             (Recommended.)
  *   "allow"   The call goes through and the failure is logged. A password-only
  *             session of an account WITH two-factor gets in whenever the check
  *             fails, and if the check breaks for good nobody notices.
@@ -78,17 +81,29 @@ function isOpen(meta: FunctionMeta): boolean {
 
 /** How long the lookup may take before it counts as "could not check". */
 const LOOKUP_LIMIT_MS = 5_000;
+/**
+ * The same, for a person who has an allowance to fall back on (below): nothing
+ * is gained by making them wait the full time for an answer that is not needed.
+ */
+const LOOKUP_LIMIT_WITH_ALLOWANCE_MS = 2_000;
 
 /**
  * The answer "this account has no verified second factor", remembered per user
- * for a minute so that someone without two-factor (everyone who has not set it
- * up) costs one lookup a minute, not one per click.
+ * so that someone without two-factor (everyone who has not set it up) costs one
+ * lookup a minute, not one per click.
  *
- *  - Only that answer is remembered. A refusal never is, so a lost factor
- *    removed by the owner works on the person's very next sign-in; neither is a
- *    failure to check.
+ *  - For ANSWER_LIFE_MS the answer is used without asking.
+ *  - For ALLOWANCE_MS from Auth's answer it is also used when, and only when,
+ *    the lookup FAILS (Auth slow, down, rate-limiting, or answering with
+ *    something that is not about this session). Using it does not renew it;
+ *    only an answer from Auth does.
+ *  - Only "no second factor" is remembered. A refusal never is, and an old
+ *    answer is dropped the moment Auth shows the account has a factor, or a call
+ *    arrives that has entered a code (see noteCodeWasEntered), so a lost factor
+ *    removed by the owner works on the person's very next sign-in and a newly
+ *    added one is not waved past.
  *  - It is keyed by the user id Auth itself returned, never by the id inside the
- *    token alone.
+ *    token alone, so nobody can use another person's answer.
  *  - Nothing is shared between simultaneous calls: a request that reuses a
  *    lookup another request started is something the Cloudflare Workers
  *    runtime may refuse, so a busy first minute costs more lookups instead.
@@ -96,14 +111,26 @@ const LOOKUP_LIMIT_MS = 5_000;
  *    losing it only costs one more lookup.
  */
 const ANSWER_LIFE_MS = 60_000;
+const ALLOWANCE_MS = 10 * 60_000;
 const MOST_REMEMBERED = 2_000;
 const hasNoSecondFactor = new Map<string, number>(); // user id -> when Auth said so
 
-function isRemembered(userId: string, now: number): boolean {
+function ageOf(userId: string, now: number): number | null {
   const since = hasNoSecondFactor.get(userId);
-  if (since === undefined) return false;
+  if (since === undefined) return null;
   const age = now - since;
-  return age >= 0 && age < ANSWER_LIFE_MS;
+  return age >= 0 ? age : null; // a clock that went backwards remembers nothing
+}
+
+function isRemembered(userId: string, now: number): boolean {
+  const age = ageOf(userId, now);
+  return age !== null && age < ANSWER_LIFE_MS;
+}
+
+/** Auth confirmed "no second factor" recently enough to fall back on when it cannot be asked. */
+function hasAllowance(userId: string, now: number): boolean {
+  const age = ageOf(userId, now);
+  return age !== null && age < ALLOWANCE_MS;
 }
 
 function remember(userId: string, now: number): void {
@@ -111,7 +138,7 @@ function remember(userId: string, now: number): void {
   hasNoSecondFactor.delete(userId);
   if (hasNoSecondFactor.size >= MOST_REMEMBERED) {
     for (const [id, since] of hasNoSecondFactor) {
-      if (now - since >= 0 && now - since < ANSWER_LIFE_MS) break; // the rest are younger
+      if (now - since >= 0 && now - since < ALLOWANCE_MS) break; // the rest are younger
       hasNoSecondFactor.delete(id);
     }
     // Nobody had run out: make room by dropping the one remembered longest.
@@ -125,8 +152,22 @@ function remember(userId: string, now: number): void {
 
 type Lookup = { kind: "user"; id: unknown; factors: unknown } | { kind: "unknown"; reason: string };
 
-/** Asks Auth who this token belongs to, with the caller's own token. Throws only for a token Auth has dropped. */
-async function lookUpUser(token: string): Promise<Lookup> {
+/**
+ * Is this the Auth service itself saying the session is gone? Its errors carry
+ * an `error_code` (newer versions) or a numeric `code` with a `msg` (older
+ * ones). The gateway in front of it speaks differently (`{ "message": "Invalid
+ * API key" }`), and a proxy's error page is not JSON at all: neither says
+ * anything about this person's session, so neither may be told to them as
+ * "your session has expired".
+ */
+function authSaysSessionIsGone(body: unknown): boolean {
+  if (body === null || typeof body !== "object") return false;
+  const { error_code: errorCode, code, msg } = body as Record<string, unknown>;
+  return typeof errorCode === "string" || (typeof code === "number" && typeof msg === "string");
+}
+
+/** Asks Auth who this token belongs to, with the caller's own token. Throws only for a token Auth says is dropped. */
+async function lookUpUser(token: string, limitMs: number): Promise<Lookup> {
   const base = process.env["SUPABASE_URL"];
   const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
   if (!base || !key) return { kind: "unknown", reason: "the project address or key is not set" };
@@ -134,7 +175,7 @@ async function lookUpUser(token: string): Promise<Lookup> {
   // Patience for the whole exchange, answer included: a lookup that hangs must
   // end in a refusal, not hold the request open.
   const limit = new AbortController();
-  const timer = setTimeout(() => limit.abort(), LOOKUP_LIMIT_MS);
+  const timer = setTimeout(() => limit.abort(), limitMs);
   let body: unknown;
   try {
     let response: Response;
@@ -153,9 +194,21 @@ async function lookUpUser(token: string): Promise<Lookup> {
     // Signed out, session gone, or user deleted. requireSupabaseAuth checks the
     // token's signature on this machine and would still accept it until it
     // expires, so this must refuse here: otherwise "sign in with the password,
-    // sign out, keep the token" would dodge the check.
+    // sign out, keep the token" would dodge the check. But only when Auth ITSELF
+    // says so: a 401 from the gateway (a wrong or rotated project key) is a
+    // failure to check, not a dead session, and signing in again would not help.
     if (response.status === 401 || response.status === 403 || response.status === 404) {
-      throw new Error(SESSION_GONE);
+      let about: unknown = null;
+      try {
+        about = await response.json();
+      } catch {
+        /* not JSON: a proxy's page, not Auth's answer */
+      }
+      if (authSaysSessionIsGone(about)) throw new Error(SESSION_GONE);
+      return {
+        kind: "unknown",
+        reason: `Auth answered ${response.status} in a way that is not about the session`,
+      };
     }
     if (response.status !== 200) {
       return { kind: "unknown", reason: `Auth answered ${response.status}` };
@@ -183,10 +236,16 @@ async function lookUpUser(token: string): Promise<Lookup> {
 }
 
 /** The single place the decision above is applied. */
-function theCheckFailed(reason: string, userId: string): void {
+function theCheckFailed(reason: string, userId: string, hasAnswerToFallBackOn = false): void {
   if (WHEN_THE_CHECK_FAILS === "allow") {
     console.warn(
       `[two-factor] could not check (${reason}) user=${userId} - letting the call through`,
+    );
+    return;
+  }
+  if (hasAnswerToFallBackOn) {
+    console.warn(
+      `[two-factor] could not check (${reason}) user=${userId} - letting the call through on Auth's answer from the last ten minutes`,
     );
     return;
   }
@@ -229,11 +288,50 @@ export async function enforceSecondFactor({
   if (isRemembered(userId, Date.now())) return;
 
   // 6. Ask: does this account have a verified second factor?
-  const found = await lookUpUser(token);
-  if (found.kind === "unknown") return theCheckFailed(found.reason, userId);
-  // Auth must be describing this very user, or its answer says nothing about them.
+  const hasAllowanceNow = hasAllowance(userId, Date.now());
+  const found = await lookUpUser(
+    token,
+    hasAllowanceNow ? LOOKUP_LIMIT_WITH_ALLOWANCE_MS : LOOKUP_LIMIT_MS,
+  );
+  // Could not find out. Somebody Auth confirmed has no second factor in the last
+  // ten minutes keeps that answer; everybody else is refused.
+  if (found.kind === "unknown") return theCheckFailed(found.reason, userId, hasAllowanceNow);
+  // Auth must be describing this very user, or its answer says nothing about them
+  // (and that is not "Auth is slow", so it gets no allowance).
   // (Remembered under the id Auth returned, which is this one.)
   if (found.id !== userId) return theCheckFailed("Auth described another user", userId);
-  if (hasVerifiedTotp(found.factors)) throw new Error(TWO_FACTOR_REQUIRED);
+  if (hasVerifiedTotp(found.factors)) {
+    // Whatever was remembered about this account is out of date.
+    hasNoSecondFactor.delete(userId);
+    throw new Error(TWO_FACTOR_REQUIRED);
+  }
   remember(found.id, Date.now());
+}
+
+/**
+ * Call after a server function has run for this request. A token that entered
+ * its code (aal2) means the account has a verified second factor, so any
+ * remembered "no second factor" answer about it is out of date and goes at once.
+ * That is how a factor switched on through the app takes effect on this server
+ * without waiting for the answer to age out.
+ *
+ * It runs only after the call succeeded, because that is when the token's
+ * signature has been checked: a token somebody forged must not be able to wipe
+ * another person's answer. A public function never checks a signature, so it
+ * never counts.
+ */
+export function noteCodeWasEntered({
+  request,
+  serverFnMeta,
+}: {
+  request: Request | undefined;
+  serverFnMeta: FunctionMeta;
+}): void {
+  if (isOpen(serverFnMeta)) return;
+  const header = request?.headers?.get("authorization") ?? "";
+  const token = /^Bearer ([^\s.]+\.[^\s.]+\.[^\s.]+)$/.exec(header)?.[1];
+  if (!token) return;
+  const claims = tokenClaims(token);
+  const userId = claims?.["sub"];
+  if (claims?.["aal"] === "aal2" && typeof userId === "string") hasNoSecondFactor.delete(userId);
 }

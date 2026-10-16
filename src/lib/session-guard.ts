@@ -107,9 +107,12 @@ export const sessionGuard = createMiddleware({ type: "function" })
     try {
       // Before the function's own middleware: a session that still owes its
       // code never reaches requireSupabaseAuth, let alone a handler.
-      const { enforceSecondFactor } = await import("@/lib/two-factor.server");
+      const { enforceSecondFactor, noteCodeWasEntered } = await import("@/lib/two-factor.server");
       await enforceSecondFactor({ request, serverFnMeta });
       const result = await next();
+      // The token's signature has been checked by now: a session that entered
+      // its code makes any remembered "no second factor" about it out of date.
+      noteCodeWasEntered({ request, serverFnMeta });
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
