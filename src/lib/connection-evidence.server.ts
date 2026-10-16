@@ -162,6 +162,22 @@ export function safeText(
   return (redactSecrets(text) ?? "").slice(0, max);
 }
 
+/**
+ * Provider or system text for people who are not Flas staff. Text that names a permission, an
+ * app credential, a callback or another provider-console detail is withheld (null): those are
+ * shown only in the staff diagnostics. Whatever is left has already been through safeText().
+ */
+export function plainOrNull(input: unknown, scopes: readonly string[] = []): string | null {
+  const text = safeText(input);
+  if (!text) return null;
+  const technical =
+    scopes.some((scope) => scope.length >= 4 && text.includes(scope)) ||
+    /\b(app[ _-]?(id|secret)|client[ _-]?(id|secret)|redirect[ _-]?uri|callback|credentials?|developer (portal|console)|scopes?)\b/i.test(
+      text,
+    );
+  return technical ? null : text;
+}
+
 export type CheckWrite =
   | { ok: true; row: Record<string, unknown>; evidence: "ok" | "unavailable" }
   | { ok: false; kind: "database_error" | "no_row"; message: string };

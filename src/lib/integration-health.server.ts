@@ -1,16 +1,20 @@
-// Server-only engine behind the Integration Health Report and the automatic
-// retry workflow. The retry pass re-checks the live permissions, refreshes the
-// token when the platform allows it, and always writes back the newest reason
-// so the customer-facing status is never stale.
+/// Server-only engine behind the Integration Health Report and the retry workflow.
+//
+// The report and the Connect accounts screen decide an account's status with the same function
+// (connectionStatus in connection-status.ts), fed by the same builder (statusInputFromRow), so the
+// two cannot disagree. The retry workflow asks the platform whether a token works; only an
+// answer that was received, accepted, and saved is ever called verified.
 import { openSecret, sealSecret, sealTenantSecrets } from "@/lib/secret-box.server";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { connector, CONNECTORS } from "./connections-catalog";
-import type { AccountPlatform } from "./connections-catalog";
-import { connectionStatus } from "./connection-status";
-import { missingScopesFor } from "./connection-state";
+import { connectionStatus, nextActionFor, statusInputFromRow } from "./connection-status";
+import { featuresForScopes, missingScopesFor, notProvenFor } from "./connection-state";
 import type { ConnectionState } from "./connection-status";
-import type { HealthReport, HealthRow } from "./integration-health";
+import { evidenceFor, plainOrNull, readEvidence, safeText } from "./connection-evidence.server";
+import { connectorDefinition } from "./social-connector-definitions";
+import { needsAttention } from "./integration-health";
+import type { HealthDiagnostics, HealthReport, HealthRow } from "./integration-health";
 import { refreshAccessToken } from "./oauth.server";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -25,7 +29,6 @@ type AccountRow = {
   refresh_token: string | null;
   token_expires_at: string | null;
   granted_scopes: string[] | null;
-  permissions: any;
   last_synced_at: string | null;
   last_analytics_sync_at: string | null;
   last_error: string | null;
@@ -36,63 +39,95 @@ type AccountRow = {
   next_retry_at: string | null;
   external_id: string | null;
   connect_method: string | null;
+  connection_state: string | null;
+  created_at: string;
 };
 
+// `permissions` is deliberately not read: it holds the capability keys Flas enabled, never the
+// scopes the platform granted. The permissions of an account are granted_scopes and nothing else.
 const ACCOUNT_COLUMNS =
-  "id, tenant_id, platform, label, active, access_token, refresh_token, token_expires_at, granted_scopes, permissions, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method";
+  "id, tenant_id, platform, label, active, access_token, refresh_token, token_expires_at, granted_scopes, last_synced_at, last_analytics_sync_at, last_error, last_error_at, status_reason, retry_count, last_retry_at, next_retry_at, external_id, connect_method, connection_state, created_at";
 
-function grantedScopes(row: AccountRow): string[] {
-  if (row.granted_scopes?.length) return row.granted_scopes;
-  const perms = row.permissions;
-  if (Array.isArray(perms?.granted)) return perms.granted.map(String);
-  return [];
+const grantedScopes = (row: AccountRow): string[] => row.granted_scopes ?? [];
+const missingScopes = (row: AccountRow): string[] =>
+  missingScopesFor(row.platform, grantedScopes(row));
+
+type RetryLogRow = {
+  id: string;
+  account_id: string | null;
+  platform: string;
+  outcome: string;
+  reason: string | null;
+  trigger: string;
+  created_at: string;
+  details: any;
+};
+
+/** What the most recent check of an account says, read from its retry log entry. Staff only. */
+function diagnosticsFrom(
+  log: RetryLogRow | undefined,
+  evidenceReady: boolean,
+  attemptedAt: string | null,
+  granted: string[],
+  missing: string[],
+): HealthDiagnostics {
+  const details = (log?.details && typeof log.details === "object" ? log.details : {}) as {
+    stage?: unknown;
+    http_status?: unknown;
+    correlation_id?: unknown;
+    provider_message?: unknown;
+  };
+  const reference = typeof details.correlation_id === "string" ? details.correlation_id : null;
+  return {
+    stage: typeof details.stage === "string" ? details.stage : null,
+    http_status: typeof details.http_status === "number" ? details.http_status : null,
+    correlation_id: reference ? reference.slice(0, 8) : null,
+    last_attempt_at: attemptedAt ?? log?.created_at ?? null,
+    evidence_storage: evidenceReady ? "ready" : "missing",
+    scopes_granted: granted,
+    scopes_missing: missing,
+    provider_message:
+      typeof details.provider_message === "string" ? safeText(details.provider_message) : null,
+  };
 }
 
-function missingScopes(row: AccountRow): string[] {
-  // Derived from the connector registry rather than the old REQUIRED_PERMISSIONS
-  // table, which listed scopes Flas never requests and would have reported them
-  // as permanently missing.
-  return missingScopesFor(row.platform, grantedScopes(row));
-}
-
-function nextStepFor(state: ConnectionState, row: AccountRow | undefined): string {
-  if (!row) return "Press Connect and complete the guided wizard.";
-  if (row.next_retry_at && new Date(row.next_retry_at).getTime() > Date.now()) {
-    return `Flas retries automatically on ${new Date(row.next_retry_at).toLocaleString()} (attempt ${
-      row.retry_count + 1
-    }). No action needed unless it fails again.`;
-  }
-  switch (state) {
-    case "connected":
-      return "Nothing required — monitoring continues automatically.";
-    case "expired":
-      return "Run Retry now: Flas refreshes the token. If the platform issued no refresh token, reconnect once.";
-    case "needs_verification":
-      return "Reconnect and leave every permission enabled on the consent screen.";
-    case "pending_review":
-      return "Submit the platform app for review, or add this account as a tester, then press Retry now.";
-    case "failing":
-      return "Press Retry now. If it still fails, reconnect the account from the wizard.";
-    default:
-      return "Press Connect to authorize this platform.";
-  }
-}
-
-/** Full report for one workspace. */
-export async function buildHealthReport(tenantId: string): Promise<HealthReport> {
-  const [{ data: org }, { data: accounts }, { data: retries }] = await Promise.all([
+/**
+ * Full report for one workspace. One row per account, plus one for each platform with none.
+ *
+ * `staff` is true only for Flas staff (a super admin). Everyone else gets plain words: features
+ * instead of permission names, no provider answers, no diagnostics block.
+ */
+export async function buildHealthReport(
+  tenantId: string,
+  options: { staff?: boolean } = {},
+): Promise<HealthReport> {
+  const staff = options.staff === true;
+  const [{ data: org }, accountsResult, { data: retries }, evidence] = await Promise.all([
     supabaseAdmin.from("organizations").select("name").eq("id", tenantId).maybeSingle(),
     supabaseAdmin.from("social_accounts").select(ACCOUNT_COLUMNS).eq("tenant_id", tenantId),
     supabaseAdmin
       .from("connection_retry_log")
-      .select("id, platform, outcome, reason, trigger, created_at")
+      .select("id, account_id, platform, outcome, reason, trigger, created_at, details")
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
-      .limit(30),
+      .limit(60),
+    readEvidence(tenantId),
   ]);
+  // A report built from a failed read would show every platform as "not connected". Say so instead.
+  if (accountsResult.error) {
+    throw new Error("Flas could not read this workspace's connections. Try again in a moment.");
+  }
+  const accounts = ((accountsResult.data ?? []) as unknown as AccountRow[]).sort(
+    (a, b) => String(a.created_at).localeCompare(String(b.created_at)) || a.id.localeCompare(b.id),
+  );
+  const log = (retries ?? []) as unknown as RetryLogRow[];
 
-  const byPlatform = new Map<string, AccountRow>();
-  for (const row of (accounts ?? []) as AccountRow[]) byPlatform.set(row.platform, row);
+  const byPlatform = new Map<string, AccountRow[]>();
+  for (const row of accounts) {
+    const list = byPlatform.get(row.platform) ?? [];
+    list.push(row);
+    byPlatform.set(row.platform, list);
+  }
 
   const totals: Record<ConnectionState, number> = {
     connected: 0,
@@ -101,48 +136,66 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
     pending_review: 0,
     expired: 0,
     failing: 0,
+    provider_unavailable: 0,
     not_connected: 0,
   };
 
-  const rows: HealthRow[] = CONNECTORS.filter((c) => !c.internalHref).map((c) => {
-    const row = byPlatform.get(c.id);
-    const status = connectionStatus(
-      row
-        ? {
-            platform: row.platform,
-            active: row.active,
-            token_expires_at: row.token_expires_at,
-            last_synced_at: row.last_synced_at,
-            last_analytics_sync_at: row.last_analytics_sync_at,
-            permissions: grantedScopes(row),
-            external_id: row.external_id,
-            connect_method: row.connect_method,
-            label: row.label,
-            renews: Boolean(row.refresh_token),
-          }
-        : undefined,
-    );
-    totals[status.state] += 1;
-    return {
-      platform: c.id,
-      platform_name: c.name,
-      group: c.group,
-      account_label: row?.label ?? null,
-      state: status.state,
-      state_label: status.label,
-      reason: row?.status_reason ?? status.reason,
-      fix: status.fix,
-      last_error: row?.last_error ?? null,
-      last_error_at: row?.last_error_at ?? null,
-      last_synced_at: row?.last_synced_at ?? null,
-      token_expires_at: row?.token_expires_at ?? null,
-      granted_permissions: row ? grantedScopes(row) : [],
-      missing_permissions: row ? missingScopes(row) : [],
-      retry_count: row?.retry_count ?? 0,
-      next_retry_at: row?.next_retry_at ?? null,
-      next_step: nextStepFor(status.state, row),
-    };
-  });
+  const rows: HealthRow[] = [];
+  for (const c of CONNECTORS.filter((x) => !x.internalHref)) {
+    const owned = byPlatform.get(c.id) ?? [];
+    // A platform with no account still gets its own row, so the report lists every connector.
+    for (const row of owned.length ? owned : [undefined]) {
+      const granted = row?.granted_scopes ?? [];
+      const missingScopeNames = row ? missingScopesFor(row.platform, granted) : [];
+      const requested = connectorDefinition(c.id)?.requestedScopes ?? [];
+      const saved = row ? evidenceFor(evidence, row.id) : undefined;
+      const status = connectionStatus(
+        row ? statusInputFromRow({ ...row, renews: Boolean(row.refresh_token) }, saved) : undefined,
+      );
+      totals[status.state] += 1;
+      rows.push({
+        platform: c.id,
+        platform_name: c.name,
+        group: c.group,
+        account_id: row?.id ?? null,
+        account_label: row?.label ?? null,
+        state: status.state,
+        state_label: status.label,
+        // The reason comes from the shared function, never from a sentence stored on the row: a
+        // stale stored sentence once contradicted the badge beside it. What the platform last
+        // said is shown separately as `last_error`.
+        reason: status.reason,
+        reason_code: status.code,
+        reason_params: status.params,
+        fix: status.fix,
+        action: row ? status.action : nextActionFor("never_connected", c.id),
+        last_error: staff
+          ? safeText(row?.last_error) || null
+          : plainOrNull(row?.last_error, requested),
+        last_error_at: row?.last_error_at ?? null,
+        last_synced_at: row?.last_synced_at ?? null,
+        last_verified_at: saved?.last_validation_success_at ?? null,
+        token_expires_at: row?.token_expires_at ?? null,
+        granted_permissions: staff ? granted : [],
+        missing_permissions: featuresForScopes(c.id, missingScopeNames),
+        not_proven: row ? notProvenFor(row.platform) : [],
+        retry_count: row?.retry_count ?? 0,
+        next_retry_at: row?.next_retry_at ?? null,
+        next_step: status.fix,
+        evidence_state: saved?.state ?? (evidence.available ? "ok" : "unavailable"),
+        diagnostics:
+          staff && row
+            ? diagnosticsFrom(
+                log.find((entry) => entry.account_id === row.id),
+                evidence.available,
+                saved?.last_validation_attempt_at ?? null,
+                granted,
+                missingScopeNames,
+              )
+            : null,
+      });
+    }
+  }
 
   // A dry run: it only counts, so opening the report never rewrites anything.
   const sealing = await sealTenantSecrets(tenantId, { dryRun: true });
@@ -152,8 +205,8 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
     generated_at: new Date().toISOString(),
     totals,
     connected: totals.connected,
-    needs_attention:
-      totals.needs_verification + totals.pending_review + totals.expired + totals.failing,
+    // Counted from the rows themselves, so this number and the list the dialog shows cannot differ.
+    needs_attention: rows.filter((row) => needsAttention(row.state)).length,
     not_connected: totals.not_connected,
     rows,
     credentials: {
@@ -161,7 +214,16 @@ export async function buildHealthReport(tenantId: string): Promise<HealthReport>
       plaintext: sealing.plaintext,
       sealed: sealing.alreadySealed,
     },
-    retries: retries ?? [],
+    // Old entries were stored before provider text was redacted on the way in; redact on the way
+    // out as well.
+    retries: log.slice(0, 30).map((entry) => ({
+      id: entry.id,
+      platform: entry.platform,
+      outcome: entry.outcome,
+      reason: staff ? safeText(entry.reason, [], 1000) || null : plainOrNull(entry.reason),
+      trigger: entry.trigger,
+      created_at: entry.created_at,
+    })),
   };
 }
 

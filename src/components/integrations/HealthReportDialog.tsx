@@ -20,7 +20,11 @@ import {
   retryConnections,
 } from "@/lib/connections.functions";
 import { CONNECTOR_COUNTS, NON_OAUTH_CONNECTORS } from "@/lib/social-connector-definitions";
-import { downloadHealthReportCsv, downloadHealthReportPdf } from "@/lib/integration-health";
+import {
+  downloadHealthReportCsv,
+  downloadHealthReportPdf,
+  needsAttention,
+} from "@/lib/integration-health";
 import type { HealthRow } from "@/lib/integration-health";
 
 /**
@@ -40,6 +44,8 @@ import { useI18n } from "@/hooks/useI18n";
 
 const TONE: Record<string, string> = {
   connected: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  unverified: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  provider_unavailable: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   needs_verification: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   pending_review: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   expired: "bg-red-500/10 text-red-600 dark:text-red-400",
@@ -98,9 +104,7 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
   });
 
   const data = report.data;
-  const attention = (data?.rows ?? []).filter(
-    (r) => r.state !== "connected" && r.state !== "not_connected",
-  );
+  const attention = (data?.rows ?? []).filter((r) => needsAttention(r.state));
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -172,7 +176,7 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
               <div className="grid gap-2">
                 {(attention.length > 0 ? attention : data.rows).map((row) => (
                   <HealthRowCard
-                    key={row.platform}
+                    key={row.account_id ?? row.platform}
                     row={row}
                     onRetry={() => runRetry.mutate(undefined)}
                     retrying={runRetry.isPending}

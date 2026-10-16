@@ -1,4 +1,8 @@
-import { connectorDefinition, resolveAllCapabilities } from "@/lib/social-connector-definitions";
+import {
+  CAPABILITY_LABELS,
+  connectorDefinition,
+  resolveAllCapabilities,
+} from "@/lib/social-connector-definitions";
 
 /**
  * The connection and authorization-attempt state model.
@@ -21,25 +25,17 @@ import { connectorDefinition, resolveAllCapabilities } from "@/lib/social-connec
  */
 
 /**
- * Scopes a connector needs for the capabilities Flas actually implements,
- * minus what the provider granted.
+ * Scopes a connector needs for the capabilities Flas actually implements.
  *
  * Only implemented capabilities count. Asking a customer to re-authorize for a
  * permission that unlocks nothing Flas has built would be a false alarm, and
- * the old REQUIRED_PERMISSIONS table did exactly that — it listed
+ * the old REQUIRED_PERMISSIONS table did exactly that -- it listed
  * instagram_manage_messages and video.publish, neither of which Flas requests
  * or uses.
  */
-export function missingScopesFor(platform: string, grantedScopes: string[]): string[] {
+export function requiredScopesFor(platform: string): string[] {
   const def = connectorDefinition(platform);
   if (!def) return [];
-
-  const granted = new Set(grantedScopes);
-  // Some providers return no scope list at all on the token response. Treat
-  // that as "unknown", not "nothing granted" — otherwise every such connector
-  // permanently reports missing permissions.
-  if (granted.size === 0) return [];
-
   const needed = new Set<string>();
   for (const cap of resolveAllCapabilities(def)) {
     if (!cap.providerSupports || !cap.flasImplements) continue;
@@ -47,8 +43,91 @@ export function missingScopesFor(platform: string, grantedScopes: string[]): str
       if (def.requestedScopes.includes(scope)) needed.add(scope);
     }
   }
+  return [...needed];
+}
 
-  return [...needed].filter((s) => !granted.has(s));
+/** requiredScopesFor() minus what the provider granted. */
+export function missingScopesFor(platform: string, grantedScopes: string[]): string[] {
+  const granted = new Set(grantedScopes);
+  // Some providers return no scope list at all on the token response. Treat
+  // that as "unknown", not "nothing granted" -- otherwise every such connector
+  // permanently reports missing permissions. (Whether a connector may be called
+  // verified while its scopes are unknown is decided by the caller: see
+  // scopesUnknown().)
+  if (granted.size === 0) return [];
+  return requiredScopesFor(platform).filter((s) => !granted.has(s));
+}
+
+/**
+ * True when the connector needs permissions but nobody has told us which were
+ * granted. A token that works is not a token with the right permissions, so
+ * this blocks "verified" rather than passing it.
+ */
+export function scopesUnknown(
+  platform: string,
+  grantedScopes: string[] | null | undefined,
+): boolean {
+  return requiredScopesFor(platform).length > 0 && !(grantedScopes && grantedScopes.length > 0);
+}
+
+/**
+ * Features Flas has built whose use depends on the platform approving the app
+ * (app review, advanced access). A live token check cannot prove these, so a
+ * verified connection says so instead of implying they work.
+ */
+export function notProvenFor(platform: string): string[] {
+  const def = connectorDefinition(platform);
+  if (!def) return [];
+  return resolveAllCapabilities(def)
+    .filter((cap) => cap.providerSupports && cap.flasImplements && cap.reviewRequired)
+    .map((cap) => CAPABILITY_LABELS[cap.key]);
+}
+
+/**
+ * The platforms whose token Flas can really test today. The engine in
+ * integration-health.server.ts has one probe for each id here and none for any other (a test
+ * keeps the two lists equal). A connector that is not listed has no live check yet: its accounts
+ * cannot be verified, and the screens say "Coming soon" instead of offering a check that cannot
+ * run.
+ */
+export const LIVE_CHECK_PLATFORMS: readonly string[] = [
+  "facebook",
+  "instagram",
+  "meta_ads",
+  "youtube",
+  "google_business",
+  "google_ads",
+  "google_analytics",
+  "search_console",
+  "linkedin",
+  "tiktok",
+  "twitter",
+  "pinterest",
+];
+
+export function hasLiveCheck(platform: string): boolean {
+  return LIVE_CHECK_PLATFORMS.includes(platform);
+}
+
+/**
+ * The plain names of the features that need these permissions ("Read DMs"), for people who
+ * should never have to read a permission's technical name. The technical names are shown only in
+ * the staff diagnostics.
+ */
+export function featuresForScopes(platform: string, scopes: readonly string[]): string[] {
+  if (scopes.length === 0) return [];
+  const def = connectorDefinition(platform);
+  const wanted = new Set(scopes);
+  const labels = new Set<string>();
+  if (def) {
+    for (const cap of resolveAllCapabilities(def)) {
+      if (!cap.providerSupports || !cap.flasImplements) continue;
+      if (cap.requiredScopes.some((scope) => wanted.has(scope))) {
+        labels.add(CAPABILITY_LABELS[cap.key]);
+      }
+    }
+  }
+  return labels.size > 0 ? [...labels] : ["Some features"];
 }
 
 export const CONNECTION_STATES = [
@@ -223,6 +302,41 @@ export type HealthCode =
   | "revoked"
   | "refresh_failed";
 
+type Observed = {
+  reason: string;
+  httpStatus?: number | null | undefined;
+  providerCode?: string | null | undefined;
+  unreachable?: boolean | undefined;
+};
+
+/**
+ * The provider told us what happened (a status, a code, or "no answer")? Then that is what
+ * decides. The reason text is read only when it did not -- scraping a number out of a sentence
+ * was the old way, and Meta's own sentences often carry no number at all.
+ */
+const wasTold = (o: Observed): boolean =>
+  (o.httpStatus ?? null) !== null || (o.providerCode ?? null) !== null || o.unreachable === true;
+
+function isRateLimited(o: Observed): boolean {
+  if (!wasTold(o)) return /\b429\b|rate[ -]?limit|too many requests/i.test(o.reason);
+  return o.httpStatus === 429 || ["4", "17", "32", "613"].includes(String(o.providerCode ?? ""));
+}
+
+function isUnavailable(o: Observed): boolean {
+  if (!wasTold(o)) {
+    return /\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(
+      o.reason,
+    );
+  }
+  const status = o.httpStatus ?? null;
+  return o.unreachable === true || status === 408 || (status !== null && status >= 500);
+}
+
+function isUnauthorized(o: Observed): boolean {
+  if (!wasTold(o)) return /revok|invalid[_ ]grant|reauthori|\b190\b|\b401\b/i.test(o.reason);
+  return o.httpStatus === 401 || String(o.providerCode ?? "") === "190";
+}
+
 /**
  * Turns one health-check observation into the state to write.
  *
@@ -244,6 +358,12 @@ export function classifyHealthObservation(o: {
   validated: boolean;
   missingScopes: number;
   reason: string;
+  /** What the provider answered. When given it decides; the reason text is only the fallback. */
+  httpStatus?: number | null;
+  /** The provider's own error code (Meta: 190 = token no longer valid, 4/17/32/613 = rate limit). */
+  providerCode?: string | null;
+  /** The request never got an answer (network error, timeout). */
+  unreachable?: boolean;
 }): { code: HealthCode; state: ConnectionState; active: boolean } {
   let code: HealthCode;
   let proposed: ConnectionState;
@@ -253,15 +373,13 @@ export function classifyHealthObservation(o: {
   } else if (o.validated) {
     code = "healthy";
     proposed = "connected";
-  } else if (/\b429\b|rate[ -]?limit|too many requests/i.test(o.reason)) {
+  } else if (isRateLimited(o)) {
     code = "rate_limited";
     proposed = isUsable(o.from) ? o.from : "provider_unavailable";
-  } else if (
-    /\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(o.reason)
-  ) {
+  } else if (isUnavailable(o)) {
     code = "provider_unavailable";
     proposed = "provider_unavailable";
-  } else if (/revok|invalid[_ ]grant|reauthori|\b190\b|\b401\b/i.test(o.reason)) {
+  } else if (isUnauthorized(o)) {
     code = "revoked";
     proposed = "revoked";
   } else {

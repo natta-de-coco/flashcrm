@@ -1,6 +1,7 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { SOCIAL_ACCOUNT_PLATFORMS } from "@/lib/connections-catalog";
+import { connectionStatus, statusInputFromRow } from "@/lib/connection-status";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -17,6 +18,29 @@ async function callerTenantId(supabase: Client, userId: string): Promise<string 
     .eq("id", userId)
     .maybeSingle();
   return data?.tenant_id ?? null;
+}
+
+/**
+ * The caller's workspace, for an action that asks the platforms something and writes the answer.
+ * Only a company admin may do that: the screen hides the button from everyone else, but a hidden
+ * button is not an authorization control.
+ */
+async function adminCaller(
+  supabase: Client,
+  userId: string,
+): Promise<{ tenantId: string; staff: boolean }> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("tenant_id, staff_role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!profile?.tenant_id) {
+    throw new Error("Your workspace is still being set up — try again in a moment.");
+  }
+  if (!["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""))) {
+    throw new Error("Only a company admin can check connections.");
+  }
+  return { tenantId: profile.tenant_id, staff: profile.staff_role === "super_admin" };
 }
 
 /** Everything the Connect Your Business screen renders. */
@@ -63,21 +87,43 @@ export const getConnections = createServerFn({ method: "GET" })
       }
     }
 
+    // Whether, and when, each account was really checked against its platform. Read here with the
+    // service role (after the tenant was proven above) and tolerant of the columns not existing yet:
+    // in that case every account says "evidence unavailable" and none can read as verified.
+    const { readEvidence, evidenceFor } = await import("@/lib/connection-evidence.server");
+    const evidence = tenantId
+      ? await readEvidence(tenantId)
+      : { available: false, failure: "error" as const, byId: new Map() };
+
     const { computeHealth } = await import("@/lib/connections.server");
-    const enriched = (accounts.data ?? []).map((a) => ({
-      ...a,
-      renews: renewing.has(a.id),
-      health: computeHealth({
-        active: a.active,
-        renews: renewing.has(a.id),
-        // Both branches of this were "set", so health could never report a
-        // missing credential -- an account saved without a token showed as
-        // healthy right up until its first sync failed.
-        access_token: tokened.has(a.id) ? "set" : null,
-        token_expires_at: a.token_expires_at,
-        last_synced_at: a.last_synced_at,
-      }),
-    }));
+    const enriched = (accounts.data ?? []).map((a) => {
+      const renews = renewing.has(a.id);
+      const saved = evidenceFor(evidence, a.id);
+      return {
+        ...a,
+        renews,
+        health: computeHealth({
+          active: a.active,
+          renews,
+          // Both branches of this were "set", so health could never report a
+          // missing credential -- an account saved without a token showed as
+          // healthy right up until its first sync failed.
+          access_token: tokened.has(a.id) ? "set" : null,
+          token_expires_at: a.token_expires_at,
+          last_synced_at: a.last_synced_at,
+        }),
+        // The fields connectionStatus() reads, so the screen's own call decides the same thing
+        // the report does. Before this the screen never received any of them, and nothing on it
+        // could be Connected.
+        connection_state: saved.connection_state,
+        last_validation_success_at: saved.last_validation_success_at,
+        last_validation_attempt_at: saved.last_validation_attempt_at,
+        last_error_at: saved.last_error_at,
+        next_retry_at: saved.next_retry_at,
+        evidence: saved.state,
+        status: connectionStatus(statusInputFromRow({ ...a, renews }, saved)),
+      };
+    });
 
     return {
       accounts: enriched,
@@ -328,10 +374,10 @@ export const disconnectConnection = createServerFn({ method: "POST" })
 export const getIntegrationHealthReport = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const tenantId = await callerTenantId(context.supabase, context.userId);
-    if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
+    const { tenantId, staff } = await adminCaller(context.supabase, context.userId);
     const { buildHealthReport } = await import("@/lib/integration-health.server");
-    return buildHealthReport(tenantId);
+    // Flas staff get the technical diagnostics; a company's own people get plain words.
+    return buildHealthReport(tenantId, { staff });
   });
 
 /**
@@ -381,8 +427,7 @@ export const retryConnections = createServerFn({ method: "POST" })
     z.object({ accountId: z.string().uuid().optional() }).parse(input ?? {}),
   )
   .handler(async ({ data, context }) => {
-    const tenantId = await callerTenantId(context.supabase, context.userId);
-    if (!tenantId) throw new Error("Your workspace is still being set up — try again in a moment.");
+    const { tenantId } = await adminCaller(context.supabase, context.userId);
     const { retryConnection, retryDueConnections } =
       await import("@/lib/integration-health.server");
     const results = data.accountId
