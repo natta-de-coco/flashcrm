@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
+import { appearanceBootScript } from "@/lib/appearance";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { captureError, installTelemetry } from "../lib/telemetry";
@@ -129,7 +130,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         // Noto Sans Arabic is split by character range, so an English page
         // downloads none of it.
-        href: "https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&family=Onest:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Gabarito:wght@500;600;700;800&family=Onest:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap",
       },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
     ],
@@ -145,6 +146,7 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang={uiLanguage} dir={directionOf(uiLanguage)} suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: appearanceBootScript }} />
         <HeadContent />
       </head>
       <body suppressHydrationWarning>

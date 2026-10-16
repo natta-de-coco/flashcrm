@@ -1,0 +1,188 @@
+/* Adapted from the owner-supplied Nexora CRM (New Theme 14 oct).
+   Scoped to the application: public pages keep the FLAS brand palette.
+   :has also themes Radix portals/toasts attached directly to body. */
+body:has([data-app-shell]),
+[data-app-shell] {
+  --font-sans: "Geist", "Onest", "Noto Sans Arabic", ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sans);
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.47 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.55 0 0);
+  --brand: oklch(0.5 0.12 162);
+  --brand-foreground: oklch(0.99 0 0);
+  --chat-canvas: oklch(0.965 0.005 165);
+  --bubble-out: oklch(0.93 0.04 162);
+  --bubble-out-foreground: oklch(0.22 0.04 168);
+  --bubble-in: oklch(1 0 0);
+  --bubble-in-foreground: oklch(0.145 0 0);
+  --chart-1: oklch(0.6 0.15 162);
+  --chart-2: oklch(0.6 0.15 240);
+  --chart-3: oklch(0.72 0.16 75);
+  --chart-4: oklch(0.6 0.16 300);
+  --chart-5: oklch(0.65 0.18 25);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(1 0 0);
+  --sidebar-accent-foreground: oklch(0.145 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.55 0 0);
+  --shadow-panel: 0 1px 3px oklch(0 0 0 / 0.04);
+  --shadow-float: 0 12px 32px oklch(0 0 0 / 0.12);
+  font-family: var(--font-sans);
+}
+
+.dark body:has([data-app-shell]),
+.dark [data-app-shell] {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.7 0 0);
+  --brand: oklch(0.75 0.14 162);
+  --brand-foreground: oklch(0.2 0.02 162);
+  --chat-canvas: oklch(0.17 0 0);
+  --bubble-out: oklch(0.32 0.06 162);
+  --bubble-out-foreground: oklch(0.97 0 0);
+  --bubble-in: oklch(0.23 0 0);
+  --bubble-in-foreground: oklch(0.985 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.922 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.7 0 0);
+}
+
+.crm-nav-link[aria-current="page"] {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+  border-color: var(--sidebar-border);
+  box-shadow: 0 1px 3px oklch(0 0 0 / 0.08);
+}
+
+.crm-sidebar[data-collapsed="true"] .crm-nav-label,
+.crm-sidebar[data-collapsed="true"] .crm-nav-heading,
+.crm-sidebar[data-collapsed="true"] .crm-workspace-label {
+  display: none;
+}
+
+.crm-sidebar[data-collapsed="true"] .crm-nav-link {
+  justify-content: center;
+  padding-inline: 0;
+}
+.crm-sidebar[data-collapsed="true"] .crm-nav-section + .crm-nav-section {
+  border-top: 1px solid var(--sidebar-border);
+  padding-top: 0.75rem;
+}
+.crm-content > main {
+  overflow: visible;
+}
+/* Inbox owns its internal list/thread scrolling. Its old viewport height must
+   not include the new header or the phone's bottom bar. */
+.crm-content:has([data-inbox]) {
+  overflow: hidden;
+}
+.crm-content > main[data-inbox] {
+  display: flex;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.crm-content > main[data-inbox] > div {
+  height: 100%;
+  min-height: 0;
+}
+.crm-content h1,
+.crm-content h2,
+.crm-content h3 {
+  font-family: var(--font-sans);
+}
+.crm-content .stat-label {
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+}
+.crm-content .stat-figure {
+  font-family: var(--font-sans);
+}
+.crm-content [data-slot="card"] {
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.03);
+}
+.crm-content [data-slot="table-header"] {
+  background: var(--muted);
+}
+.crm-content [data-slot="table-head"] {
+  height: 2.75rem;
+  padding-inline: 1rem;
+}
+.crm-content [data-slot="table-cell"] {
+  padding: 0.875rem 1rem;
+}
+.crm-content [data-slot="page-header"] h1 {
+  font-size: clamp(1.35rem, 2vw, 1.65rem);
+}
+.crm-brief {
+  background-image: radial-gradient(
+    ellipse at 95% 0%,
+    color-mix(in oklab, var(--brand) 10%, transparent),
+    transparent 65%
+  );
+}
+
+@media (max-width: 639px) {
+  .crm-content > main {
+    padding: 1rem;
+  }
+}
+
+@media print {
+  .crm-frame {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+  .crm-sidebar,
+  .crm-header,
+  .crm-frame > .crm-workspace > nav {
+    display: none;
+  }
+  .crm-workspace,
+  .crm-content {
+    display: block;
+    overflow: visible;
+    border: 0;
+    box-shadow: none;
+  }
+}
