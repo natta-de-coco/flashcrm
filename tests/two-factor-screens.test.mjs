@@ -116,6 +116,9 @@ const everAppeared = (selector) =>
   watchedSelectors.get(selector) === true || Boolean(doc.querySelector(selector));
 
 const codeField = () => doc.getElementById("mfa");
+/** Server calls the signed-in layout made that the server ran, by function name. */
+const servedBy = (name) => watched.served.filter((call) => call.name === name);
+const heartbeatServed = () => servedBy("touchPresence").length > 0;
 const signedInScreen = () => doc.querySelector("[data-testid='signed-in-screen']");
 const here = () => browser.root.firstElementChild?.getAttribute("data-address");
 
@@ -263,6 +266,28 @@ describe("the sign-in page, for an account with two-factor", () => {
     assert.equal(line.querySelector("bdi").getAttribute("dir"), "ltr");
     assert.match(doc.body.textContent, /حسابك محميّ بتسجيل الدخول بالتحقق الثنائي/);
     assert.ok(!doc.body.textContent.includes(INTRO), "the English sentence is showing in Arabic");
+  });
+
+  test("asks for the code of the verified authenticator app, not of one that was only started", async () => {
+    // The account's list holds a half-finished set-up FIRST. Asking for it would
+    // fail with the right code (it belongs to the other app), or worse, finish
+    // that set-up from the sign-in page.
+    const half = { ...UNVERIFIED, code: "654321" };
+    const me = person({ factors: [half, VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0), "the right code did not get in");
+    const verified = fake.calls
+      .filter((call) => call.name === "factors:verify")
+      .map((call) => call.pathname);
+    assert.deepEqual(verified, [`/auth/v1/factors/${VERIFIED.id}/verify`]);
+    assert.equal(
+      fake.user(me.id).factors[0].status,
+      "unverified",
+      "the half-finished set-up was completed by the sign-in page",
+    );
   });
 
   test("moves on exactly once, to the home screen, after the right code", async () => {
@@ -526,9 +551,9 @@ describe("the signed-in layout, for everyone else", () => {
     await arriveWithSession(me, { aal: "aal2" });
     await show({ at: "/inbox" });
     assert.ok(await until(() => signedInScreen()), "an account that entered its code was kept out");
-    assert.ok(await until(() => watched.served.length > 0), "no heartbeat");
+    assert.ok(await until(heartbeatServed), "no heartbeat");
     assert.deepEqual(watched.navigations, []);
-    assert.equal(watched.served[0].userId, me.id);
+    assert.equal(servedBy("touchPresence")[0].userId, me.id);
   });
 
   test("draws the screen for an account without two-factor", async () => {
@@ -536,7 +561,7 @@ describe("the signed-in layout, for everyone else", () => {
     await arriveWithSession(me, { aal: "aal1" });
     await show({ at: "/inbox" });
     assert.ok(await until(() => signedInScreen()));
-    assert.ok(await until(() => watched.served.length > 0), "no heartbeat");
+    assert.ok(await until(heartbeatServed), "no heartbeat");
     assert.deepEqual(watched.navigations, []);
   });
 
@@ -545,7 +570,7 @@ describe("the signed-in layout, for everyone else", () => {
     await arriveWithSession(me, { aal: "aal1" });
     await show({ at: "/inbox" });
     assert.ok(await until(() => signedInScreen()));
-    assert.ok(await until(() => watched.served.length > 0), "no heartbeat");
+    assert.ok(await until(heartbeatServed), "no heartbeat");
     assert.deepEqual(watched.navigations, []);
   });
 
@@ -557,6 +582,59 @@ describe("the signed-in layout, for everyone else", () => {
     assert.deepEqual(watched.navigations, ["/auth"]);
     assert.equal(everAppeared("[data-testid='signed-in-screen']"), false);
     assert.deepEqual(watched.sent, []);
+  });
+});
+
+describe("the workspace's region, which the signed-in layout reads for the language and currency", () => {
+  // useLocale is called by the layout before it decides who may see anything,
+  // and used to start its server call whatever the session was. The server
+  // refused the call from a session that owed a code, but only after a lookup
+  // at Auth for every try.
+  const regionCalls = () => watched.sent.filter((call) => call.name === "getWorkspaceRegion");
+
+  for (const method of ["password", "magiclink", "recovery"]) {
+    test(`is not asked for by a session that owes its code (${method})`, async () => {
+      const me = person({ factors: [VERIFIED] });
+      await arriveWithSession(me, { aal: "aal1", method });
+      await show({ at: "/inbox" });
+      assert.ok(await until(() => watched.navigations.length > 0), "never sent to the prompt");
+      await settle(500);
+      assert.deepEqual(regionCalls(), [], "the region was asked for by a session that owes a code");
+      assert.deepEqual(watched.sent, []);
+    });
+  }
+
+  test("is not asked for by a visitor with no session", async () => {
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(500);
+    assert.deepEqual(regionCalls(), []);
+  });
+
+  test("is still asked for by a session that entered its code", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => servedBy("getWorkspaceRegion").length > 0), "never asked for");
+    assert.equal(servedBy("getWorkspaceRegion")[0].userId, me.id);
+  });
+
+  test("is still asked for by an account without two-factor", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => servedBy("getWorkspaceRegion").length > 0), "never asked for");
+  });
+
+  test("is asked for as soon as the code has been entered, and not before", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await settle(300);
+    assert.deepEqual(regionCalls(), []);
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => servedBy("getWorkspaceRegion").length > 0), "never asked for");
   });
 });
 
@@ -731,7 +809,7 @@ describe("when Auth has dropped a session the browser still stores", () => {
     const stored = await arriveWithSession(me, { aal: "aal1" });
     await show({ at: "/inbox" });
     assert.ok(await until(() => signedInScreen()), "the account was not let in");
-    assert.ok(await until(() => watched.served.length > 0), "no heartbeat");
+    assert.ok(await until(heartbeatServed), "no heartbeat");
     fake.revoke(stored.id);
     browser.location.pathname = "/inbox";
     // The server remembers for a minute that this account has no second factor,
@@ -934,7 +1012,7 @@ describe("nobody is locked out: e-mailed links", () => {
       await arriveWithSession(me, { aal: "aal1", method });
       await show({ at: "/inbox" });
       assert.ok(await until(() => signedInScreen()), "kept out of the app");
-      assert.ok(await until(() => watched.served.length > 0), "the heartbeat was refused");
+      assert.ok(await until(heartbeatServed), "the heartbeat was refused");
       assert.deepEqual(watched.navigations, []);
     });
   }
@@ -1021,7 +1099,7 @@ describe("while the router is still making a move", () => {
     await arriveWithSession(me, { aal: "aal2" });
     await show({ at: "/inbox" });
     assert.ok(await until(() => signedInScreen()));
-    assert.ok(await until(() => watched.served.length > 0));
+    assert.ok(await until(heartbeatServed));
     assert.deepEqual(watched.navigations, []);
   });
 

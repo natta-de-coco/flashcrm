@@ -154,6 +154,10 @@ export async function buildScreensBundle() {
         "lib/presence.functions": {
           contents: `export { touchPresence } from "./tests/support/two-factor-wire.mjs";`,
         },
+        // The workspace's region, which the layout reads through useLocale.
+        "lib/workspace.functions": {
+          contents: `export { getWorkspaceRegion } from "./tests/support/two-factor-wire.mjs";`,
+        },
       }),
     ],
   });

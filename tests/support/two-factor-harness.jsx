@@ -40,7 +40,13 @@ function pageAt(pathname) {
 /** The app, as far as sign-in is concerned. */
 export function App({ startAt, language = "en" }) {
   const [location, setLocation] = useState(() => parse(startAt));
-  const queryClient = useMemo(() => new QueryClient(), []);
+  // gcTime 0: the default keeps every query for five minutes after its page is
+  // gone, which holds a timer open and made `node --test` wait about five
+  // minutes after the last test had finished.
+  const queryClient = useMemo(
+    () => new QueryClient({ defaultOptions: { queries: { gcTime: 0 } } }),
+    [],
+  );
   const navigate = useCallback((target) => {
     const address = addressOf(target);
     watched.navigations.push(address);

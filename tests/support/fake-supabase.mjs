@@ -86,9 +86,10 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
     };
   }
 
-  async function accessToken(session, { expiresIn = 3600 } = {}) {
+  /** without: claims to leave out of the token, e.g. ["aal"] for one that does not say its level. */
+  async function accessToken(session, { expiresIn = 3600, without = [] } = {}) {
     serial += 1;
-    const token = await signWith(real, {
+    const claims = {
       iss: `${url}/auth/v1`,
       aud: "authenticated",
       role: "authenticated",
@@ -101,7 +102,9 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
       exp: seconds() + expiresIn,
       // Two tokens issued in the same second must still differ.
       jti: `t${serial}`,
-    });
+    };
+    for (const name of without) delete claims[name];
+    const token = await signWith(real, claims);
     issued.add(token);
     return token;
   }

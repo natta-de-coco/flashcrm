@@ -1097,3 +1097,36 @@ describe("when the factor lookup fails: people Auth has already answered for", (
     assert.ok(!logged.includes("example.test"), "an e-mail address was logged");
   });
 });
+
+describe("a token that does not say clearly that the code was entered", () => {
+  // Only the exact claim aal2 skips the lookup. A genuine, signed token that
+  // leaves the level out, or writes it any other way, is treated like a
+  // password-only one: the account is looked up and, if it has two-factor,
+  // refused.
+  test("a genuine token with no level at all is refused for an account with two-factor", async () => {
+    const user = account([VERIFIED]);
+    const session = await fake.session(user, { aal: "aal2" });
+    const unlabelled = await fake.tokenFor(session, { without: ["aal"] });
+    const target = serverFn("listInvoices");
+    refused(await call(target, unlabelled), target, NEEDS_CODE);
+    assert.equal(fake.count("user"), 1, "the account was not looked up");
+  });
+
+  test("... and is accepted for an account without two-factor, as any password-only token is", async () => {
+    const user = account();
+    const session = await fake.session(user);
+    const unlabelled = await fake.tokenFor(session, { without: ["aal"] });
+    const target = serverFn("listInvoices");
+    accepted(await call(target, unlabelled), target, user);
+    assert.equal(fake.count("user"), 1);
+  });
+
+  for (const aal of ["AAL2", "aal2 ", "aal3", "2", ""]) {
+    test(`a genuine token whose level is written ${JSON.stringify(aal)} is refused for an account with two-factor`, async () => {
+      const user = account([VERIFIED]);
+      const session = await fake.session(user, { aal });
+      const target = serverFn("listInvoices");
+      refused(await call(target, session.token), target, NEEDS_CODE);
+    });
+  }
+});

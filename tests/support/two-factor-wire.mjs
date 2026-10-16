@@ -102,3 +102,8 @@ export async function serverAnswer(fn, token) {
 export const touchPresence = serverFunction("touchPresence", {
   file: "src/lib/presence.functions.ts",
 });
+
+/** What the layout reads to learn the workspace's region: a server function too, so a call made for a session that owes its code is seen. */
+export const getWorkspaceRegion = serverFunction("getWorkspaceRegion", {
+  file: "src/lib/workspace.functions.ts",
+});
