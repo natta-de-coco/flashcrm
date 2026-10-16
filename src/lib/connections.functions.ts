@@ -2,6 +2,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { SOCIAL_ACCOUNT_PLATFORMS } from "@/lib/connections-catalog";
 import { connectionStatus, statusInputFromRow } from "@/lib/connection-status";
+import { ONLY_ADMIN_MESSAGE } from "@/lib/integration-health";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -38,7 +39,7 @@ async function adminCaller(
     throw new Error("Your workspace is still being set up — try again in a moment.");
   }
   if (!["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""))) {
-    throw new Error("Only a company admin can check connections.");
+    throw new Error(ONLY_ADMIN_MESSAGE);
   }
   return { tenantId: profile.tenant_id, staff: profile.staff_role === "super_admin" };
 }

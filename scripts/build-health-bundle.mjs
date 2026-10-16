@@ -80,3 +80,20 @@ await bundle("src/lib/integration-health.server.ts", "flas-health-engine.mjs");
 await bundle("src/lib/connections.server.ts", "flas-health-connections-server.mjs");
 // The browser-safe model: counts, outcome summary, CSV.
 await bundle("src/lib/integration-health.ts", "flas-health-model.mjs");
+// The words: which sentence each status and outcome is, and the messages of all five languages.
+await bundle("src/lib/integration-health-text.ts", "flas-health-text.mjs");
+await build({
+  stdin: {
+    contents: [
+      "export { MESSAGES } from './src/lib/i18n/messages';",
+      "export { TRANSLATED_LANGUAGES } from './src/lib/i18n/define';",
+    ].join("\n"),
+    resolveDir: process.cwd(),
+  },
+  outfile: "node_modules/.cache/flas-health-i18n.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  logLevel: "error",
+  alias: { "@": "./src" },
+});

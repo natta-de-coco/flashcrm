@@ -249,6 +249,9 @@ export function summariseOutcomes(results: ReadonlyArray<Pick<RetryResult, "outc
   };
 }
 
+/** What the server answers when someone who is not a company admin asks for a check. */
+export const ONLY_ADMIN_MESSAGE = "Only a company admin can check connections.";
+
 export const ALL_PLATFORM_IDS = CONNECTORS.map((c) => c.id);
 
 export function platformName(id: string): string {

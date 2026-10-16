@@ -1,6 +1,11 @@
-// Customer-facing Integration Health Report: one row per platform with status,
-// last error, missing permissions and the next retry step — exportable as PDF
-// or CSV, and able to run the automatic retry workflow on the spot.
+// Integration Health Report: one row per connected account (and one per platform with none), each
+// with a plain state, the reason, and ONE next step chosen from the evidence on the account. A check
+// asks the platform; the screen only ever says "Connected" for what the server saved as verified.
+// Exportable as PDF or CSV.
+//
+// Technical details (permission names, the platform's own answers, the stage a check stopped at)
+// reach only Flas staff: the server sends them to nobody else, and this screen shows them only to a
+// super admin.
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +31,17 @@ import {
   needsAttention,
 } from "@/lib/integration-health";
 import type { HealthRow } from "@/lib/integration-health";
+import {
+  ONLY_ADMIN_MESSAGE,
+  describeAction,
+  describeChecks,
+  describeFix,
+  describeLabel,
+  describeNotProven,
+  describeReason,
+  type Described,
+  type Format,
+} from "@/lib/integration-health-text";
 
 /**
  * Counts come from the connector registry, so the grid and this dialog cannot
@@ -34,6 +50,7 @@ import type { HealthRow } from "@/lib/integration-health";
  */
 const KEYED_CONNECTORS = NON_OAUTH_CONNECTORS;
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, CheckCircle2, FileDown, RefreshCw, Stethoscope } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -54,11 +71,12 @@ const TONE: Record<string, string> = {
 };
 
 export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
-  const { t, tr } = useI18n();
+  const { t, tr, language } = useI18n();
   const [open, setOpen] = useState(false);
   const { isSuperAdmin } = useAuth();
   const qc = useQueryClient();
-  const retry = useServerFn(retryConnections);
+  const check = useServerFn(retryConnections);
+  const format: Format = { time: (iso) => new Date(iso).toLocaleString(language) };
 
   const report = useQuery({
     queryKey: ["integration-health"],
@@ -80,27 +98,20 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const runRetry = useMutation({
-    mutationFn: async (accountId?: string) => retry({ data: accountId ? { accountId } : {} }),
+  // One account (its own id) or, with no id, every account that needs a check. The message after it
+  // comes from what each check really did, never from "nothing to retry".
+  const runCheck = useMutation({
+    mutationFn: async (accountId?: string) => check({ data: accountId ? { accountId } : {} }),
     onSuccess: (result) => {
-      const results = result.results ?? [];
-      if (results.length === 0) {
-        toast.success(t("healthReportDialog.nothingToRetryEveryConnection"));
-      } else {
-        const recovered = results.filter((r) =>
-          ["healthy", "recovered", "refreshed"].includes(r.outcome),
-        ).length;
-        toast.success(
-          t("healthReportDialog.reCheckedConnectionSHealthy", {
-            length: results.length,
-            recovered: recovered,
-          }),
-        );
-      }
+      const { kind, parts } = describeChecks(result.results ?? [], format);
+      toast[kind](parts.map((part) => t(part.key, part.values)).join(" "));
       void qc.invalidateQueries({ queryKey: ["integration-health"] });
       void qc.invalidateQueries({ queryKey: ["connections"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) =>
+      toast.error(
+        e.message === ONLY_ADMIN_MESSAGE ? t("healthReportDialog.onlyCompanyAdmin") : e.message,
+      ),
   });
 
   const data = report.data;
@@ -178,21 +189,25 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
                   <HealthRowCard
                     key={row.account_id ?? row.platform}
                     row={row}
-                    onRetry={() => runRetry.mutate(undefined)}
-                    retrying={runRetry.isPending}
+                    format={format}
+                    staff={isSuperAdmin}
+                    // Each row checks its own account: the old row button ran the whole group, and
+                    // reported "nothing to retry" for an account that was merely unverified.
+                    checking={runCheck.isPending && runCheck.variables === row.account_id}
+                    busy={runCheck.isPending}
+                    onCheck={(accountId) => runCheck.mutate(accountId)}
+                    onLeave={() => setOpen(false)}
                   />
                 ))}
               </div>
 
               {data.retries.length > 0 && (
                 <div className="mt-4 grid gap-1.5">
-                  <p className="text-sm font-semibold">
-                    {t("healthReportDialog.recentAutomaticRetries")}
-                  </p>
+                  <p className="text-sm font-semibold">{t("healthReportDialog.recentChecks")}</p>
                   {data.retries.slice(0, 8).map((r) => (
                     <p key={r.id} className="text-xs text-muted-foreground">
-                      {new Date(r.created_at).toLocaleString()} · {r.platform.replace(/_/g, " ")} ·{" "}
-                      <span className="font-medium">{r.outcome}</span>
+                      {new Date(r.created_at).toLocaleString(language)} ·{" "}
+                      {r.platform.replace(/_/g, " ")}
                       {r.reason ? ` — ${r.reason}` : ""}
                     </p>
                   ))}
@@ -205,15 +220,14 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
-                // Nothing to retry when every connection is healthy. The server
-                // already handles that case gracefully, so this only saves a
-                // pointless round trip -- but a button that looks actionable
-                // and does nothing is its own small lie.
-                disabled={runRetry.isPending || attention.length === 0}
-                onClick={() => runRetry.mutate(undefined)}
+                // Nothing to check when no account needs attention. The server handles that case
+                // gracefully, so this only saves a pointless round trip -- but a button that looks
+                // actionable and does nothing is its own small lie.
+                disabled={runCheck.isPending || attention.length === 0}
+                onClick={() => runCheck.mutate(undefined)}
               >
-                <RefreshCw className={`size-4 ${runRetry.isPending ? "animate-spin" : ""}`} />
-                {t("healthReportDialog.retryFailingConnections")}
+                <RefreshCw className={`size-4 ${runCheck.isPending ? "animate-spin" : ""}`} />
+                {t("healthReportDialog.checkAttention")}
               </Button>
               <div className="flex gap-2">
                 <Button
@@ -238,15 +252,82 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
 
 function HealthRowCard({
   row,
-  onRetry,
-  retrying,
+  format,
+  staff,
+  checking,
+  busy,
+  onCheck,
+  onLeave,
 }: {
   row: HealthRow;
-  onRetry: () => void;
-  retrying: boolean;
+  format: Format;
+  staff: boolean;
+  checking: boolean;
+  busy: boolean;
+  onCheck: (accountId: string) => void;
+  onLeave: () => void;
 }) {
   const { t, tr } = useI18n();
   const good = row.state === "connected";
+  const say = (described: Described | null, fallback: string) =>
+    described ? t(described.key, described.values) : fallback;
+
+  const labelKey = describeLabel(row);
+  const reason = say(describeReason(row, format), row.reason);
+  const fix = good ? null : say(describeFix(row, format), row.next_step);
+  const notProven = describeNotProven(row);
+  const action = describeAction(row);
+  const diagnostics = staff ? row.diagnostics : null;
+
+  const button = (() => {
+    if (!action) return null;
+    const label = t(action.key, action.values);
+    const className = "mt-2 h-7 gap-1 px-2 text-xs";
+    switch (row.action) {
+      case "verify":
+      case "retry":
+        return (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={className}
+            disabled={busy || !row.account_id}
+            onClick={() => row.account_id && onCheck(row.account_id)}
+          >
+            <RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} /> {label}
+          </Button>
+        );
+      case "coming_soon":
+        return (
+          <Button variant="ghost" size="sm" className={className} disabled>
+            {label}
+          </Button>
+        );
+      case "choose_account":
+        // The Connect accounts page opens straight on this account's picker.
+        return (
+          <Button asChild variant="ghost" size="sm" className={className}>
+            <Link
+              to="/connect"
+              search={{ connected: row.platform, select_target: row.account_id ?? "" }}
+              onClick={onLeave}
+            >
+              {label}
+            </Link>
+          </Button>
+        );
+      default:
+        // connect and reconnect: the guided sign-in is on the Connect accounts page.
+        return (
+          <Button asChild variant="ghost" size="sm" className={className}>
+            <Link to="/connect" search={{}} onClick={onLeave}>
+              {label}
+            </Link>
+          </Button>
+        );
+    }
+  })();
+
   return (
     <div className="rounded-lg border p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -262,10 +343,15 @@ function HealthRowCard({
           )}
         </div>
         <Badge className={`${TONE[row.state] ?? TONE["not_connected"]} text-[11px]`}>
-          {row.state_label}
+          {labelKey ? t(labelKey) : row.state_label}
         </Badge>
       </div>
-      <p className="mt-2 break-words text-xs text-muted-foreground">{row.reason}</p>
+      <p className="mt-2 break-words text-xs text-muted-foreground">{reason}</p>
+      {notProven && (
+        <p className="mt-1 break-words text-xs text-muted-foreground">
+          {t(notProven.key, notProven.values)}
+        </p>
+      )}
       {row.last_error && (
         <p className="mt-1 break-words text-xs text-red-600 dark:text-red-400">
           {tr("healthReportDialog.lastError", { lasterror: row.last_error })}
@@ -278,20 +364,50 @@ function HealthRowCard({
           })}
         </p>
       )}
-      <p className="mt-1 break-words text-xs">
-        <span className="font-medium">{t("healthReportDialog.nextStep")}</span> {row.next_step}
-      </p>
-      {!good && row.state !== "not_connected" && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mt-2 h-7 gap-1 px-2 text-xs"
-          disabled={retrying}
-          onClick={onRetry}
-        >
-          <RefreshCw className={`size-3.5 ${retrying ? "animate-spin" : ""}`} />{" "}
-          {t("healthReportDialog.retryNow")}
-        </Button>
+      {fix && (
+        <p className="mt-1 break-words text-xs">
+          <span className="font-medium">{t("healthReportDialog.nextStep")}</span> {fix}
+        </p>
+      )}
+      {button}
+      {diagnostics && (
+        <div className="mt-2 grid gap-0.5 rounded-md bg-muted/50 p-2 text-[11px] text-muted-foreground">
+          {diagnostics.correlation_id && (
+            <span>{t("healthReportDialog.diagReference", { id: diagnostics.correlation_id })}</span>
+          )}
+          {diagnostics.stage && (
+            <span>{t("healthReportDialog.diagStage", { stage: diagnostics.stage })}</span>
+          )}
+          {diagnostics.http_status !== null && (
+            <span>{t("healthReportDialog.diagStatus", { status: diagnostics.http_status })}</span>
+          )}
+          {diagnostics.last_attempt_at && (
+            <span>
+              {t("healthReportDialog.diagLastCheck", {
+                time: format.time(diagnostics.last_attempt_at),
+              })}
+            </span>
+          )}
+          <span>
+            {t(
+              diagnostics.evidence_storage === "ready"
+                ? "healthReportDialog.diagStorageReady"
+                : "healthReportDialog.diagStorageMissing",
+            )}
+          </span>
+          {diagnostics.scopes_missing.length > 0 && (
+            <span className="break-all">
+              {t("healthReportDialog.diagScopes", {
+                scopes: diagnostics.scopes_missing.join(", "),
+              })}
+            </span>
+          )}
+          {diagnostics.provider_message && (
+            <span className="break-words">
+              {t("healthReportDialog.diagMessage", { message: diagnostics.provider_message })}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );

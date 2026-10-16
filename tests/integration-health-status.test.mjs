@@ -449,3 +449,242 @@ describe("the exported report carries the proof", () => {
     assert.match(csv, /Read DMs/);
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   The words: every code the server can send has a sentence in all five languages.
+   ══════════════════════════════════════════════════════════════════════════ */
+import { readFileSync } from "node:fs";
+import * as text from "../node_modules/.cache/flas-health-text.mjs";
+import { MESSAGES, TRANSLATED_LANGUAGES } from "../node_modules/.cache/flas-health-i18n.mjs";
+
+const read = (path) =>
+  readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+    .split("\r\n")
+    .join("\n");
+const blanksOf = (message) => [...message.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
+const LANGUAGES = ["en", ...TRANSLATED_LANGUAGES];
+const format = { time: (iso) => `at ${iso.slice(11, 16)}` };
+
+/** A described sentence is real: in every language, with every blank filled by a value. */
+function assertSentence(described, label) {
+  assert.ok(described, `${label}: no sentence`);
+  for (const language of LANGUAGES) {
+    const message = MESSAGES[language]?.[described.key];
+    assert.ok(message, `${label}: ${described.key} is missing in ${language}`);
+    for (const blank of blanksOf(message)) {
+      assert.ok(
+        blank in described.values,
+        `${label}: {${blank}} in ${language} has no value (${Object.keys(described.values)})`,
+      );
+    }
+  }
+}
+
+describe("every status and outcome has words in five languages", () => {
+  const row = (over = {}) => ({
+    platform: "facebook",
+    platform_name: "Facebook",
+    reason_code: "not_verified",
+    reason_params: {
+      verified: "2026-10-15T08:00:00.000Z",
+      synced: "2026-10-15T09:00:00.000Z",
+      retry_at: "2026-10-15T10:00:00.000Z",
+      missing: ["Read DMs"],
+    },
+    state: "unverified",
+    action: "verify",
+    not_proven: ["Read DMs"],
+    ...over,
+  });
+
+  test("each reason and fix the server can send", () => {
+    for (const code of [
+      "not_verified",
+      "evidence_unavailable",
+      "scopes_unknown",
+      "scopes_missing",
+      "connected",
+      "verified_not_synced",
+      "disconnected",
+      "provider_unavailable",
+      "unidentified",
+    ]) {
+      assertSentence(text.describeReason(row({ reason_code: code }), format), `reason ${code}`);
+    }
+    for (const code of [
+      "not_verified",
+      "evidence_unavailable",
+      "scopes_unknown",
+      "scopes_missing",
+      "verified_not_synced",
+      "disconnected",
+      "provider_unavailable",
+      "unidentified",
+    ]) {
+      assertSentence(text.describeFix(row({ reason_code: code }), format), `fix ${code}`);
+    }
+    // Codes that keep the server's English (sync problems, expiry...) are not described here.
+    assert.equal(text.describeReason(row({ reason_code: "revoked" }), format), null);
+  });
+
+  test("with no time to try again the fix says 'in a few minutes'", () => {
+    const soon = text.describeFix(
+      row({ reason_code: "provider_unavailable", reason_params: {} }),
+      format,
+    );
+    assert.equal(soon.key, "healthReportDialog.fixProviderUnavailableSoon");
+    assertSentence(soon, "soon");
+  });
+
+  test("each outcome of a check", () => {
+    for (const outcome of text.ALL_OUTCOMES) {
+      const parts = text.describeResult(
+        {
+          platform: "facebook",
+          outcome,
+          reason: "x",
+          correlation_id: "abcd1234",
+          http_status: 503,
+          params: { permissions: ["Read DMs"], retry_at: "2026-10-15T10:00:00.000Z" },
+        },
+        format,
+      );
+      assert.ok(parts.length > 0, outcome);
+      parts.forEach((part, i) => assertSentence(part, `outcome ${outcome}#${i}`));
+    }
+  });
+
+  test("an outage with no HTTP status does not print 'HTTP undefined'", () => {
+    const [part] = text.describeResult(
+      { platform: "facebook", outcome: "provider_unavailable", reason: "x", http_status: null },
+      format,
+    );
+    assert.equal(part.key, "healthReportDialog.outcomeUnavailable");
+    assert.ok(!("status" in part.values));
+  });
+
+  test("each button", () => {
+    for (const action of [
+      "connect",
+      "choose_account",
+      "verify",
+      "reconnect",
+      "retry",
+      "coming_soon",
+    ]) {
+      assertSentence(text.describeAction(row({ action })), `button ${action}`);
+    }
+    assert.equal(text.describeAction(row({ action: "none" })), null);
+    assert.equal(MESSAGES.en["healthReportDialog.continueWith"], "Continue with {Platform}");
+    assert.equal(
+      text.describeAction(row({ action: "connect", platform: "instagram" })).values.Platform,
+      "Facebook",
+      "every Meta product is 'Continue with Facebook', as on the Connect cards",
+    );
+    assert.equal(
+      text.describeAction(row({ action: "connect", platform: "youtube" })).values.Platform,
+      "Google",
+    );
+  });
+
+  test("the badge labels for the new states, and what a connected account cannot prove", () => {
+    assert.equal(
+      text.describeLabel(row({ reason_code: "disconnected", state: "not_connected" })),
+      "healthReportDialog.labelDisconnected",
+    );
+    assert.equal(
+      text.describeLabel(row({ state: "unverified" })),
+      "healthReportDialog.labelUnverified",
+    );
+    assert.equal(
+      text.describeLabel(
+        row({ state: "provider_unavailable", reason_code: "provider_unavailable" }),
+      ),
+      "healthReportDialog.labelProviderUnavailable",
+    );
+    assertSentence(text.describeNotProven(row({ state: "connected" })), "not proven");
+    assert.equal(text.describeNotProven(row({ state: "unverified" })), null);
+  });
+
+  test("the message after a check comes from what happened", () => {
+    const none = text.describeChecks([], format);
+    assert.equal(none.kind, "info");
+    assert.equal(none.parts[0].key, "healthReportDialog.nothingNeededCheck");
+
+    const one = text.describeChecks(
+      [{ platform: "facebook", outcome: "healthy", reason: "x" }],
+      format,
+    );
+    assert.equal(one.kind, "success");
+    assert.equal(one.parts[0].key, "healthReportDialog.outcomeVerified");
+    const refused = text.describeChecks(
+      [{ platform: "facebook", outcome: "forbidden", reason: "x" }],
+      format,
+    );
+    assert.equal(refused.kind, "warning");
+
+    const many = text.describeChecks(
+      [
+        { platform: "facebook", outcome: "healthy", reason: "x" },
+        { platform: "facebook", outcome: "forbidden", reason: "x" },
+        { platform: "threads", outcome: "not_checkable", reason: "x" },
+      ],
+      format,
+    );
+    assert.equal(many.kind, "warning");
+    assert.deepEqual(many.parts[0].values, { n: 3, verified: 1, attention: 1, skipped: 1 });
+    assertSentence(many.parts[0], "summary");
+  });
+});
+
+describe("the agreed English, and the promises it must not make", () => {
+  test("the wording the coordinator fixed", () => {
+    const en = MESSAGES.en;
+    assert.equal(
+      en["healthReportDialog.reasonEvidenceUnavailable"],
+      "Flas cannot save verification results for this workspace yet, so this account cannot be marked verified.",
+    );
+    assert.equal(
+      en["healthReportDialog.fixEvidenceUnavailable"],
+      "Ask Flas support to finish the database update, then press Verify now.",
+    );
+    assert.equal(
+      en["healthReportDialog.fixProviderUnavailable"],
+      "Nothing to do now. Press Retry now after {time}.",
+    );
+    assert.equal(
+      en["healthReportDialog.outcomeUnavailableStatus"],
+      "{Platform} did not answer (HTTP {status}). Nothing was changed and the account was not marked verified. Try again after {time}.",
+    );
+  });
+
+  test("no sentence on this screen promises an automatic check or says everything is healthy", () => {
+    for (const language of LANGUAGES) {
+      for (const [key, message] of Object.entries(MESSAGES[language])) {
+        if (!key.startsWith("healthReportDialog.")) continue;
+        if (language === "en") {
+          assert.doesNotMatch(
+            message,
+            /automatic|checks again|tries again|every connection is healthy|all healthy/i,
+            key,
+          );
+        }
+      }
+    }
+    assert.ok(!("healthReportDialog.nothingToRetryEveryConnection" in MESSAGES.en));
+    assert.ok(!("healthReportDialog.reCheckedConnectionSHealthy" in MESSAGES.en));
+  });
+
+  test("the technical diagnostics are Flas-staff-only, in the data and on the screen", () => {
+    const source = read("src/components/integrations/HealthReportDialog.tsx");
+    assert.match(source, /staff \? row\.diagnostics : null/);
+    assert.match(source, /staff=\{isSuperAdmin\}/);
+  });
+
+  test("a row's button checks that row's own account, not the whole group", () => {
+    const source = read("src/components/integrations/HealthReportDialog.tsx");
+    assert.match(source, /onCheck\(row\.account_id\)/);
+    assert.match(source, /runCheck\.variables === row\.account_id/);
+    assert.doesNotMatch(source, /nothingToRetryEveryConnection/);
+  });
+});
