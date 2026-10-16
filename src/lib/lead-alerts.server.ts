@@ -1,14 +1,4 @@
-/**
- * src/lib/lead-alerts.server.ts
- *
- * Real-time Instant Sales Lead Alert Dispatcher.
- * Notifies sales reps by WhatsApp and in-app alert whenever a new lead submits their contact info
- * or requests a quotation in the widget. Email alerts are not sent yet (this path calls no
- * sender): they are logged as not sent and never counted.
- */
-
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-
 export interface SalesLeadAlertArgs {
   tenantId: string;
   leadId?: string | null;
@@ -18,185 +8,136 @@ export interface SalesLeadAlertArgs {
   sourceUrl?: string | null;
   isQuoteRequest?: boolean;
 }
-
-interface TenantAlertSettingsRecord {
+interface Settings {
   lead_alerts_enabled?: boolean | null;
   alert_email_addresses?: string[] | null;
   alert_whatsapp_enabled?: boolean | null;
   alert_whatsapp_phone?: string | null;
 }
-
-interface ProfileEmailRecord {
-  email?: string | null;
+type Result<T> = { data: T | null; error: { message: string } | null };
+interface Query extends PromiseLike<Result<unknown>> {
+  select: (columns: string) => Query;
+  eq: (column: string, value: unknown) => Query;
+  in: (column: string, values: string[]) => Query;
+  limit: (count: number) => Query;
+  insert: (values: unknown) => Query;
+  maybeSingle: <T>() => Promise<Result<T>>;
 }
-
-interface UntypedDbResult<T = unknown> {
-  data: T | null;
-  error: { message: string } | null;
-}
-
-interface UntypedDbQuery {
-  select: (cols?: string) => UntypedDbQuery;
-  insert: (values: unknown) => UntypedDbQuery;
-  eq: (col: string, val: unknown) => UntypedDbQuery;
-  in: (col: string, vals: unknown[]) => UntypedDbQuery;
-  limit: (count: number) => UntypedDbQuery;
-  maybeSingle: <T = unknown>() => Promise<UntypedDbResult<T>>;
-  then: <T = unknown>(resolve: (val: UntypedDbResult<T>) => void) => Promise<unknown>;
-}
-
-interface UntypedDbClient {
-  from: (table: string) => UntypedDbQuery;
-  rpc: (fn: string, args?: unknown) => Promise<UntypedDbResult<unknown>>;
-}
-
-const db = (client: unknown): UntypedDbClient => client as unknown as UntypedDbClient;
-
-/**
- * What a person is told when an alert was meant to be emailed and nothing was sent because no mail
- * transport is connected yet. Shown as it is, so keep it plain.
- */
+const db = supabaseAdmin as unknown as {
+  from: (table: string) => Query;
+  rpc: (name: string, args: unknown) => Promise<Result<unknown>>;
+};
 const ALERT_NOT_EMAILED_REASON =
   "Email sending is not connected yet, so this alert was not emailed.";
 
+/** Store an in-app notification. Never fabricate external delivery evidence. */
 export async function dispatchSalesLeadAlert(args: SalesLeadAlertArgs): Promise<{
   notifiedEmails: number;
   notifiedWhatsApp: boolean;
-  /** Set when email alerts were due and none could be sent; says why. */
+  notifiedInApp: boolean;
   emailNotSent?: string;
 }> {
-  const { tenantId, leadId, email, name, phone, sourceUrl, isQuoteRequest = false } = args;
-
-  // 1. Fetch workspace alert configuration
-  const { data: rawSettings } = await db(supabaseAdmin)
+  const { data: settings, error: settingsError } = await db
     .from("tenant_alert_settings")
     .select("*")
-    .eq("tenant_id", tenantId)
-    .maybeSingle<TenantAlertSettingsRecord>();
-
-  const settings = rawSettings;
-
-  // If no settings exist yet, default to enabled for workspace owner
-  const alertsEnabled = settings ? settings.lead_alerts_enabled : true;
-  if (!alertsEnabled) {
-    return { notifiedEmails: 0, notifiedWhatsApp: false };
-  }
-
-  // Resolve target email addresses
-  let targetEmails: string[] = settings?.alert_email_addresses || [];
-  if (targetEmails.length === 0) {
-    // Fall back to workspace profile owners
-    const { data: owners } = await db(supabaseAdmin)
-      .from("profiles")
-      .select("email")
-      .eq("tenant_id", tenantId)
-      .in("role", ["admin", "owner", "agent"])
-      .limit(5);
-
-    targetEmails = ((owners as ProfileEmailRecord[]) || [])
-      .map((o) => o.email)
-      .filter((e): e is string => Boolean(e));
-  }
-
-  const subject = isQuoteRequest
-    ? `🔥 Hot Lead Alert: ${name || email} requested a quotation`
-    : `⚡ New Lead Captured: ${name || email}`;
-
-  let notifiedWhatsApp = false;
-
-  // 2. Email alerts. Nothing in this code can send an email yet, so an alert is never recorded as
-  // sent and never counted: each recipient is logged as "not sent" with the plain reason, and the
-  // caller is told (emailNotSent). The in-app notification below is the alert that really goes out.
-  for (const recipient of targetEmails) {
+    .eq("tenant_id", args.tenantId)
+    .maybeSingle<Settings>();
+  if (settingsError) throw new Error("Lead alert settings could not be read; no alerts were sent.");
+  if (settings?.lead_alerts_enabled === false)
+    return { notifiedEmails: 0, notifiedWhatsApp: false, notifiedInApp: false };
+  const { data: profileData, error: profileError } = await db
+    .from("profiles")
+    .select("id, email, staff_role")
+    .eq("tenant_id", args.tenantId)
+    .in("staff_role", ["company_admin", "super_admin", "marketing_manager", "staff"])
+    .limit(100);
+  if (profileError) throw new Error("Lead notification recipients could not be read.");
+  const profiles = (profileData ?? []) as {
+    id: string;
+    email: string | null;
+    staff_role: string;
+  }[];
+  const configuredEmails = [...new Set(settings?.alert_email_addresses ?? [])];
+  const managers = profiles.filter((profile) =>
+    ["company_admin", "super_admin"].includes(profile.staff_role),
+  );
+  const recipients = profiles.filter(
+    (profile) =>
+      managers.includes(profile) ||
+      (!!profile.email && configuredEmails.includes(profile.email.toLowerCase())),
+  );
+  const emails = configuredEmails.length
+    ? configuredEmails
+    : managers.map((profile) => profile.email).filter((email): email is string => !!email);
+  const subject = args.isQuoteRequest ? "New quotation request" : "New lead captured";
+  const failures = emails.map((recipient) => ({
+    tenant_id: args.tenantId,
+    lead_id: args.leadId ?? null,
+    alert_channel: "email",
+    recipient,
+    subject,
+    status: "failed",
+    error: ALERT_NOT_EMAILED_REASON,
+  }));
+  if (settings?.alert_whatsapp_enabled && settings.alert_whatsapp_phone)
+    failures.push({
+      tenant_id: args.tenantId,
+      lead_id: args.leadId ?? null,
+      alert_channel: "whatsapp",
+      recipient: settings.alert_whatsapp_phone,
+      subject,
+      status: "failed",
+      error: "FLAS_WHATSAPP_ALERT_PIPELINE_UNAVAILABLE",
+    });
+  if (failures.length) {
     try {
-      const { error } = await db(supabaseAdmin).rpc("log_email_delivery", {
-        _tenant_id: tenantId,
+      const { error } = await db.from("lead_alerts_log").insert(failures);
+      if (error) console.error("[lead-alerts] Could not record unsent external alert diagnostics");
+    } catch {
+      console.error("[lead-alerts] Could not record unsent external alert diagnostics");
+    }
+  }
+  for (const recipient of emails) {
+    try {
+      const { error } = await db.rpc("log_email_delivery", {
+        _tenant_id: args.tenantId,
         _user_id: null,
         _recipient: recipient,
         _from_address: "flas@mobidigisol.com",
         _subject: subject,
         _template: "internal_sales_lead_alert",
         _provider: "platform_smtp",
-        _provider_msg_id: `alert_unsent_${leadId || Date.now()}`,
+        _provider_msg_id: `alert_unsent_${args.leadId || Date.now()}`,
         _status: "failed",
         _error: ALERT_NOT_EMAILED_REASON,
-        _meta: { lead_email: email, name, sourceUrl, error: ALERT_NOT_EMAILED_REASON },
+        _meta: { error: ALERT_NOT_EMAILED_REASON },
       });
-      if (error) console.error("[lead-alerts] Could not record the unsent alert email");
+      if (error) console.error("[lead-alerts] Could not record unsent email diagnostics");
     } catch {
-      console.error("[lead-alerts] Could not record the unsent alert email");
-    }
-
-    try {
-      const { error } = await db(supabaseAdmin)
-        .from("lead_alerts_log")
-        .insert({
-          tenant_id: tenantId,
-          lead_id: leadId || null,
-          alert_channel: "email",
-          recipient,
-          subject,
-          status: "failed",
-          error: ALERT_NOT_EMAILED_REASON,
-        });
-      if (error) console.error("[lead-alerts] Could not record the unsent alert");
-    } catch {
-      console.error("[lead-alerts] Could not record the unsent alert");
+      console.error("[lead-alerts] Could not record unsent email diagnostics");
     }
   }
-  const emailNotSent = targetEmails.length > 0 ? ALERT_NOT_EMAILED_REASON : undefined;
-
-  // 3. Dispatch WhatsApp Alert if configured
-  if (settings?.alert_whatsapp_enabled && settings.alert_whatsapp_phone) {
-    try {
-      const { resolveWaCredentials, sendWhatsAppText } = await import("./wa.server");
-      const creds = await resolveWaCredentials(tenantId);
-      if (creds && creds.token && creds.phoneNumberId) {
-        const waText =
-          `🚨 *Flas Hot Lead Alert*\n\n` +
-          `*Name:* ${name || "Visitor"}\n` +
-          `*Email:* ${email}\n` +
-          `*Phone:* ${phone || "N/A"}\n` +
-          `*Source:* ${sourceUrl || "Website"}\n\n` +
-          `Please contact this lead promptly.`;
-
-        await sendWhatsAppText(settings.alert_whatsapp_phone, waText, creds);
-
-        await db(supabaseAdmin)
-          .from("lead_alerts_log")
-          .insert({
-            tenant_id: tenantId,
-            lead_id: leadId || null,
-            alert_channel: "whatsapp",
-            recipient: settings.alert_whatsapp_phone,
-            subject: "WhatsApp Alert",
-            status: "sent",
-          });
-
-        notifiedWhatsApp = true;
-      }
-    } catch (e) {
-      console.error("[lead-alerts] Failed to send WhatsApp alert:", e);
-    }
-  }
-
-  // 4. In-App Notification (Database table)
-  try {
-    await db(supabaseAdmin)
-      .from("notifications")
-      .insert({
-        tenant_id: tenantId,
-        type: "new_lead",
-        title: subject,
-        message: `${name || email} submitted their contact details via website widget.`,
-        link: "/marketing",
-      });
-  } catch (notifErr: unknown) {
-    console.warn("[lead-alerts] Failed to insert in-app notification:", notifErr);
-  }
-
-  // No email alert is ever counted as sent: notifiedEmails stays 0 until a real send exists.
-  return emailNotSent === undefined
-    ? { notifiedEmails: 0, notifiedWhatsApp }
-    : { notifiedEmails: 0, notifiedWhatsApp, emailNotSent };
+  const result = {
+    notifiedEmails: 0,
+    notifiedWhatsApp: false,
+    notifiedInApp: false,
+    ...(emails.length ? { emailNotSent: ALERT_NOT_EMAILED_REASON } : {}),
+  };
+  // Real email transport and approved WhatsApp utility templates/pipeline are
+  // separate work. Do not call a raw WA sender or log a provider receipt here.
+  if (!recipients.length) return result;
+  const body = Array.from(`${args.name || args.email} submitted their contact details.`)
+    .slice(0, 1000)
+    .join("");
+  const { error } = await db.from("workspace_notifications").insert(
+    recipients.map((profile) => ({
+      tenant_id: args.tenantId,
+      recipient_user_id: profile.id,
+      lead_id: args.leadId ?? null,
+      title: subject,
+      body,
+    })),
+  );
+  if (error) throw new Error("The in-app lead notifications could not be saved.");
+  return { ...result, notifiedInApp: true };
 }

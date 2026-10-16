@@ -36,6 +36,9 @@ const GOOD_KEY = crypto.randomBytes(32).toString("hex");
 const A = "company-a";
 const B = "company-b";
 const EMAIL = "new@example.com";
+const alertRecipients = [
+  { id: "admin-a", tenant_id: A, staff_role: "company_admin", email: "owner@example.com" },
+];
 
 const NOT_CONNECTED = "Email sending is not connected yet, so nothing was sent.";
 const ALERT_NOT_EMAILED = "Email sending is not connected yet, so this alert was not emailed.";
@@ -182,38 +185,50 @@ describe("welcome email", () => {
   });
 
   it("the lead is still captured, with the sales alert, when the email cannot be sent", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
 
     const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
+    assert.equal(
+      db.table("workspace_notifications").length,
+      1,
+      "the in-app sales alert is still raised",
+    );
     assertNothingClaimedAsSent();
     assert.ok(statuses().length >= 1);
   });
 
   it("the lead is still captured when the welcome step itself throws", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
     unreachableTable = "tenant_smtp_config";
 
     const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
+    assert.equal(
+      db.table("workspace_notifications").length,
+      1,
+      "the in-app sales alert is still raised",
+    );
     assertNothingClaimedAsSent();
   });
 
   it("the lead is still captured when the delivery log is unreachable", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
     logFault = "unreachable";
 
     const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
+    assert.equal(
+      db.table("workspace_notifications").length,
+      1,
+      "the in-app sales alert is still raised",
+    );
   });
 });
 
@@ -431,7 +446,7 @@ describe("alert to the sales team", () => {
     dispatchSalesLeadAlert({ tenantId: A, leadId: "lead-1", email: EMAIL, name: "Sam" });
 
   it("is not recorded as sent, is not counted, and says plainly that it was not emailed", async () => {
-    db.reset({ tenant_alert_settings: [settings()] });
+    db.reset({ tenant_alert_settings: [settings()], profiles: alertRecipients });
 
     const result = await alert();
 
@@ -450,7 +465,9 @@ describe("alert to the sales team", () => {
 
   it("falls back to the company's staff, and is still not claimed as sent", async () => {
     db.reset({
-      profiles: [{ id: "u1", tenant_id: A, role: "admin", email: "owner@example.com" }],
+      profiles: [
+        { id: "u1", tenant_id: A, staff_role: "company_admin", email: "owner@example.com" },
+      ],
     });
 
     const result = await alert();
@@ -464,9 +481,9 @@ describe("alert to the sales team", () => {
   });
 
   it("the in-app notification, which really is written, is still raised", async () => {
-    db.reset({ tenant_alert_settings: [settings()] });
+    db.reset({ tenant_alert_settings: [settings()], profiles: alertRecipients });
     await alert();
-    assert.equal(db.table("notifications").length, 1);
+    assert.equal(db.table("workspace_notifications").length, 1);
   });
 
   it("with nobody to email there is nothing to refuse", async () => {
@@ -479,13 +496,13 @@ describe("alert to the sales team", () => {
   it("alerts switched off write nothing", async () => {
     db.reset({ tenant_alert_settings: [settings({ lead_alerts_enabled: false })] });
     const result = await alert();
-    assert.deepEqual(result, { notifiedEmails: 0, notifiedWhatsApp: false });
+    assert.deepEqual(result, { notifiedEmails: 0, notifiedWhatsApp: false, notifiedInApp: false });
     assert.deepEqual(statuses(), []);
-    assert.equal(db.table("notifications").length, 0);
+    assert.equal(db.table("workspace_notifications").length, 0);
   });
 
   it("a delivery log or alert log that refuses the record does not break the alert", async () => {
-    db.reset({ tenant_alert_settings: [settings()] });
+    db.reset({ tenant_alert_settings: [settings()], profiles: alertRecipients });
     logFault = "unreachable";
     db.fail("lead_alerts_log:insert", { code: "XX000", message: "down" });
 
@@ -493,7 +510,7 @@ describe("alert to the sales team", () => {
 
     assert.equal(result.notifiedEmails, 0);
     assert.equal(result.emailNotSent, ALERT_NOT_EMAILED);
-    assert.equal(db.table("notifications").length, 1);
+    assert.equal(db.table("workspace_notifications").length, 1);
   });
 
   it("a captured lead raises it with no 'sent' claim anywhere", async () => {
@@ -735,7 +752,7 @@ describe("welcome step runs when consent is newly given, not on every message", 
     ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven });
 
   it("three messages from the same consented visitor make one welcome attempt", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
 
     await capture();
     await capture();
@@ -758,7 +775,7 @@ describe("welcome step runs when consent is newly given, not on every message", 
   });
 
   it("messages without consent never start it; the message that gives consent does, once", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
 
     await capture(false);
     await capture(false);
