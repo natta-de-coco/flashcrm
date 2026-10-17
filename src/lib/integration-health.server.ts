@@ -24,6 +24,7 @@ import {
   evidenceFor,
   newCheckId,
   plainOrNull,
+  readCredentials,
   readEvidence,
   safeText,
   writeCheck,
@@ -551,6 +552,16 @@ async function runCheck(
     correlation_id: check.reference,
   });
 
+  // What the account stores as credentials, fingerprinted, BEFORE anything is read from it: every
+  // credential the check then uses is at least as new as this, so a reconnect that lands in between
+  // can only make the final write refuse, never apply an answer about the old token to the new one.
+  const started = await readCredentials(args.tenantId, args.accountId);
+  if (started.kind === "error") {
+    console.error(`[integration-health] ${check.reference} load failed`);
+    return noAccount("failed", "load");
+  }
+  if (started.kind === "gone") return noAccount("not_found", "load");
+
   const { data, error } = await supabaseAdmin
     .from("social_accounts")
     .select(ACCOUNT_COLUMNS)
@@ -652,8 +663,7 @@ async function runCheck(
   const unchangedSince: CheckStart = {
     active: row.active,
     connection_state: row.connection_state,
-    access_token: row.access_token,
-    refresh_token: row.refresh_token,
+    credentials: started.fingerprint,
   };
   let refreshed = false;
   let refreshError: string | null = null;
@@ -740,13 +750,8 @@ async function runCheck(
     lease.held = true;
 
     // Under the lease: has somebody already renewed this token while we waited? Then use theirs.
-    const current = await supabaseAdmin
-      .from("social_accounts")
-      .select("access_token, refresh_token, token_expires_at")
-      .eq("id", row.id)
-      .eq("tenant_id", row.tenant_id)
-      .maybeSingle();
-    if (current.error || !current.data) {
+    const cur = await readCredentials(row.tenant_id, row.id);
+    if (cur.kind !== "ok") {
       console.error(`[integration-health] ${check.reference} ${row.platform} lease read failed`);
       return {
         platform: row.platform,
@@ -758,10 +763,6 @@ async function runCheck(
         correlation_id: check.reference,
       };
     }
-    const cur = current.data as unknown as Pick<
-      AccountRow,
-      "access_token" | "refresh_token" | "token_expires_at"
-    >;
     if (cur.access_token !== row.access_token || cur.refresh_token !== row.refresh_token) {
       try {
         token = await openSecret(cur.access_token);
@@ -779,8 +780,7 @@ async function runCheck(
       }
       expiresAt = cur.token_expires_at;
       // The answer is about somebody else's renewed token, so that is the token to match.
-      unchangedSince.access_token = cur.access_token;
-      unchangedSince.refresh_token = cur.refresh_token;
+      unchangedSince.credentials = cur.fingerprint;
       probe = token
         ? await runProbe(row.platform, token, row.external_id)
         : ({ kind: "unreachable", message: "No token." } as const);

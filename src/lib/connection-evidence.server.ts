@@ -214,18 +214,74 @@ export type CheckWrite =
     };
 
 /**
- * What an account looked like when a check began, as the database stores it (raw, so a token is
- * the sealed value). The write only lands on an account that still looks exactly like this: a
- * person who disconnects, revokes or reconnects it while the platform is being asked is not
- * overwritten by an answer that was about the account as it used to be.
+ * What an account looked like when a check began. The write only lands on an account that still
+ * looks like this: a person who disconnects, revokes or reconnects it while the platform is being
+ * asked is not overwritten by an answer that was about the account as it used to be.
+ *
+ * The credentials are carried as a fingerprint (credentialsOf), never as values: a stored token
+ * must not become part of a database request address, which is what a filter on it would do.
  */
 export type CheckStart = {
   active: boolean;
   /** Left out (undefined) when the write is not about the state, only about keeping a new token. */
   connection_state?: string | null | undefined;
-  access_token: string | null;
-  refresh_token: string | null;
+  /** credentialsOf().fingerprint of the stored credentials the check used. */
+  credentials: string;
 };
+
+/** The columns whose values are the account's credentials. Their values never leave the server. */
+const CREDENTIAL_COLUMNS = ["access_token", "refresh_token"] as const;
+
+export type CredentialsRead =
+  | {
+      kind: "ok";
+      access_token: string | null;
+      refresh_token: string | null;
+      token_expires_at: string | null;
+      /** SHA-256 of the stored credentials, as they are stored. Safe to compare, keep and log. */
+      fingerprint: string;
+    }
+  /** The account is not there (any more) for this workspace. */
+  | { kind: "gone" }
+  /** The database could not say. Never to be read as "unchanged". */
+  | { kind: "error" };
+
+async function fingerprintOf(parts: ReadonlyArray<string | null>): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(parts));
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Reads what an account stores as credentials, once, and fingerprints it. The comparison of "is it
+ * still the credentials the check used" is made here, in memory, on a fresh read -- not by asking
+ * the database to match the token in a filter, which would write the token into the request address.
+ */
+export async function readCredentials(
+  tenantId: string,
+  accountId: string,
+): Promise<CredentialsRead> {
+  try {
+    const { data, error } = await untyped()
+      .from("social_accounts")
+      .select([...CREDENTIAL_COLUMNS, "token_expires_at"].join(", "))
+      .eq("id", accountId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (error) return { kind: "error" };
+    if (!data) return { kind: "gone" };
+    const row = data as unknown as Record<string, string | null | undefined>;
+    return {
+      kind: "ok",
+      access_token: row["access_token"] ?? null,
+      refresh_token: row["refresh_token"] ?? null,
+      token_expires_at: row["token_expires_at"] ?? null,
+      fingerprint: await fingerprintOf(CREDENTIAL_COLUMNS.map((column) => row[column] ?? null)),
+    };
+  } catch {
+    return { kind: "error" };
+  }
+}
 
 type Matchable<Q> = {
   is(column: string, value: null): Q;
@@ -246,6 +302,11 @@ function equalsOrNull<Q extends Matchable<Q>>(
  * not return an error, exactly one row must come back, and the account must still be what the
  * check started from (`unchangedSince`). Anything else is a failure the caller reports; a failed or
  * empty write never reads as "saved".
+ *
+ * "Still what the check started from" is judged in two places, neither of which names a credential
+ * in the request address: the credentials are read again just before the write and their
+ * fingerprint compared in memory, and the write itself only matches an account that is still on or
+ * off and still in the same state.
  *
  * `evidence` says what to record about the check itself. When the evidence columns do not exist
  * the write is repeated once without them and the result says "unavailable".
@@ -288,8 +349,6 @@ export async function writeCheck(args: {
     if (start.connection_state !== undefined) {
       query = equalsOrNull(query, "connection_state", start.connection_state);
     }
-    query = equalsOrNull(query, "access_token", start.access_token);
-    query = equalsOrNull(query, "refresh_token", start.refresh_token);
     // The evidence columns are only asked for back when they are part of this attempt.
     return await query.select(
       withEvidence ? `${args.returning}, ${EVIDENCE_COLUMNS.join(", ")}` : args.returning,
@@ -299,6 +358,21 @@ export async function writeCheck(args: {
   let evidence: "ok" | "unavailable" = args.evidence === null ? "unavailable" : "ok";
   let result;
   try {
+    const now = await readCredentials(args.tenantId, args.accountId);
+    if (now.kind === "error") {
+      return {
+        ok: false,
+        kind: "database_error",
+        message: "The account's stored credentials could not be read, so nothing was written.",
+      };
+    }
+    if (now.kind === "gone" || now.fingerprint !== args.unchangedSince.credentials) {
+      return {
+        ok: false,
+        kind: "no_row",
+        message: "The account changed while the check ran, so nothing was written.",
+      };
+    }
     result = await attempt(true);
     if (result.error && isMissingEvidenceColumn(result.error)) {
       evidence = "unavailable";

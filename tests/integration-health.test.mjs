@@ -2686,3 +2686,167 @@ describe("what a check writes to the log holds nothing a member should not read 
     assert.equal(line.reason, null);
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 3, finding 1: no secret is ever in a request address
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("no secret is ever in a request address (round 3, finding 1)", () => {
+  const CREDENTIAL_COLUMNS = [
+    "access_token",
+    "refresh_token",
+    "access_token_enc",
+    "refresh_token_enc",
+    "token_key_id",
+  ];
+  const AUTH = "aaaaaaaa-0000-4000-8000-0000000000b1";
+
+  /** Every credential the world holds right now, as stored (sealed, encrypted or plain). */
+  const stored = () =>
+    [
+      ...world.db.table("social_accounts").flatMap((r) => CREDENTIAL_COLUMNS.map((c) => r[c])),
+      ...world.db
+        .table("social_authorizations")
+        .flatMap((r) => [r.access_token_enc, r.refresh_token_enc]),
+    ].filter((v) => typeof v === "string" && v.length >= 8);
+
+  /**
+   * Runs `run` with the real query builder in place of the database double, then looks at every
+   * request that left it: no address and no header (other than Authorization) holds a credential,
+   * as stored or as the platform knows it, and no filter is on a credential column.
+   */
+  const withoutSecretsInAddresses = async (run) => {
+    const requests = world.useRealClient();
+    const before = stored();
+    const result = await run();
+    const secrets = [...new Set([...before, ...stored(), ...Object.values(SECRET)])];
+    assert.ok(
+      requests.some((r) => r.method === "PATCH") && requests.some((r) => r.method === "GET"),
+      "the real client was used for the whole check",
+    );
+    for (const request of requests) {
+      const where = `${request.method} ${new URL(request.url).pathname}`;
+      for (const secret of secrets) {
+        for (const form of [secret, secret.replace(/^sealed:/, ""), encodeURIComponent(secret)]) {
+          assert.ok(
+            !request.url.includes(form) && !request.decoded.includes(form),
+            `${where}: the address carries a credential`,
+          );
+        }
+        for (const [name, value] of Object.entries(request.headers)) {
+          if (name === "authorization") continue;
+          assert.ok(
+            !String(value).includes(secret),
+            `${where}: header ${name} carries a credential`,
+          );
+        }
+      }
+      for (const [key, expression] of new URL(request.url).searchParams) {
+        // "is empty" and "is not empty" carry no value; anything else on a credential column would.
+        assert.ok(
+          !CREDENTIAL_COLUMNS.includes(key) || /^(not\.)?is\.null$/.test(expression),
+          `${where}: a filter on ${key} would put its value in the address`,
+        );
+      }
+    }
+    return { result, requests };
+  };
+
+  const writes = (requests) =>
+    requests.filter((r) => r.method === "PATCH" && r.url.includes("/social_accounts"));
+
+  test("a token still stored as plain text (the old rows) is not in the address of the write", async () => {
+    const account = world.account({ access_token: SECRET.meta });
+    world.provider(facebookHealthy());
+    const { result, requests } = await withoutSecretsInAddresses(() => check(account.id));
+    assert.equal(result.outcome, "healthy");
+    assert.equal(writes(requests).length, 1, "and the result really was written");
+    assert.ok(world.stored(account.id).last_validation_success_at);
+  });
+
+  test("a sealed token is not in the address either", async () => {
+    const account = world.account();
+    world.provider(facebookHealthy());
+    const { result } = await withoutSecretsInAddresses(() => check(account.id));
+    assert.equal(result.outcome, "healthy");
+  });
+
+  test("a refused token, an outage and a rate limit are written without one", async () => {
+    for (const reply of [
+      () => json(401, { error: { message: "Invalid OAuth access token.", code: 190 } }),
+      () => json(503, { error: { message: "down" } }),
+      () => json(429, { error: { message: "slow down" } }, { "retry-after": "120" }),
+    ]) {
+      world.reset();
+      const account = world.account({ access_token: SECRET.meta });
+      world.provider([on(`${GRAPH}/1000?fields=id`, reply)]);
+      const { result } = await withoutSecretsInAddresses(() => check(account.id));
+      assert.notEqual(result.outcome, "healthy");
+      world.restore();
+    }
+  });
+
+  test("renewing a token (the lease, the second read, the write) keeps every token out of the address", async () => {
+    const account = channel({
+      access_token: SECRET.googleAccess,
+      refresh_token: SECRET.googleRefresh,
+      token_expires_at: iso(-HOUR),
+    });
+    world.provider([googleOk()]);
+    const { result, requests } = await withoutSecretsInAddresses(() => check(account.id));
+    assert.equal(result.outcome, "refreshed");
+    // The new tokens travel in the body of the write, where they belong.
+    const body = JSON.stringify(writes(requests).map((r) => r.body));
+    assert.match(body, new RegExp(SECRET.metaNew));
+  });
+
+  test("the rescue write of a renewed token keeps them out of the address too", async () => {
+    const account = channel({
+      access_token: SECRET.googleAccess,
+      refresh_token: SECRET.googleRefresh,
+      token_expires_at: iso(-HOUR),
+    });
+    world.provider([googleOk()]);
+    let first = true;
+    world.db.fail("social_accounts:update", () => {
+      if (!first) return undefined;
+      first = false;
+      return { code: "XX000", message: "disk full" };
+    });
+    const { result, requests } = await withoutSecretsInAddresses(() => check(account.id));
+    assert.equal(result.outcome, "save_failed");
+    assert.equal(writes(requests).length, 2, "the result, then the rotated tokens on their own");
+  });
+
+  test("a token kept encrypted on the account itself is not in the address", async () => {
+    const tokens = await tokenStore.encryptTokensForStorage({
+      tenantId: A,
+      platform: "facebook",
+      accessToken: SECRET.meta,
+      refreshToken: null,
+    });
+    const account = world.account({ access_token: null, authorization_id: AUTH, ...tokens });
+    world.provider(facebookHealthy());
+    const { result } = await withoutSecretsInAddresses(() => check(account.id));
+    assert.equal(result.outcome, "healthy");
+  });
+
+  test("the group check reads and writes without one", async () => {
+    world.account({ access_token: SECRET.meta, external_id: "1000" });
+    world.account({ access_token: `sealed:${SECRET.googleAccess}`, external_id: "2000" });
+    world.provider([
+      on(`${GRAPH}/1000?fields=id`, () => json(200, { id: "1000" })),
+      on(`${GRAPH}/2000?fields=id`, () => json(200, { id: "2000" })),
+      on(`${GRAPH}/me/permissions`, () =>
+        json(200, {
+          data: requiredScopesFor("facebook").map((permission) => ({
+            permission,
+            status: "granted",
+          })),
+        }),
+      ),
+    ]);
+    const { result } = await withoutSecretsInAddresses(() => checkAll());
+    assert.deepEqual(result.map((r) => r.outcome).sort(), ["healthy", "healthy"]);
+  });
+});

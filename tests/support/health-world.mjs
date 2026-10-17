@@ -6,6 +6,7 @@
 // globalThis.healthTest for its four doubles: the database, the audit log, the token refresh call
 // and the "unable to decrypt" switch.
 import { readFileSync } from "node:fs";
+import { createClient } from "@supabase/supabase-js";
 import { createDb } from "./db-double.mjs";
 import { missingScopesFor } from "../../node_modules/.cache/flas-connection-state.mjs";
 
@@ -235,6 +236,93 @@ export function createWorld() {
   world.restore = () => {
     world.restoreFetch?.();
     delete world.restoreFetch;
+    world.stopRealClient?.();
+  };
+
+  /**
+   * Puts the REAL supabase-js query builder in place of the database double, so a test can see
+   * exactly what leaves the code: every request is recorded as the builder made it (method, address
+   * as sent and as read back, headers, body). The pretend PostgREST behind it applies each request
+   * to the same double, so the check still runs end to end. Returns the list of requests; undone by
+   * world.restore().
+   */
+  world.useRealClient = () => {
+    const target = globalThis.healthTest.db;
+    const requests = [];
+    const SKIPPED = new Set(["select", "order", "limit", "offset", "columns", "on_conflict"]);
+    const filterFor = (key, expr) => {
+      const dot = expr.indexOf(".");
+      const op = expr.slice(0, dot);
+      const rest = expr.slice(dot + 1);
+      if (op === "eq") return (r) => String(r[key]) === rest;
+      if (op === "neq") return (r) => String(r[key]) !== rest;
+      if (op === "is" && rest === "null") return (r) => r[key] == null;
+      if (op === "not" && rest === "is.null") return (r) => r[key] != null;
+      if (op === "in") {
+        const values = rest.replace(/^\(|\)$/g, "").split(",");
+        return (r) => values.includes(String(r[key]));
+      }
+      throw new Error(`the pretend PostgREST does not know the filter ${key}=${expr}`);
+    };
+    const answer = async (input, init = {}) => {
+      const raw = String(input instanceof Request ? input.url : input);
+      const url = new URL(raw);
+      const method = (init.method ?? "GET").toUpperCase();
+      const headers = {};
+      new Headers(init.headers).forEach((value, name) => {
+        headers[name] = value;
+      });
+      requests.push({
+        method,
+        url: raw,
+        decoded: decodeURIComponent(raw.replace(/\+/g, " ")),
+        headers,
+        body: init.body ?? null,
+      });
+      const json = (status, body) =>
+        new Response(body === undefined ? null : JSON.stringify(body), {
+          status,
+          headers: { "content-type": "application/json" },
+        });
+      const [, , , name, rpcName] = url.pathname.split("/");
+      const body = init.body ? JSON.parse(String(init.body)) : undefined;
+      if (name === "rpc") {
+        const result = await target.rpc(rpcName, body ?? {});
+        return result.error ? json(400, result.error) : json(200, result.data);
+      }
+      const q = target.from(name);
+      for (const [key, expr] of url.searchParams) {
+        if (!SKIPPED.has(key)) q.filters.push(filterFor(key, expr));
+      }
+      const select = url.searchParams.get("select");
+      const wantsRows = (headers["prefer"] ?? "").includes("return=representation");
+      if (method === "PATCH") q.update(body);
+      else if (method === "POST") q.insert(body);
+      else if (method === "DELETE") q.delete();
+      if (method === "GET" || (wantsRows && select)) q.select(select ?? "*");
+      const result = await q;
+      if (result.error) return json(400, result.error);
+      if (method !== "GET" && !wantsRows) return json(method === "POST" ? 201 : 204);
+      const rows = Array.isArray(result.data) ? result.data : result.data ? [result.data] : [];
+      if ((headers["accept"] ?? "").includes("vnd.pgrst.object")) {
+        return rows.length === 1
+          ? json(200, rows[0])
+          : json(406, {
+              code: "PGRST116",
+              message: "JSON object requested, multiple (or no) rows returned",
+            });
+      }
+      return json(200, rows);
+    };
+    globalThis.healthTest.db = createClient("http://postgrest.invalid", "invented-service-key", {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { fetch: answer },
+    });
+    world.stopRealClient = () => {
+      globalThis.healthTest.db = target;
+      delete world.stopRealClient;
+    };
+    return requests;
   };
 
   /** Records console output (all levels) until the returned function is called. */
