@@ -94,6 +94,7 @@ const GRADE_KEY: Record<string, MessageKey> = {
   Good: "dashboard.health.grade.good",
   "Needs work": "dashboard.health.grade.needsWork",
   "At risk": "dashboard.health.grade.atRisk",
+  "Not enough activity yet": "home.health.insufficient",
 };
 
 /** Helpful inline error state with a retry button — never a blank widget. */
@@ -169,13 +170,15 @@ function ListSkeleton({ rows = 4 }: { rows?: number }) {
 function HealthCard({ health }: { health: BusinessHealth }) {
   const { t } = useI18n();
   const tone =
-    health.score >= 85
-      ? "text-brand"
-      : health.score >= 70
+    health.score === null
+      ? "text-muted-foreground"
+      : health.score >= 85
         ? "text-brand"
-        : health.score >= 50
-          ? "text-amber-600 dark:text-amber-400"
-          : "text-destructive";
+        : health.score >= 70
+          ? "text-brand"
+          : health.score >= 50
+            ? "text-amber-600 dark:text-amber-400"
+            : "text-destructive";
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between">
@@ -187,7 +190,7 @@ function HealthCard({ health }: { health: BusinessHealth }) {
           <p className="mt-0.5 text-xs text-muted-foreground">{t("dashboard.health.method")}</p>
         </div>
         <div className="shrink-0 text-end">
-          <p className={`text-3xl font-bold leading-none ${tone}`}>{health.score}</p>
+          <p className={`text-3xl font-bold leading-none ${tone}`}>{health.score ?? "—"}</p>
           <p className="text-[11px] text-muted-foreground">
             {GRADE_KEY[health.grade] ? t(GRADE_KEY[health.grade]!) : health.grade}
           </p>
@@ -204,10 +207,18 @@ function HealthCard({ health }: { health: BusinessHealth }) {
                   return hasMessage(key) ? t(key) : f.label;
                 })()}
               </span>
-              <span className="text-muted-foreground">{f.score}/100</span>
+              <span className="text-muted-foreground">
+                {f.score === null ? t("home.health.noData") : `${f.score}/100`}
+              </span>
             </div>
-            <Progress value={f.score} className="mt-1 h-1.5" />
-            <p className="mt-1 truncate text-[11px] text-muted-foreground">{f.detail}</p>
+            {f.score !== null && <Progress value={f.score} className="mt-1 h-1.5" />}
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              {f.score === null
+                ? t("home.health.noData")
+                : f.values
+                  ? t(`home.health.detail.${f.key}` as MessageKey, f.values)
+                  : f.detail}
+            </p>
           </div>
         ))}
       </CardContent>
@@ -457,6 +468,11 @@ export function DashboardPage() {
                 </Button>
               </div>
             </div>
+            {overview.isSuccess && data?.sampling && Object.values(data.sampling).some(Boolean) && (
+              <p className="mb-4 rounded-xl border border-dashed p-3 text-sm text-muted-foreground">
+                {t("home.activity.partial")}
+              </p>
+            )}
             {/* Stat cards */}
             {overview.isLoading ? (
               <StatCardsSkeleton />
