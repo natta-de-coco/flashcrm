@@ -223,27 +223,52 @@ export const saveUserEmailAccount = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { data: profile } = await context.supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, staff_role")
       .eq("id", context.userId)
       .single();
 
     if (!profile?.tenant_id) throw new Error("No active workspace found.");
+    const isAdmin = ["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""));
+
+    if ((data.accountType === "shared" || data.accountType === "marketing") && !isAdmin) {
+      throw new Error(
+        "Only workspace administrators can manage shared or marketing email accounts.",
+      );
+    }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     let smtpPassEnc: string | null = null;
     let imapPassEnc: string | null = null;
+    let targetUserId = context.userId;
 
     if (data.id) {
       const { data: existing } = await dbAny(supabaseAdmin)
         .from("user_email_accounts")
-        .select("smtp_pass_enc, imap_pass_enc")
+        .select("id, user_id, account_type, smtp_pass_enc, imap_pass_enc")
         .eq("id", data.id)
         .eq("tenant_id", profile.tenant_id)
         .maybeSingle();
 
-      smtpPassEnc = existing?.smtp_pass_enc || null;
-      imapPassEnc = existing?.imap_pass_enc || null;
+      if (!existing) {
+        throw new Error("Email account not found in active workspace.");
+      }
+
+      if (existing.account_type === "personal" && existing.user_id !== context.userId && !isAdmin) {
+        throw new Error("Forbidden: You cannot modify another user's personal email account.");
+      }
+      if (
+        (existing.account_type === "shared" || existing.account_type === "marketing") &&
+        !isAdmin
+      ) {
+        throw new Error(
+          "Forbidden: Only workspace administrators can modify shared or marketing email accounts.",
+        );
+      }
+
+      targetUserId = existing.user_id || context.userId;
+      smtpPassEnc = existing.smtp_pass_enc || null;
+      imapPassEnc = existing.imap_pass_enc || null;
     }
 
     if (data.smtpPassword && data.smtpPassword.trim()) {
@@ -259,7 +284,7 @@ export const saveUserEmailAccount = createServerFn({ method: "POST" })
 
     const payload = {
       tenant_id: profile.tenant_id,
-      user_id: context.userId,
+      user_id: targetUserId,
       account_type: data.accountType,
       label: data.label,
       from_name: data.fromName,
@@ -277,6 +302,9 @@ export const saveUserEmailAccount = createServerFn({ method: "POST" })
       imap_pass_enc: imapPassEnc,
       imap_enabled: data.imapEnabled,
       signature_html: data.signatureHtml || "",
+      verified: false,
+      last_test_ok: null,
+      last_test_error: null,
       is_default: data.isDefault,
       updated_at: new Date().toISOString(),
     };
@@ -287,7 +315,7 @@ export const saveUserEmailAccount = createServerFn({ method: "POST" })
         .from("user_email_accounts")
         .update({ is_default: false })
         .eq("tenant_id", profile.tenant_id)
-        .eq("user_id", context.userId);
+        .eq("user_id", targetUserId);
     }
 
     let savedId = data.id;
@@ -322,11 +350,12 @@ export const testUserEmailAccount = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { data: profile } = await context.supabase
       .from("profiles")
-      .select("tenant_id")
+      .select("tenant_id, staff_role")
       .eq("id", context.userId)
       .single();
 
     if (!profile?.tenant_id) throw new Error("No active workspace found.");
+    const isAdmin = ["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""));
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -338,6 +367,15 @@ export const testUserEmailAccount = createServerFn({ method: "POST" })
       .maybeSingle();
 
     if (!acc) throw new Error("Email account not found.");
+
+    if (acc.account_type === "personal" && acc.user_id !== context.userId && !isAdmin) {
+      throw new Error("Forbidden: You cannot test another user's personal email account.");
+    }
+    if ((acc.account_type === "shared" || acc.account_type === "marketing") && !isAdmin) {
+      throw new Error(
+        "Forbidden: Only workspace administrators can test shared or marketing email accounts.",
+      );
+    }
 
     if (data.testType === "smtp") {
       if (!acc.smtp_host || !acc.smtp_user || !acc.smtp_pass_enc) {
@@ -381,6 +419,52 @@ export const testUserEmailAccount = createServerFn({ method: "POST" })
 
       return res;
     }
+  });
+
+/**
+ * Delete a user email account with strict tenant and personal ownership enforcement
+ */
+export const deleteUserEmailAccount = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ accountId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id, staff_role")
+      .eq("id", context.userId)
+      .single();
+
+    if (!profile?.tenant_id) throw new Error("No active workspace found.");
+    const isAdmin = ["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""));
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: acc } = await dbAny(supabaseAdmin)
+      .from("user_email_accounts")
+      .select("id, user_id, account_type")
+      .eq("id", data.accountId)
+      .eq("tenant_id", profile.tenant_id)
+      .maybeSingle();
+
+    if (!acc) throw new Error("Email account not found.");
+
+    if (acc.account_type === "personal" && acc.user_id !== context.userId && !isAdmin) {
+      throw new Error("Forbidden: You cannot delete another user's personal email account.");
+    }
+    if ((acc.account_type === "shared" || acc.account_type === "marketing") && !isAdmin) {
+      throw new Error(
+        "Forbidden: Only workspace administrators can delete shared or marketing email accounts.",
+      );
+    }
+
+    const { error } = await dbAny(supabaseAdmin)
+      .from("user_email_accounts")
+      .delete()
+      .eq("id", data.accountId)
+      .eq("tenant_id", profile.tenant_id);
+
+    if (error) throw error;
+    return { ok: true };
   });
 
 /** What the settings page is told when the stored mail cannot be counted. */

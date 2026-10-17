@@ -79,3 +79,5 @@ jobs:
         run: node supabase/verify/verify-lead-alert-settings.mjs
       - name: Unsubscribe withdraws one company's consent in one transaction, server role only
         run: node supabase/verify/verify-withdraw-marketing-consent.mjs
+      - name: Email schema, privacy, and storage RPC permissions
+        run: node supabase/verify/verify-email-schema-and-privacy.mjs

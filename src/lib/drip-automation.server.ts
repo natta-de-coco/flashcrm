@@ -117,6 +117,15 @@ export async function getOrCreateDefaultSequence(tenantId: string): Promise<stri
     .single();
 
   if (error || !created) {
+    // If another request created concurrently, fetch existing sequence
+    const { data: raced } = await db
+      .from("drip_sequences")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (raced?.id) return raced.id;
+
     throw new Error(`Failed to initialize default drip sequence: ${error?.message}`);
   }
 
@@ -190,6 +199,20 @@ export async function enrollLeadInDripSequence(args: {
       .single();
 
     if (error || !enrollment?.id) {
+      // If concurrent insert occurred between read and insert, return existing enrollment
+      const { data: activeExisting } = await db
+        .from("drip_enrollments")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("sequence_id", sequenceId)
+        .eq("email", cleanEmail)
+        .in("status", ["enrolled", "in_progress"])
+        .maybeSingle();
+
+      if (activeExisting?.id) {
+        return { enrolled: false, sequenceId, enrollmentId: activeExisting.id };
+      }
+
       console.error("[drip] Error enrolling lead:", error);
       return { enrolled: false };
     }
