@@ -99,8 +99,9 @@ export async function measureKpis(supabase: SupabaseClient): Promise<KpiMeasurem
     read_rate: readRate,
     conversion_rate: conversion,
     lead_velocity: leads.length,
-    social_pending: overview?.social.pendingTotal ?? null,
-    unread_backlog: overview?.stats.unread ?? null,
+    social_pending:
+      overview?.visibility?.social === false ? null : (overview?.social.pendingTotal ?? null),
+    unread_backlog: overview?.stats.unreadConversations ?? null,
   };
 
   return KPI_DEFINITIONS.map((d) => ({ ...d, value: values[d.metric] }));

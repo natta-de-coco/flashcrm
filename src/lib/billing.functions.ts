@@ -655,15 +655,39 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     const tenantId = await requireTenantId(context.supabase);
     await ensureBillingSettings(context.supabase, tenantId);
 
-    const { bank_account, tax_registration_number, ...settingsData } = data;
-    const trn = tax_registration_number ?? data.vat_number ?? undefined;
-    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    for (const [key, value] of Object.entries(settingsData)) {
-      if (value !== undefined) patch[key] = value;
-    }
-    if (trn !== undefined) {
-      patch["vat_number"] = trn;
-    }
+    // Null clears the tax number; only undefined falls back to the legacy alias.
+    const trn =
+      data.tax_registration_number !== undefined ? data.tax_registration_number : data.vat_number;
+    const patch: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (data.legal_name !== undefined) patch["legal_name"] = data.legal_name;
+    if (data.trade_name !== undefined) patch["trade_name"] = data.trade_name;
+    if (data.address !== undefined) patch["address"] = data.address;
+    if (data.phone !== undefined) patch["phone"] = data.phone;
+    if (data.email !== undefined) patch["email"] = data.email;
+    if (data.website !== undefined) patch["website"] = data.website;
+    if (trn !== undefined) patch["vat_number"] = trn;
+    if (data.registration_number !== undefined)
+      patch["registration_number"] = data.registration_number;
+    if (data.tax_label !== undefined) patch["tax_label"] = data.tax_label;
+    if (data.tax_enabled !== undefined) patch["tax_enabled"] = data.tax_enabled;
+    if (data.default_currency !== undefined) patch["default_currency"] = data.default_currency;
+    if (data.default_tax_rate !== undefined) patch["default_tax_rate"] = data.default_tax_rate;
+    if (data.tax_inclusive !== undefined) patch["tax_inclusive"] = data.tax_inclusive;
+    if (data.default_payment_terms !== undefined)
+      patch["default_payment_terms"] = data.default_payment_terms;
+    if (data.default_terms !== undefined) patch["default_terms"] = data.default_terms;
+    if (data.default_notes !== undefined) patch["default_notes"] = data.default_notes;
+    if (data.online_payment_url !== undefined)
+      patch["online_payment_url"] = data.online_payment_url;
+    if (data.signatory_name !== undefined) patch["signatory_name"] = data.signatory_name;
+    if (data.signatory_position !== undefined)
+      patch["signatory_position"] = data.signatory_position;
+    if (data.show_qr_verification !== undefined)
+      patch["show_qr_verification"] = data.show_qr_verification;
+    if (data.logo_url !== undefined) patch["logo_url"] = data.logo_url;
 
     const { data: savedSettings, error } = await context.supabase
       .from("billing_settings")
@@ -674,6 +698,7 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     if (error) throw error;
     if (!savedSettings) throw new Error("Company settings could not be saved. Please retry.");
 
+    const bank_account = data.bank_account;
     if (bank_account && bank_account.bank_name.trim()) {
       const { data: existingBank, error: bankReadError } = await context.supabase
         .from("bank_accounts")
@@ -713,27 +738,31 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
         if (bankWriteError) throw bankWriteError;
       }
     } else if (bank_account === null) {
-      const { error: bankDeleteError } = await context.supabase
+      // Unset default status without deleting all company bank accounts
+      const { error: bankUnsetError } = await context.supabase
         .from("bank_accounts")
-        .delete()
-        .eq("tenant_id", tenantId);
-      if (bankDeleteError) throw bankDeleteError;
+        .update({ is_default: false, updated_at: new Date().toISOString() })
+        .eq("tenant_id", tenantId)
+        .eq("is_default", true);
+      if (bankUnsetError) throw bankUnsetError;
     }
 
-    // Keep business_profiles tax_registration_number synchronized if present in DB
+    // This is a second write, not a transaction. If it fails, say that the
+    // invoice settings were saved rather than acknowledging a complete save.
     if (trn !== undefined) {
-      await (
-        context.supabase as unknown as {
-          from: (table: string) => {
-            update: (values: Record<string, unknown>) => {
-              eq: (col: string, val: unknown) => Promise<unknown>;
-            };
-          };
-        }
-      )
-        .from("business_profiles")
-        .update({ tax_registration_number: trn })
-        .eq("tenant_id", tenantId);
+      try {
+        const { data: savedProfile, error: mirrorError } = await context.supabase
+          .from("business_profiles")
+          .update({ tax_registration_number: trn })
+          .eq("tenant_id", tenantId)
+          .select("tenant_id")
+          .maybeSingle();
+        if (mirrorError || !savedProfile) throw new Error("Tax mirror was not saved.");
+      } catch {
+        throw new Error(
+          "Company settings were saved, but the business profile tax number could not be saved. Please retry or contact support.",
+        );
+      }
     }
 
     const { logAudit } = await import("@/lib/audit.server");

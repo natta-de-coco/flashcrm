@@ -11,6 +11,6 @@ export const getDailyBrief = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: { force?: boolean } | undefined) => ({ force: Boolean(input?.force) }))
   .handler(async ({ context, data }) => {
-    await requireDashboardAccess(context.supabase, context.userId);
-    return buildDailyBrief(context.supabase, { force: data.force });
+    const access = await requireDashboardAccess(context.supabase, context.userId, "advisor");
+    return buildDailyBrief(context.supabase, { force: data.force, role: access.role });
   });
