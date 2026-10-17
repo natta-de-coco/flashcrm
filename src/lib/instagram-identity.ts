@@ -37,8 +37,14 @@ export type InstagramIdentity =
    * Meta did not answer clearly enough to tell either way — usually a missing
    * permission or an expired token. Nothing is stored, and the reason is
    * reported as a skipped section rather than guessed at.
+   *
+   * `message` is the technical reason. `advice` is present when Meta did not
+   * refuse anything — it answered, just not with an Instagram profile — and is
+   * then the whole of what the person is told; `message` goes to the server
+   * log. When Meta did refuse, there is no `advice`: its own error is turned
+   * into a sentence about the permission or the token by `skipReason`.
    */
-  | { kind: "unconfirmed"; message: string };
+  | { kind: "unconfirmed"; message: string; advice?: string };
 
 /**
  * Graph node ids are digit strings. A handle, a URL or a Business Profile
@@ -65,6 +71,21 @@ export function isInstagramNodeType(nodeType: string | null | undefined): boolea
   if (typeof nodeType !== "string" || nodeType.trim() === "") return false;
   return INSTAGRAM_NODE_TYPES.some((pattern) => pattern.test(nodeType.trim()));
 }
+
+/**
+ * What the screen behind `/connect` is called in the navigation (src/lib/
+ * navigation.ts). Said in English, like every sync message: sync errors are
+ * written on the server and have no translation path.
+ */
+export const CONNECT_SCREEN_LABEL = "Connect accounts";
+
+/**
+ * What the person reads when Meta answered but did not confirm the id is an
+ * Instagram account. No technical words: those go to the server log.
+ */
+export const UNCONFIRMED_ADVICE =
+  `Meta did not confirm that this is an Instagram account, so nothing was synced. ` +
+  `Reconnect Instagram in ${CONNECT_SCREEN_LABEL} and choose the Instagram account again.`;
 
 /** What to tell the person, naming what the connection is actually pinned to. */
 export function wrongAccountMessage(nodeType: string | null): string {
@@ -124,20 +145,26 @@ export function readInstagramIdentity(input: {
 
   const profile = input.profile ?? null;
   if (!profile) {
-    return { kind: "unconfirmed", message: "Meta returned no profile for this account." };
+    return {
+      kind: "unconfirmed",
+      message: "Meta returned no profile for this account.",
+      advice: UNCONFIRMED_ADVICE,
+    };
   }
   const mediaCount = profile["media_count"];
   const followers = profile["followers_count"];
   const username = typeof profile["username"] === "string" ? profile["username"] : null;
   // `media_count` exists only on an Instagram user node. Its absence from a
   // successful reply is not proof of the wrong account (Meta can drop a field),
-  // so it downgrades to "unconfirmed" and no number is written.
+  // so it downgrades to "unconfirmed" and the sync stops: no number, post or
+  // comment is written under an id that is not confirmed.
   if (typeof mediaCount !== "number") {
     return {
       kind: "unconfirmed",
       message:
-        "Meta answered without media_count, so Flas could not confirm this id is an Instagram " +
-        "account and did not update the follower count.",
+        "Meta answered without media_count, so this id could not be confirmed as an Instagram " +
+        "account.",
+      advice: UNCONFIRMED_ADVICE,
     };
   }
   return {

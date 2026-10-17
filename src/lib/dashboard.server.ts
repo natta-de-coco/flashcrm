@@ -52,7 +52,15 @@ export type BusinessHealth = {
 };
 
 export type DashboardOverview = {
-  stats: { open: number; unread: number; contacts: number; botReplies: number };
+  stats: {
+    open: number;
+    /** Legacy message sum from the bounded recent-conversation sample. */
+    unread: number;
+    /** Exact number of conversations with one or more unread messages. */
+    unreadConversations?: number;
+    contacts: number;
+    botReplies: number;
+  };
   activity: { buckets: DayBucket[]; weekTotal: number; todayTotal: number };
   trends: {
     messages: Trend;
@@ -126,8 +134,9 @@ export async function getDashboardOverviewData(
 
   const [
     convs,
+    openCount,
+    unreadConversationCount,
     contactCount,
-    contactSample,
     botReplyCount,
     weekMsgs,
     accounts,
@@ -143,10 +152,17 @@ export async function getDashboardOverviewData(
       )
       .order("last_message_at", { ascending: false })
       .limit(100),
+    supabase
+      .from("conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "open"),
+    supabase
+      .from("conversations")
+      .select("id", { count: "exact", head: true })
+      .gt("unread_count", 0),
     // Real totals come from database-side counts, not a capped row sample —
     // otherwise the numbers freeze once a workspace passes the limit.
     supabase.from("contacts").select("id", { count: "exact", head: true }),
-    supabase.from("contacts").select("id, stage, value").limit(500),
     supabase.from("messages").select("id", { count: "exact", head: true }).eq("sender", "bot"),
     supabase
       .from("messages")
@@ -185,11 +201,14 @@ export async function getDashboardOverviewData(
       .limit(5000),
   ]);
 
-  // One failing table must degrade its own widget, not blank the dashboard.
+  // These values also feed recommendations. A failed read must not become a
+  // zero, a clean inbox, or advice based on an incomplete workspace snapshot.
+  let failed = false;
   for (const result of [
     convs,
+    openCount,
+    unreadConversationCount,
     contactCount,
-    contactSample,
     botReplyCount,
     weekMsgs,
     accounts,
@@ -198,13 +217,29 @@ export async function getDashboardOverviewData(
     weekInteractionCount,
     leadRows,
   ]) {
-    if (result.error) console.error("[dashboard] partial failure", result.error.message);
+    if (result.error) {
+      failed = true;
+      console.error("[dashboard] query failed", result.error.message);
+    }
+  }
+  if (failed)
+    throw new Error("Your workspace overview is unavailable right now. Please try again.");
+
+  // A head-count response without a count is not evidence that there are zero
+  // records. Refuse it rather than falling back to a capped row sample.
+  function exactCount(result: { count: number | null }, name: string): number {
+    if (typeof result.count !== "number" || !Number.isInteger(result.count) || result.count < 0) {
+      console.error("[dashboard] exact count unavailable", name);
+      throw new Error("Your workspace overview is unavailable right now. Please try again.");
+    }
+    return result.count;
   }
 
   const conversations = convs.data ?? [];
-  const contactRows = contactSample.data ?? [];
-  const contactsTotal = contactCount.count ?? contactRows.length;
-  const botReplies = botReplyCount.count ?? 0;
+  const openTotal = exactCount(openCount, "open conversations");
+  const unreadConversations = exactCount(unreadConversationCount, "unread conversations");
+  const contactsTotal = exactCount(contactCount, "contacts");
+  const botReplies = exactCount(botReplyCount, "bot replies");
   const fortnightMessageRows = weekMsgs.data ?? [];
   const weekStartMs = weekStart.getTime();
   const weekMessageRows = fortnightMessageRows.filter(
@@ -249,16 +284,14 @@ export async function getDashboardOverviewData(
     sampledByAccount.set(i.account_id, (sampledByAccount.get(i.account_id) ?? 0) + 1);
   }
   const pending = reconcileSocialPending({
-    // The head count failing must not invent a number: fall back to what the
-    // sample actually holds.
-    exactTotal: pendingCount.count ?? interactionRows.length,
+    exactTotal: exactCount(pendingCount, "pending social replies"),
     sampledByAccount,
   });
   const pendingByAccount = pending.perAccount;
   // Incoming interactions in the last 7 days, counted in the database. Our own
   // replies are not "interactions this week": including them made a busy team
   // look twice as engaged with as it was.
-  const interactions7d = weekInteractionCount.count ?? 0;
+  const interactions7d = exactCount(weekInteractionCount, "social interactions");
 
   const pulseAccounts: SocialPulseAccount[] = accountRows.map((a) => ({
     id: a.id,
@@ -354,8 +387,9 @@ export async function getDashboardOverviewData(
 
   return {
     stats: {
-      open: conversations.filter((c) => c.status === "open").length,
+      open: openTotal,
       unread: unreadTotal,
+      unreadConversations,
       contacts: contactsTotal,
       botReplies,
     },

@@ -111,7 +111,11 @@ CREATE INDEX IF NOT EXISTS oauth_states_stale_attempt_idx
 -- Correctness does not depend on this running: readers derive `expired` from
 -- expires_at directly. The sweep exists to keep the table small and to give
 -- the audit log a definite event.
-CREATE OR REPLACE FUNCTION public.expire_abandoned_oauth_attempts()
+-- Dropped first: a later migration (20260910100000) adds cancelled_count to
+-- the return type, and re-running this file afterwards cannot CREATE OR
+-- REPLACE a function whose signature changed.
+DROP FUNCTION IF EXISTS public.expire_abandoned_oauth_attempts();
+CREATE FUNCTION public.expire_abandoned_oauth_attempts()
 RETURNS TABLE(expired_count integer, deleted_count integer)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE _expired integer; _deleted integer;

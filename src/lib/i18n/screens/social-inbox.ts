@@ -15,7 +15,7 @@ export default screen({
     "socialInbox.comments": "Comments",
     "socialInbox.loadingSocialMessages": "Loading social messages…",
     "socialInbox.connectASocialAccountIn":
-      "Connect a social account in the Social Hub to see DMs and comments here.",
+      "Connect a social account in Social posts to see DMs and comments here.",
     "socialInbox.nothingHereTryAnotherFilter":
       "Nothing here — try another filter or sync your accounts.",
     "socialInbox.unknown": "Unknown",
@@ -55,7 +55,7 @@ export default screen({
     "socialInbox.comments": "التعليقات",
     "socialInbox.loadingSocialMessages": "جارٍ تحميل رسائل التواصل الاجتماعي…",
     "socialInbox.connectASocialAccountIn":
-      "اربط حساب تواصل اجتماعي من مركز التواصل الاجتماعي لرؤية الرسائل الخاصة والتعليقات هنا.",
+      "اربط حساب تواصل اجتماعي من «منشورات التواصل الاجتماعي» لرؤية الرسائل الخاصة والتعليقات هنا.",
     "socialInbox.nothingHereTryAnotherFilter": "لا شيء هنا — جرّب تصفية أخرى أو زامن حساباتك.",
     "socialInbox.unknown": "غير معروف",
     "socialInbox.you": "أنت: ",
@@ -93,7 +93,7 @@ export default screen({
     "socialInbox.comments": "Komen",
     "socialInbox.loadingSocialMessages": "Memuatkan mesej sosial…",
     "socialInbox.connectASocialAccountIn":
-      "Sambungkan akaun sosial di Hab Sosial untuk melihat DM dan komen di sini.",
+      "Sambungkan akaun sosial di Hantaran Sosial untuk melihat DM dan komen di sini.",
     "socialInbox.nothingHereTryAnotherFilter":
       "Tiada apa-apa di sini — cuba penapis lain atau segerakkan akaun anda.",
     "socialInbox.unknown": "Tidak diketahui",
@@ -133,7 +133,7 @@ export default screen({
     "socialInbox.comments": "Mga komento",
     "socialInbox.loadingSocialMessages": "Nilo-load ang mga social na mensahe…",
     "socialInbox.connectASocialAccountIn":
-      "Magkonekta ng social account sa Social Hub para makita rito ang mga DM at komento.",
+      "Magkonekta ng social account sa Mga Social Post para makita rito ang mga DM at komento.",
     "socialInbox.nothingHereTryAnotherFilter":
       "Walang laman dito — subukan ang ibang filter o i-sync ang iyong mga account.",
     "socialInbox.unknown": "Hindi kilala",
@@ -173,7 +173,7 @@ export default screen({
     "socialInbox.comments": "Maoni",
     "socialInbox.loadingSocialMessages": "Inapakia ujumbe wa mitandao…",
     "socialInbox.connectASocialAccountIn":
-      "Unganisha akaunti ya mitandao kwenye Kitovu cha Mitandao ili uone DM na maoni hapa.",
+      "Unganisha akaunti ya mitandao kwenye Machapisho ya Mitandao ili uone DM na maoni hapa.",
     "socialInbox.nothingHereTryAnotherFilter":
       "Hakuna kitu hapa — jaribu kichujio kingine au sawazisha akaunti zako.",
     "socialInbox.unknown": "Haijulikani",

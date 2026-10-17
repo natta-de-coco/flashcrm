@@ -1,3 +1,11 @@
+import { useConversationDrafts } from "@/hooks/useConversationDrafts";
+import { useTenant } from "@/hooks/useTenant";
+import {
+  formatInboxTime as formatTime,
+  formatInboxDay as formatDate,
+  deliveryPresentation,
+} from "@/lib/inbox-presentation";
+import { resolveTenantLocale } from "@/lib/locale";
 import { SocialInbox } from "@/components/inbox/SocialInbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +42,6 @@ import {
   shouldClearUnread,
   THREAD_PAGE_SIZE,
 } from "@/lib/inbox-thread";
-import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertCircle,
@@ -56,8 +63,13 @@ import {
   X,
   ChevronLeft,
   Settings2,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ArrowDown,
+  MessageSquare,
+  CalendarDays,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { renderTemplateBody, templateParameterCount } from "@/lib/wa-template-parameters";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
@@ -84,88 +96,54 @@ export const Route = createFileRoute("/_authenticated/inbox")({
   component: InboxPage,
 });
 
-function formatConversationTimestamp(isoStr: string | null | undefined): string {
-  if (!isoStr) return "";
-  const date = new Date(isoStr);
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-  const yesterday = new Date();
-  yesterday.setDate(now.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) {
-    return "Yesterday";
-  }
-  if (date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleDateString([], { month: "short", day: "numeric" });
-  }
-  return date.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" });
-}
-
-function formatDateDivider(dateStr: string): string {
-  const d = new Date(dateStr);
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) {
-    return "Today";
-  }
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) {
-    return "Yesterday";
-  }
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 function MessageDeliveryStatus({ status }: { status?: string | null }) {
-  const normalized = (status || "").toLowerCase();
+  const { t } = useI18n();
+  const normalized = deliveryPresentation(status);
   switch (normalized) {
-    case "pending":
-    case "sending":
+    case "waiting":
       return (
-        <span title="Sending...">
+        <span title={t("inbox.receipt.waiting")}>
           <Clock className="size-3 animate-pulse text-muted-foreground" />
         </span>
       );
     case "sent":
       return (
-        <span title="Sent to server / provider">
+        <span title={t("inbox.receipt.sent")}>
           <Check className="size-3.5 text-muted-foreground opacity-80" />
         </span>
       );
     case "delivered":
       return (
-        <span title="Delivered to recipient">
+        <span title={t("inbox.receipt.delivered")}>
           <CheckCheck className="size-3.5 text-muted-foreground opacity-80" />
         </span>
       );
     case "read":
       return (
-        <span title="Read by recipient">
+        <span title={t("inbox.receipt.read")}>
           <CheckCheck className="size-3.5 text-sky-400" />
         </span>
       );
     case "failed":
       return (
-        <span title="Delivery failed">
+        <span title={t("inbox.receipt.failed")}>
           <AlertCircle className="size-3.5 text-destructive" />
         </span>
       );
     default:
       return (
-        <span title="Sent">
-          <Check className="size-3.5 text-muted-foreground opacity-70" />
+        <span title={t("inbox.receipt.unknown")}>
+          <Clock className="size-3.5 text-muted-foreground" />
         </span>
       );
   }
 }
 
-function InboxPage() {
+export function InboxPage() {
   const i18n = useI18n();
   const { user } = useAuth();
+  const { tenant } = useTenant();
+  const locale = resolveTenantLocale({ timezone: tenant?.timezone ?? null, locale: i18n.language });
   const qc = useQueryClient();
   // Seeded from the link, and followed afterwards: opening a contact's chat
   // while the inbox is already mounted changes the parameter without remounting,
@@ -192,7 +170,46 @@ function InboxPage() {
   });
   const socialPending = socialPendingQuery.data ?? 0;
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState("");
+  const drafts = useConversationDrafts(`${user?.id}:${tenant?.id}`, activeId);
+  const { draft, setDraft } = drafts;
+  const [focusChat, setFocusChat] = useState(false);
+  const activeConversationRef = useRef(activeId);
+  activeConversationRef.current = activeId;
+  const [waitingForLatest, setWaitingForLatest] = useState(false);
+  const [visibleDate, setVisibleDate] = useState<{
+    conversationId: string | null;
+    value: string;
+  } | null>(null);
+  const syncVisibleDate = useCallback(
+    (node: HTMLDivElement) => {
+      const top = node.getBoundingClientRect().top;
+      const first = [...node.querySelectorAll<HTMLElement>("[data-message-date]")].find(
+        (element) => element.getBoundingClientRect().bottom > top,
+      );
+      const value = first?.dataset["messageDate"];
+      if (value)
+        setVisibleDate((current) =>
+          current?.conversationId === activeId && current.value === value
+            ? current
+            : { conversationId: activeId, value },
+        );
+    },
+    [activeId],
+  );
+  const threadViewport = useRef<HTMLDivElement>(null);
+  const [threadNode, setThreadNode] = useState<HTMLDivElement | null>(null);
+  const mountThread = useCallback((node: HTMLDivElement | null) => {
+    threadViewport.current = node;
+    setThreadNode(node);
+  }, []);
+  const lastThreadNode = useRef<HTMLDivElement | null>(null);
+  const pinnedToBottom = useRef(true);
+  const lastVisibleConversation = useRef<string | null>(null);
+  const earlierAnchor = useRef<{
+    messageId: string;
+    offset: number;
+    conversationId: string | null;
+  } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "pending" | "closed">("all");
   const [assignmentFilter, setAssignmentFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [tagDraft, setTagDraft] = useState("");
@@ -200,29 +217,33 @@ function InboxPage() {
   const [reminderDue, setReminderDue] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  const templateSelectionRef = useRef({
+    conversationId: activeId,
+    templateId,
+    variables: templateVariables,
+  });
+  templateSelectionRef.current = {
+    conversationId: activeId,
+    templateId,
+    variables: templateVariables,
+  };
   useEffect(() => {
     setTemplateId("");
     setTemplateVariables([]);
-    setDraft("");
+    setShowTools(false);
   }, [activeId]);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [expandedTranslations, setExpandedTranslations] = useState<Set<string>>(new Set());
   const [autoTranslate, setAutoTranslate] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const scrollSnapshotRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
-  const prevActiveIdRef = useRef<string | null>(null);
   const autoTranslatedMessageIds = useRef(new Set<string>());
   const autoTranslateStartedAt = useRef<number | null>(null);
-  const autoTranslateRetries = useRef<Map<string, number>>(new Map());
 
   const send = useServerFn(sendAgentMessage);
   const loadSendContext = useServerFn(getSendContext);
-  // One reference per message being sent. A second Enter or a double click
-  // repeats it, and the server sends that message once.
-  const sendRef = useRef<SendReference | null>(null);
-  const templateRef = useRef<SendReference | null>(null);
+  // Send ownership lives beside the drafts, surviving in-app navigation.
+  const sendPending = drafts.sends.isPending(activeId);
   const suggest = useServerFn(draftBotReply);
   const sendTemplate = useServerFn(sendTemplateMessage);
   const auditEvent = useServerFn(recordAuditEvent);
@@ -388,26 +409,10 @@ function InboxPage() {
   /** Loads the next, older page; a failure is said, not left as a button that did nothing. */
   const loadOlder = (query: {
     fetchNextPage: () => Promise<{ isError: boolean; error: Error | null }>;
-  }) => {
-    if (scrollContainerRef.current) {
-      scrollSnapshotRef.current = {
-        scrollHeight: scrollContainerRef.current.scrollHeight,
-        scrollTop: scrollContainerRef.current.scrollTop,
-      };
-    }
-    return void query.fetchNextPage().then((result) => {
+  }) =>
+    void query.fetchNextPage().then((result) => {
       if (result.isError) toast.error(result.error?.message ?? i18n.t("inbox.searchRecentOnly"));
     });
-  };
-
-  useLayoutEffect(() => {
-    if (scrollSnapshotRef.current && scrollContainerRef.current) {
-      const { scrollHeight, scrollTop } = scrollSnapshotRef.current;
-      const newScrollHeight = scrollContainerRef.current.scrollHeight;
-      scrollContainerRef.current.scrollTop = newScrollHeight - scrollHeight + scrollTop;
-      scrollSnapshotRef.current = null;
-    }
-  }, [thread.length]);
 
   // Near real-time inbox: realtime stream first, short polling as a fallback
   // whenever the socket is not connected, plus a visible connection indicator.
@@ -452,13 +457,60 @@ function InboxPage() {
   // without changing which one is newest, so it does not pull the view down.
   const newestMessageId = thread.at(-1)?.id ?? null;
   useEffect(() => {
-    const el = scrollContainerRef.current;
-    const isNearBottom = el ? el.scrollHeight - el.scrollTop - el.clientHeight < 120 : true;
-    if (isNearBottom || prevActiveIdRef.current !== activeId) {
-      bottomRef.current?.scrollIntoView({ block: "end" });
+    const node = threadViewport.current;
+    if (!node) return;
+    const changed = lastVisibleConversation.current !== activeId || lastThreadNode.current !== node;
+    lastThreadNode.current = node;
+    lastVisibleConversation.current = activeId;
+    if (node && (changed || pinnedToBottom.current)) {
+      node.scrollTop = node.scrollHeight;
+      pinnedToBottom.current = true;
+      setWaitingForLatest(false);
+    } else if (node) setWaitingForLatest(true);
+    if (node) syncVisibleDate(node);
+  }, [newestMessageId, activeId, syncVisibleDate, threadNode]);
+  useLayoutEffect(() => {
+    const node = threadViewport.current,
+      anchor = earlierAnchor.current;
+    if (anchor && anchor.conversationId !== activeId) {
+      earlierAnchor.current = null;
+      return;
     }
-    prevActiveIdRef.current = activeId;
-  }, [newestMessageId, activeId]);
+    if (node && anchor && !messages.isFetchingNextPage) {
+      const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")].find(
+        (element) => element.dataset["messageId"] === anchor.messageId,
+      );
+      if (message)
+        node.scrollTop +=
+          message.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.offset;
+      earlierAnchor.current = null;
+    }
+  }, [thread.length, messages.isFetchingNextPage, activeId]);
+  const jumpToLatest = () => {
+    const node = threadViewport.current;
+    if (node) node.scrollTop = node.scrollHeight;
+    pinnedToBottom.current = true;
+    setWaitingForLatest(false);
+  };
+  const loadEarlierMessages = async () => {
+    const node = threadViewport.current;
+    if (node) {
+      const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")].find(
+        (element) => element.getBoundingClientRect().bottom > node.getBoundingClientRect().top,
+      );
+      if (message)
+        earlierAnchor.current = {
+          messageId: message.dataset["messageId"]!,
+          offset: message.getBoundingClientRect().top - node.getBoundingClientRect().top,
+          conversationId: activeId,
+        };
+    }
+    const result = await messages.fetchNextPage();
+    if (result.isError) {
+      earlierAnchor.current = null;
+      toast.error(i18n.t("inbox.threadLoadFailed"));
+    }
+  };
 
   // Opt-in and limited to messages received while this inbox is open. This
   // avoids silently sending a customer's entire past chat to the translation
@@ -474,10 +526,6 @@ function InboxPage() {
       ) {
         continue;
       }
-      const retries = autoTranslateRetries.current.get(message.id) ?? 0;
-      if (retries >= 3) {
-        continue;
-      }
       autoTranslatedMessageIds.current.add(message.id);
       void translate({ data: { messageId: message.id, targetLanguage: "English" } })
         .then(() => {
@@ -485,29 +533,24 @@ function InboxPage() {
           void qc.invalidateQueries({ queryKey: ["messages", activeId] });
         })
         .catch(() => {
-          // Let a transient provider failure retry after the next refresh, capped at 3 retries.
-          autoTranslateRetries.current.set(message.id, retries + 1);
-          if (retries + 1 < 3) {
-            autoTranslatedMessageIds.current.delete(message.id);
-          }
+          // Let a transient provider failure retry after the next refresh.
+          autoTranslatedMessageIds.current.delete(message.id);
         });
     }
   }, [activeId, autoTranslate, thread, qc, translate]);
 
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const qDigits = q.replace(/\D/g, "");
     const matching = loadedConversations.filter((c) => {
       const matchesStatus = statusFilter === "all" || c.status === statusFilter;
       const matchesAssignment =
         assignmentFilter === "all" ||
         (assignmentFilter === "mine" && c.assigned_to === user?.id) ||
         (assignmentFilter === "unassigned" && !c.assigned_to);
-      const phoneDigits = c.contacts?.phone ? c.contacts.phone.replace(/\D/g, "") : "";
+      const q = search.trim().toLowerCase();
       const matchesSearch =
         !q ||
         c.contacts?.name?.toLowerCase().includes(q) ||
-        (qDigits && phoneDigits.includes(qDigits)) ||
         c.contacts?.phone?.includes(q) ||
         c.last_message_preview?.toLowerCase().includes(q);
       return matchesStatus && matchesAssignment && Boolean(matchesSearch);
@@ -560,11 +603,8 @@ function InboxPage() {
   // The closed 24-hour window already has its own notice and next step below.
   const sendBlocks = (sendContext.data?.blocks ?? []).filter((b) => b.code !== "window_closed");
 
-  // Tools should stay out of the way while an agent is reading a thread, but
-  // a closed WhatsApp window has one clear next step: an approved template.
-  useEffect(() => {
-    if (active?.channel === "whatsapp" && !whatsappReplyWindowOpen) setShowTools(true);
-  }, [active?.channel, whatsappReplyWindowOpen]);
+  // A closed reply window offers a template action below; it does not open
+  // the entire tools panel and squeeze the message history automatically.
 
   // Auto-open the newest thread on desktop only. On mobile the list is a full
   // screen of its own, so auto-selecting would trap the user inside a chat.
@@ -607,17 +647,21 @@ function InboxPage() {
     i18n.tx(`inbox.sendFailure.${reason ?? "unknown"}`, fallback ?? "");
 
   const sendMutation = useMutation({
-    mutationFn: async (body: string) => {
-      sendRef.current = referenceFor(sendRef.current, `${activeId}\n${body}`, () =>
-        crypto.randomUUID(),
-      );
-      return send({ data: { conversationId: activeId!, body, clientRef: sendRef.current.ref } });
-    },
-    onSuccess: (res) => {
+    mutationFn: async ({
+      conversationId,
+      body,
+      clientRef,
+    }: {
+      conversationId: string;
+      body: string;
+      clientRef: string;
+      key: string;
+    }) => send({ data: { conversationId, body, clientRef } }),
+    onSuccess: (res, request) => {
       // The server has answered for this message, so the next one is new.
-      sendRef.current = null;
-      void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+      drafts.sends.finish(request.key, request.clientRef, true);
+      void qc.invalidateQueries({ queryKey: ["send-context", request.conversationId] });
+      void qc.invalidateQueries({ queryKey: ["messages", request.conversationId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
       if (res.state === "blocked") {
         toast.error(i18n.t("inbox.messageBlockedBySafetyRules"), {
@@ -629,7 +673,7 @@ function InboxPage() {
       // the request whose answer never arrived. It is in the thread, so the
       // box is cleared like any sent message -- leaving the text there would
       // invite sending it a second time.
-      setDraft("");
+      drafts.acknowledge(request.conversationId, request.body);
       if (res.state === "unconfirmed") {
         toast.warning(describeFailure("unconfirmed", res.deliveryError));
       } else if (res.state === "rejected") {
@@ -644,12 +688,24 @@ function InboxPage() {
     // No answer is not a "no". The reference is kept, so trying the same text
     // again asks the server about the same message: if the first copy did get
     // through, the server says so instead of sending another.
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error, request) => {
+      drafts.sends.finish(request.key, request.clientRef, false);
+      toast.error(e.message);
+    },
   });
+  const queueReply = () => {
+    if (!activeId || !draft.trim()) return;
+    const body = draft.trim();
+    const key = JSON.stringify(["reply", activeId, body]);
+    const attempt = drafts.sends.begin(key, activeId, () => crypto.randomUUID());
+    if (attempt)
+      sendMutation.mutate({ conversationId: activeId, body, clientRef: attempt.ref, key });
+  };
 
   const suggestMutation = useMutation({
-    mutationFn: async () => suggest({ data: { conversationId: activeId! } }),
-    onSuccess: (res) => setDraft(res.draft),
+    mutationFn: async (request: { conversationId: string; before: string }) =>
+      suggest({ data: { conversationId: request.conversationId } }),
+    onSuccess: (res, request) => drafts.suggest(request.conversationId, request.before, res.draft),
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
@@ -713,25 +769,26 @@ function InboxPage() {
   });
 
   const templateMutation = useMutation({
-    mutationFn: async () => {
-      templateRef.current = referenceFor(
-        templateRef.current,
-        `${activeId}\n${templateId}\n${JSON.stringify(templateVariables)}`,
-        () => crypto.randomUUID(),
-      );
+    mutationFn: async (request: {
+      conversationId: string;
+      templateId: string;
+      variables: string[];
+      clientRef: string;
+      key: string;
+    }) => {
       return sendTemplate({
         data: {
-          templateId,
-          conversationId: activeId!,
-          variables: templateVariables,
-          clientRef: templateRef.current.ref,
+          templateId: request.templateId,
+          conversationId: request.conversationId,
+          variables: request.variables,
+          clientRef: request.clientRef,
         },
       });
     },
-    onSuccess: (res) => {
-      templateRef.current = null;
-      void qc.invalidateQueries({ queryKey: ["send-context", activeId] });
-      void qc.invalidateQueries({ queryKey: ["messages", activeId] });
+    onSuccess: (res, request) => {
+      drafts.sends.finish(request.key, request.clientRef, true);
+      void qc.invalidateQueries({ queryKey: ["send-context", request.conversationId] });
+      void qc.invalidateQueries({ queryKey: ["messages", request.conversationId] });
       void qc.invalidateQueries({ queryKey: ["conversations"] });
       if (res.state === "blocked") {
         toast.error(i18n.t("inbox.templateBlockedBySafetyRules"), {
@@ -740,8 +797,14 @@ function InboxPage() {
         return;
       }
       // As with a reply: a duplicate is this template, already in the thread.
-      setTemplateId("");
-      setTemplateVariables([]);
+      if (
+        activeConversationRef.current === request.conversationId &&
+        templateSelectionRef.current.templateId === request.templateId &&
+        JSON.stringify(templateSelectionRef.current.variables) === JSON.stringify(request.variables)
+      ) {
+        setTemplateId("");
+        setTemplateVariables([]);
+      }
       // Accepted by WhatsApp is not delivered: the thread shows the receipt
       // when it arrives. A refusal or a missing answer is said as such.
       if (res.state === "accepted") {
@@ -758,8 +821,24 @@ function InboxPage() {
     },
 
     // Kept for the retry, as for a reply.
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error, request) => {
+      drafts.sends.finish(request.key, request.clientRef, false);
+      toast.error(e.message);
+    },
   });
+  const queueTemplate = () => {
+    if (!activeId || !templateId) return;
+    const key = JSON.stringify(["template", activeId, templateId, templateVariables]);
+    const attempt = drafts.sends.begin(key, activeId, () => crypto.randomUUID());
+    if (attempt)
+      templateMutation.mutate({
+        conversationId: activeId,
+        templateId,
+        variables: [...templateVariables],
+        clientRef: attempt.ref,
+        key,
+      });
+  };
 
   const translateMutation = useMutation({
     mutationFn: async (messageId: string) =>
@@ -776,9 +855,10 @@ function InboxPage() {
   });
 
   const catalogMutation = useMutation({
-    mutationFn: async () => buildCatalog({ data: { productIds: selectedProductIds } }),
-    onSuccess: (res) => {
-      setDraft((d) => (d ? `${d}\n\n${res.body}` : res.body));
+    mutationFn: async (_request: { conversationId: string }) =>
+      buildCatalog({ data: { productIds: selectedProductIds } }),
+    onSuccess: (res, request) => {
+      drafts.append(request.conversationId, res.body);
       setSelectedProductIds([]);
       toast.success(i18n.t("inbox.catalogMessageInsertedPressSend"));
     },
@@ -889,7 +969,7 @@ function InboxPage() {
 
   if (channel === "social") {
     return (
-      <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 flex-col lg:h-[100dvh]">
+      <div className="inbox-workspace flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-2 border-b bg-card px-4 py-3">
           <h1 className="text-lg font-bold">{i18n.t("inbox.inbox")}</h1>
           <ChannelSwitch channel={channel} onChange={setChannel} pending={socialPending} />
@@ -916,12 +996,12 @@ function InboxPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-1 lg:h-[100dvh]">
+    <div className="inbox-workspace flex min-h-0 flex-1">
       {/* Conversation list */}
       <div
         className={cn(
-          "w-full shrink-0 flex-col border-e bg-card lg:flex lg:max-w-sm",
-          active ? "hidden" : "flex",
+          "min-h-0 w-full shrink-0 flex-col border-e bg-card lg:w-80 xl:w-96",
+          active ? (focusChat ? "hidden" : "hidden lg:flex") : "flex",
         )}
       >
         <div className="space-y-3 border-b p-4">
@@ -997,17 +1077,21 @@ function InboxPage() {
                     : "bg-muted text-muted-foreground hover:bg-secondary",
                 )}
               >
-                {s}
+                {i18n.t(`inbox.status.${s}`)}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-1 pt-0.5">
-            <span className="text-[11px] font-medium text-muted-foreground mr-1">Assign:</span>
-            {[
-              { id: "all", label: "All" },
-              { id: "mine", label: "Mine" },
-              { id: "unassigned", label: "Unassigned" },
-            ].map((af) => (
+            <span className="me-1 text-[11px] font-medium text-muted-foreground">
+              {i18n.t("inbox.assignment")}:
+            </span>
+            {(
+              [
+                { id: "all", label: "All" },
+                { id: "mine", label: "Mine" },
+                { id: "unassigned", label: "Unassigned" },
+              ] as const
+            ).map((af) => (
               <button
                 key={af.id}
                 onClick={() => setAssignmentFilter(af.id as "all" | "mine" | "unassigned")}
@@ -1018,13 +1102,13 @@ function InboxPage() {
                     : "text-muted-foreground hover:bg-muted/80",
                 )}
               >
-                {af.label}
+                {i18n.t(`inbox.assignment.${af.id}`)}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {conversations.isLoading && (
             <p className="p-4 text-sm text-muted-foreground">
               {i18n.t("inbox.loadingConversations")}
@@ -1039,31 +1123,49 @@ function InboxPage() {
             <button
               key={c.id}
               onClick={() => setActiveId(c.id)}
+              aria-current={activeId === c.id ? "true" : undefined}
               className={cn(
-                "flex w-full flex-col gap-1 border-b px-4 py-3 text-start transition-colors hover:bg-muted/60",
+                "conversation-row flex w-full min-w-0 flex-col gap-1 border-b px-4 py-3 text-start transition-colors hover:bg-muted/60",
                 activeId === c.id && "bg-secondary",
               )}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-semibold">
                   {c.contacts?.name ?? i18n.t("inbox.unknown")}
+                  {drafts.hasDraft(c.id) && (
+                    <span className="ms-2 text-[10px] font-medium text-primary">
+                      {i18n.t("inbox.draft")}
+                    </span>
+                  )}
                 </span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
-                  {formatConversationTimestamp(c.last_message_at)}
-                </span>
+                <time
+                  dateTime={c.last_message_at}
+                  className="shrink-0 text-end text-[11px] leading-relaxed text-muted-foreground"
+                >
+                  <span className="block">{formatTime(c.last_message_at, locale)}</span>
+                  <span className="block">{formatDate(c.last_message_at, locale)}</span>
+                </time>
               </div>
               <span className="truncate text-xs text-muted-foreground">
                 {c.last_message_preview ?? i18n.t("inbox.noMessagesYet")}
               </span>
-              <div className="flex items-center gap-1.5 pt-1">
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
                 <Badge variant="secondary" className="gap-1 text-[10px]">
                   {c.channel === "web" ? <Globe className="size-3" /> : null}
                   {c.channel === "web" ? i18n.t("inbox.website") : "WhatsApp"}
                 </Badge>
                 {c.wa_numbers && (
-                  <Badge variant="outline" className="gap-1 text-[10px]">
+                  <Badge
+                    variant="outline"
+                    className="max-w-full gap-1 whitespace-normal text-[10px] [overflow-wrap:anywhere]"
+                  >
                     {c.wa_numbers.label}
-                    {c.wa_numbers.display_phone ? ` · ${c.wa_numbers.display_phone}` : ""}
+                    {c.wa_numbers.display_phone && (
+                      <>
+                        <span> · </span>
+                        <bdi dir="ltr">{c.wa_numbers.display_phone}</bdi>
+                      </>
+                    )}
                   </Badge>
                 )}
                 {c.bot_enabled && (
@@ -1102,10 +1204,13 @@ function InboxPage() {
       </div>
 
       {/* Chat pane */}
-      <div className={cn("min-w-0 flex-1 flex-col md:flex", active ? "flex" : "hidden")}>
+      <div className={cn("min-h-0 min-w-0 flex-1 flex-col lg:flex", active ? "flex" : "hidden")}>
         {!active ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
-            {i18n.t("inbox.selectAConversationToStart")}
+            <div className="flex max-w-xs flex-col items-center gap-3 p-6 text-center">
+              <MessageSquare className="size-10 text-primary/50" />
+              {i18n.t("inbox.selectAConversationToStart")}
+            </div>
           </div>
         ) : (
           <>
@@ -1118,17 +1223,17 @@ function InboxPage() {
                   onClick={() => setActiveId(null)}
                   aria-label={i18n.t("inbox.backToConversations")}
                 >
-                  <ChevronLeft className="size-5" />
+                  <ChevronLeft className="size-5 rtl:rotate-180" />
                 </Button>
                 <div className="min-w-0">
                   <h2 className="truncate font-semibold">{active.contacts?.name}</h2>
                   <p className="truncate text-xs text-muted-foreground">
-                    {active.contacts?.phone ?? i18n.t("inbox.websiteVisitor")}
+                    <bdi dir="ltr">{active.contacts?.phone ?? i18n.t("inbox.websiteVisitor")}</bdi>
                     {active.contacts?.company ? ` · ${active.contacts.company}` : ""}
                   </p>
                 </div>
               </div>
-              <div className="flex flex-1 flex-wrap items-center justify-end gap-2 lg:gap-4">
+              <div className="flex shrink-0 items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -1138,6 +1243,31 @@ function InboxPage() {
                 >
                   <Settings2 className="size-4" /> {i18n.t("inbox.tools")}
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hidden lg:inline-flex"
+                  aria-label={i18n.t(focusChat ? "inbox.showList" : "inbox.focusChat")}
+                  aria-pressed={focusChat}
+                  onClick={() => setFocusChat((v) => !v)}
+                >
+                  {focusChat ? (
+                    <PanelLeftOpen className="size-4" />
+                  ) : (
+                    <PanelLeftClose className="size-4" />
+                  )}
+                </Button>
+              </div>
+            </header>
+
+            {/* Thread tools: tags, templates, follow-up reminders */}
+            <div
+              className={cn(
+                "chat-tools min-h-0 space-y-3 overflow-y-auto border-b bg-card px-4 py-3 lg:px-5",
+                showTools ? "block" : "hidden",
+              )}
+            >
+              <div className="flex flex-1 flex-wrap items-center justify-end gap-2 lg:gap-4">
                 <label className="flex items-center gap-2 text-xs font-medium">
                   <Switch
                     checked={active.bot_enabled}
@@ -1165,7 +1295,7 @@ function InboxPage() {
                       onClick={() => void updateConversation({ status: s })}
                       className="capitalize"
                     >
-                      {s}
+                      {i18n.t(`inbox.status.${s}`)}
                     </Button>
                   ))}
                 </div>
@@ -1193,15 +1323,6 @@ function InboxPage() {
                   ))}
                 </select>
               </div>
-            </header>
-
-            {/* Thread tools: tags, templates, follow-up reminders */}
-            <div
-              className={cn(
-                "space-y-3 border-b bg-card px-4 py-3 lg:px-5",
-                showTools ? "block" : "hidden",
-              )}
-            >
               <div className="flex flex-wrap items-center gap-2">
                 <Tag className="size-4 text-muted-foreground" />
                 {(active.tags ?? []).map((tag) => (
@@ -1256,9 +1377,10 @@ function InboxPage() {
                     !selectedTemplate ||
                     Boolean(templateProblem) ||
                     active.channel !== "whatsapp" ||
-                    templateMutation.isPending
+                    templateMutation.isPending ||
+                    sendPending
                   }
-                  onClick={() => templateMutation.mutate()}
+                  onClick={queueTemplate}
                 >
                   {templateMutation.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -1322,7 +1444,7 @@ function InboxPage() {
                     size="sm"
                     variant="outline"
                     disabled={selectedProductIds.length === 0 || catalogMutation.isPending}
-                    onClick={() => catalogMutation.mutate()}
+                    onClick={() => catalogMutation.mutate({ conversationId: activeId! })}
                   >
                     {catalogMutation.isPending ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -1437,16 +1559,83 @@ function InboxPage() {
               )}
             </div>
 
+            {thread.length > 0 && (
+              <div
+                className="inbox-date-bar flex items-center justify-center gap-2 border-b bg-card px-3 py-1.5 text-xs font-medium text-foreground"
+                data-testid="visible-message-date"
+              >
+                <CalendarDays className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <time
+                  dateTime={
+                    visibleDate?.conversationId === activeId
+                      ? visibleDate.value
+                      : thread.at(-1)!.created_at
+                  }
+                >
+                  {formatDate(
+                    visibleDate?.conversationId === activeId
+                      ? visibleDate.value
+                      : thread.at(-1)!.created_at,
+                    locale,
+                  )}
+                </time>
+              </div>
+            )}
             <div
-              ref={scrollContainerRef}
-              className="chat-canvas-bg bg-chat-canvas min-h-0 flex-1 space-y-3 overflow-y-auto p-5"
+              ref={mountThread}
+              tabIndex={0}
+              role="region"
+              aria-label={i18n.t("inbox.messagesRegion")}
+              onScroll={() => {
+                const node = threadViewport.current;
+                if (!node) return;
+                syncVisibleDate(node);
+                if (earlierAnchor.current && messages.isFetchingNextPage) {
+                  const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")].find(
+                    (element) =>
+                      element.getBoundingClientRect().bottom > node.getBoundingClientRect().top,
+                  );
+                  if (message)
+                    earlierAnchor.current = {
+                      messageId: message.dataset["messageId"]!,
+                      offset:
+                        message.getBoundingClientRect().top - node.getBoundingClientRect().top,
+                      conversationId: activeId,
+                    };
+                }
+                pinnedToBottom.current =
+                  node.scrollHeight - node.clientHeight - node.scrollTop < 80;
+                if (pinnedToBottom.current) setWaitingForLatest(false);
+              }}
+              className="inbox-thread chat-canvas-bg min-h-0 flex-1 space-y-3 overflow-y-auto p-3 sm:p-5"
             >
+              {messages.isLoading && (
+                <p role="status" className="p-3 text-sm text-muted-foreground">
+                  {i18n.t("inbox.loadingMessages")}
+                </p>
+              )}
+              {messages.isError && (
+                <div role="alert" className="rounded-xl border border-destructive/30 bg-card p-4">
+                  <p className="text-sm">{i18n.t("inbox.threadLoadFailed")}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => void messages.refetch()}
+                  >
+                    {i18n.t("inbox.retryMessages")}
+                  </Button>
+                </div>
+              )}
+              {messages.isSuccess && !thread.length && (
+                <p className="p-3 text-sm text-muted-foreground">{i18n.t("inbox.noMessagesYet")}</p>
+              )}
               {messages.hasNextPage && (
                 <div className="flex justify-center">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => loadOlder(messages)}
+                    onClick={() => void loadEarlierMessages()}
                     disabled={messages.isFetchingNextPage}
                   >
                     {messages.isFetchingNextPage && <Loader2 className="size-4 animate-spin" />}
@@ -1454,116 +1643,117 @@ function InboxPage() {
                   </Button>
                 </div>
               )}
-              {thread.map((m, idx) => {
-                const showDateDivider =
-                  idx === 0 ||
-                  new Date(m.created_at).toDateString() !==
-                    new Date(thread[idx - 1]!.created_at).toDateString();
+              {thread.map((m, index) => {
                 const showTranslation = expandedTranslations.has(m.id);
                 const hasTranslation = Boolean(m.translated_body);
-                const isSystemAlert = m.body.startsWith("(Not delivered:");
                 return (
-                  <div key={m.id} className="space-y-3">
-                    {showDateDivider && (
-                      <div className="my-2 flex justify-center">
-                        <span className="rounded-full bg-muted/80 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
-                          {formatDateDivider(m.created_at)}
-                        </span>
+                  <div key={m.id} data-message-id={m.id} data-message-date={m.created_at}>
+                    {(index === 0 ||
+                      formatDate(m.created_at, locale) !==
+                        formatDate(thread[index - 1]!.created_at, locale)) && (
+                      <div className="mb-3 text-center">
+                        <time
+                          dateTime={m.created_at}
+                          className="inline-flex rounded-full border bg-card px-3 py-1 text-xs font-medium text-foreground"
+                        >
+                          {formatDate(m.created_at, locale)}
+                        </time>
                       </div>
                     )}
-                    {isSystemAlert ? (
-                      <div className="my-2 flex justify-center">
-                        <div className="flex max-w-[85%] items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-center text-xs text-amber-700 dark:text-amber-300">
-                          <AlertTriangle className="size-3.5 shrink-0" />
-                          <span>{m.body}</span>
-                        </div>
-                      </div>
-                    ) : (
+                    <div
+                      className={cn(
+                        "flex",
+                        m.direction === "outbound"
+                          ? "justify-end rtl:justify-start"
+                          : "justify-start rtl:justify-end",
+                      )}
+                    >
                       <div
                         className={cn(
-                          "flex",
+                          "message-bubble group relative rounded-2xl px-3 py-2 text-sm shadow-xs sm:px-4",
                           m.direction === "outbound"
-                            ? "justify-end rtl:justify-start"
-                            : "justify-start rtl:justify-end",
+                            ? "bg-bubble-out text-bubble-out-foreground"
+                            : "bg-bubble-in text-bubble-in-foreground",
                         )}
                       >
-                        <div
-                          className={cn(
-                            "group relative max-w-[70%] rounded-2xl px-4 py-2 text-sm shadow-panel",
-                            m.direction === "outbound"
-                              ? "bg-bubble-out text-bubble-out-foreground"
-                              : "bg-bubble-in text-bubble-in-foreground",
-                          )}
-                        >
-                          {m.sender === "bot" && (
-                            <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
-                              <Bot className="size-3" /> {i18n.t("inbox.assistant")}
-                            </span>
-                          )}
-                          <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                          {showTranslation && m.translated_body && (
-                            <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
-                              <p className="mb-1 font-semibold opacity-70">
-                                {m.detected_language
-                                  ? i18n.t("inbox.translatedFrom", {
-                                      detectedlanguage: m.detected_language,
-                                    })
-                                  : i18n.t("inbox.translation")}
-                              </p>
-                              <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
-                            </div>
-                          )}
-                          <div className="mt-1 flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedTranslations((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(m.id)) next.delete(m.id);
-                                  else {
-                                    next.add(m.id);
-                                    if (!hasTranslation) translateMutation.mutate(m.id);
-                                  }
-                                  return next;
-                                })
-                              }
-                              disabled={translateMutation.isPending && !hasTranslation}
-                              className="flex items-center gap-1 text-[10px] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-40"
-                            >
-                              <Languages className="size-3" />
-                              {showTranslation
-                                ? i18n.t("inbox.hide")
-                                : hasTranslation
-                                  ? i18n.t("inbox.showTranslation")
-                                  : i18n.t("inbox.translate")}
-                            </button>
-                            <span className="inline-flex items-center gap-1 text-[10px] opacity-60">
-                              {new Date(m.created_at).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                              {m.direction === "outbound" && (
-                                <MessageDeliveryStatus status={m.status} />
-                              )}
-                            </span>
-                            {m.direction === "outbound" && (
-                              <DeliveryState
-                                status={m.status}
-                                createdAt={m.created_at}
-                                failureReason={m.failure_reason}
-                              />
-                            )}
+                        {m.sender === "bot" && (
+                          <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                            <Bot className="size-3" /> {i18n.t("inbox.assistant")}
+                          </span>
+                        )}
+                        <p dir="auto" className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                          {m.body}
+                        </p>
+                        {showTranslation && m.translated_body && (
+                          <div className="mt-2 rounded-lg border border-dashed border-current/20 bg-black/5 p-2 text-xs opacity-90 dark:bg-white/5">
+                            <p className="mb-1 font-semibold opacity-70">
+                              {m.detected_language
+                                ? i18n.t("inbox.translatedFrom", {
+                                    detectedlanguage: m.detected_language,
+                                  })
+                                : i18n.t("inbox.translation")}
+                            </p>
+                            <p className="whitespace-pre-wrap break-words">{m.translated_body}</p>
                           </div>
+                        )}
+                        <div className="mt-1 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedTranslations((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(m.id)) next.delete(m.id);
+                                else {
+                                  next.add(m.id);
+                                  if (!hasTranslation) translateMutation.mutate(m.id);
+                                }
+                                return next;
+                              })
+                            }
+                            disabled={translateMutation.isPending && !hasTranslation}
+                            className="flex items-center gap-1 text-[10px] opacity-60 transition-opacity hover:opacity-100 disabled:opacity-40"
+                          >
+                            <Languages className="size-3" />
+                            {showTranslation
+                              ? i18n.t("inbox.hide")
+                              : hasTranslation
+                                ? i18n.t("inbox.showTranslation")
+                                : i18n.t("inbox.translate")}
+                          </button>
+                          <time
+                            dateTime={m.created_at}
+                            className="inline-flex flex-wrap items-center justify-end gap-1 text-[11px] text-muted-foreground"
+                          >
+                            {formatDate(m.created_at, locale)} · {formatTime(m.created_at, locale)}
+                            {m.direction === "outbound" && (
+                              <MessageDeliveryStatus status={m.status} />
+                            )}
+                          </time>
+                          {m.direction === "outbound" && (
+                            <DeliveryState
+                              status={m.status}
+                              createdAt={m.created_at}
+                              failureReason={m.failure_reason}
+                            />
+                          )}
                         </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
               <div ref={bottomRef} />
             </div>
 
-            <div className="space-y-2 border-t bg-card p-4">
+            {waitingForLatest && (
+              <div className="flex shrink-0 justify-center border-t bg-card p-2">
+                <Button variant="outline" size="sm" onClick={jumpToLatest}>
+                  <ArrowDown className="size-4" />
+                  {i18n.t("inbox.latestMessages")}
+                </Button>
+              </div>
+            )}
+            <div className="inbox-composer shrink-0 space-y-2 border-t bg-card p-3 sm:p-4">
               {active.channel === "whatsapp" && sendContext.data?.sendingNumber && (
                 <p className="text-xs text-muted-foreground" data-testid="sending-from">
                   {(() => {
@@ -1595,7 +1785,21 @@ function InboxPage() {
                   </ul>
                 </div>
               )}
+              {sendContext.isError && active.channel === "whatsapp" && (
+                <p role="alert" className="text-xs text-destructive">
+                  {i18n.t("inbox.senderCheckFailed")}{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => void sendContext.refetch()}
+                  >
+                    {i18n.t("inbox.retryMessages")}
+                  </button>
+                </p>
+              )}
               <Textarea
+                className="max-h-32 resize-none text-base sm:text-sm"
+                dir="auto"
                 rows={2}
                 aria-label={i18n.t("inbox.replyToConversation")}
                 placeholder={
@@ -1616,22 +1820,35 @@ function InboxPage() {
                     e.preventDefault();
                     // A second Enter while the first is still on its way is the
                     // same message; the server would refuse the copy anyway.
-                    if (!sendMutation.isPending && sendBlocks.length === 0) {
-                      sendMutation.mutate(draft.trim());
+                    if (
+                      !sendMutation.isPending &&
+                      !sendPending &&
+                      sendBlocks.length === 0 &&
+                      messages.isSuccess &&
+                      (active.channel !== "whatsapp" || sendContext.isSuccess)
+                    ) {
+                      queueReply();
                     }
                   }
                 }}
               />
               {!whatsappReplyWindowOpen && (
-                <p role="status" className="text-sm text-muted-foreground">
-                  {i18n.t("inbox.thisCustomerHasNotMessaged")}
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p role="status" className="min-w-0 flex-1 text-xs text-muted-foreground">
+                    {i18n.t("inbox.thisCustomerHasNotMessaged")}
+                  </p>
+                  <Button size="sm" variant="outline" onClick={() => setShowTools(true)}>
+                    {i18n.t("inbox.sendApprovedTemplate")}
+                  </Button>
+                </div>
               )}
               <div className="flex items-center justify-between">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => suggestMutation.mutate()}
+                  onClick={() =>
+                    suggestMutation.mutate({ conversationId: activeId!, before: draft })
+                  }
                   disabled={suggestMutation.isPending}
                 >
                   {suggestMutation.isPending ? (
@@ -1642,12 +1859,15 @@ function InboxPage() {
                   {i18n.t("inbox.suggestReply")}
                 </Button>
                 <Button
-                  onClick={() => draft.trim() && sendMutation.mutate(draft.trim())}
+                  onClick={queueReply}
                   disabled={
                     sendMutation.isPending ||
+                    sendPending ||
                     !draft.trim() ||
                     !whatsappReplyWindowOpen ||
-                    sendBlocks.length > 0
+                    sendBlocks.length > 0 ||
+                    !messages.isSuccess ||
+                    (active.channel === "whatsapp" && !sendContext.isSuccess)
                   }
                 >
                   <Send className="size-4" />

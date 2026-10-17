@@ -23,7 +23,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { manualSocialFormError } from "@/lib/form-validation";
 import { connector } from "@/lib/connections-catalog";
 import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
-import { plannedPostNote, publishReality } from "@/lib/social-publishing";
+import { isUnfinishedConnection } from "@/lib/social-account-readiness";
+import {
+  draftFromPost,
+  emptyDraft,
+  platformIsKept,
+  submitDraft,
+  type ComposerDraft,
+} from "@/lib/social-drafts";
+import { SOCIAL_HUB_CAN_PUBLISH, publishReality } from "@/lib/social-publishing";
 import {
   groupPostsByState,
   humanizePlatformId,
@@ -50,6 +58,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Archive,
+  Copy,
   Facebook,
   Globe,
   Info,
@@ -73,30 +82,37 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, type MessageKey } from "@/lib/i18n";
+import { parseSocialTab, type SocialTab } from "@/lib/social-tabs";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
 export const Route = createFileRoute("/_authenticated/social")({
   head: () => ({
     meta: [
-      { title: "Social Hub — Flas CRM" },
+      { title: "Social posts — Flas CRM" },
       {
         name: "description",
         content:
-          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flas CRM.",
+          "Write and plan social posts, reply to comments and messages, and see how your accounts are doing. Flas does not publish posts for you yet.",
       },
-      { property: "og:title", content: "Social Hub — Flas CRM" },
+      { property: "og:title", content: "Social posts — Flas CRM" },
       {
         property: "og:description",
         content:
-          "Manage Instagram and Facebook comments, DMs, content reach and audience from Flas CRM.",
+          "Write and plan social posts, reply to comments and messages, and see how your accounts are doing. Flas does not publish posts for you yet.",
       },
     ],
   }),
   // The OAuth callback redirects back here with the outcome in the query
   // string. These were previously unread, so a blocked connection showed
   // nothing at all.
-  validateSearch: (search: Record<string, unknown>): ConnectionOutcomeSearch => ({
+  //
+  // `tab` says which of the three tabs is open (write | comments | reach), so
+  // reload, Back and a pasted link keep the place. Anything else is the writer.
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): ConnectionOutcomeSearch & { tab?: SocialTab } => ({
+    ...("tab" in search ? { tab: parseSocialTab(search["tab"]) } : {}),
     ...(typeof search["connected"] === "string" ? { connected: search["connected"] } : {}),
     ...(typeof search["connect_blocked"] === "string"
       ? { connect_blocked: search["connect_blocked"] }
@@ -126,6 +142,8 @@ type Account = {
   platform: PlatformId;
   label: string;
   external_id: string | null;
+  /** "oauth" for a connection made by signing in; "manual" for a pasted one. */
+  connect_method?: string | null;
   active: boolean;
   last_synced_at: string | null;
   stats: Record<string, number> | null;
@@ -326,18 +344,6 @@ function PlatformBadge({ platform, label }: { platform: string | null; label?: s
   );
 }
 
-/** ISO instant → the value a `datetime-local` input expects, in local time. */
-function toLocalInputValue(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
-  );
-}
-
 function SocialHubPage() {
   const i18n = useI18n();
   const qc = useQueryClient();
@@ -355,11 +361,18 @@ function SocialHubPage() {
   // The composer is where a draft is written, so it is where a draft has to be
   // editable. "Edit" on a draft anywhere else brings it back here rather than
   // leaving it stranded in a list with only a delete icon (QA, 26 Sep).
-  const [tab, setTab] = useState("inbox");
+  // Opens on the writer unless the address says otherwise: writing a post is
+  // what the screen is called, and what the person came to do. Replies to
+  // comments and messages are one tab along (and in the Inbox). The tab is kept
+  // in the address, so a reload or Back stays on it and the other two tabs can
+  // be linked to directly (?tab=comments, ?tab=reach).
+  const tab = parseSocialTab(search.tab);
+  const setTab = (next: string) =>
+    void navigate({ search: (prev) => ({ ...prev, tab: parseSocialTab(next) }) });
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const editPost = (post: Post) => {
     setEditingPost(post);
-    setTab("composer");
+    setTab("write");
   };
 
   return (
@@ -369,18 +382,34 @@ function SocialHubPage() {
         description={i18n.t("social.runYourClientSWhole")}
       />
 
+      {/* Said before anything else, on every tab: Flas saves and plans posts, it
+          does not send them (see lib/social-publishing.ts). The way out is the
+          Copy post button in the composer. */}
+      {SOCIAL_HUB_CAN_PUBLISH ? null : (
+        <div role="note" className="mb-4 flex gap-3 rounded-lg border bg-muted/40 p-3 text-sm">
+          <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <p className="font-medium">{i18n.t("social.noPublishTitle")}</p>
+            <p className="text-muted-foreground">{i18n.t("social.noPublishBody")}</p>
+          </div>
+        </div>
+      )}
+
       <ConnectionOutcome
         search={search}
         accounts={accounts}
         onChanged={refresh}
-        onDismiss={() => void navigate({ to: "/social", search: {}, replace: true })}
+        onDismiss={() => void navigate({ to: "/social", search: { tab }, replace: true })}
       />
 
       <AccountsCard accounts={accounts} onChanged={refresh} />
 
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList>
-          <TabsTrigger value="inbox" className="gap-1.5">
+          <TabsTrigger value="write" className="gap-1.5">
+            <PenSquare className="size-3.5" /> {i18n.t("social.aiComposer")}
+          </TabsTrigger>
+          <TabsTrigger value="comments" className="gap-1.5">
             <MessageCircle className="size-3.5" /> {i18n.t("social.commentsDms")}
             {interactions.filter((i) => i.status === "open").length > 0 && (
               <Badge variant="secondary" className="ms-1 text-[10px]">
@@ -388,18 +417,15 @@ function SocialHubPage() {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="composer" className="gap-1.5">
-            <PenSquare className="size-3.5" /> {i18n.t("social.aiComposer")}
-          </TabsTrigger>
           <TabsTrigger value="reach" className="gap-1.5">
             <Sparkles className="size-3.5" /> {i18n.t("social.reachAudience")}
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="inbox" className="mt-4">
+        <TabsContent value="comments" className="mt-4">
           <InboxTab interactions={interactions} accounts={accounts} onChanged={refresh} />
         </TabsContent>
-        <TabsContent value="composer" className="mt-4">
+        <TabsContent value="write" className="mt-4">
           <ComposerTab
             accounts={accounts}
             posts={posts}
@@ -622,7 +648,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                   <span className="truncate">{a.label}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {!a.external_id
+                  {isUnfinishedConnection(a)
                     ? i18n.t("social.signInDoneChooseWhich")
                     : `${audienceStat(a.stats, i18n.t) ? `${audienceStat(a.stats, i18n.t)} · ` : ""}${
                         a.last_synced_at
@@ -634,7 +660,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
               <div className="flex shrink-0 items-center gap-1">
                 {/* Analytics and ads connections report rather than sync:
                     Sync pulls posts and comments, which they do not have. */}
-                {!a.external_id ? (
+                {isUnfinishedConnection(a) ? (
                   // The sign-in finished but no Page was chosen, so there is
                   // nothing to sync -- pressing Sync could only ever fail with
                   // "Add the Meta account ID and access token first", which is
@@ -885,13 +911,7 @@ function ComposerTab({
   });
   // One piece of work in the composer: a new caption, or the draft being
   // rewritten. `id` is what tells the two apart on save.
-  const [draft, setDraft] = useState<{
-    id: string | null;
-    caption: string;
-    platform: PlatformId;
-    accountId: string | null;
-    plannedAt: string;
-  }>({ id: null, caption: "", platform: "instagram", accountId: null, plannedAt: "" });
+  const [draft, setDraft] = useState<ComposerDraft<PlatformId>>(() => emptyDraft("instagram"));
 
   // Accounts a post can be written for. The composer's own platform list is
   // what the server accepts (ComposeSchema / SavePostSchema), so an analytics or
@@ -902,16 +922,8 @@ function ComposerTab({
 
   useEffect(() => {
     if (!editing) return;
-    setDraft((d) => ({
-      id: editing.id,
-      caption: editing.caption,
-      accountId: editing.account_id,
-      platform:
-        ((writableAccounts.find((a) => a.id === editing.account_id)?.platform as PlatformId) ??
-          d.platform) ||
-        "instagram",
-      plannedAt: toLocalInputValue(editing.scheduled_at),
-    }));
+    // What the composer holds for a saved post is decided in social-drafts.ts.
+    setDraft((d) => draftFromPost(editing, writableAccounts, d.platform));
     // Only the identity of the post being edited should reload the form —
     // re-running on every account refetch would throw away typing in progress.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -922,8 +934,18 @@ function ComposerTab({
   const saved = [...groups.planned, ...groups.drafts];
 
   const resetDraft = () => {
-    setDraft({ id: null, caption: "", platform: draft.platform, accountId: null, plannedAt: "" });
+    setDraft(emptyDraft(draft.platform));
     onEdit(null);
+  };
+
+  /** Flas does not publish, so the way out is the clipboard. A refusal is said, not swallowed. */
+  const copyCaption = async () => {
+    try {
+      await navigator.clipboard.writeText(draft.caption);
+      toast.success(i18n.t("social.postCopied"));
+    } catch {
+      toast.error(i18n.t("social.copyFailed"));
+    }
   };
 
   const composeMutation = useMutation({
@@ -937,37 +959,16 @@ function ComposerTab({
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (plan: boolean) => {
-      const caption = draft.caption.trim();
-      const scheduledAt =
-        plan && draft.plannedAt ? new Date(draft.plannedAt).toISOString() : undefined;
-      if (draft.id) {
-        return update({
-          data: {
-            id: draft.id,
-            caption,
-            accountId: draft.accountId,
-            scheduledAt: scheduledAt ?? null,
-          },
-        });
+    // What is sent, and what is said about it, is decided in social-drafts.ts,
+    // where it is tested.
+    mutationFn: (plan: boolean) => submitDraft(draft, plan, { save, update }),
+    onSuccess: (outcome) => {
+      if (outcome.kind === "unreadable-date") {
+        // Nothing was sent or saved; the form stays as it is so the date can be chosen again.
+        toast.error(i18n.t("social.plannedDateUnreadable"));
+        return;
       }
-      return save({
-        data: {
-          caption,
-          platform: draft.platform,
-          ...(draft.accountId ? { accountId: draft.accountId } : {}),
-          ...(scheduledAt ? { scheduledAt } : {}),
-        },
-      });
-    },
-    onSuccess: (_res, plan) => {
-      toast.success(
-        draft.id
-          ? i18n.t("social.draftUpdated")
-          : plan
-            ? i18n.t("social.savedWithAPlannedDate")
-            : i18n.t("social.draftSaved"),
-      );
+      toast.success(i18n.t(outcome.messageKey));
       resetDraft();
       onChanged();
     },
@@ -1078,13 +1079,18 @@ function ComposerTab({
                   ))}
                 </SelectContent>
               </Select>
-              {draft.accountId !== null ? (
+              {platformIsKept(draft) ? (
                 <p className="text-xs text-muted-foreground">
                   {i18n.tr("social.setByTheAccountYou", {
                     platformDisplayName: platformDisplayName(draft.platform),
                   })}
                 </p>
-              ) : null}
+              ) : (
+                // A draft with no account has nowhere to keep the platform.
+                <p className="text-xs text-muted-foreground">
+                  {i18n.t("social.platformNotSavedWithoutAccount")}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1110,22 +1116,43 @@ function ComposerTab({
               value={draft.caption}
               onChange={(e) => setDraft((d) => ({ ...d, caption: e.target.value }))}
             />
-            <p className="text-xs text-muted-foreground">
-              {i18n.tr("social.characters", { length: draft.caption.length })}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {i18n.tr("social.characters", { length: draft.caption.length })}
+              </p>
+              {/* What a person does instead of publishing: copy it, post it
+                  themselves. */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                disabled={draft.caption.trim().length === 0}
+                onClick={() => void copyCaption()}
+              >
+                <Copy className="size-3.5" /> {i18n.t("social.copyPost")}
+              </Button>
+            </div>
           </div>
 
           {/* The honest state of publishing, per platform. Nothing in Flas sends
-              a saved post, so no control here claims it will. */}
-          <div className="flex gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-            <Info className="mt-0.5 size-3.5 shrink-0" />
-            <span>
-              {i18n.tr("social.saveItHereAndPost", {
-                reason: reality.reason,
-                platformDisplayName: platformDisplayName(draft.platform),
-              })}
-            </span>
-          </div>
+              a saved post, so no control here claims it will. Said through
+              translated text, not a sentence built in code. */}
+          {reality.canPublishNow ? null : (
+            <div className="flex gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+              <Info className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                {i18n.t("social.copyThenPost", {
+                  platformDisplayName: platformDisplayName(draft.platform),
+                })}
+                {reality.needsMedia
+                  ? ` ${i18n.t("social.needsMediaNote", {
+                      platformDisplayName: platformDisplayName(draft.platform),
+                    })}`
+                  : null}
+              </span>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-end gap-2">
             <Button
@@ -1143,6 +1170,7 @@ function ComposerTab({
               <Input
                 id="social-planned-at"
                 type="datetime-local"
+                max="9999-12-31T23:59"
                 className="w-56"
                 value={draft.plannedAt}
                 onChange={(e) => setDraft((d) => ({ ...d, plannedAt: e.target.value }))}
@@ -1164,7 +1192,9 @@ function ComposerTab({
               </Button>
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground">{plannedPostNote(reality.canSchedule)}</p>
+          {reality.canSchedule ? null : (
+            <p className="text-xs text-muted-foreground">{i18n.t("social.plannedDateNote")}</p>
+          )}
         </CardContent>
       </Card>
 

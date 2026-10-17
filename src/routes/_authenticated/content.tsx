@@ -20,13 +20,13 @@ import { useI18n } from "@/hooks/useI18n";
 export const Route = createFileRoute("/_authenticated/content")({
   head: () => ({
     meta: [
-      { title: "Content & SEO — Flas CRM" },
+      { title: "Saved drafts — Flas CRM" },
       {
         name: "description",
         content:
           "Draft, schedule and publish content across platforms with SEO title, description and keyword metadata.",
       },
-      { property: "og:title", content: "Content & SEO — Flas CRM" },
+      { property: "og:title", content: "Saved drafts — Flas CRM" },
       {
         property: "og:description",
         content: "Multi-platform content scheduling with built-in SEO metadata.",

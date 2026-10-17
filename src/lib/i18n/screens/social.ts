@@ -5,11 +5,11 @@ import { screen } from "../define";
 
 export default screen({
   en: {
-    "social.socialHub": "Social Hub",
+    "social.socialHub": "Social posts",
     "social.runYourClientSWhole":
-      "Run your client's whole social presence from here: reply to comments & DMs with Flas AI, write posts, and watch reach and audience grow.",
+      "Write and plan your social posts, reply to comments and messages, and see how your accounts are doing.",
     "social.commentsDms": "Comments & DMs",
-    "social.aiComposer": "AI Composer",
+    "social.aiComposer": "Write a post",
     "social.reachAudience": "Reach & audience",
     "social.accountConnectedPressSyncTo": "Account connected — press Sync to pull comments & DMs",
     "social.syncFailed": "Sync failed",
@@ -19,7 +19,7 @@ export default screen({
     "social.connectAnAccount": "Connect an account",
     "social.close": "Close",
     "social.pasteAToken": "Paste a token",
-    "social.connectSetup": "Connect & setup",
+    "social.connectSetup": "Connect accounts",
     "social.advancedMostAccountsShouldBe":
       "Advanced. Most accounts should be connected from {link}, which runs the platform's own login and requests the right permissions. Use this only when you already hold a long-lived token.",
     "social.platform": "Platform",
@@ -102,7 +102,7 @@ export default screen({
     "social.draftsPlannedPostsAndEverything":
       "Drafts, planned posts and everything synced from the connected platforms — newest first, labelled with the account each one belongs to.",
     "social.noPostsYetDraftOne":
-      "No posts yet — draft one in the AI Composer or sync a connected account.",
+      "No posts yet — write one in the Write a post tab or sync a connected account.",
     "social.audience": "Audience",
     "social.whoIsTalkingToYou": "Who is talking to you and how fast you answer.",
     "social.openConversations": "Open conversations",
@@ -127,13 +127,28 @@ export default screen({
     "social.postStatus.published": "Published",
     "social.postStatus.scheduled": "Planned",
     "social.postStatus.draft": "Draft",
+    "social.plannedDateUnreadable": "That date could not be read. Choose the date and time again.",
+    "social.platformNotSavedWithoutAccount":
+      "With no account chosen, the platform is only used while you write. It is not saved with the draft.",
+    "social.noPublishTitle": "Flas does not publish posts yet",
+    "social.noPublishBody":
+      "You can write a post, save it and plan a date here, but Flas does not send it for you. When it is ready, press Copy post and paste it into Instagram, Facebook or the app you post from.",
+    "social.copyThenPost":
+      "Flas does not post for you yet. Save the post here, then copy it and post it in {platformDisplayName} yourself.",
+    "social.needsMediaNote":
+      "{platformDisplayName} also needs a picture or video. Flas saves text only, so add one when you post.",
+    "social.plannedDateNote":
+      "A planned date is a note for your team. Nothing happens on that day, and Flas will not post it for you.",
+    "social.copyPost": "Copy post",
+    "social.postCopied": "Post copied",
+    "social.copyFailed": "Could not copy. Select the text and copy it yourself.",
   },
   ar: {
-    "social.socialHub": "مركز التواصل الاجتماعي",
+    "social.socialHub": "منشورات التواصل الاجتماعي",
     "social.runYourClientSWhole":
-      "أدِر الحضور الاجتماعي لعميلك كاملًا من هنا: ردّ على التعليقات والرسائل الخاصة مع Flas AI، واكتب المنشورات، وتابع نمو الوصول والجمهور.",
+      "اكتب منشوراتك على وسائل التواصل الاجتماعي وخطّط لها، وردّ على التعليقات والرسائل، وتابع أداء حساباتك.",
     "social.commentsDms": "التعليقات والرسائل الخاصة",
-    "social.aiComposer": "المحرر الذكي",
+    "social.aiComposer": "اكتب منشورًا",
     "social.reachAudience": "الوصول والجمهور",
     "social.accountConnectedPressSyncTo":
       "رُبط الحساب — اضغط «مزامنة» لجلب التعليقات والرسائل الخاصة",
@@ -144,7 +159,7 @@ export default screen({
     "social.connectAnAccount": "ربط حساب",
     "social.close": "إغلاق",
     "social.pasteAToken": "لصق رمز وصول",
-    "social.connectSetup": "الربط والإعداد",
+    "social.connectSetup": "ربط الحسابات",
     "social.advancedMostAccountsShouldBe":
       "خيار متقدم. ينبغي ربط معظم الحسابات من {link}، حيث يجري تسجيل الدخول الخاص بالمنصة وتُطلب الصلاحيات الصحيحة. استخدم هذا فقط إذا كان لديك رمز وصول طويل الأمد.",
     "social.platform": "المنصة",
@@ -226,7 +241,7 @@ export default screen({
     "social.draftsPlannedPostsAndEverything":
       "المسودات والمنشورات المخططة وكل ما تمت مزامنته من المنصات المرتبطة — الأحدث أولًا، مع بيان الحساب الذي ينتمي إليه كل منها.",
     "social.noPostsYetDraftOne":
-      "لا توجد منشورات بعد — صُغ واحدًا في المحرر الذكي أو زامن حسابًا مرتبطًا.",
+      "لا توجد منشورات بعد — اكتب واحدًا في تبويب «اكتب منشورًا» أو زامن حسابًا متصلًا.",
     "social.audience": "الجمهور",
     "social.whoIsTalkingToYou": "من يتحدث إليك وبأي سرعة ترد.",
     "social.openConversations": "المحادثات المفتوحة",
@@ -251,13 +266,28 @@ export default screen({
     "social.postStatus.published": "منشور",
     "social.postStatus.scheduled": "مخطط",
     "social.postStatus.draft": "مسودة",
+    "social.plannedDateUnreadable": "تعذّرت قراءة هذا التاريخ. اختر التاريخ والوقت مرة أخرى.",
+    "social.platformNotSavedWithoutAccount":
+      "عند عدم اختيار حساب، تُستخدم المنصة أثناء الكتابة فقط ولا تُحفظ مع المسودة.",
+    "social.noPublishTitle": "Flas لا ينشر المنشورات بعد",
+    "social.noPublishBody":
+      "يمكنك كتابة منشور وحفظه وتحديد تاريخ له هنا، لكن Flas لا يرسله نيابةً عنك. عندما يصبح جاهزًا، اضغط «نسخ المنشور» والصقه في إنستغرام أو فيسبوك أو التطبيق الذي تنشر منه.",
+    "social.copyThenPost":
+      "Flas لا ينشر نيابةً عنك بعد. احفظ المنشور هنا، ثم انسخه وانشره بنفسك في {platformDisplayName}.",
+    "social.needsMediaNote":
+      "{platformDisplayName} يتطلب أيضًا صورة أو فيديو. يحفظ Flas النص فقط، فأضِف واحدًا عند النشر.",
+    "social.plannedDateNote":
+      "التاريخ المخطط ملاحظة لفريقك. لا يحدث شيء في ذلك اليوم، ولن ينشر Flas المنشور نيابةً عنك.",
+    "social.copyPost": "نسخ المنشور",
+    "social.postCopied": "تم نسخ المنشور",
+    "social.copyFailed": "تعذّر النسخ. حدّد النص وانسخه بنفسك.",
   },
   ms: {
-    "social.socialHub": "Hab Sosial",
+    "social.socialHub": "Hantaran Sosial",
     "social.runYourClientSWhole":
-      "Urus seluruh kehadiran sosial pelanggan anda dari sini: balas komen & DM dengan Flas AI, tulis hantaran, dan pantau capaian serta khalayak berkembang.",
+      "Tulis dan rancang hantaran media sosial anda, balas komen dan mesej, dan lihat prestasi akaun anda.",
     "social.commentsDms": "Komen & DM",
-    "social.aiComposer": "Penggubah AI",
+    "social.aiComposer": "Tulis hantaran",
     "social.reachAudience": "Capaian & khalayak",
     "social.accountConnectedPressSyncTo":
       "Akaun disambungkan — tekan Segerak untuk menarik komen & DM",
@@ -268,7 +298,7 @@ export default screen({
     "social.connectAnAccount": "Sambungkan akaun",
     "social.close": "Tutup",
     "social.pasteAToken": "Tampal token",
-    "social.connectSetup": "Sambung & sediakan",
+    "social.connectSetup": "Sambung Akaun",
     "social.advancedMostAccountsShouldBe":
       "Lanjutan. Kebanyakan akaun patut disambungkan dari {link}, yang menjalankan log masuk platform itu sendiri dan meminta kebenaran yang betul. Gunakan ini hanya jika anda sudah memegang token jangka panjang.",
     "social.platform": "Platform",
@@ -355,7 +385,7 @@ export default screen({
     "social.draftsPlannedPostsAndEverything":
       "Draf, hantaran dirancang dan semua yang disegerakkan daripada platform yang disambungkan — terbaharu dahulu, dilabel dengan akaun pemilik setiap satu.",
     "social.noPostsYetDraftOne":
-      "Belum ada hantaran — rangka satu dalam Penggubah AI atau segerakkan akaun yang disambungkan.",
+      "Belum ada hantaran — tulis satu di tab Tulis hantaran atau segerakkan akaun yang disambungkan.",
     "social.audience": "Khalayak",
     "social.whoIsTalkingToYou": "Siapa yang bercakap dengan anda dan secepat mana anda menjawab.",
     "social.openConversations": "Perbualan terbuka",
@@ -380,13 +410,28 @@ export default screen({
     "social.postStatus.published": "Diterbitkan",
     "social.postStatus.scheduled": "Dirancang",
     "social.postStatus.draft": "Draf",
+    "social.plannedDateUnreadable": "Tarikh itu tidak dapat dibaca. Pilih semula tarikh dan masa.",
+    "social.platformNotSavedWithoutAccount":
+      "Apabila tiada akaun dipilih, platform hanya digunakan semasa anda menulis. Ia tidak disimpan bersama draf.",
+    "social.noPublishTitle": "Flas belum menerbitkan hantaran",
+    "social.noPublishBody":
+      "Anda boleh menulis hantaran, menyimpannya dan merancang tarikh di sini, tetapi Flas tidak menghantarnya untuk anda. Apabila sudah siap, tekan Salin hantaran dan tampalkan ke Instagram, Facebook atau aplikasi yang anda gunakan untuk menyiarkan.",
+    "social.copyThenPost":
+      "Flas belum menghantar hantaran untuk anda. Simpan hantaran di sini, kemudian salin dan hantar sendiri di {platformDisplayName}.",
+    "social.needsMediaNote":
+      "{platformDisplayName} juga memerlukan gambar atau video. Flas hanya menyimpan teks, jadi tambahkannya semasa anda menyiarkan.",
+    "social.plannedDateNote":
+      "Tarikh yang dirancang ialah nota untuk pasukan anda. Tiada apa-apa berlaku pada hari itu, dan Flas tidak akan menghantar hantaran itu untuk anda.",
+    "social.copyPost": "Salin hantaran",
+    "social.postCopied": "Hantaran disalin",
+    "social.copyFailed": "Tidak dapat menyalin. Pilih teks dan salin sendiri.",
   },
   fil: {
-    "social.socialHub": "Social Hub",
+    "social.socialHub": "Mga Social Post",
     "social.runYourClientSWhole":
-      "Patakbuhin mula rito ang buong social presence ng iyong kliyente: sagutin ang mga komento at DM gamit ang Flas AI, sumulat ng mga post, at subaybayan ang paglago ng reach at audience.",
+      "Sumulat at magplano ng iyong mga social post, sumagot sa mga komento at mensahe, at tingnan kung kumusta ang iyong mga account.",
     "social.commentsDms": "Mga komento at DM",
-    "social.aiComposer": "AI Composer",
+    "social.aiComposer": "Sumulat ng post",
     "social.reachAudience": "Reach at audience",
     "social.accountConnectedPressSyncTo":
       "Nakakonekta na ang account — pindutin ang Sync para kunin ang mga komento at DM",
@@ -397,7 +442,7 @@ export default screen({
     "social.connectAnAccount": "Magkonekta ng account",
     "social.close": "Isara",
     "social.pasteAToken": "Mag-paste ng token",
-    "social.connectSetup": "Connect at setup",
+    "social.connectSetup": "Ikonekta ang mga Account",
     "social.advancedMostAccountsShouldBe":
       "Advanced. Karamihan ng account ay dapat ikonekta mula sa {link}, na nagpapatakbo ng sariling login ng platform at humihingi ng tamang mga pahintulot. Gamitin lang ito kung may hawak ka nang long-lived token.",
     "social.platform": "Platform",
@@ -484,7 +529,7 @@ export default screen({
     "social.draftsPlannedPostsAndEverything":
       "Mga draft, nakaplanong post at lahat ng na-sync mula sa mga nakakonektang platform — pinakabago muna, may label ng account na kinabibilangan ng bawat isa.",
     "social.noPostsYetDraftOne":
-      "Wala pang post — mag-draft ng isa sa AI Composer o mag-sync ng nakakonektang account.",
+      "Wala pang post — sumulat ng isa sa tab na Sumulat ng post o i-sync ang nakakonektang account.",
     "social.audience": "Audience",
     "social.whoIsTalkingToYou": "Sino ang nakikipag-usap sa iyo at gaano ka kabilis sumagot.",
     "social.openConversations": "Mga bukas na usapan",
@@ -509,13 +554,28 @@ export default screen({
     "social.postStatus.published": "Na-publish",
     "social.postStatus.scheduled": "Nakaplano",
     "social.postStatus.draft": "Draft",
+    "social.plannedDateUnreadable": "Hindi mabasa ang petsang iyon. Piliin muli ang petsa at oras.",
+    "social.platformNotSavedWithoutAccount":
+      "Kapag walang napiling account, ginagamit lang ang platform habang nagsusulat ka. Hindi ito nase-save kasama ng draft.",
+    "social.noPublishTitle": "Hindi pa naglalathala ng mga post ang Flas",
+    "social.noPublishBody":
+      "Maaari kang magsulat ng post, i-save ito at magplano ng petsa rito, pero hindi ito ipinapadala ng Flas para sa iyo. Kapag handa na, pindutin ang Kopyahin ang post at i-paste ito sa Instagram, Facebook o sa app na ginagamit mo sa pag-post.",
+    "social.copyThenPost":
+      "Hindi pa nagpo-post ang Flas para sa iyo. I-save ang post dito, pagkatapos ay kopyahin ito at i-post mo mismo sa {platformDisplayName}.",
+    "social.needsMediaNote":
+      "Kailangan din ng {platformDisplayName} ng larawan o video. Teksto lang ang sine-save ng Flas, kaya magdagdag ka nito kapag nagpo-post ka.",
+    "social.plannedDateNote":
+      "Ang planadong petsa ay paalala para sa iyong team. Walang mangyayari sa araw na iyon, at hindi ipo-post ng Flas ang post para sa iyo.",
+    "social.copyPost": "Kopyahin ang post",
+    "social.postCopied": "Nakopya na ang post",
+    "social.copyFailed": "Hindi makopya. Piliin ang teksto at kopyahin mo mismo.",
   },
   sw: {
-    "social.socialHub": "Kitovu cha Mitandao",
+    "social.socialHub": "Machapisho ya Mitandao",
     "social.runYourClientSWhole":
-      "Endesha uwepo wote wa mteja wako mitandaoni kutoka hapa: jibu maoni na DM kwa Flas AI, andika machapisho, na ufuatilie ufikiaji na hadhira vikikua.",
+      "Andika na upange machapisho yako ya mitandao ya kijamii, jibu maoni na ujumbe, na uone jinsi akaunti zako zinavyoendelea.",
     "social.commentsDms": "Maoni na DM",
-    "social.aiComposer": "Mtunzi wa AI",
+    "social.aiComposer": "Andika chapisho",
     "social.reachAudience": "Ufikiaji na hadhira",
     "social.accountConnectedPressSyncTo":
       "Akaunti imeunganishwa — bonyeza Sawazisha ili kuleta maoni na DM",
@@ -526,7 +586,7 @@ export default screen({
     "social.connectAnAccount": "Unganisha akaunti",
     "social.close": "Funga",
     "social.pasteAToken": "Bandika tokeni",
-    "social.connectSetup": "Unganisha na usanidi",
+    "social.connectSetup": "Unganisha Akaunti",
     "social.advancedMostAccountsShouldBe":
       "Kiwango cha juu. Akaunti nyingi zinapaswa kuunganishwa kutoka {link}, ambayo huendesha uingiaji wa jukwaa lenyewe na kuomba ruhusa sahihi. Tumia hii tu ikiwa tayari una tokeni ya muda mrefu.",
     "social.platform": "Jukwaa",
@@ -611,7 +671,7 @@ export default screen({
     "social.draftsPlannedPostsAndEverything":
       "Rasimu, machapisho yaliyopangwa na kila kilichosawazishwa kutoka majukwaa yaliyounganishwa — mapya kwanza, yakiwa na lebo ya akaunti inayomiliki kila moja.",
     "social.noPostsYetDraftOne":
-      "Bado hakuna machapisho — andaa moja kwenye Mtunzi wa AI au sawazisha akaunti iliyounganishwa.",
+      "Bado hakuna machapisho — andika moja kwenye kichupo cha Andika chapisho au sawazisha akaunti iliyounganishwa.",
     "social.audience": "Hadhira",
     "social.whoIsTalkingToYou": "Nani anazungumza nawe na unajibu kwa kasi gani.",
     "social.openConversations": "Mazungumzo yaliyo wazi",
@@ -636,5 +696,20 @@ export default screen({
     "social.postStatus.published": "Imechapishwa",
     "social.postStatus.scheduled": "Imepangwa",
     "social.postStatus.draft": "Rasimu",
+    "social.plannedDateUnreadable": "Tarehe hiyo haikuweza kusomwa. Chagua tarehe na saa tena.",
+    "social.platformNotSavedWithoutAccount":
+      "Usipochagua akaunti, jukwaa linatumika tu unapoandika. Halihifadhiwi pamoja na rasimu.",
+    "social.noPublishTitle": "Flas bado haichapishi machapisho",
+    "social.noPublishBody":
+      "Unaweza kuandika chapisho, kulihifadhi na kupanga tarehe hapa, lakini Flas hailichapishi kwa niaba yako. Likiwa tayari, bonyeza Nakili chapisho kisha ulibandike kwenye Instagram, Facebook au programu unayochapishia.",
+    "social.copyThenPost":
+      "Flas bado haichapishi kwa niaba yako. Hifadhi chapisho hapa, kisha linakili na ulichapishe mwenyewe kwenye {platformDisplayName}.",
+    "social.needsMediaNote":
+      "{platformDisplayName} pia inahitaji picha au video. Flas huhifadhi maandishi tu, kwa hiyo ongeza moja unapochapisha.",
+    "social.plannedDateNote":
+      "Tarehe iliyopangwa ni noti kwa timu yako. Hakuna kinachotokea siku hiyo, na Flas haitachapisha chapisho kwa niaba yako.",
+    "social.copyPost": "Nakili chapisho",
+    "social.postCopied": "Chapisho limenakiliwa",
+    "social.copyFailed": "Imeshindwa kunakili. Chagua maandishi na uyanakili mwenyewe.",
   },
 });

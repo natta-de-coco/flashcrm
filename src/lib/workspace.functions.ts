@@ -9,17 +9,19 @@ import { createServerFn } from "@tanstack/react-start";
 export const getWorkspaceRegion = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: profile } = await context.supabase
+    const { data: profile, error: profileError } = await context.supabase
       .from("profiles")
       .select("tenant_id, staff_role")
       .eq("id", context.userId)
       .maybeSingle();
+    if (profileError) throw profileError;
     if (!profile?.tenant_id) return null;
-    const { data } = await context.supabase
+    const { data, error } = await context.supabase
       .from("organizations")
       .select("id, name, country, currency, locale, timezone, compliance_region")
       .eq("id", profile.tenant_id)
       .maybeSingle();
+    if (error) throw error;
     return data ? { ...data, staff_role: profile.staff_role } : null;
   });
 

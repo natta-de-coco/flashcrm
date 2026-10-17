@@ -36,6 +36,7 @@ class Query {
     this.filters.push((r) => r[k] === v);
     return this;
   }
+  // The inbound resolver looks a number up in each form it may be stored in.
   in(k, values) {
     const list = Array.isArray(values) ? values : [values];
     this.filters.push((r) => list.includes(r[k]));
