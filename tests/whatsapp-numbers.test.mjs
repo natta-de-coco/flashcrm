@@ -393,20 +393,33 @@ describe("readers open stored WhatsApp tokens before using them", () => {
           alerts_enabled: false,
         },
       ];
-      const chain = (rows) => {
+      const healthReads = [];
+      const chain = (table, rows) => {
+        const read = { table, filters: [], columns: null, options: null };
+        healthReads.push(read);
         const q = {
-          select: () => q,
-          eq: () => q,
-          in: () => q,
+          select: (columns, options) => {
+            read.columns = columns;
+            read.options = options;
+            return q;
+          },
+          eq: (column, value) => {
+            read.filters.push([column, value]);
+            return q;
+          },
           gte: () => q,
-          order: () => Promise.resolve({ data: rows, error: null }),
+          order: () => q,
           then: (resolve, reject) =>
-            Promise.resolve({ data: [], count: 0, error: null }).then(resolve, reject),
+            Promise.resolve({
+              data: rows,
+              count: table === "conversations" ? 1400 : 2300,
+              error: null,
+            }).then(resolve, reject),
         };
         return q;
       };
       globalThis.onboardingDb = {
-        from: (table) => chain(table === "wa_numbers" ? numbers : []),
+        from: (table) => chain(table, table === "wa_numbers" ? numbers : []),
       };
       const calls = [];
       const realFetch = globalThis.fetch;
@@ -418,9 +431,21 @@ describe("readers open stored WhatsApp tokens before using them", () => {
       };
       try {
         const out = await mod.getMetaSyncHealth({
-          context: { supabase: { rpc: async () => ({ data: "tenant-a" }) } },
+          context: context(),
         });
         assert.equal(out.numbers[0].apiOk, true);
+        assert.equal(out.numbers[0].conversations, 1400);
+        assert.equal(out.numbers[0].messages24h, 2300);
+        assert.ok(!JSON.stringify(out).includes(TOKEN));
+        assert.ok(!JSON.stringify(out).includes(sealed));
+        const messageRead = healthReads.find((read) => read.table === "messages");
+        assert.match(messageRead.columns, /conversations!inner/);
+        assert.deepEqual(messageRead.options, { count: "exact", head: true });
+        assert.deepEqual(messageRead.filters, [
+          ["tenant_id", "tenant-a"],
+          ["conversations.tenant_id", "tenant-a"],
+          ["conversations.wa_number_id", "n1"],
+        ]);
       } finally {
         globalThis.fetch = realFetch;
       }

@@ -54,7 +54,7 @@ describe("what the composer says is what the server decided", () => {
     assert.match(inbox, /i18n\.tr\("inbox\.sendingFromTo"/);
     assert.match(
       inbox,
-      /sendBlocks\.length > 0\s*\n\s*\}/,
+      /sendBlocks\.length > 0 \|\|\s*!messages\.isSuccess/,
       "the Send button is disabled by a block",
     );
   });
@@ -72,24 +72,33 @@ describe("what the composer says is what the server decided", () => {
     assert.equal(referenceFor(null, "conv-1\nHello", next).ref, "ref-4");
   });
 
-  it("drops the reference only on an answer, never on an error", () => {
+  it("retains send ownership beside the drafts across route navigation", () => {
+    assert.match(inbox, /const sendPending = drafts\.sends\.isPending\(activeId\)/);
     assert.match(
       inbox,
-      /sendRef\.current = referenceFor\(sendRef\.current, `\$\{activeId\}\\n\$\{body\}`/,
+      /const attempt = drafts\.sends\.begin\(key, activeId, \(\) => crypto\.randomUUID\(\)\)/,
     );
-    assert.match(inbox, /clientRef: sendRef\.current\.ref/);
-    assert.match(inbox, /templateRef\.current = referenceFor\(/);
-    assert.match(inbox, /clientRef: templateRef\.current\.ref/);
-    // The reference used to be dropped whatever happened, so a retry after a
-    // lost response was a new message and the customer got two.
-    assert.ok(!inbox.includes("onSettled"), "the reference is dropped on every outcome again");
-    assert.equal(inbox.split("sendRef.current = null;").length - 1, 1);
-    assert.equal(inbox.split("templateRef.current = null;").length - 1, 1);
-    const afterAnswer = inbox.slice(inbox.indexOf('// No answer is not a "no".'));
-    const errorHandler = afterAnswer.slice(0, afterAnswer.indexOf("});"));
-    assert.match(errorHandler, /onError: \(e: Error\) => toast\.error\(e\.message\),/);
-    assert.ok(!errorHandler.includes("sendRef.current"), "the error handler drops the reference");
-    assert.match(inbox, /if \(!sendMutation\.isPending && sendBlocks\.length === 0\) \{/);
+    assert.match(inbox, /if \(attempt\)\s*sendMutation\.mutate/);
+    assert.match(inbox, /if \(attempt\)\s*templateMutation\.mutate/);
+    assert.equal(
+      inbox.split("drafts.sends.finish(request.key, request.clientRef, true);").length - 1,
+      2,
+    );
+    assert.equal(
+      inbox.split("drafts.sends.finish(request.key, request.clientRef, false);").length - 1,
+      2,
+    );
+    assert.match(inbox, /send\(\{ data: \{ conversationId, body, clientRef \} \}\)/);
+    assert.match(inbox, /clientRef: request\.clientRef/);
+    assert.match(
+      inbox,
+      /!sendMutation\.isPending &&\s*!sendPending &&\s*sendBlocks\.length === 0 &&\s*messages\.isSuccess/,
+    );
+    const provider = read("src/components/InboxDraftProvider.tsx");
+    assert.match(provider, /useState\(\(\) => new InboxSendSession\(\)\)/);
+    assert.match(provider, /value=\{\{ state, setState, sends \}\}/);
+    const shell = read("src/routes/_authenticated/route.tsx");
+    assert.match(shell, /InboxDraftProvider key=\{scope\} scope=\{scope\}/);
   });
 
   it("clears the box for a message the server says is already saved", () => {
@@ -100,8 +109,14 @@ describe("what the composer says is what the server decided", () => {
       inbox.indexOf("const sendMutation = useMutation({"),
       inbox.indexOf("const suggestMutation = useMutation({"),
     );
-    assert.ok(reply.indexOf('if (res.state === "blocked")') < reply.indexOf('setDraft("");'));
-    assert.match(reply, /void qc\.invalidateQueries\(\{ queryKey: \["messages", activeId\] \}\);/);
+    assert.ok(
+      reply.indexOf('if (res.state === "blocked")') <
+        reply.indexOf("drafts.acknowledge(request.conversationId, request.body);"),
+    );
+    assert.match(
+      reply,
+      /void qc\.invalidateQueries\(\{ queryKey: \["messages", request\.conversationId\] \}\);/,
+    );
   });
 
   it("looks again when a sending message goes stale, without waiting for other activity", () => {
@@ -142,7 +157,10 @@ describe("what the composer says is what the server decided", () => {
   });
 
   it("puts a suggested reply in the box for a person to read, and never sends it", () => {
-    assert.match(inbox, /onSuccess: \(res\) => setDraft\(res\.draft\),/);
+    assert.match(
+      inbox,
+      /onSuccess: \(res, request\) => drafts\.suggest\(request\.conversationId, request\.before, res\.draft\),/,
+    );
     // The server function that drafts has no way to send.
     const crm = read("src/lib/crm.functions.ts");
     const draftFn = crm.slice(

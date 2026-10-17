@@ -24,6 +24,8 @@ import { PageLanguage } from "@/components/PageLanguage";
 import { directionOf, isRtlUiLanguage } from "@/lib/i18n";
 import { readUiLanguage } from "@/lib/i18n/read-language";
 import { Toaster } from "@/components/ui/sonner";
+import { AppearanceProvider } from "@/hooks/useAppearance";
+import { APPEARANCE_BOOTSTRAP } from "@/lib/appearance";
 
 function NotFoundComponent() {
   const { t } = useI18n();
@@ -104,7 +106,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      {
+        name: "viewport",
+        content: "width=device-width, initial-scale=1",
+      },
       { title: "Flas CRM — WhatsApp Inbox & Chatbot" },
       {
         name: "description",
@@ -145,6 +150,7 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang={uiLanguage} dir={directionOf(uiLanguage)} suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP }} />
         <HeadContent />
       </head>
       <body suppressHydrationWarning>
@@ -176,18 +182,20 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <I18nProvider language={uiLanguage}>
-        <AuthProvider>
-          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-          {inApp ? (
-            <Outlet />
-          ) : (
-            <PageLanguage pathname={pathname}>
+        <AppearanceProvider>
+          <AuthProvider>
+            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+            {inApp ? (
               <Outlet />
-            </PageLanguage>
-          )}
-          {/* Toasts sit on the reading-end side: top-left in Arabic. */}
-          <Toaster position={isRtlUiLanguage(uiLanguage) ? "top-left" : "top-right"} richColors />
-        </AuthProvider>
+            ) : (
+              <PageLanguage pathname={pathname}>
+                <Outlet />
+              </PageLanguage>
+            )}
+            {/* Toasts sit on the reading-end side: top-left in Arabic. */}
+            <Toaster position={isRtlUiLanguage(uiLanguage) ? "top-left" : "top-right"} richColors />
+          </AuthProvider>
+        </AppearanceProvider>
       </I18nProvider>
     </QueryClientProvider>
   );

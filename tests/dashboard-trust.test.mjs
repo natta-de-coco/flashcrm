@@ -72,8 +72,15 @@ describe("business health score (M7: brief said 62, card said 60)", () => {
     assert.equal(figures.healthGrade(49), "At risk");
   });
 
-  test("no factors is 0, not a division by zero", () => {
-    assert.equal(figures.summariseHealth([]).score, 0);
+  test("no factors or fewer than three measurements cannot fabricate a risk grade", () => {
+    assert.deepEqual(figures.summariseHealth([]), {
+      score: null,
+      grade: "Not enough activity yet",
+    });
+    assert.deepEqual(figures.summariseHealth([{ score: 100 }, { score: null }]), {
+      score: null,
+      grade: "Not enough activity yet",
+    });
   });
 
   test("the method is stated to the reader, and says the weights are equal", () => {
@@ -147,6 +154,13 @@ describe("social interactions waiting for a reply (M7: 27 against an Inbox badge
 });
 
 describe("the AI brief is a snapshot, not a live figure (M7)", () => {
+  test("a manually generated brief stops saying just now when the page stays open", () => {
+    assert.equal(
+      figures.briefSnapshotKind({ cached: false, ageMs: figures.BRIEF_DIVERGENCE_MS }),
+      "diverged",
+    );
+    assert.equal(figures.briefSnapshotKind({ cached: false, ageMs: 0 }), "fresh");
+  });
   test("a cached brief older than the divergence window warns and offers Regenerate", () => {
     const note = figures.briefSnapshotNote({
       generatedAtTime: "08:14",

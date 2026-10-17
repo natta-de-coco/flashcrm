@@ -45,13 +45,14 @@ const MARKETING: AppRoute[] = [
   "/seo-blog",
   "/campaign-planner",
   "/advisor",
+  "/settings",
 ];
 
 /** Front-line agent: the conversation and the customer, not the company's setup. */
-const STAFF: AppRoute[] = ["/dashboard", "/inbox", "/contacts", "/sales", "/catalog"];
+const STAFF: AppRoute[] = ["/dashboard", "/inbox", "/contacts", "/sales", "/catalog", "/settings"];
 
 /** Writes articles; has no business in the inbox or the pipeline. */
-const SEO_EDITOR: AppRoute[] = ["/dashboard", "/content", "/seo-blog"];
+const SEO_EDITOR: AppRoute[] = ["/dashboard", "/content", "/seo-blog", "/settings"];
 
 const ROUTES_BY_ROLE: Record<StaffRole, readonly AppRoute[]> = {
   super_admin: ALL_ROUTES,
@@ -111,6 +112,11 @@ function appRouteOf(to: string): AppRoute | undefined {
 export function canOpen(role: string | null | undefined, to: string): boolean {
   if (isPlatformRoute(to)) return role === "super_admin";
   const screen = appRouteOf(to);
+  // Everyone with a known role may open their own profile/security settings.
+  // Workspace sections are manager-only in Settings, and email subroutes stay
+  // manager-only on every navigation/search surface.
+  if (screen === "/settings" && cleanPath(to) !== "/settings" && !isCompanyManager(role))
+    return false;
   return screen !== undefined && routesFor(role).includes(screen);
 }
 

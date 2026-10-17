@@ -381,13 +381,13 @@ describe("useNavAccess hands every surface the lists of the signed-in role", () 
 
   const EXPECTED = {
     seo_editor: {
-      pages: ["/dashboard", "/seo-blog"],
+      pages: ["/dashboard", "/seo-blog", "/settings"],
       bar: ["/dashboard"],
       create: ["/seo-blog/studio", "/content"],
       records: ["seo_articles"],
     },
     staff: {
-      pages: ["/dashboard", "/inbox", "/contacts", "/sales", "/catalog"],
+      pages: ["/dashboard", "/inbox", "/contacts", "/sales", "/catalog", "/settings"],
       bar: ["/dashboard", "/inbox", "/contacts"],
       create: ["/contacts", "/inbox", "/catalog"],
       records: ["contacts", "products"],
@@ -402,6 +402,7 @@ describe("useNavAccess hands every surface the lists of the signed-in role", () 
         "/marketing",
         "/campaign-planner",
         "/advisor",
+        "/settings",
       ],
       bar: ["/dashboard", "/inbox", "/contacts", "/social"],
       records: ["contacts", "seo_articles"],
@@ -647,9 +648,10 @@ describe("one permission rule decides what every entry point offers", () => {
       "/marketing",
       "/campaign-planner",
       "/advisor",
+      "/settings",
     ],
-    staff: ["/dashboard", "/inbox", "/contacts", "/sales", "/catalog"],
-    seo_editor: ["/dashboard", "/seo-blog"],
+    staff: ["/dashboard", "/inbox", "/contacts", "/sales", "/catalog", "/settings"],
+    seo_editor: ["/dashboard", "/seo-blog", "/settings"],
   };
   const PLATFORM = ["/companies", "/companies/errors", "/companies/email-settings"];
   REACHES.super_admin = [...REACHES.company_admin, ...PLATFORM];
@@ -1152,7 +1154,17 @@ describe("every way into Social posts lands where its name says", () => {
         );
       }
     }
-    assert.ok(links >= 3, `expected the dashboard and channel links, found ${links}`);
+    assert.equal(links, 2, `expected the dashboard comments link and channel link, found ${links}`);
+    const dashboard = readFileSync(
+      new URL("../src/routes/_authenticated/dashboard.tsx", import.meta.url),
+      "utf8",
+    );
+    const emptySocial = dashboard.slice(
+      dashboard.indexOf("data?.social.accounts.length === 0"),
+      dashboard.indexOf("data?.social.accounts.map"),
+    );
+    assert.match(emptySocial, /to="\/connect"/);
+    assert.doesNotMatch(emptySocial, /to="\/social"/);
   });
 });
 

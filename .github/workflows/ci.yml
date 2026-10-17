@@ -79,5 +79,7 @@ jobs:
         run: node supabase/verify/verify-open-contact-identities.mjs
       - name: Workspace member removal and role change are atomic
         run: node supabase/verify/verify-workspace-member-role.mjs
+      - name: Lead alert settings and evidence require company admin and server writes
+        run: node supabase/verify/verify-lead-alert-settings.mjs
       - name: Unsubscribe withdraws one company's consent in one transaction, server role only
         run: node supabase/verify/verify-withdraw-marketing-consent.mjs

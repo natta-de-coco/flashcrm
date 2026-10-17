@@ -127,6 +127,9 @@ export default screen({
     "social.postStatus.published": "Published",
     "social.postStatus.scheduled": "Planned",
     "social.postStatus.draft": "Draft",
+    "social.plannedDateUnreadable": "That date could not be read. Choose the date and time again.",
+    "social.platformNotSavedWithoutAccount":
+      "With no account chosen, the platform is only used while you write. It is not saved with the draft.",
     "social.noPublishTitle": "Flas does not publish posts yet",
     "social.noPublishBody":
       "You can write a post, save it and plan a date here, but Flas does not send it for you. When it is ready, press Copy post and paste it into Instagram, Facebook or the app you post from.",
@@ -263,6 +266,9 @@ export default screen({
     "social.postStatus.published": "منشور",
     "social.postStatus.scheduled": "مخطط",
     "social.postStatus.draft": "مسودة",
+    "social.plannedDateUnreadable": "تعذّرت قراءة هذا التاريخ. اختر التاريخ والوقت مرة أخرى.",
+    "social.platformNotSavedWithoutAccount":
+      "عند عدم اختيار حساب، تُستخدم المنصة أثناء الكتابة فقط ولا تُحفظ مع المسودة.",
     "social.noPublishTitle": "Flas لا ينشر المنشورات بعد",
     "social.noPublishBody":
       "يمكنك كتابة منشور وحفظه وتحديد تاريخ له هنا، لكن Flas لا يرسله نيابةً عنك. عندما يصبح جاهزًا، اضغط «نسخ المنشور» والصقه في إنستغرام أو فيسبوك أو التطبيق الذي تنشر منه.",
@@ -404,6 +410,9 @@ export default screen({
     "social.postStatus.published": "Diterbitkan",
     "social.postStatus.scheduled": "Dirancang",
     "social.postStatus.draft": "Draf",
+    "social.plannedDateUnreadable": "Tarikh itu tidak dapat dibaca. Pilih semula tarikh dan masa.",
+    "social.platformNotSavedWithoutAccount":
+      "Apabila tiada akaun dipilih, platform hanya digunakan semasa anda menulis. Ia tidak disimpan bersama draf.",
     "social.noPublishTitle": "Flas belum menerbitkan hantaran",
     "social.noPublishBody":
       "Anda boleh menulis hantaran, menyimpannya dan merancang tarikh di sini, tetapi Flas tidak menghantarnya untuk anda. Apabila sudah siap, tekan Salin hantaran dan tampalkan ke Instagram, Facebook atau aplikasi yang anda gunakan untuk menyiarkan.",
@@ -545,6 +554,9 @@ export default screen({
     "social.postStatus.published": "Na-publish",
     "social.postStatus.scheduled": "Nakaplano",
     "social.postStatus.draft": "Draft",
+    "social.plannedDateUnreadable": "Hindi mabasa ang petsang iyon. Piliin muli ang petsa at oras.",
+    "social.platformNotSavedWithoutAccount":
+      "Kapag walang napiling account, ginagamit lang ang platform habang nagsusulat ka. Hindi ito nase-save kasama ng draft.",
     "social.noPublishTitle": "Hindi pa naglalathala ng mga post ang Flas",
     "social.noPublishBody":
       "Maaari kang magsulat ng post, i-save ito at magplano ng petsa rito, pero hindi ito ipinapadala ng Flas para sa iyo. Kapag handa na, pindutin ang Kopyahin ang post at i-paste ito sa Instagram, Facebook o sa app na ginagamit mo sa pag-post.",
@@ -684,6 +696,9 @@ export default screen({
     "social.postStatus.published": "Imechapishwa",
     "social.postStatus.scheduled": "Imepangwa",
     "social.postStatus.draft": "Rasimu",
+    "social.plannedDateUnreadable": "Tarehe hiyo haikuweza kusomwa. Chagua tarehe na saa tena.",
+    "social.platformNotSavedWithoutAccount":
+      "Usipochagua akaunti, jukwaa linatumika tu unapoandika. Halihifadhiwi pamoja na rasimu.",
     "social.noPublishTitle": "Flas bado haichapishi machapisho",
     "social.noPublishBody":
       "Unaweza kuandika chapisho, kulihifadhi na kupanga tarehe hapa, lakini Flas hailichapishi kwa niaba yako. Likiwa tayari, bonyeza Nakili chapisho kisha ulibandike kwenye Instagram, Facebook au programu unayochapishia.",

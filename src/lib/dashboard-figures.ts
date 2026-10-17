@@ -6,7 +6,7 @@
 //
 //   * the brief is generated once per UTC day and cached (brief.server.ts), so
 //     its figures are a snapshot while every card around it is live;
-//   * the health score is an average of five factor scores, computed in one
+//   * the health score is an average of measured factor scores, computed in one
 //     place — moved here so it is testable and described honestly;
 //   * "to reply" counted every open social interaction, including the outbound
 //     replies we ourselves insert with the default status 'open'
@@ -16,25 +16,27 @@
 //
 // Everything here is pure so tests/dashboard-trust.test.mjs can pin it down.
 
-export type HealthGrade = "Excellent" | "Good" | "Needs work" | "At risk";
+export type HealthGrade =
+  "Excellent" | "Good" | "Needs work" | "At risk" | "Not enough activity yet";
 
 /** How the score is built, said in the same words the card shows the reader. */
 export const HEALTH_METHOD_NOTE =
-  "Average of the five factors below, weighted equally and recalculated on every refresh.";
+  "Average of measured factors, weighted equally and recalculated on every refresh. At least three factors need data; missing or partial factors are excluded.";
 
 /**
- * The overall business health score: the mean of the factor scores, rounded.
- * Equal weights, stated as such — the type used to call it "weighted", which
- * invited the reader to look for weights that were never there.
+ * A CRM activity indicator, never a financial-health judgement. Only measured
+ * factors count, with equal weights; fewer than three yields no grade.
  */
-export function summariseHealth(factors: ReadonlyArray<{ score: number }>): {
-  score: number;
+export function summariseHealth(factors: ReadonlyArray<{ score: number | null }>): {
+  score: number | null;
   grade: HealthGrade;
 } {
-  const score =
-    factors.length === 0
-      ? 0
-      : Math.round(factors.reduce((sum, f) => sum + f.score, 0) / factors.length);
+  const measured = factors.filter(
+    (factor): factor is { score: number } =>
+      typeof factor.score === "number" && Number.isFinite(factor.score),
+  );
+  if (measured.length < 3) return { score: null, grade: "Not enough activity yet" };
+  const score = Math.round(measured.reduce((sum, f) => sum + f.score, 0) / measured.length);
   return { score, grade: healthGrade(score) };
 }
 
@@ -109,6 +111,6 @@ export function briefSnapshotKind(input: {
   cached: boolean;
   ageMs: number;
 }): "fresh" | "diverged" | "cached" {
-  if (!input.cached) return "fresh";
-  return input.ageMs >= BRIEF_DIVERGENCE_MS ? "diverged" : "cached";
+  if (input.ageMs >= BRIEF_DIVERGENCE_MS) return "diverged";
+  return input.cached ? "cached" : "fresh";
 }
