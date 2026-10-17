@@ -68,6 +68,7 @@ await bundle("src/routes/api/public/widget/chat.ts", "flas-widget-chat.mjs");
 await bundle("src/routes/api/public/leads/collect.ts", "flas-leads-collect.mjs");
 await bundle("src/routes/api/public/webhooks/wordpress.ts", "flas-webhook-wordpress.mjs");
 await bundle("src/routes/api/public/webhooks/shopify.ts", "flas-webhook-shopify.mjs");
+await bundle("src/routes/api/public/webhooks/custom.ts", "flas-webhook-custom.mjs");
 await bundle("src/lib/unsubscribe.server.ts", "flas-unsubscribe.mjs");
 await bundle("src/lib/lead-automation.server.ts", "flas-lead-automation.mjs");
 await bundle("src/lib/drip-automation.server.ts", "flas-drip-automation.mjs");

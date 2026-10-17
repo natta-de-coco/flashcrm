@@ -18,6 +18,32 @@ async function verifySignature(raw: string, body: WaWebhookBody, header: string 
   return { ok: await verifyWaSignature(raw, ids, header), enforced: true };
 }
 
+/**
+ * The one company every number in a delivery belongs to, or null.
+ *
+ * One delivery can carry several numbers. When they are not all one company's
+ * -- or one of them is nobody's -- the full event and any failure in it stay
+ * with the platform. A company must never receive another company's payload.
+ */
+async function companyOf(body: WaWebhookBody): Promise<string | null> {
+  const { findWaNumberByPhoneId } = await import("@/lib/wa.server");
+  const entries = body.entry ?? [];
+  // An entry without a number cannot be attributed to the other entries.
+  if (!entries.length || entries.some((entry) => !entry.changes?.length)) return null;
+  const phoneNumberIds = new Set(
+    entries.flatMap((entry) =>
+      (entry.changes ?? []).map((change) => change.value?.metadata?.phone_number_id ?? null),
+    ),
+  );
+  if (phoneNumberIds.has(null)) return null;
+  const companies = new Set<string | null>();
+  for (const id of phoneNumberIds) {
+    companies.add((await findWaNumberByPhoneId(id))?.tenantId ?? null);
+  }
+  const [only = null] = companies;
+  return companies.size === 1 ? only : null;
+}
+
 export const Route = createFileRoute("/api/public/whatsapp/webhook")({
   server: {
     handlers: {
@@ -104,16 +130,16 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
           body.entry?.[0]?.changes?.[0]?.value?.statuses?.[0]?.id ??
           null;
 
-        const { findWaNumberByPhoneId } = await import("@/lib/wa.server");
-        const waNumber = await findWaNumberByPhoneId(
-          body.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id ?? null,
-        );
+        // The stored payload contains every entry, so its visibility must be
+        // safe for every entry as well. Dispatch still resolves each number
+        // independently inside processWaPayload.
+        const tenantId = await companyOf(body);
 
         const eventId = await logWebhookEvent({
           eventType,
           payload: body,
           waMessageId,
-          tenantId: waNumber?.tenantId ?? null,
+          tenantId,
         });
         const startedAt = Date.now();
 
@@ -128,10 +154,13 @@ export const Route = createFileRoute("/api/public/whatsapp/webhook")({
             error: detail,
             durationMs: Date.now() - startedAt,
           });
+          // Past the signature check, so the numbers in it are really the
+          // sender's: the company they belong to is told, where it is one.
           await raiseAlert({
             title: "WhatsApp webhook event failed",
             message: detail,
             severity: "critical",
+            tenantId,
           });
         }
 

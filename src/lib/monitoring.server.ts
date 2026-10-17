@@ -4,7 +4,9 @@ import {
   evidenceOfReceipt,
   evidenceOfSend,
   failureReasonForCode,
+  isNotDeliveredNote,
   mediaOf,
+  notDeliveredNote,
   providerStatus,
   receiptTime,
   statusesThatMayBecome,
@@ -59,6 +61,16 @@ export type WaWebhookBody = {
 /**
  * Creates an alert, skipping duplicates of the same unresolved title within a
  * dedupe window. Returns true when a new alert row was actually inserted.
+ *
+ * `tenantId` is the company the alert is about. A company sees only the
+ * alerts filed under it, so one raised without it reaches the platform owner
+ * alone: every delivery and deliverability warning used to be raised that
+ * way, and the company it concerned never saw it in Monitoring. Leave it out
+ * only when there is no company to name (an unrecognised number, a payload
+ * that could not be read or verified, billing).
+ *
+ * A repeat is looked for within the same company -- or among the platform's
+ * own -- so one company's open alert cannot hide another's of the same name.
  */
 export async function raiseAlert(args: {
   title: string;
@@ -66,23 +78,44 @@ export async function raiseAlert(args: {
   severity?: "info" | "warning" | "critical";
   source?: string;
   dedupeMinutes?: number;
+  tenantId?: string | null;
 }): Promise<boolean> {
+  const tenantId = args.tenantId ?? null;
   const since = new Date(Date.now() - (args.dedupeMinutes ?? 10) * 60 * 1000).toISOString();
-  const { data: existing } = await supabaseAdmin
+  const open = supabaseAdmin
     .from("system_alerts")
     .select("id")
     .eq("title", args.title)
     .eq("resolved", false)
-    .gte("created_at", since)
-    .maybeSingle();
-  if (existing) return false;
+    .gte("created_at", since);
+  // Any open copy makes this a repeat. Asking for exactly one row answered
+  // with an error once two were open, and the error read as "none": from then
+  // on every call added another.
+  const { data: existing, error: lookupError } = await (
+    tenantId ? open.eq("tenant_id", tenantId) : open.is("tenant_id", null)
+  ).limit(1);
+  if (lookupError) {
+    // It cannot be told whether this is a repeat. Said twice is better than
+    // not said, so it is raised.
+    console.error("[alerts] could not check for an open alert", lookupError.code ?? "");
+  } else if ((existing ?? []).length > 0) {
+    return false;
+  }
 
-  await supabaseAdmin.from("system_alerts").insert({
+  const { error } = await supabaseAdmin.from("system_alerts").insert({
     title: args.title,
     message: args.message ?? null,
     severity: args.severity ?? "warning",
     source: args.source ?? "webhook",
+    tenant_id: tenantId,
+    // An alert starts open. The column's default says the same; it is written
+    // here so the row reads the same wherever it is looked at.
+    resolved: false,
   });
+  if (error) {
+    console.error("[alerts] could not raise an alert", error.code ?? "");
+    return false;
+  }
   return true;
 }
 
@@ -127,6 +160,8 @@ export async function finishWebhookEvent(
 
 type WaNumberHealth = {
   id: string;
+  /** The company the number belongs to, and so the one its alerts are for. */
+  tenant_id: string | null;
   label: string;
   alerts_enabled: boolean;
   deliverability_min: number | null;
@@ -196,30 +231,58 @@ async function resolveThresholds(num: WaNumberHealth): Promise<EffectiveThreshol
  */
 export async function checkNumberHealth(waNumberId: string | null) {
   if (!waNumberId) return;
-  const { data: raw } = await supabaseAdmin
+  const { data: raw, error: numberError } = await supabaseAdmin
     .from("wa_numbers")
     .select("*")
     .eq("id", waNumberId)
     .maybeSingle();
+  if (numberError) {
+    console.error("[health] could not read the number", numberError.code ?? "");
+    return;
+  }
   const num = raw as WaNumberHealth | null;
   if (!num || !num.alerts_enabled) return;
 
-  const { data: convs } = await supabaseAdmin
+  const {
+    data: convs,
+    count: conversationCount,
+    error: conversationError,
+  } = await supabaseAdmin
     .from("conversations")
-    .select("id")
+    .select("id", { count: "exact" })
     .eq("wa_number_id", waNumberId);
+  if (conversationError || conversationCount == null) {
+    console.error(
+      "[health] could not count the number's conversations",
+      conversationError?.code ?? "",
+    );
+    return;
+  }
   const convIds = (convs ?? []).map((c) => c.id);
   if (convIds.length === 0) return;
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data: msgs } = await supabaseAdmin
+  const {
+    data: msgs,
+    count: messageCount,
+    error: messageError,
+  } = await supabaseAdmin
     .from("messages")
-    .select("status")
+    .select("status, body, sender, wa_message_id", { count: "exact" })
     .in("conversation_id", convIds)
     .eq("direction", "outbound")
     .gte("created_at", since);
-
-  const statuses = (msgs ?? []).map((m) => m.status);
+  if (messageError || messageCount == null) {
+    // A refused read is unknown, not zero messages or a healthy number.
+    console.error("[health] could not count the day's messages", messageError?.code ?? "");
+    return;
+  }
+  // Classify annotations in the SAME returned population as the statuses.
+  // A separate filtered read can contain notes outside a capped status sample,
+  // so subtracting its length can hide real failures or create negative rates.
+  const statuses = (msgs ?? [])
+    .filter((message) => message.status !== "failed" || !isNotDeliveredNote(message))
+    .map((message) => message.status);
   const total = statuses.filter((s) => ["sent", "delivered", "read", "failed"].includes(s)).length;
   if (total < 20) return; // too little traffic to judge
 
@@ -231,23 +294,30 @@ export async function checkNumberHealth(waNumberId: string | null) {
   const readRate = delivered > 0 ? (read / delivered) * 100 : 0;
   const thresholds = await resolveThresholds(num);
   const basis = thresholds.source === "plan" ? "plan default" : "number override";
+  const partial = conversationCount > convIds.length || messageCount > (msgs ?? []).length;
+  const population = partial ? "sampled messages" : "messages";
+  const coverage = partial
+    ? ` Sample only: ${(msgs ?? []).length} of ${messageCount} outbound records from ${convIds.length} of ${conversationCount} conversations for this number were assessed; remaining activity was not assessed.`
+    : "";
 
   if (deliverability < thresholds.deliverabilityMin) {
     await raiseAlert({
       title: `Low deliverability on ${num.label}`,
-      message: `${deliverability.toFixed(1)}% of ${total} messages delivered in the last 24h (${basis} threshold ${thresholds.deliverabilityMin}%). ${failed} failed — check the number's quality rating and credentials in Meta.`,
+      message: `${deliverability.toFixed(1)}% of ${total} ${population} delivered in the last 24h (${basis} threshold ${thresholds.deliverabilityMin}%). ${failed} failed — check the number's quality rating and credentials in Meta.${coverage}`,
       severity: "critical",
       source: "health",
       dedupeMinutes: 360,
+      tenantId: num.tenant_id,
     });
   }
   if (readRate < thresholds.readRateMin) {
     await raiseAlert({
       title: `Low read rate on ${num.label}`,
-      message: `${readRate.toFixed(1)}% of delivered messages were read in the last 24h (${basis} threshold ${thresholds.readRateMin}%). Review message timing and content quality.`,
+      message: `${readRate.toFixed(1)}% of delivered ${population} were read in the last 24h (${basis} threshold ${thresholds.readRateMin}%). Review message timing and content quality.${coverage}`,
       severity: "warning",
       source: "health",
       dedupeMinutes: 360,
+      tenantId: num.tenant_id,
     });
   }
 }
@@ -504,6 +574,7 @@ export async function processWaPayload(body: WaWebhookBody) {
             message: WA_FAILURE_TEXT[reason],
             severity: "warning",
             source: "delivery",
+            tenantId,
           });
         }
       }
@@ -588,7 +659,7 @@ export async function processWaPayload(body: WaWebhookBody) {
               tenantId,
               conversationId,
               outcome.state === "rejected"
-                ? `(Not delivered: ${outcome.message})`
+                ? notDeliveredNote(outcome.message)
                 : `(${outcome.message})`,
               "bot",
               null,
@@ -605,6 +676,7 @@ export async function processWaPayload(body: WaWebhookBody) {
               message: outcome.message,
               severity: outcome.state === "rejected" ? "critical" : "warning",
               source: "delivery",
+              tenantId,
             });
             // The event itself is not failed. It used to be, for a refusal,
             // which put a Retry button on it in Monitoring -- and that retry
