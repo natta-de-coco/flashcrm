@@ -495,9 +495,28 @@ async function wpFetch(c: WpCreds, path: string, init?: RequestInit): Promise<Re
       "WordPress site URL rejected: cannot point to internal, private, loopback, or cloud metadata network addresses.",
     );
   }
+
+  try {
+    const urlObj = new URL(c.siteUrl);
+    const dns = await import("node:dns/promises");
+    const records = await dns.lookup(urlObj.hostname, { all: true });
+    for (const record of records) {
+      if (!isSafeWordPressUrl(`http://${record.address}`)) {
+        throw new Error(
+          `WordPress host ${urlObj.hostname} resolved to forbidden network address ${record.address}.`,
+        );
+      }
+    }
+  } catch (dnsErr: unknown) {
+    if (dnsErr instanceof Error && dnsErr.message.includes("forbidden network address")) {
+      throw dnsErr;
+    }
+  }
+
   const url = `${c.siteUrl.replace(/\/+$/, "")}/wp-json/wp/v2${path}`;
   return fetch(url, {
     ...init,
+    redirect: "error",
     headers: { Authorization: wpAuth(c), ...(init?.headers ?? {}) },
   });
 }

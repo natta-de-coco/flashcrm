@@ -53,11 +53,17 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("tenant_id, staff_role")
       .eq("id", user.id)
       .maybeSingle();
+
+    if (profileError) {
+      // Transient error reading profile: do not treat as unonboarded
+      setLoading(false);
+      return;
+    }
 
     setStaffRole(profile?.staff_role ?? null);
     if (!profile?.tenant_id) {
@@ -66,15 +72,47 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    const { data: org } = await supabase
+
+    let orgData: unknown = null;
+    const { data: org, error: orgError } = await supabase
       .from("organizations")
       .select(
         "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency, timezone, locale, paddle_customer_id, paddle_subscription_id, stripe_customer_id, stripe_subscription_id, billing_provider",
       )
       .eq("id", profile.tenant_id)
       .maybeSingle();
-    setTenant((org as TenantInfo | null) ?? null);
-    setNeedsOnboarding(!org);
+
+    if (orgError) {
+      // Fallback if schema does not yet have newer columns
+      const isMissingColumn =
+        orgError.code === "42703" ||
+        orgError.message?.includes("column") ||
+        orgError.message?.includes("does not exist");
+      if (isMissingColumn) {
+        const { data: fallbackOrg } = await supabase
+          .from("organizations")
+          .select(
+            "id, name, slug, plan, subscription_status, subscription_renews_at, suspended, currency, timezone, locale",
+          )
+          .eq("id", profile.tenant_id)
+          .maybeSingle();
+        if (fallbackOrg) {
+          orgData = fallbackOrg;
+        }
+      }
+      // If transient read failure, preserve previous state rather than kicking user to onboarding
+    } else {
+      orgData = org;
+    }
+
+    if (orgData) {
+      setTenant(orgData as TenantInfo);
+      setNeedsOnboarding(false);
+    } else if (!orgError) {
+      // Only when query genuinely succeeded and returned no row
+      setTenant(null);
+      setNeedsOnboarding(true);
+    }
     setLoading(false);
   };
 

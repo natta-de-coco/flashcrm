@@ -281,19 +281,57 @@ export async function recordStripeSubscriptionInvoice(params: {
           .eq("document_id", conflictDoc.id)
           .limit(1);
         if (!conflictItems || conflictItems.length === 0) {
-          const { error: fillErr } = await supabaseAdmin.from("sales_document_items").insert({
-            tenant_id: params.tenantId,
-            document_id: conflictDoc.id,
-            name_snapshot: `Flas CRM — ${params.planName || "Subscription"}`,
-            quantity: 1,
-            unit_price: amount,
-            line_total: amount,
-            position: 0,
-          } as any);
+          const { error: fillErr } = await supabaseAdmin.rpc("replace_sales_document_items", {
+            _document_id: conflictDoc.id,
+            _tenant_id: params.tenantId,
+            _items: [
+              {
+                product_id: null,
+                position: 0,
+                name_snapshot: `Flas CRM — ${params.planName || "Subscription"}`,
+                sku_snapshot: null,
+                description_snapshot: null,
+                image_snapshot: null,
+                quantity: 1,
+                unit: "month",
+                unit_price: amount,
+                discount_value: 0,
+                discount_type: "percent",
+                discount_amount: 0,
+                tax_rate: 0,
+                tax_amount: 0,
+                line_total: amount,
+                serial_number: null,
+                warranty: null,
+                service_period: null,
+                notes: null,
+              },
+            ] as never,
+          });
           if (fillErr) {
-            throw new Error(
-              `Could not record subscription line items for concurrent invoice: ${fillErr.message}`,
-            );
+            const { data: recheck } = await supabaseAdmin
+              .from("sales_document_items")
+              .select("id")
+              .eq("document_id", conflictDoc.id)
+              .limit(1);
+            if (!recheck || recheck.length === 0) {
+              const { error: insertFallbackErr } = await supabaseAdmin
+                .from("sales_document_items")
+                .insert({
+                  tenant_id: params.tenantId,
+                  document_id: conflictDoc.id,
+                  name_snapshot: `Flas CRM — ${params.planName || "Subscription"}`,
+                  quantity: 1,
+                  unit_price: amount,
+                  line_total: amount,
+                  position: 0,
+                } as any);
+              if (insertFallbackErr && insertFallbackErr.code !== "23505") {
+                throw new Error(
+                  `Could not record subscription line items for concurrent invoice: ${insertFallbackErr.message}`,
+                );
+              }
+            }
           }
         }
         return conflictDoc.id;

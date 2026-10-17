@@ -12,6 +12,7 @@ export type SyncInvoiceDoc = {
   due_date?: string | null;
   currency: string;
   tax_label?: string | null;
+  tax_inclusive?: boolean | null;
   subtotal: number;
   tax_total: number;
   grand_total: number;
@@ -132,6 +133,119 @@ function tallyDate(isoDate: string): string {
  * Produces an authentic Tally Prime XML Sales / Quotation Voucher that can be loaded
  * into Tally via 'Import Data' -> 'Vouchers'.
  */
+/**
+ * Maps raw stored document and items from database/sales workspace into
+ * normalized SyncInvoiceDoc and SyncInvoiceItem payloads.
+ *
+ * Enforces the contract: SyncInvoiceItem.line_total represents the pre-tax
+ * net sales amount for the line item (before document-level discounts).
+ */
+export function mapSavedDocumentToSync(
+  doc: Record<string, unknown>,
+  rawItems: Record<string, unknown>[],
+): { doc: SyncInvoiceDoc; items: SyncInvoiceItem[] } {
+  const isInclusive = Boolean(doc["tax_inclusive"]);
+  const grandTotal = Number(doc["grand_total"] ?? 0);
+  const invoiceDiscount = Number(doc["invoice_discount"] ?? 0);
+  const taxTotal = Number(doc["tax_total"] ?? 0);
+  const shipping = Number(doc["shipping"] ?? 0);
+  const additionalCharges = Number(doc["additional_charges"] ?? 0);
+  const adjustment = Number(doc["adjustment"] ?? 0);
+
+  // In double-entry accounting:
+  // Total Debits = grandTotal + invoiceDiscount
+  // Total Credits = totalSales + taxTotal + shipping + additionalCharges + adjustment
+  const targetSales =
+    Math.round(
+      (grandTotal + invoiceDiscount - taxTotal - shipping - additionalCharges - adjustment) * 100,
+    ) / 100;
+
+  const parsedItems = rawItems.map((it) => {
+    const qty = Number(it["quantity"] ?? 1);
+    const price = Number(it["unit_price"] ?? 0);
+    const discount = Number(it["discount_amount"] ?? 0);
+    const taxAmount = Number(it["tax_amount"] ?? 0);
+    const rawNet = Math.max(0, qty * price - discount);
+    const baseAmount = isInclusive ? Math.max(0, rawNet - taxAmount) : rawNet;
+    return {
+      name: (it["name_snapshot"] as string) ?? (it["name"] as string) ?? "Item",
+      description: (it["description_snapshot"] as string) ?? (it["description"] as string) ?? null,
+      sku: (it["sku_snapshot"] as string) ?? (it["sku"] as string) ?? null,
+      quantity: qty,
+      unit: (it["unit"] as string) ?? null,
+      unit_price: price,
+      discount_amount: discount,
+      tax_rate: Number(it["tax_rate"] ?? 0),
+      tax_amount: taxAmount,
+      baseAmount,
+    };
+  });
+
+  const sumBase = parsedItems.reduce((acc, it) => acc + it.baseAmount, 0);
+
+  let allocated = 0;
+  const items: SyncInvoiceItem[] = parsedItems.map((it, idx) => {
+    let salesShare: number;
+    if (idx === parsedItems.length - 1) {
+      salesShare = Math.round((targetSales - allocated) * 100) / 100;
+    } else {
+      const share =
+        sumBase > 0 ? (it.baseAmount / sumBase) * targetSales : targetSales / parsedItems.length;
+      salesShare = Math.round(share * 100) / 100;
+      allocated = Math.round((allocated + salesShare) * 100) / 100;
+    }
+    const lineTotal = Math.round((salesShare + it.tax_amount) * 100) / 100;
+    return {
+      name: it.name,
+      description: it.description,
+      sku: it.sku,
+      quantity: it.quantity,
+      unit: it.unit,
+      unit_price: it.unit_price,
+      discount_amount: it.discount_amount,
+      tax_rate: it.tax_rate,
+      tax_amount: it.tax_amount,
+      line_total: lineTotal,
+    };
+  });
+
+  const snapshot = (doc["customer_snapshot"] ?? {}) as Record<string, string | undefined>;
+  const syncDoc: SyncInvoiceDoc = {
+    id: doc["id"] as string,
+    doc_number: (doc["doc_number"] as string) ?? "INV-DRAFT",
+    kind: (doc["kind"] as string) ?? "invoice",
+    issue_date: (doc["issue_date"] as string) ?? "",
+    due_date: (doc["due_date"] as string) ?? null,
+    currency: (doc["currency"] as string) ?? "AED",
+    tax_label: (doc["tax_label"] as string) ?? "VAT",
+    tax_inclusive: isInclusive,
+    subtotal: Number(doc["subtotal"] ?? 0),
+    tax_total: taxTotal,
+    grand_total: grandTotal,
+    paid_amount: Number(doc["paid_amount"] ?? 0),
+    balance: Number(doc["balance"] ?? 0),
+    shipping,
+    additional_charges: additionalCharges,
+    adjustment,
+    invoice_discount: invoiceDiscount,
+    payment_terms: (doc["payment_terms"] as string) ?? null,
+    reference: (doc["reference"] as string) ?? null,
+    po_number: (doc["po_number"] as string) ?? null,
+    notes: (doc["notes"] as string) ?? null,
+    terms: (doc["terms"] as string) ?? null,
+    customer_snapshot: {
+      name: snapshot["name"] ?? null,
+      company: snapshot["company"] ?? null,
+      email: snapshot["email"] ?? null,
+      phone: snapshot["phone"] ?? null,
+      address: snapshot["address"] ?? null,
+      vat_number: snapshot["vat_number"] ?? null,
+    },
+  };
+
+  return { doc: syncDoc, items };
+}
+
 export function generateTallySalesXml(
   doc: SyncInvoiceDoc,
   items: SyncInvoiceItem[],
@@ -156,13 +270,17 @@ export function generateTallySalesXml(
   const taxTotal = Number(doc.tax_total || 0).toFixed(2);
   const subtotal = Number(doc.subtotal || 0).toFixed(2);
 
+  let inventorySum = 0;
   const inventoryEntries = items
     .map((item) => {
       const netLine = Number(
         item.line_total != null && item.tax_amount != null
           ? item.line_total - item.tax_amount
-          : item.quantity * item.unit_price - (item.discount_amount || 0),
+          : item.line_total != null
+            ? item.line_total
+            : item.quantity * item.unit_price - (item.discount_amount || 0),
       );
+      inventorySum = Math.round((inventorySum + netLine) * 100) / 100;
       const lineAmt = netLine.toFixed(2);
       const rate = Number(item.unit_price).toFixed(2);
       const qty = Number(item.quantity);
@@ -183,6 +301,8 @@ export function generateTallySalesXml(
               </ALLINVENTORYENTRIES.LIST>`;
     })
     .join("");
+
+  const finalAdjustment = Number(doc.adjustment || 0);
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <ENVELOPE>
@@ -268,12 +388,12 @@ export function generateTallySalesXml(
 
             <!-- Round Off / Adjustment -->
             ${
-              Number(doc.adjustment || 0) !== 0
+              finalAdjustment !== 0
                 ? `
             <LEDGERENTRIES.LIST>
               <LEDGERNAME>${escapeXml(roundOffLedger)}</LEDGERNAME>
-              <ISDEEMEDPOSITIVE>${Number(doc.adjustment) > 0 ? "No" : "Yes"}</ISDEEMEDPOSITIVE>
-              <AMOUNT>${Number(doc.adjustment) > 0 ? `-${Number(doc.adjustment).toFixed(2)}` : Math.abs(Number(doc.adjustment)).toFixed(2)}</AMOUNT>
+              <ISDEEMEDPOSITIVE>${finalAdjustment > 0 ? "No" : "Yes"}</ISDEEMEDPOSITIVE>
+              <AMOUNT>${finalAdjustment > 0 ? `-${finalAdjustment.toFixed(2)}` : Math.abs(finalAdjustment).toFixed(2)}</AMOUNT>
             </LEDGERENTRIES.LIST>`
                 : ""
             }
@@ -416,7 +536,9 @@ export function generateQuickBooksIif(
     const netItem = Number(
       item.line_total != null && item.tax_amount != null
         ? item.line_total - item.tax_amount
-        : item.quantity * item.unit_price - (item.discount_amount || 0),
+        : item.line_total != null
+          ? item.line_total
+          : item.quantity * item.unit_price - (item.discount_amount || 0),
     );
     const itemTotal = (-netItem).toFixed(2);
     lines.push(
@@ -449,8 +571,9 @@ export function generateQuickBooksIif(
   }
 
   if (doc.adjustment && doc.adjustment !== 0) {
+    const adj = Number(doc.adjustment);
     lines.push(
-      `SPL\t\t${trnsType}\t${dateStr}\t${escapeIif(roundOffLedger)}\t${customer}\t${(-doc.adjustment).toFixed(2)}\t${docNum}\tAdjustment\tN\t\t\t\tN`,
+      `SPL\t\t${trnsType}\t${dateStr}\t${escapeIif(roundOffLedger)}\t${customer}\t${(-adj).toFixed(2)}\t${docNum}\tRound Off\tN\t\t\t\tN`,
     );
   }
 

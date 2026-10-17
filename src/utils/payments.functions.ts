@@ -183,10 +183,14 @@ export const disconnectPaddleFn = createServerFn({ method: "POST" })
           effectiveFrom: "next_billing_period",
         });
       } catch (cancelErr: unknown) {
-        console.warn(
-          "Paddle subscription cancellation note:",
-          cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
-        );
+        const msg = cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
+        // If already canceled, expired, or inactive on Paddle, it is safe to proceed.
+        // Otherwise, do not switch the provider or report success while a recurring charge is active.
+        if (!/already (canceled|cancelled)|not found|inactive/i.test(msg)) {
+          throw new Error(
+            `Failed to cancel active Paddle subscription: ${msg}. Provider switch was aborted to prevent duplicate billing.`,
+          );
+        }
       }
     }
 

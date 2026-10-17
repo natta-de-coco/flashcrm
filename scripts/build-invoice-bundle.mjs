@@ -8,6 +8,7 @@ await build({
       export * from './src/lib/blog-templates';
       export * from './src/lib/accounting-sync';
       export * from './src/lib/seo-url';
+      export * from './src/lib/billing-math';
     `,
     resolveDir: process.cwd(),
   },

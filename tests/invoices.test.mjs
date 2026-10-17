@@ -19,6 +19,8 @@ import {
   escapeXml,
   escapeIif,
   isSafeWordPressUrl,
+  mapSavedDocumentToSync,
+  computeDocumentTotals,
 } from "../node_modules/.cache/flas-invoices.mjs";
 
 export const invoiceFixture = {
@@ -497,6 +499,171 @@ test("accounting sync balances document discounts alongside tax, shipping, addit
     /<LEDGERNAME>Round Off<\/LEDGERNAME>[\s\S]*?<ISDEEMEDPOSITIVE>No<\/ISDEEMEDPOSITIVE>[\s\S]*?<AMOUNT>-0\.50<\/AMOUNT>/,
   );
   assert.doesNotMatch(xmlB, /<AMOUNT>--/);
+});
+
+test("accounting sync balances across real saved invoice math and sales mapper for all 6 fixtures", () => {
+  const runFixture = (name, input) => {
+    // 1. Authoritative saved billing math calculation
+    const totals = computeDocumentTotals(input);
+
+    const doc = {
+      id: `doc-${name}`,
+      doc_number: `INV-2026-${name}`,
+      kind: "invoice",
+      issue_date: "2026-10-17",
+      due_date: "2026-11-17",
+      currency: "AED",
+      tax_label: "VAT",
+      subtotal: totals.subtotal,
+      taxable_amount: totals.taxable_amount,
+      tax_total: totals.tax_total,
+      grand_total: totals.grand_total,
+      paid_amount: 0,
+      balance: totals.grand_total,
+      shipping: totals.shipping,
+      additional_charges: totals.additional_charges,
+      adjustment: totals.adjustment,
+      invoice_discount: totals.invoice_discount,
+      tax_inclusive: Boolean(input.tax_inclusive),
+      customer_snapshot: {
+        name: "Test Customer",
+        company: "Test Fixture Corp",
+      },
+    };
+
+    const rawItems = input.items.map((it, idx) => ({
+      name_snapshot: `Item ${idx + 1}`,
+      quantity: it.quantity,
+      unit_price: it.unit_price,
+      discount_amount: totals.lines[idx].discount_amount,
+      tax_rate: it.tax_rate ?? 0,
+      tax_amount: totals.lines[idx].tax_amount,
+      line_total: totals.lines[idx].line_total,
+    }));
+
+    // 2. Real Sales workspace mapper
+    const { doc: syncDoc, items: syncItems } = mapSavedDocumentToSync(doc, rawItems);
+
+    // 3. QuickBooks IIF verification
+    const iif = generateQuickBooksIif(syncDoc, syncItems);
+    const splLines = iif.split("\n").filter((l) => l.startsWith("SPL\t"));
+    const trnsLine = iif.split("\n").find((l) => l.startsWith("TRNS\t"));
+    assert.ok(trnsLine, `[${name}] Missing TRNS line in IIF`);
+    const trnsAmount = parseFloat(trnsLine.split("\t")[6]);
+    assert.equal(trnsAmount, totals.grand_total, `[${name}] TRNS amount must equal grand_total`);
+
+    const splSum = splLines.reduce((sum, l) => sum + parseFloat(l.split("\t")[6]), 0);
+    const iifVariance = Math.round((trnsAmount + splSum) * 100) / 100;
+    assert.equal(iifVariance, 0, `[${name}] QuickBooks IIF variance must be 0.00, got ${iifVariance}`);
+
+    // 4. Tally Prime XML verification
+    const xml = generateTallySalesXml(syncDoc, syncItems);
+    assert.doesNotMatch(xml, /<AMOUNT>--/, `[${name}] Tally XML must not contain double minus`);
+    const entryRegex =
+      /<(?:LEDGERENTRIES|ALLINVENTORYENTRIES)\.LIST>[\s\S]*?<ISDEEMEDPOSITIVE>(Yes|No)<\/ISDEEMEDPOSITIVE>[\s\S]*?<AMOUNT>(-?[\d\.]+)<\/AMOUNT>[\s\S]*?<\/(?:LEDGERENTRIES|ALLINVENTORYENTRIES)\.LIST>/g;
+    let tallyDebits = 0;
+    let tallyCredits = 0;
+    let match;
+    while ((match = entryRegex.exec(xml)) !== null) {
+      const isPositive = match[1] === "Yes";
+      const amt = Math.abs(parseFloat(match[2]));
+      if (isPositive) tallyDebits += amt;
+      else tallyCredits += amt;
+    }
+    const tallyVariance = Math.round((tallyDebits - tallyCredits) * 100) / 100;
+    assert.equal(tallyVariance, 0, `[${name}] Tally XML variance must be 0.00, got ${tallyVariance}`);
+  };
+
+  // Fixture 1: Exclusive tax without discount (100 AED item, 5% tax => 105 grand total)
+  runFixture("1-exclusive-tax", {
+    items: [{ quantity: 1, unit_price: 100, tax_rate: 5 }],
+  });
+
+  // Fixture 2: Exclusive tax with document discount (100 AED item, 10 discount, 4.50 tax => 94.50 grand total)
+  runFixture("2-exclusive-discount", {
+    items: [{ quantity: 1, unit_price: 100, tax_rate: 5 }],
+    invoice_discount: 10,
+  });
+
+  // Fixture 3: Tax inclusive without discount (105 AED item inclusive of 5% tax => 105 grand total)
+  runFixture("3-inclusive-tax", {
+    items: [{ quantity: 1, unit_price: 105, tax_rate: 5 }],
+    tax_inclusive: true,
+  });
+
+  // Fixture 4: Tax inclusive with document discount (105 AED item inclusive of 5% tax, 10 discount => 95 grand total)
+  runFixture("4-inclusive-discount", {
+    items: [{ quantity: 1, unit_price: 105, tax_rate: 5 }],
+    invoice_discount: 10,
+    tax_inclusive: true,
+  });
+
+  // Fixture 5: Mixed tax items (Item 1: 5% tax, Item 2: 0% tax, Item 3: 5% tax with line discount)
+  runFixture("5-mixed-tax", {
+    items: [
+      { quantity: 2, unit_price: 50, tax_rate: 5 },
+      { quantity: 1, unit_price: 75, tax_rate: 0 },
+      { quantity: 3, unit_price: 20, tax_rate: 5, discount_value: 10, discount_type: "fixed" },
+    ],
+    invoice_discount: 15,
+  });
+
+  // Fixture 6: Full document charges & positive/negative rounding
+  runFixture("6-charges-negative-round", {
+    items: [{ quantity: 2, unit_price: 60, tax_rate: 5, discount_value: 10, discount_type: "fixed" }],
+    invoice_discount: 10,
+    shipping: 25,
+    additional_charges: 12.5,
+    adjustment: -0.35,
+  });
+
+  runFixture("6-charges-positive-round", {
+    items: [{ quantity: 1, unit_price: 200, tax_rate: 5 }],
+    invoice_discount: 20,
+    shipping: 30,
+    additional_charges: 10,
+    adjustment: 0.45,
+  });
+});
+
+test("PDF generation strips template_id and internal metadata from custom fields", async () => {
+  const pdfBytes = await buildDocumentPdf({
+    ...invoiceFixture,
+    custom_fields: {
+      template_id: "modern-emerald",
+      stripe_invoice_id: "in_stripe_secret_123",
+      stripe_subscription_id: "sub_stripe_secret_456",
+      provider: "stripe",
+      is_subscription_receipt: "true",
+      customer_po: "PO-LEGAL-789",
+    },
+  });
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  assert.equal(pdfDoc.getPageCount(), 1);
+  const pdfText = new TextDecoder().decode(pdfBytes);
+  assert.equal(pdfText.includes("template_id:"), false, "template_id must not leak into PDF text");
+  assert.equal(pdfText.includes("stripe_invoice_id"), false, "stripe_invoice_id must not leak into PDF text");
+});
+
+test("WordPress SSRF guard rejects IPv4-mapped loopback/private IPv6 and cloud metadata", () => {
+  assert.equal(isSafeWordPressUrl("http://[::ffff:127.0.0.1]/wp-json"), false);
+  assert.equal(isSafeWordPressUrl("http://[::ffff:7f00:1]/wp-json"), false);
+  assert.equal(isSafeWordPressUrl("http://[::ffff:10.0.0.1]/wp-json"), false);
+  assert.equal(isSafeWordPressUrl("http://[::ffff:172.16.0.1]/wp-json"), false);
+  assert.equal(isSafeWordPressUrl("http://[::ffff:192.168.1.1]/wp-json"), false);
+  assert.equal(isSafeWordPressUrl("http://[::ffff:169.254.169.254]/wp-json"), false);
+  assert.equal(isSafeWordPressUrl("http://[::127.0.0.1]/wp-json"), false);
+
+  assert.equal(isSafeWordPressUrl("http://127.0.0.1/wp-json"), false);
+  assert.equal(isSafeWordPressUrl("http://169.254.169.254/latest/meta-data"), false);
+  assert.equal(isSafeWordPressUrl("http://metadata.google.internal/"), false);
+  assert.equal(isSafeWordPressUrl("http://localhost:8080/"), false);
+  assert.equal(isSafeWordPressUrl("http://[::1]/"), false);
+  assert.equal(isSafeWordPressUrl("http://[fe80::1]/"), false);
+  assert.equal(isSafeWordPressUrl("http://[fc00::1]/"), false);
+
+  assert.equal(isSafeWordPressUrl("https://example.com/wp-json"), true);
+  assert.equal(isSafeWordPressUrl("https://my-blog.wordpress.com"), true);
 });
 
 test("CSV formula injection protection and delimiter sanitization", () => {

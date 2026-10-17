@@ -447,7 +447,17 @@ export async function buildDocumentPdf(input: InvoicePdfInput): Promise<Uint8Arr
       sy -= 11.5;
     }
   }
-  const customFields = Object.entries(input.custom_fields ?? {}).filter(([, v]) => v);
+  const INTERNAL_METADATA_KEYS = new Set([
+    "template_id",
+    "stripe_invoice_id",
+    "stripe_subscription_id",
+    "stripe_customer_id",
+    "provider",
+    "is_subscription_receipt",
+  ]);
+  const customFields = Object.entries(input.custom_fields ?? {}).filter(
+    ([k, v]) => v && !INTERNAL_METADATA_KEYS.has(k.toLowerCase()) && !k.startsWith("_"),
+  );
   if (customFields.length) {
     if (!input.customer.shipping_address) sy -= 0;
     for (const [key, value] of customFields) {

@@ -56,7 +56,11 @@ import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, type MessageKey } from "@/lib/i18n";
 import { AccountingExportDialog } from "@/components/sales/AccountingExportDialog";
-import { type SyncInvoiceDoc, type SyncInvoiceItem } from "@/lib/accounting-sync";
+import {
+  type SyncInvoiceDoc,
+  type SyncInvoiceItem,
+  mapSavedDocumentToSync,
+} from "@/lib/accounting-sync";
 import { referenceFor, type SendReference } from "@/lib/send-reference";
 import { SalesPipelineBoard } from "@/components/sales/SalesPipelineBoard";
 import { DocumentHistoryDialog } from "@/components/sales/DocumentHistoryDialog";
@@ -241,65 +245,11 @@ function SalesPage() {
   const openAccountingSync = useMutation({
     mutationFn: (id: string) => loadDocument({ data: { id } }),
     onSuccess: (bundle) => {
-      const doc = bundle.doc as unknown as Record<string, unknown>;
-      const items = (bundle.items as unknown as Record<string, unknown>[]).map((it) => {
-        const qty = Number(it["quantity"] ?? 1);
-        const price = Number(it["unit_price"] ?? 0);
-        const discount = Number(it["discount_amount"] ?? 0);
-        const taxAmount = Number(it["tax_amount"] ?? 0);
-        const storedLineTotal = Number(it["line_total"] ?? 0);
-        const netLineTotal =
-          taxAmount > 0 && storedLineTotal > taxAmount
-            ? storedLineTotal - taxAmount
-            : Math.max(0, qty * price - discount);
-        return {
-          name: (it["name_snapshot"] as string) ?? "Item",
-          description: (it["description_snapshot"] as string) ?? null,
-          sku: (it["sku_snapshot"] as string) ?? null,
-          quantity: qty,
-          unit: (it["unit"] as string) ?? null,
-          unit_price: price,
-          discount_amount: discount,
-          tax_rate: Number(it["tax_rate"] ?? 0),
-          tax_amount: taxAmount,
-          line_total: netLineTotal,
-        };
-      });
-      const snapshot = (doc["customer_snapshot"] ?? {}) as Record<string, string | undefined>;
-      setAccountingTarget({
-        doc: {
-          id: doc["id"] as string,
-          doc_number: (doc["doc_number"] as string) ?? "INV-DRAFT",
-          kind: (doc["kind"] as string) ?? "invoice",
-          issue_date: (doc["issue_date"] as string) ?? "",
-          due_date: (doc["due_date"] as string) ?? null,
-          currency: (doc["currency"] as string) ?? "AED",
-          tax_label: (doc["tax_label"] as string) ?? "VAT",
-          subtotal: Number(doc["subtotal"] ?? 0),
-          tax_total: Number(doc["tax_total"] ?? 0),
-          grand_total: Number(doc["grand_total"] ?? 0),
-          paid_amount: Number(doc["paid_amount"] ?? 0),
-          balance: Number(doc["balance"] ?? 0),
-          shipping: Number(doc["shipping"] ?? 0),
-          additional_charges: Number(doc["additional_charges"] ?? 0),
-          adjustment: Number(doc["adjustment"] ?? 0),
-          invoice_discount: Number(doc["invoice_discount"] ?? 0),
-          payment_terms: (doc["payment_terms"] as string) ?? null,
-          reference: (doc["reference"] as string) ?? null,
-          po_number: (doc["po_number"] as string) ?? null,
-          notes: (doc["notes"] as string) ?? null,
-          terms: (doc["terms"] as string) ?? null,
-          customer_snapshot: {
-            name: snapshot["name"] ?? null,
-            company: snapshot["company"] ?? null,
-            email: snapshot["email"] ?? null,
-            phone: snapshot["phone"] ?? null,
-            address: snapshot["address"] ?? null,
-            vat_number: snapshot["vat_number"] ?? null,
-          },
-        },
-        items,
-      });
+      const { doc, items } = mapSavedDocumentToSync(
+        bundle.doc as unknown as Record<string, unknown>,
+        (bundle.items as unknown as Record<string, unknown>[]) ?? [],
+      );
+      setAccountingTarget({ doc, items });
     },
     onError: (e: Error) => toast.error(e.message),
   });
