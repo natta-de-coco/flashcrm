@@ -1,4 +1,8 @@
-import { connectorDefinition, resolveAllCapabilities } from "@/lib/social-connector-definitions";
+import {
+  CAPABILITY_LABELS,
+  connectorDefinition,
+  resolveAllCapabilities,
+} from "@/lib/social-connector-definitions";
 
 /**
  * The connection and authorization-attempt state model.
@@ -21,25 +25,17 @@ import { connectorDefinition, resolveAllCapabilities } from "@/lib/social-connec
  */
 
 /**
- * Scopes a connector needs for the capabilities Flas actually implements,
- * minus what the provider granted.
+ * Scopes a connector needs for the capabilities Flas actually implements.
  *
  * Only implemented capabilities count. Asking a customer to re-authorize for a
  * permission that unlocks nothing Flas has built would be a false alarm, and
- * the old REQUIRED_PERMISSIONS table did exactly that — it listed
+ * the old REQUIRED_PERMISSIONS table did exactly that -- it listed
  * instagram_manage_messages and video.publish, neither of which Flas requests
  * or uses.
  */
-export function missingScopesFor(platform: string, grantedScopes: string[]): string[] {
+export function requiredScopesFor(platform: string): string[] {
   const def = connectorDefinition(platform);
   if (!def) return [];
-
-  const granted = new Set(grantedScopes);
-  // Some providers return no scope list at all on the token response. Treat
-  // that as "unknown", not "nothing granted" — otherwise every such connector
-  // permanently reports missing permissions.
-  if (granted.size === 0) return [];
-
   const needed = new Set<string>();
   for (const cap of resolveAllCapabilities(def)) {
     if (!cap.providerSupports || !cap.flasImplements) continue;
@@ -47,8 +43,91 @@ export function missingScopesFor(platform: string, grantedScopes: string[]): str
       if (def.requestedScopes.includes(scope)) needed.add(scope);
     }
   }
+  return [...needed];
+}
 
-  return [...needed].filter((s) => !granted.has(s));
+/** requiredScopesFor() minus what the provider granted. */
+export function missingScopesFor(platform: string, grantedScopes: string[]): string[] {
+  const granted = new Set(grantedScopes);
+  // Some providers return no scope list at all on the token response. Treat
+  // that as "unknown", not "nothing granted" -- otherwise every such connector
+  // permanently reports missing permissions. (Whether a connector may be called
+  // verified while its scopes are unknown is decided by the caller: see
+  // scopesUnknown().)
+  if (granted.size === 0) return [];
+  return requiredScopesFor(platform).filter((s) => !granted.has(s));
+}
+
+/**
+ * True when the connector needs permissions but nobody has told us which were
+ * granted. A token that works is not a token with the right permissions, so
+ * this blocks "verified" rather than passing it.
+ */
+export function scopesUnknown(
+  platform: string,
+  grantedScopes: string[] | null | undefined,
+): boolean {
+  return requiredScopesFor(platform).length > 0 && !(grantedScopes && grantedScopes.length > 0);
+}
+
+/**
+ * Features Flas has built whose use depends on the platform approving the app
+ * (app review, advanced access). A live token check cannot prove these, so a
+ * verified connection says so instead of implying they work.
+ */
+export function notProvenFor(platform: string): string[] {
+  const def = connectorDefinition(platform);
+  if (!def) return [];
+  return resolveAllCapabilities(def)
+    .filter((cap) => cap.providerSupports && cap.flasImplements && cap.reviewRequired)
+    .map((cap) => CAPABILITY_LABELS[cap.key]);
+}
+
+/**
+ * The platforms whose token Flas can really test today. The engine in
+ * integration-health.server.ts has one probe for each id here and none for any other (a test
+ * keeps the two lists equal). A connector that is not listed has no live check yet: its accounts
+ * cannot be verified, and the screens say "Coming soon" instead of offering a check that cannot
+ * run.
+ */
+export const LIVE_CHECK_PLATFORMS: readonly string[] = [
+  "facebook",
+  "instagram",
+  "meta_ads",
+  "youtube",
+  "google_business",
+  "google_ads",
+  "google_analytics",
+  "search_console",
+  "linkedin",
+  "tiktok",
+  "twitter",
+  "pinterest",
+];
+
+export function hasLiveCheck(platform: string): boolean {
+  return LIVE_CHECK_PLATFORMS.includes(platform);
+}
+
+/**
+ * The plain names of the features that need these permissions ("Read DMs"), for people who
+ * should never have to read a permission's technical name. The technical names are shown only in
+ * the staff diagnostics.
+ */
+export function featuresForScopes(platform: string, scopes: readonly string[]): string[] {
+  if (scopes.length === 0) return [];
+  const def = connectorDefinition(platform);
+  const wanted = new Set(scopes);
+  const labels = new Set<string>();
+  if (def) {
+    for (const cap of resolveAllCapabilities(def)) {
+      if (!cap.providerSupports || !cap.flasImplements) continue;
+      if (cap.requiredScopes.some((scope) => wanted.has(scope))) {
+        labels.add(CAPABILITY_LABELS[cap.key]);
+      }
+    }
+  }
+  return labels.size > 0 ? [...labels] : ["Some features"];
 }
 
 export const CONNECTION_STATES = [
@@ -82,9 +161,14 @@ export type AttemptState = (typeof ATTEMPT_STATES)[number];
 
 /**
  * Legal transitions, mirroring is_legal_connection_transition() in
- * 20260910100000. Both exist on purpose: this one produces the message a person
- * reads, and the database one holds when something writes around the
- * application. A test asserts the two sets are identical.
+ * 20260910100000 (the batch-1 foundation). Both exist on purpose: this one
+ * produces the message a person reads, and the database one holds when something
+ * writes around the application. A test asserts the two sets are identical.
+ *
+ * That migration may not be applied yet. The database as it is today has the older
+ * trigger from 20260908100000, which is LIVE_TRANSITIONS below. A health check
+ * writes only edges that BOTH accept (resolveWriteSafeState); nothing that talks
+ * to the database should assume the edges of this table are accepted.
  *
  * Re-asserting the same state is always allowed; that is how a refresh which
  * changes nothing else records a heartbeat.
@@ -124,9 +208,8 @@ const TRANSITIONS: Readonly<Record<ConnectionState, readonly ConnectionState[]>>
   ],
   authorization_cancelled: ["authorization_started", "ready_to_authorize", "disconnected"],
   callback_error: ["authorization_started", "ready_to_authorize", "disconnected"],
-  // refresh_failed is reachable from connected: a health check that fails to
-  // refresh a connected account must be able to say so. Without this edge the
-  // database refused the whole update and the failure was lost.
+  // refresh_failed is reachable from connected in this (target) model. The older
+  // trigger the database has today refuses it (see LIVE_TRANSITIONS).
   connected: [
     "scope_incomplete",
     "token_expiring",
@@ -191,6 +274,92 @@ export function isLegalTransition(from: ConnectionState, to: ConnectionState): b
 }
 
 /**
+ * The edges the database accepts TODAY: is_legal_connection_transition() as 20260908100000 defines
+ * it, which is the trigger that is applied. (The batch-1 replacement, TRANSITIONS above, is not.)
+ * Differences that matter to a health check: no connected -> refresh_failed, nothing leaves
+ * scope_incomplete or refresh_failed for provider_unavailable, nothing leaves provider_unavailable
+ * for revoked, refresh_failed or scope_incomplete, and the three authorization states have no way out.
+ * A test reads the SQL and keeps this equal to it.
+ */
+const LIVE_TRANSITIONS: Readonly<Record<ConnectionState, readonly ConnectionState[]>> = {
+  not_configured: [
+    "missing_app_credentials",
+    "ready_to_authorize",
+    "connected",
+    "scope_incomplete",
+    "token_expiring",
+    "disconnected",
+  ],
+  missing_app_credentials: ["ready_to_authorize", "not_configured"],
+  ready_to_authorize: ["connected", "scope_incomplete", "missing_app_credentials"],
+  authorization_started: [],
+  authorization_cancelled: [],
+  callback_error: [],
+  connected: [
+    "scope_incomplete",
+    "token_expiring",
+    "revoked",
+    "disconnected",
+    "provider_unavailable",
+  ],
+  scope_incomplete: ["connected", "revoked", "disconnected", "token_expiring"],
+  token_expiring: [
+    "connected",
+    "refresh_failed",
+    "revoked",
+    "disconnected",
+    "provider_unavailable",
+  ],
+  refresh_failed: ["connected", "revoked", "disconnected", "token_expiring"],
+  provider_unavailable: ["connected", "token_expiring", "disconnected"],
+  revoked: ["ready_to_authorize", "connected", "disconnected"],
+  disconnected: ["ready_to_authorize", "connected"],
+};
+
+/** Every edge the live database accepts, flattened -- for the test that compares this with SQL. */
+export function liveTransitions(): ReadonlyArray<readonly [ConnectionState, ConnectionState]> {
+  return (Object.keys(LIVE_TRANSITIONS) as ConnectionState[]).flatMap((from) =>
+    LIVE_TRANSITIONS[from].map((to) => [from, to] as const),
+  );
+}
+
+/**
+ * True when the database accepts this move whether or not the batch-1 trigger has replaced the one
+ * it has today: an edge in BOTH tables. A health check writes only these, so it works before and
+ * after that migration. (The older trigger also accepts revoked -> connected and
+ * disconnected -> connected, which batch 1 removes; neither is ever a health check's to take.)
+ */
+export function isWriteSafeTransition(from: ConnectionState, to: ConnectionState): boolean {
+  if (from === to) return true;
+  return LIVE_TRANSITIONS[from].includes(to) && TRANSITIONS[from].includes(to);
+}
+
+/**
+ * The state a health check writes when the observation's own state may not be reachable.
+ *
+ * If the database accepts the observed state from here, that is it. If not, the account STAYS
+ * where it is: never a stand-in state that says something untrue (a refused sign-in is not "token
+ * expiring"). The saved evidence carries the rest -- a refusal withdraws the proof, so the account
+ * can no longer read as verified. The one exception is a state that says the opposite of what the
+ * platform just said, which is left by the one neutral step the database offers:
+ *   provider_unavailable ("not answering") after the platform DID answer -> connected if the token
+ *     worked, else token_expiring;
+ *   refresh_failed ("sign-in failed") after the token worked -> connected.
+ * (Whether the account then reads as fully connected is decided by its saved evidence, never by
+ * this state.)
+ */
+export function resolveWriteSafeState(
+  from: ConnectionState,
+  proposed: ConnectionState,
+  validated: boolean,
+): ConnectionState {
+  if (isWriteSafeTransition(from, proposed)) return proposed;
+  if (from === "provider_unavailable") return validated ? "connected" : "token_expiring";
+  if (from === "refresh_failed" && validated) return "connected";
+  return from;
+}
+
+/**
  * The state a health check should write, given where the connection is now.
  *
  * A health check makes one observation. If that observation's natural state is
@@ -223,6 +392,41 @@ export type HealthCode =
   | "revoked"
   | "refresh_failed";
 
+type Observed = {
+  reason: string;
+  httpStatus?: number | null | undefined;
+  providerCode?: string | null | undefined;
+  unreachable?: boolean | undefined;
+};
+
+/**
+ * The provider told us what happened (a status, a code, or "no answer")? Then that is what
+ * decides. The reason text is read only when it did not -- scraping a number out of a sentence
+ * was the old way, and Meta's own sentences often carry no number at all.
+ */
+const wasTold = (o: Observed): boolean =>
+  (o.httpStatus ?? null) !== null || (o.providerCode ?? null) !== null || o.unreachable === true;
+
+function isRateLimited(o: Observed): boolean {
+  if (!wasTold(o)) return /\b429\b|rate[ -]?limit|too many requests/i.test(o.reason);
+  return o.httpStatus === 429 || ["4", "17", "32", "613"].includes(String(o.providerCode ?? ""));
+}
+
+function isUnavailable(o: Observed): boolean {
+  if (!wasTold(o)) {
+    return /\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(
+      o.reason,
+    );
+  }
+  const status = o.httpStatus ?? null;
+  return o.unreachable === true || status === 408 || (status !== null && status >= 500);
+}
+
+function isUnauthorized(o: Observed): boolean {
+  if (!wasTold(o)) return /revok|invalid[_ ]grant|reauthori|\b190\b|\b401\b/i.test(o.reason);
+  return o.httpStatus === 401 || String(o.providerCode ?? "") === "190";
+}
+
 /**
  * Turns one health-check observation into the state to write.
  *
@@ -244,6 +448,18 @@ export function classifyHealthObservation(o: {
   validated: boolean;
   missingScopes: number;
   reason: string;
+  /** What the provider answered. When given it decides; the reason text is only the fallback. */
+  httpStatus?: number | null;
+  /** The provider's own error code (Meta: 190 = token no longer valid, 4/17/32/613 = rate limit). */
+  providerCode?: string | null;
+  /** The request never got an answer (network error, timeout). */
+  unreachable?: boolean;
+  /**
+   * Resolve the state against the edges the database accepts both today and after batch 1
+   * (resolveWriteSafeState), instead of against the batch-1 table alone. A caller that is going to
+   * WRITE the state must set this.
+   */
+  writeSafe?: boolean;
 }): { code: HealthCode; state: ConnectionState; active: boolean } {
   let code: HealthCode;
   let proposed: ConnectionState;
@@ -253,22 +469,22 @@ export function classifyHealthObservation(o: {
   } else if (o.validated) {
     code = "healthy";
     proposed = "connected";
-  } else if (/\b429\b|rate[ -]?limit|too many requests/i.test(o.reason)) {
+  } else if (isRateLimited(o)) {
     code = "rate_limited";
     proposed = isUsable(o.from) ? o.from : "provider_unavailable";
-  } else if (
-    /\b5\d\d\b|timed? ?out|ETIMEDOUT|ECONNRESET|temporarily unavailable|unreachable/i.test(o.reason)
-  ) {
+  } else if (isUnavailable(o)) {
     code = "provider_unavailable";
     proposed = "provider_unavailable";
-  } else if (/revok|invalid[_ ]grant|reauthori|\b190\b|\b401\b/i.test(o.reason)) {
+  } else if (isUnauthorized(o)) {
     code = "revoked";
     proposed = "revoked";
   } else {
     code = "refresh_failed";
     proposed = "refresh_failed";
   }
-  const state = resolveHealthState(o.from, proposed);
+  const state = o.writeSafe
+    ? resolveWriteSafeState(o.from, proposed, o.validated)
+    : resolveHealthState(o.from, proposed);
   // An observation that could not legally become revoked (an outage in
   // progress) is reported as a refresh failure, and the connection stays on.
   if (code === "revoked" && state !== "revoked") code = "refresh_failed";
