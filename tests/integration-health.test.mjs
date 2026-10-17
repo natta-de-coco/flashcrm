@@ -1208,9 +1208,12 @@ describe("no secret is ever stored, logged or returned (T10)", () => {
     }
     assert.notEqual(result.outcome, "healthy");
     assertClean(result, "facebook");
-    // And the redaction was real work: the platform's words reached the log with the secret removed.
+    // The platform's words do not reach the log at all (every workspace member can read it).
     const logged = world.logRows()[0];
-    assert.match(JSON.stringify(logged.details), /\[redacted\]/);
+    assert.doesNotMatch(
+      JSON.stringify(logged),
+      /Invalid OAuth access token|OAuthException|echoedByThePlatform/,
+    );
   });
 
   test("a renewal that fails with the refresh token in its message", async () => {
@@ -2568,5 +2571,104 @@ describe("the server and the screen use one admin rule (finding 9)", () => {
     assert.match(source, /healthReportDialog\.reportFailed/);
     assert.match(source, /ONLY_ADMIN_MESSAGE/);
     assert.ok(MESSAGES_EN["healthReportDialog.reportFailed"]);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, finding 12: the check log can be read by every member of a workspace
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("what a check writes to the log holds nothing a member should not read (finding 12)", () => {
+  // connection_retry_log is readable by every workspace member, through the database's own API as
+  // well as in the dialog. Restricting it to admins needs SQL, which this change does not carry; so
+  // what is written is kept to the plain reason and a handful of facts.
+  const ALLOWED = [
+    "correlation_id",
+    "evidence_saved",
+    "http_status",
+    "probe",
+    "refreshed",
+    "retry_count",
+    "stage",
+  ];
+
+  test("no permission names, no platform words, no full identifier", async () => {
+    const granted = requiredScopesFor("facebook").filter((p) => p !== "pages_messaging");
+    const missingPermission = world.account({ external_id: "1000" });
+    const refused = world.account({ external_id: "2000", label: "Second" });
+    world.provider([
+      on(`${GRAPH}/1000?fields=id`, () => json(200, { id: "1000" })),
+      on(`${GRAPH}/2000?fields=id`, () =>
+        json(403, {
+          error: {
+            message: "(#200) Requires pages_messaging permission for Acme Co's Page",
+            code: 200,
+            type: "OAuthException",
+          },
+        }),
+      ),
+      on(`${GRAPH}/me/permissions`, () =>
+        json(200, {
+          data: granted.map((permission) => ({ permission, status: "granted" })),
+        }),
+      ),
+    ]);
+    await check(missingPermission.id);
+    await check(refused.id);
+
+    const lines = world.logRows();
+    assert.equal(lines.length, 2);
+    for (const line of lines) {
+      assert.deepEqual(
+        Object.keys(line.details).filter((k) => !ALLOWED.includes(k)),
+        [],
+        "only plain facts are stored",
+      );
+      assert.match(
+        String(line.details.correlation_id),
+        /^[0-9a-f]{8}$/,
+        "the short reference only",
+      );
+      const stored = JSON.stringify(line);
+      assert.doesNotMatch(stored, /pages_messaging|manage_pages|Requires|OAuthException|Acme Co/);
+    }
+    // The company admin's own report says the same, and still names the feature in plain words.
+    const printed = (await report()).retries.map((r) => r.reason ?? "").join(" ");
+    assert.doesNotMatch(printed, /pages_messaging|OAuthException|Acme Co/);
+  });
+
+  test("staff still see the permissions and the stage, from the account and the reference", async () => {
+    const granted = requiredScopesFor("facebook").filter((p) => p !== "pages_messaging");
+    const account = verified({ granted_scopes: granted });
+    world.db.table("profiles").push({ id: "owner-12", tenant_id: A, staff_role: "super_admin" });
+    world.provider([
+      on(`${GRAPH}/1000?fields=id`, () => json(200, { id: "1000" })),
+      on(`${GRAPH}/me/permissions`, () =>
+        json(200, { data: granted.map((permission) => ({ permission, status: "granted" })) }),
+      ),
+    ]);
+    const result = await check(account.id);
+    const row = rowFor(await report(world.session(A, "owner-12")), account.id);
+    assert.deepEqual(row.diagnostics.scopes_missing, ["pages_messaging"]);
+    assert.equal(row.diagnostics.correlation_id, result.correlation_id);
+    assert.equal(row.diagnostics.stage, "done");
+  });
+
+  test("an older line that names a permission is not shown to a company admin", async () => {
+    // Lines written before this change keep their raw text; the report must not repeat it.
+    const account = world.account();
+    world.db.table("connection_retry_log").push({
+      id: "old-1",
+      tenant_id: A,
+      account_id: account.id,
+      platform: "facebook",
+      outcome: "forbidden",
+      reason: "(#200) Requires pages_messaging permission",
+      trigger: "manual",
+      created_at: iso(-1000),
+      details: {},
+    });
+    const [line] = (await report()).retries;
+    assert.equal(line.reason, null);
   });
 });

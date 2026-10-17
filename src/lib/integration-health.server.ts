@@ -258,7 +258,9 @@ export async function buildHealthReport(
       id: entry.id,
       platform: entry.platform,
       outcome: entry.outcome,
-      reason: staff ? safeText(entry.reason, [], 1000) || null : plainOrNull(entry.reason),
+      reason: staff
+        ? safeText(entry.reason, [], 1000) || null
+        : plainOrNull(entry.reason, connectorDefinition(entry.platform)?.requestedScopes ?? []),
       trigger: entry.trigger,
       created_at: entry.created_at,
     })),
@@ -807,19 +809,17 @@ async function runCheck(
 
   // What the platform said, as a state the database accepts from where the account is now.
   const known = [token, refreshToken, row.access_token, row.refresh_token];
-  let scopes: string[] = [];
   let missing: string[] = [];
   let unknownScopes = false;
   let classified: ReturnType<typeof classifyHealthObservation>;
   let httpStatus: number | null = null;
-  let providerMessage: string | null = null;
   let retryAfter: number | null = null;
   let outcome: RetryOutcomeCode;
   let verifiedCandidate = false;
 
   if (probe.kind === "ok") {
     httpStatus = probe.status;
-    scopes = probe.scopes ?? refreshedScopes ?? row.granted_scopes ?? [];
+    const scopes = probe.scopes ?? refreshedScopes ?? row.granted_scopes ?? [];
     missing = missingScopesFor(row.platform, scopes);
     unknownScopes = scopesUnknown(row.platform, scopes);
     classified = classifyHealthObservation({
@@ -849,12 +849,9 @@ async function runCheck(
     stage = refreshError || refreshed ? "refresh" : "probe";
     if (probe.kind === "refused") {
       httpStatus = probe.local ? null : probe.status;
-      providerMessage = probe.message;
       retryAfter = probe.retryAfter;
     } else if (probe.kind === "mismatch") {
       httpStatus = probe.status || null;
-    } else {
-      providerMessage = probe.message;
     }
     classified = classifyHealthObservation({
       from,
@@ -1064,17 +1061,18 @@ async function runCheck(
       outcome,
       reason: said,
       trigger: args.trigger,
+      // connection_retry_log is readable by every member of the workspace (through the database's
+      // own API as well as the dialog), so it holds plain facts only: no permission names, no
+      // words from the platform (they can name an app or a Page) and only the short reference of
+      // the check. What staff need is read from the account and from that reference.
       details: {
         stage,
         probe: PROBES[row.platform] ? row.platform : null,
         http_status: httpStatus,
-        correlation_id: check.id,
+        correlation_id: check.reference,
         evidence_saved: evidenceSaved,
         refreshed,
         retry_count: retryCount,
-        scopes_checked: scopes,
-        scopes_missing: missing,
-        provider_message: providerMessage ? safeText(providerMessage, known) : null,
       } as never,
     });
     logSaved = !logged.error;
