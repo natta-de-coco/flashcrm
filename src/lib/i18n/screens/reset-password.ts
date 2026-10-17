@@ -18,6 +18,8 @@ export default screen({
     "resetPassword.thisRecoveryLinkIsInvalid":
       "This recovery link is invalid or expired. Request a new one from the sign-in page.",
     "resetPassword.returnToSignIn": "Return to sign in",
+    "resetPassword.codeFirst":
+      "Your account uses two-factor sign-in. Enter your code first, then choose your new password.",
   },
   ar: {
     "resetPassword.useAtLeast8Characters": "استخدم 8 أحرف على الأقل لكلمة مرورك الجديدة.",
@@ -33,6 +35,8 @@ export default screen({
     "resetPassword.thisRecoveryLinkIsInvalid":
       "رابط الاسترداد هذا غير صالح أو منتهي. اطلب رابطًا جديدًا من صفحة تسجيل الدخول.",
     "resetPassword.returnToSignIn": "العودة لتسجيل الدخول",
+    "resetPassword.codeFirst":
+      "يستخدم حسابك تسجيل الدخول بالتحقق الثنائي. أدخل رمزك أولاً، ثم اختر كلمة المرور الجديدة.",
   },
   ms: {
     "resetPassword.useAtLeast8Characters":
@@ -51,6 +55,8 @@ export default screen({
     "resetPassword.thisRecoveryLinkIsInvalid":
       "Pautan pemulihan ini tidak sah atau tamat tempoh. Minta yang baharu dari halaman log masuk.",
     "resetPassword.returnToSignIn": "Kembali ke log masuk",
+    "resetPassword.codeFirst":
+      "Akaun anda menggunakan log masuk dua faktor. Masukkan kod anda dahulu, kemudian pilih kata laluan baharu anda.",
   },
   fil: {
     "resetPassword.useAtLeast8Characters":
@@ -68,6 +74,8 @@ export default screen({
     "resetPassword.thisRecoveryLinkIsInvalid":
       "Hindi valid o nag-expire na ang recovery link na ito. Humiling ng bago mula sa sign-in page.",
     "resetPassword.returnToSignIn": "Bumalik sa sign in",
+    "resetPassword.codeFirst":
+      "Gumagamit ng two-factor sign-in ang iyong account. Ilagay muna ang iyong code, pagkatapos ay pumili ng bagong password.",
   },
   sw: {
     "resetPassword.useAtLeast8Characters": "Tumia angalau herufi 8 kwa nenosiri lako jipya.",
@@ -83,5 +91,7 @@ export default screen({
     "resetPassword.thisRecoveryLinkIsInvalid":
       "Kiungo hiki cha urejeshaji si halali au kimeisha muda. Omba kipya kutoka ukurasa wa kuingia.",
     "resetPassword.returnToSignIn": "Rudi kwenye kuingia",
+    "resetPassword.codeFirst":
+      "Akaunti yako inatumia kuingia kwa hatua mbili. Weka msimbo wako kwanza, kisha chagua nenosiri lako jipya.",
   },
 });
