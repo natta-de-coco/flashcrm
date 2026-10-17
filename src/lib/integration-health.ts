@@ -25,8 +25,8 @@ export type HealthDiagnostics = {
   /** The short reference of that check. It holds no workspace, account or platform text. */
   correlation_id: string | null;
   last_attempt_at: string | null;
-  /** Whether verification results can be saved in this workspace. */
-  evidence_storage: "ready" | "missing";
+  /** Whether verification results can be saved in this workspace (or could not be read just now). */
+  evidence_storage: "ready" | "missing" | "unreadable";
   /** The permissions the platform granted and the ones it did not, by their technical names. */
   scopes_granted: string[];
   scopes_missing: string[];
@@ -118,6 +118,7 @@ export type RetryOutcomeCode =
   | "reconnect_needed"
   | "in_progress"
   | "recently_checked"
+  | "waiting_to_retry"
   | "changed_while_checking"
   | "not_found"
   | "failed";
@@ -200,6 +201,8 @@ export function describeOutcome(
       return "Another check for this account is already running. Try again in a minute.";
     case "recently_checked":
       return "Checked a moment ago. Showing the saved result.";
+    case "waiting_to_retry":
+      return `Flas is waiting before it asks ${p.platform} again. Try again after ${at}.`;
     case "changed_while_checking":
       return "This account changed while Flas was checking it, so the result was not saved and nothing was marked verified.";
     case "reconnect_needed":
@@ -227,6 +230,7 @@ const NOT_CHECKED_OUTCOMES: readonly RetryOutcomeCode[] = [
   "reconnect_needed",
   "in_progress",
   "recently_checked",
+  "waiting_to_retry",
   "changed_while_checking",
   "not_found",
 ];
@@ -402,7 +406,7 @@ export async function downloadHealthReportPdf(report: HealthReport): Promise<voi
   if (report.retries.length) {
     space(60);
     y += 10;
-    text("Recent automatic retries", 12, "bold");
+    text("Recent checks", 12, "bold");
     for (const r of report.retries.slice(0, 12)) {
       text(
         `${new Date(r.created_at).toLocaleString()} · ${platformName(r.platform)} · ${r.outcome}${

@@ -508,6 +508,8 @@ describe("every status and outcome has words in five languages", () => {
       "disconnected",
       "provider_unavailable",
       "unidentified",
+      "refresh_failed",
+      "evidence_unreadable",
     ]) {
       assertSentence(text.describeReason(row({ reason_code: code }), format), `reason ${code}`);
     }
@@ -520,6 +522,8 @@ describe("every status and outcome has words in five languages", () => {
       "disconnected",
       "provider_unavailable",
       "unidentified",
+      "refresh_failed",
+      "evidence_unreadable",
     ]) {
       assertSentence(text.describeFix(row({ reason_code: code }), format), `fix ${code}`);
     }
@@ -830,5 +834,145 @@ describe("which state a check may write (finding 3)", () => {
     });
     assert.equal(old.state, "refresh_failed");
     assert.equal(accepts(LIVE_EDGES, "connected", "refresh_failed"), false);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, findings 6, 7, 10: the words match the buttons, and say only what is true
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("a sentence and the button under it agree (findings 6, 7)", () => {
+  const inputs = () => [
+    good(),
+    good({ last_validation_success_at: null }),
+    good({ external_id: null }),
+    good({ granted_scopes: null }),
+    good({ granted_scopes: requiredScopesFor("facebook").slice(1) }),
+    good({ connect_method: "manual" }),
+    good({ evidence: "unavailable" }),
+    good({ evidence: "unreadable" }),
+    good({ connection_state: "revoked", active: false }),
+    good({ connection_state: "refresh_failed" }),
+    good({ connection_state: "provider_unavailable" }),
+    good({ connection_state: "disconnected" }),
+    good({ token_expires_at: ago(-HOUR), renews: false }),
+    good({ token_expires_at: ago(HOUR), renews: false }),
+    good({ last_synced_at: null }),
+    undefined,
+  ];
+
+  test("a fix that starts with a button's name is that button", () => {
+    const lead = [
+      [/^Press Retry now/, "retry"],
+      [/^Press Verify now/, "verify"],
+      [/^(Press )?Reconnect/, "reconnect"],
+      [/^Press Connect/, "connect"],
+    ];
+    for (const input of inputs()) {
+      const s = connectionStatus(input);
+      for (const [pattern, action] of lead) {
+        if (pattern.test(s.fix)) assert.equal(s.action, action, `${s.code}: "${s.fix}"`);
+      }
+    }
+  });
+
+  test("a failed sign-in says Reconnect, because Reconnect is the button", () => {
+    const s = connectionStatus(good({ connection_state: "refresh_failed" }));
+    assert.equal(s.action, "reconnect");
+    assert.equal(s.fix, "Reconnect the account.");
+    assert.doesNotMatch(s.fix, /Retry now/);
+    const facts = {
+      platform: "facebook",
+      platform_name: "Facebook",
+      reason_code: s.code,
+      reason_params: s.params,
+      state: s.state,
+      action: s.action,
+    };
+    assertSentence(text.describeFix(facts, format), "fix refresh_failed");
+    assertSentence(text.describeReason(facts, format), "reason refresh_failed");
+  });
+
+  test("Verify now does not say it asks once or changes nothing else", () => {
+    const s = connectionStatus(good({ last_validation_success_at: null }));
+    assert.equal(s.fix, "Press Verify now. Flas checks with Facebook and saves the result.");
+    assert.equal(
+      MESSAGES.en["healthReportDialog.fixNotVerified"],
+      "Press Verify now. Flas checks with {Platform} and saves the result.",
+    );
+    for (const language of LANGUAGES) {
+      assert.ok(MESSAGES[language]["healthReportDialog.fixNotVerified"], language);
+    }
+    // A check sends more than one request, can renew the token and writes its findings.
+    assert.doesNotMatch(
+      Object.values(MESSAGES.en).join(" "),
+      /changes nothing else|asks \{Platform\} once/,
+    );
+  });
+});
+
+describe("when the saved results cannot be read, or the account is switched off (finding 10)", () => {
+  test("unreadable is its own message, not 'cannot save verification results'", () => {
+    const s = connectionStatus(good({ evidence: "unreadable" }));
+    assert.equal(s.code, "evidence_unreadable");
+    assert.equal(s.state, "unverified");
+    assert.doesNotMatch(`${s.reason} ${s.fix}`, /database update|cannot save/i);
+    const described = (code) =>
+      text.describeReason(
+        {
+          platform: "facebook",
+          platform_name: "Facebook",
+          reason_code: code,
+          reason_params: {},
+          state: "unverified",
+          action: "none",
+        },
+        format,
+      );
+    assertSentence(described("evidence_unreadable"), "reason evidence_unreadable");
+    assert.notEqual(described("evidence_unreadable").key, described("evidence_unavailable").key);
+    // The input builder passes the third kind through, and ignores any stored timestamp.
+    const input = statusInputFromRow(good(), { state: "unreadable" });
+    assert.equal(input.last_validation_success_at, null);
+    assert.equal(connectionStatus(input).code, "evidence_unreadable");
+  });
+
+  test("a switched-off account with no token is Disconnected, whatever its saved state says", () => {
+    for (const connection_state of [
+      null,
+      "connected",
+      "token_expiring",
+      "refresh_failed",
+      "provider_unavailable",
+    ]) {
+      const s = connectionStatus(good({ active: false, has_token: false, connection_state }));
+      assert.equal(s.code, "disconnected", String(connection_state));
+      assert.equal(s.state, "not_connected");
+      assert.doesNotMatch(s.reason, /revoked|refused/i);
+    }
+  });
+
+  test("but a platform that revoked it, or an account that still holds its token, is still failing", () => {
+    assert.equal(
+      connectionStatus(good({ active: false, has_token: false, connection_state: "revoked" }))
+        .state,
+      "failing",
+    );
+    assert.equal(
+      connectionStatus(good({ active: false, has_token: true, connection_state: "connected" }))
+        .state,
+      "failing",
+    );
+    // Not knowing whether it holds a token keeps the old answer.
+    assert.equal(
+      connectionStatus(good({ active: false, connection_state: null })).state,
+      "failing",
+    );
+    // An account that is switched on is never read as disconnected from its missing token alone
+    // (the channel picker's accounts keep their token elsewhere).
+    assert.notEqual(
+      connectionStatus(good({ active: true, has_token: false })).code,
+      "disconnected",
+    );
   });
 });

@@ -23,7 +23,7 @@ export default screen({
     "healthReportDialog.reasonNotVerified":
       "Authorized, but Flas has not yet confirmed with {Platform} that the token works.",
     "healthReportDialog.fixNotVerified":
-      "Press Verify now. Flas asks {Platform} once and changes nothing else.",
+      "Press Verify now. Flas checks with {Platform} and saves the result.",
     "healthReportDialog.reasonEvidenceUnavailable":
       "Flas cannot save verification results for this workspace yet, so this account cannot be marked verified.",
     "healthReportDialog.fixEvidenceUnavailable":
@@ -94,7 +94,7 @@ export default screen({
     "healthReportDialog.chooseAccount": "Choose account",
     "healthReportDialog.continueWith": "Continue with {Platform}",
     "healthReportDialog.comingSoon": "Coming soon",
-    "healthReportDialog.checkAttention": "Check all that need attention",
+    "healthReportDialog.checkAttention": "Check what is due",
     "healthReportDialog.recentChecks": "Recent checks",
     "healthReportDialog.diagReference": "Reference {id}",
     "healthReportDialog.diagStage": "Stage: {stage}",
@@ -106,6 +106,17 @@ export default screen({
     "healthReportDialog.diagMessage": "Platform said: {message}",
     "healthReportDialog.outcomeChanged":
       "This account changed while Flas was checking it, so the result was not saved and nothing was marked verified.",
+    "healthReportDialog.reasonRefreshFailed":
+      "The platform did not accept the stored sign-in the last time Flas checked it.",
+    "healthReportDialog.fixReconnect": "Reconnect the account.",
+    "healthReportDialog.reasonEvidenceUnreadable":
+      "Flas could not read this account's saved check results just now, so it cannot say whether the account is verified.",
+    "healthReportDialog.fixEvidenceUnreadable":
+      "Try again in a moment. If it keeps happening, tell Flas support.",
+    "healthReportDialog.whatsappElsewhere": "WhatsApp is checked on the Alerts & health page.",
+    "healthReportDialog.outcomeWaiting":
+      "Flas is waiting before it asks {Platform} again. Try again after {time}.",
+    "healthReportDialog.diagStorageUnreadable": "Verification storage: could not be read",
   },
   ar: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -127,7 +138,7 @@ export default screen({
     "healthReportDialog.reasonNotVerified":
       "تم التفويض، لكن Flas لم يتأكد بعد مع {Platform} من أن الرمز يعمل.",
     "healthReportDialog.fixNotVerified":
-      "اضغط «تحقق الآن». يسأل Flas منصة {Platform} مرة واحدة ولا يغيّر أي شيء آخر.",
+      "اضغط «تحقق الآن». يفحص Flas الأمر مع {Platform} ويحفظ النتيجة.",
     "healthReportDialog.reasonEvidenceUnavailable":
       "لا يستطيع Flas حفظ نتائج التحقق لمساحة العمل هذه بعد، لذلك لا يمكن وسم هذا الحساب بأنه موثّق.",
     "healthReportDialog.fixEvidenceUnavailable":
@@ -194,7 +205,7 @@ export default screen({
     "healthReportDialog.chooseAccount": "اختر الحساب",
     "healthReportDialog.continueWith": "المتابعة مع {Platform}",
     "healthReportDialog.comingSoon": "قريبًا",
-    "healthReportDialog.checkAttention": "افحص كل ما يحتاج إلى انتباه",
+    "healthReportDialog.checkAttention": "افحص ما حان موعد فحصه",
     "healthReportDialog.recentChecks": "الفحوصات الأخيرة",
     "healthReportDialog.diagReference": "المرجع {id}",
     "healthReportDialog.diagStage": "المرحلة: {stage}",
@@ -206,6 +217,17 @@ export default screen({
     "healthReportDialog.diagMessage": "ما قالته المنصة: {message}",
     "healthReportDialog.outcomeChanged":
       "تغيّر هذا الحساب أثناء فحص Flas له، لذلك لم تُحفظ النتيجة ولم يُوسَم أي شيء بأنه موثّق.",
+    "healthReportDialog.reasonRefreshFailed":
+      "لم تقبل المنصة تسجيل الدخول المحفوظ في آخر مرة فحصه فيها Flas.",
+    "healthReportDialog.fixReconnect": "أعد الاتصال بالحساب.",
+    "healthReportDialog.reasonEvidenceUnreadable":
+      "لم يتمكن Flas من قراءة نتائج الفحص المحفوظة لهذا الحساب الآن، لذلك لا يستطيع القول إن كان الحساب موثّقًا.",
+    "healthReportDialog.fixEvidenceUnreadable":
+      "حاول مرة أخرى بعد قليل. إذا استمر ذلك، أخبر دعم Flas.",
+    "healthReportDialog.whatsappElsewhere": "يُفحص واتساب في صفحة «التنبيهات والحالة».",
+    "healthReportDialog.outcomeWaiting":
+      "ينتظر Flas قبل أن يسأل {Platform} مرة أخرى. حاول مرة أخرى بعد {time}.",
+    "healthReportDialog.diagStorageUnreadable": "تخزين التحقق: تعذّرت قراءته",
   },
   ms: {
     "healthReportDialog.encryptedStoredCredentialS": "{sealedNow} kelayakan tersimpan disulitkan.",
@@ -226,7 +248,7 @@ export default screen({
     "healthReportDialog.reasonNotVerified":
       "Dibenarkan, tetapi Flas belum mengesahkan dengan {Platform} bahawa token berfungsi.",
     "healthReportDialog.fixNotVerified":
-      "Tekan Sahkan sekarang. Flas bertanya kepada {Platform} sekali sahaja dan tidak mengubah apa-apa yang lain.",
+      "Tekan Sahkan sekarang. Flas menyemak dengan {Platform} dan menyimpan keputusan.",
     "healthReportDialog.reasonEvidenceUnavailable":
       "Flas belum dapat menyimpan keputusan pengesahan untuk ruang kerja ini, jadi akaun ini tidak boleh ditandakan sebagai telah disahkan.",
     "healthReportDialog.fixEvidenceUnavailable":
@@ -300,7 +322,7 @@ export default screen({
     "healthReportDialog.chooseAccount": "Pilih akaun",
     "healthReportDialog.continueWith": "Teruskan dengan {Platform}",
     "healthReportDialog.comingSoon": "Akan datang",
-    "healthReportDialog.checkAttention": "Semak semua yang perlukan perhatian",
+    "healthReportDialog.checkAttention": "Semak yang sudah tiba masanya",
     "healthReportDialog.recentChecks": "Semakan terkini",
     "healthReportDialog.diagReference": "Rujukan {id}",
     "healthReportDialog.diagStage": "Peringkat: {stage}",
@@ -312,6 +334,17 @@ export default screen({
     "healthReportDialog.diagMessage": "Platform berkata: {message}",
     "healthReportDialog.outcomeChanged":
       "Akaun ini berubah semasa Flas sedang memeriksanya, jadi keputusan tidak disimpan dan tiada apa-apa yang ditandakan sebagai disahkan.",
+    "healthReportDialog.reasonRefreshFailed":
+      "Platform tidak menerima log masuk yang disimpan semasa Flas menyemaknya kali terakhir.",
+    "healthReportDialog.fixReconnect": "Sambung semula akaun.",
+    "healthReportDialog.reasonEvidenceUnreadable":
+      "Flas tidak dapat membaca keputusan semakan yang disimpan untuk akaun ini sebentar tadi, jadi ia tidak dapat memastikan sama ada akaun ini telah disahkan.",
+    "healthReportDialog.fixEvidenceUnreadable":
+      "Cuba lagi sebentar nanti. Jika ia berterusan, beritahu sokongan Flas.",
+    "healthReportDialog.whatsappElsewhere": "WhatsApp disemak pada halaman Amaran & Kesihatan.",
+    "healthReportDialog.outcomeWaiting":
+      "Flas sedang menunggu sebelum bertanya kepada {Platform} semula. Cuba lagi selepas {time}.",
+    "healthReportDialog.diagStorageUnreadable": "Storan pengesahan: tidak dapat dibaca",
   },
   fil: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -333,7 +366,7 @@ export default screen({
     "healthReportDialog.reasonNotVerified":
       "Naawtorisa na, pero hindi pa nakukumpirma ng Flas sa {Platform} na gumagana ang token.",
     "healthReportDialog.fixNotVerified":
-      "Pindutin ang I-verify ngayon. Isang beses lang magtatanong ang Flas sa {Platform} at wala nang ibang babaguhin.",
+      "Pindutin ang I-verify ngayon. Susuriin ito ng Flas sa {Platform} at ise-save ang resulta.",
     "healthReportDialog.reasonEvidenceUnavailable":
       "Hindi pa maisave ng Flas ang mga resulta ng beripikasyon para sa workspace na ito, kaya hindi pa maaaring markahang na-verify ang account na ito.",
     "healthReportDialog.fixEvidenceUnavailable":
@@ -408,7 +441,7 @@ export default screen({
     "healthReportDialog.chooseAccount": "Pumili ng account",
     "healthReportDialog.continueWith": "Magpatuloy sa {Platform}",
     "healthReportDialog.comingSoon": "Malapit na",
-    "healthReportDialog.checkAttention": "Suriin lahat ng nangangailangan ng pansin",
+    "healthReportDialog.checkAttention": "Suriin ang mga dapat nang suriin",
     "healthReportDialog.recentChecks": "Mga kamakailang pagsusuri",
     "healthReportDialog.diagReference": "Reference {id}",
     "healthReportDialog.diagStage": "Yugto: {stage}",
@@ -420,6 +453,18 @@ export default screen({
     "healthReportDialog.diagMessage": "Sabi ng platform: {message}",
     "healthReportDialog.outcomeChanged":
       "Nagbago ang account na ito habang sinusuri ito ng Flas, kaya hindi na-save ang resulta at walang minarkahang na-verify.",
+    "healthReportDialog.reasonRefreshFailed":
+      "Hindi tinanggap ng platform ang naka-save na sign-in noong huling sinuri ito ng Flas.",
+    "healthReportDialog.fixReconnect": "Ikonekta muli ang account.",
+    "healthReportDialog.reasonEvidenceUnreadable":
+      "Hindi nabasa ng Flas ang mga naka-save na resulta ng pagsusuri para sa account na ito ngayon, kaya hindi nito masabi kung na-verify ang account.",
+    "healthReportDialog.fixEvidenceUnreadable":
+      "Subukan muli sa ilang sandali. Kung patuloy itong nangyayari, sabihin sa support ng Flas.",
+    "healthReportDialog.whatsappElsewhere":
+      "Sinusuri ang WhatsApp sa pahina ng Mga Alerto at Kalusugan.",
+    "healthReportDialog.outcomeWaiting":
+      "Naghihintay muna ang Flas bago magtanong muli sa {Platform}. Subukan muli pagkatapos ng {time}.",
+    "healthReportDialog.diagStorageUnreadable": "Imbakan ng beripikasyon: hindi nabasa",
   },
   sw: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -441,7 +486,7 @@ export default screen({
     "healthReportDialog.reasonNotVerified":
       "Imeidhinishwa, lakini Flas bado haijathibitisha na {Platform} kwamba tokeni inafanya kazi.",
     "healthReportDialog.fixNotVerified":
-      "Bonyeza Thibitisha sasa. Flas inauliza {Platform} mara moja tu na haibadilishi kitu kingine.",
+      "Bonyeza Thibitisha sasa. Flas inakagua na {Platform} na kuhifadhi matokeo.",
     "healthReportDialog.reasonEvidenceUnavailable":
       "Flas bado haiwezi kuhifadhi matokeo ya uthibitisho kwa nafasi hii ya kazi, kwa hiyo akaunti hii haiwezi kuwekwa alama kuwa imethibitishwa.",
     "healthReportDialog.fixEvidenceUnavailable":
@@ -516,7 +561,7 @@ export default screen({
     "healthReportDialog.chooseAccount": "Chagua akaunti",
     "healthReportDialog.continueWith": "Endelea na {Platform}",
     "healthReportDialog.comingSoon": "Inakuja hivi karibuni",
-    "healthReportDialog.checkAttention": "Kagua vyote vinavyohitaji uangalizi",
+    "healthReportDialog.checkAttention": "Kagua vinavyostahili sasa",
     "healthReportDialog.recentChecks": "Ukaguzi wa hivi karibuni",
     "healthReportDialog.diagReference": "Rejea {id}",
     "healthReportDialog.diagStage": "Hatua: {stage}",
@@ -528,5 +573,17 @@ export default screen({
     "healthReportDialog.diagMessage": "Jukwaa lilisema: {message}",
     "healthReportDialog.outcomeChanged":
       "Akaunti hii ilibadilika wakati Flas ilipokuwa inaikagua, kwa hiyo matokeo hayakuhifadhiwa na hakuna kilichowekwa alama kuwa kimethibitishwa.",
+    "healthReportDialog.reasonRefreshFailed":
+      "Jukwaa halikukubali kuingia kulikohifadhiwa mara ya mwisho Flas ilipolikagua.",
+    "healthReportDialog.fixReconnect": "Unganisha tena akaunti.",
+    "healthReportDialog.reasonEvidenceUnreadable":
+      "Flas haikuweza kusoma matokeo yaliyohifadhiwa ya ukaguzi wa akaunti hii sasa hivi, kwa hiyo haiwezi kusema kama akaunti imethibitishwa.",
+    "healthReportDialog.fixEvidenceUnreadable":
+      "Jaribu tena baada ya muda mfupi. Ikiendelea, mwambie msaada wa Flas.",
+    "healthReportDialog.whatsappElsewhere":
+      "WhatsApp hukaguliwa kwenye ukurasa wa Tahadhari na Hali.",
+    "healthReportDialog.outcomeWaiting":
+      "Flas inasubiri kabla ya kuuliza {Platform} tena. Jaribu tena baada ya {time}.",
+    "healthReportDialog.diagStorageUnreadable": "Hifadhi ya uthibitisho: haikuweza kusomwa",
   },
 });

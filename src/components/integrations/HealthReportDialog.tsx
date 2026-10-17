@@ -140,6 +140,16 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
               join: KEYED_CONNECTORS.map((c) => c.displayName).join(", "),
             })}
           </DialogDescription>
+          {/* WhatsApp numbers are not read by this report: their health is on Alerts & health. */}
+          <p className="text-xs text-muted-foreground">
+            <Link
+              to="/monitoring"
+              className="underline underline-offset-2"
+              onClick={() => setOpen(false)}
+            >
+              {t("healthReportDialog.whatsappElsewhere")}
+            </Link>
+          </p>
         </DialogHeader>
 
         {report.isLoading && (
@@ -392,7 +402,9 @@ function HealthRowCard({
             {t(
               diagnostics.evidence_storage === "ready"
                 ? "healthReportDialog.diagStorageReady"
-                : "healthReportDialog.diagStorageMissing",
+                : diagnostics.evidence_storage === "unreadable"
+                  ? "healthReportDialog.diagStorageUnreadable"
+                  : "healthReportDialog.diagStorageMissing",
             )}
           </span>
           {diagnostics.scopes_missing.length > 0 && (

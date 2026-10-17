@@ -25,7 +25,9 @@ export type Format = { time: (iso: string) => string };
 
 const REASON: Partial<Record<StatusReasonCode, MessageKey>> = {
   not_verified: "healthReportDialog.reasonNotVerified",
+  refresh_failed: "healthReportDialog.reasonRefreshFailed",
   evidence_unavailable: "healthReportDialog.reasonEvidenceUnavailable",
+  evidence_unreadable: "healthReportDialog.reasonEvidenceUnreadable",
   scopes_unknown: "healthReportDialog.reasonScopesUnknown",
   scopes_missing: "healthReportDialog.reasonScopesMissing",
   connected: "healthReportDialog.reasonConnected",
@@ -37,7 +39,9 @@ const REASON: Partial<Record<StatusReasonCode, MessageKey>> = {
 
 const FIX: Partial<Record<StatusReasonCode, MessageKey>> = {
   not_verified: "healthReportDialog.fixNotVerified",
+  refresh_failed: "healthReportDialog.fixReconnect",
   evidence_unavailable: "healthReportDialog.fixEvidenceUnavailable",
+  evidence_unreadable: "healthReportDialog.fixEvidenceUnreadable",
   scopes_unknown: "healthReportDialog.fixKeepPermissions",
   scopes_missing: "healthReportDialog.fixKeepPermissions",
   verified_not_synced: "healthReportDialog.fixVerifiedNotSynced",
@@ -176,6 +180,8 @@ export function describeResult(result: RetryResult, format: Format): Described[]
       return [{ key: "healthReportDialog.outcomeInProgress", values: {} }];
     case "recently_checked":
       return [{ key: "healthReportDialog.outcomeRecentlyChecked", values: {} }];
+    case "waiting_to_retry":
+      return [{ key: "healthReportDialog.outcomeWaiting", values: { Platform, time } }];
     case "changed_while_checking":
       return [{ key: "healthReportDialog.outcomeChanged", values: {} }];
     case "reconnect_needed":
@@ -249,6 +255,7 @@ export const ALL_OUTCOMES: readonly RetryOutcomeCode[] = [
   "reconnect_needed",
   "in_progress",
   "recently_checked",
+  "waiting_to_retry",
   "changed_while_checking",
   "not_found",
   "failed",

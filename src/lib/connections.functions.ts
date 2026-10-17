@@ -76,15 +76,21 @@ export const getConnections = createServerFn({ method: "GET" })
     // session; only the yes/no leaves the server.
     const renewing = new Set<string>();
     const tokened = new Set<string>();
+    // The saved state as a second source (the browser session cannot read that column), so a
+    // deliberate disconnect still reads as one when the verification results cannot be read.
+    const savedState = new Map<string, string | null>();
+    let tokensRead = false;
     if (tenantId) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { data: rows } = await supabaseAdmin
+      const { data: rows, error: tokenError } = await supabaseAdmin
         .from("social_accounts")
-        .select("id, access_token, refresh_token")
+        .select("id, access_token, refresh_token, connection_state")
         .eq("tenant_id", tenantId);
+      tokensRead = !tokenError && Boolean(rows);
       for (const row of rows ?? []) {
         if (row.refresh_token) renewing.add(row.id);
         if (row.access_token) tokened.add(row.id);
+        savedState.set(row.id, row.connection_state ?? null);
       }
     }
 
@@ -116,13 +122,24 @@ export const getConnections = createServerFn({ method: "GET" })
         // The fields connectionStatus() reads, so the screen's own call decides the same thing
         // the report does. Before this the screen never received any of them, and nothing on it
         // could be Connected.
-        connection_state: saved.connection_state,
+        connection_state: saved.connection_state ?? savedState.get(a.id) ?? null,
         last_validation_success_at: saved.last_validation_success_at,
         last_validation_attempt_at: saved.last_validation_attempt_at,
         last_error_at: saved.last_error_at,
         next_retry_at: saved.next_retry_at,
         evidence: saved.state,
-        status: connectionStatus(statusInputFromRow({ ...a, renews }, saved)),
+        has_token: tokensRead ? tokened.has(a.id) : null,
+        status: connectionStatus(
+          statusInputFromRow(
+            {
+              ...a,
+              renews,
+              has_token: tokensRead ? tokened.has(a.id) : null,
+              connection_state: savedState.get(a.id) ?? null,
+            },
+            saved,
+          ),
+        ),
       };
     });
 

@@ -92,7 +92,7 @@ type RetryLogRow = {
 /** What the most recent check of an account says, read from its retry log entry. Staff only. */
 function diagnosticsFrom(
   log: RetryLogRow | undefined,
-  evidenceReady: boolean,
+  storage: HealthDiagnostics["evidence_storage"],
   attemptedAt: string | null,
   granted: string[],
   missing: string[],
@@ -109,7 +109,7 @@ function diagnosticsFrom(
     http_status: typeof details.http_status === "number" ? details.http_status : null,
     correlation_id: reference ? reference.slice(0, 8) : null,
     last_attempt_at: attemptedAt ?? log?.created_at ?? null,
-    evidence_storage: evidenceReady ? "ready" : "missing",
+    evidence_storage: storage,
     scopes_granted: granted,
     scopes_missing: missing,
     provider_message:
@@ -167,7 +167,10 @@ export async function buildHealthReport(
   };
 
   const rows: HealthRow[] = [];
-  for (const c of CONNECTORS.filter((x) => !x.internalHref)) {
+  // Connectors with their own screen are not listed: another module holds their data, so a row
+  // here would say "not connected" about something this report never looked at (WhatsApp's
+  // numbers have their health on Alerts & health, and the dialog says so).
+  for (const c of CONNECTORS.filter((x) => !x.internalHref && !x.healthHref)) {
     const owned = byPlatform.get(c.id) ?? [];
     // A platform with no account still gets its own row, so the report lists every connector.
     for (const row of owned.length ? owned : [undefined]) {
@@ -176,7 +179,12 @@ export async function buildHealthReport(
       const requested = connectorDefinition(c.id)?.requestedScopes ?? [];
       const saved = row ? evidenceFor(evidence, row.id) : undefined;
       const status = connectionStatus(
-        row ? statusInputFromRow({ ...row, renews: Boolean(row.refresh_token) }, saved) : undefined,
+        row
+          ? statusInputFromRow(
+              { ...row, renews: Boolean(row.refresh_token), has_token: Boolean(row.access_token) },
+              saved,
+            )
+          : undefined,
       );
       totals[status.state] += 1;
       rows.push({
@@ -208,12 +216,16 @@ export async function buildHealthReport(
         retry_count: row?.retry_count ?? 0,
         next_retry_at: row?.next_retry_at ?? null,
         next_step: status.fix,
-        evidence_state: saved?.state ?? (evidence.available ? "ok" : "unavailable"),
+        evidence_state: evidenceFor(evidence, row?.id ?? "").state,
         diagnostics:
           staff && row
             ? diagnosticsFrom(
                 log.find((entry) => entry.account_id === row.id),
-                evidence.available,
+                saved?.state === "ok"
+                  ? "ready"
+                  : saved?.state === "unreadable"
+                    ? "unreadable"
+                    : "missing",
                 saved?.last_validation_attempt_at ?? null,
                 granted,
                 missingScopeNames,
@@ -1118,7 +1130,8 @@ export async function retryDueConnections(args: {
   trigger: "manual" | "auto";
   actorId?: string | null;
 }): Promise<RetryOutcome[]> {
-  const columns = "id, active, token_expires_at, next_retry_at, external_id, connection_state";
+  const columns =
+    "id, platform, active, token_expires_at, next_retry_at, external_id, connection_state";
   const base = () =>
     supabaseAdmin.from("social_accounts").select(columns).eq("tenant_id", args.tenantId);
   // Two kinds of account can be checked: one with a stored token, and one that is still switched on
@@ -1136,22 +1149,26 @@ export async function retryDueConnections(args: {
   const data = [...(withToken.data ?? []), ...(channelModel.data ?? [])];
   const evidence = await readEvidence(args.tenantId);
 
-  const due = ((data ?? []) as unknown as Partial<AccountRow>[])
-    .filter((row) => {
-      // Deliberately disconnected and unidentified accounts are left alone.
-      if (row.connection_state === "disconnected" || !row.external_id) return false;
-      const expiringSoon = row.token_expires_at
-        ? new Date(row.token_expires_at).getTime() - Date.now() < 1000 * 60 * 60 * 24 * 3
-        : false;
-      const failing =
-        !row.active ||
-        ["revoked", "refresh_failed", "provider_unavailable"].includes(row.connection_state ?? "");
-      // Active, identified, and nobody has ever confirmed it with the platform.
-      const unproven = !(evidence.byId.get(String(row.id))?.last_validation_success_at ?? null);
-      const dueNow = !row.next_retry_at || new Date(row.next_retry_at).getTime() <= Date.now();
-      return (failing || expiringSoon || unproven) && dueNow;
-    })
-    .slice(0, BULK_CAP);
+  const wanted = ((data ?? []) as unknown as Partial<AccountRow>[]).filter((row) => {
+    // Deliberately disconnected and unidentified accounts are left alone.
+    if (row.connection_state === "disconnected" || !row.external_id) return false;
+    const expiringSoon = row.token_expires_at
+      ? new Date(row.token_expires_at).getTime() - Date.now() < 1000 * 60 * 60 * 24 * 3
+      : false;
+    const failing =
+      !row.active ||
+      ["revoked", "refresh_failed", "provider_unavailable"].includes(row.connection_state ?? "");
+    // Active, identified, and nobody has ever confirmed it with the platform.
+    const unproven = !(evidence.byId.get(String(row.id))?.last_validation_success_at ?? null);
+    return failing || expiringSoon || unproven;
+  });
+  const waitIsOver = (row: Partial<AccountRow>) =>
+    !row.next_retry_at || new Date(row.next_retry_at).getTime() <= Date.now();
+  const due = wanted.filter(waitIsOver).slice(0, BULK_CAP);
+  // An account still inside its wait is not asked again, and is not left out of the answer either:
+  // a button that checks "what is due" and returns nothing, while the list shows the account,
+  // looks like it did nothing.
+  const waiting = wanted.filter((row) => !waitIsOver(row)).slice(0, BULK_CAP);
 
   // Each account runs its own check and gets its own checked write. Nothing marks a group at once.
   const results: RetryOutcome[] = [];
@@ -1164,6 +1181,20 @@ export async function retryDueConnections(args: {
         actorId: args.actorId ?? null,
       }),
     );
+  }
+  for (const row of waiting) {
+    const platform = String(row.platform);
+    results.push({
+      platform,
+      account_id: String(row.id),
+      outcome: "waiting_to_retry",
+      reason: describeOutcome("waiting_to_retry", {
+        platform: connector(platform)?.name ?? platform,
+        retryAt: row.next_retry_at ?? null,
+      }),
+      stage: "gate",
+      params: { retry_at: row.next_retry_at ?? null },
+    });
   }
   return results;
 }

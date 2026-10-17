@@ -371,9 +371,10 @@ describe("one next step, chosen from the evidence (acceptance)", () => {
     const of = (platform) => rep.rows.find((r) => r.platform === platform && !r.account_id);
     assert.equal(of("facebook").action, "connect");
     assert.equal(of("youtube").action, "connect");
-    // TikTok Ads and WhatsApp have no sign-in Flas can run, so there is nothing to press yet.
+    // TikTok Ads has no sign-in Flas can run, so there is nothing to press yet. WhatsApp is not a
+    // row here at all: it has its own health page (see the WhatsApp test further down).
     assert.equal(of("tiktok_ads").action, "coming_soon");
-    assert.equal(of("whatsapp").action, "coming_soon");
+    assert.equal(of("whatsapp"), undefined);
   });
 });
 
@@ -431,7 +432,8 @@ describe("when verification results cannot be saved, nothing reads as verified (
         : undefined,
     );
     const screen = await connections();
-    assert.equal(screen.accounts[0].evidence, "unavailable");
+    // A read that failed is "unreadable" (wait a moment), not "unavailable" (finish the update).
+    assert.equal(screen.accounts[0].evidence, "unreadable");
     assert.notEqual(connectionStatus(screen.accounts[0]).state, "connected");
   });
 
@@ -504,6 +506,9 @@ describe("reconnecting clears what the old token proved (T-reconnect)", () => {
 
 const stateMod = await import("../node_modules/.cache/flas-connection-state.mjs");
 const modelMod = await import("../node_modules/.cache/flas-health-model.mjs");
+const textMod = await import("../node_modules/.cache/flas-health-text.mjs");
+const { MESSAGES: ALL_MESSAGES } = await import("../node_modules/.cache/flas-health-i18n.mjs");
+const MESSAGES_EN = ALL_MESSAGES.en;
 
 const check = async (id, session = world.admin()) =>
   (await retryConnections({ data: { accountId: id }, context: session })).results[0];
@@ -2326,5 +2331,178 @@ describe("an account that keeps its token elsewhere is checked, not called disco
     const result = await check(account.id);
     assert.equal(result.outcome, "skipped_disconnected");
     assert.equal(world.fetches.length, 0);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, findings 8, 10, 11, 13: what the screens say, and when they cannot tell
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("WhatsApp is not listed as 'Coming soon' (finding 8)", () => {
+  test("the report leaves it out, because it has its own health page", async () => {
+    const rep = await report();
+    assert.equal(
+      rep.rows.some((r) => r.platform === "whatsapp"),
+      false,
+      "WhatsApp numbers are not read by this report, so a row would say 'Not connected' about nothing",
+    );
+    // A connector Flas really has not built still says so.
+    assert.equal(rep.rows.find((r) => r.platform === "tiktok_ads").action, "coming_soon");
+    assert.equal(
+      Object.values(rep.totals).reduce((a, b) => a + b, 0),
+      rep.rows.length,
+    );
+  });
+
+  test("the dialog says where to look, and links to it", () => {
+    const source = lf(readFileSync("src/components/integrations/HealthReportDialog.tsx", "utf8"));
+    assert.match(source, /to="\/monitoring"/);
+    assert.match(source, /healthReportDialog\.whatsappElsewhere/);
+    assert.equal(
+      MESSAGES_EN["healthReportDialog.whatsappElsewhere"].includes("Alerts & health"),
+      true,
+    );
+  });
+});
+
+describe("a read that fails is not 'cannot save results', and not 'revoked' (finding 10)", () => {
+  const failEvidenceRead = () =>
+    world.db.fail("social_accounts:read", (q) =>
+      EVIDENCE.some((c) => String(q.columns ?? "").includes(c))
+        ? { code: "57014", message: "canceling statement due to statement timeout" }
+        : undefined,
+    );
+
+  test("both readers say they could not read it, in their own words", async () => {
+    const account = verified();
+    failEvidenceRead();
+    const screen = (await connections()).accounts.find((a) => a.id === account.id);
+    assert.equal(connectionStatus(screen).code, "evidence_unreadable");
+    assert.equal(screen.status.code, "evidence_unreadable");
+    const shown = rowFor(await report(), account.id);
+    assert.equal(shown.reason_code, "evidence_unreadable");
+    assert.equal(shown.evidence_state, "unreadable");
+    assert.doesNotMatch(shown.reason + shown.fix, /database update|cannot save/i);
+    assert.notEqual(shown.state, "connected", "and it is not shown as verified");
+  });
+
+  test("a missing column is still the 'finish the database update' message", async () => {
+    const account = verified();
+    withoutEvidenceColumns(world);
+    assert.equal(rowFor(await report(), account.id).reason_code, "evidence_unavailable");
+  });
+
+  test("a deliberately disconnected account is never called revoked when the read fails", async () => {
+    const gone = world.account({
+      active: false,
+      access_token: null,
+      refresh_token: null,
+      connection_state: "disconnected",
+      health: "disconnected",
+    });
+    failEvidenceRead();
+    const screen = (await connections()).accounts.find((a) => a.id === gone.id);
+    assert.equal(screen.status.code, "disconnected");
+    assert.doesNotMatch(screen.status.reason, /revoked|refused/i);
+    assert.equal(rowFor(await report(), gone.id).reason_code, "disconnected");
+  });
+
+  test("nor when its saved state was never moved to 'disconnected'", async () => {
+    // Disconnecting takes three steps (switch off, clear the tokens, set the state); the last can fail.
+    const gone = world.account({
+      active: false,
+      access_token: null,
+      refresh_token: null,
+      connection_state: "connected",
+      health: "disconnected",
+    });
+    const screen = (await connections()).accounts.find((a) => a.id === gone.id);
+    assert.equal(screen.status.code, "disconnected");
+    assert.equal(rowFor(await report(), gone.id).reason_code, "disconnected");
+    failEvidenceRead();
+    const again = (await connections()).accounts.find((a) => a.id === gone.id);
+    assert.equal(again.status.code, "disconnected");
+  });
+
+  test("a switched-off account that still holds its token is still failing", async () => {
+    const refused = world.account({ active: false, connection_state: "connected" });
+    const shown = rowFor(await report(), refused.id);
+    assert.equal(shown.state, "failing");
+    assert.equal(shown.reason_code, "revoked");
+  });
+
+  test("staff are told the storage could not be read, not that it is missing", async () => {
+    const account = verified();
+    world.db.table("profiles").push({ id: "owner-9", tenant_id: A, staff_role: "super_admin" });
+    failEvidenceRead();
+    const staffRep = await report(world.session(A, "owner-9"));
+    assert.equal(rowFor(staffRep, account.id).diagnostics.evidence_storage, "unreadable");
+  });
+});
+
+describe("the PDF names the list as it is (finding 11)", () => {
+  test("'Recent checks', not 'Recent automatic retries'", () => {
+    const source = lf(readFileSync("src/lib/integration-health.ts", "utf8"));
+    assert.match(source, /"Recent checks"/);
+    assert.doesNotMatch(source, /automatic retries/i);
+  });
+});
+
+describe("the group check says plainly when an account is waiting (finding 13)", () => {
+  const failing = (over = {}) =>
+    channel({
+      connection_state: "token_expiring",
+      retry_count: 1,
+      last_error: "x",
+      last_error_at: iso(-HOUR),
+      ...over,
+    });
+
+  test("an account inside its wait is reported as waiting, with nothing asked and nothing written", async () => {
+    const waiting = failing({ next_retry_at: iso(HOUR) });
+    world.provider([]);
+    const before = clone(world.db.state.rows);
+    const results = await checkAll();
+    assert.equal(results.length, 1);
+    assert.equal(results[0].outcome, "waiting_to_retry");
+    assert.equal(results[0].account_id, waiting.id);
+    assert.match(results[0].reason, /waiting before it asks YouTube again\. Try again after/);
+    assert.equal(Date.parse(results[0].params.retry_at), Date.parse(waiting.next_retry_at));
+    assert.equal(world.fetches.length, 0);
+    assert.deepEqual(clone(world.db.state.rows), before);
+  });
+
+  test("the message after pressing the footer button says so, not 'nothing needed a check'", () => {
+    const [part] = textMod.describeResult(
+      {
+        platform: "youtube",
+        outcome: "waiting_to_retry",
+        reason: "x",
+        params: { retry_at: "2026-10-15T10:00:00.000Z" },
+      },
+      { time: (iso) => `at ${iso.slice(11, 16)}` },
+    );
+    assert.equal(part.key, "healthReportDialog.outcomeWaiting");
+    const toast = textMod.describeChecks(
+      [{ platform: "youtube", outcome: "waiting_to_retry", reason: "x" }],
+      { time: (iso) => iso },
+    );
+    assert.equal(toast.kind, "info");
+    assert.notEqual(toast.parts[0].key, "healthReportDialog.nothingNeededCheck");
+  });
+
+  test("an account whose wait is over is checked, and waiting accounts do not hide it", async () => {
+    const waiting = failing({ next_retry_at: iso(HOUR), external_id: "UC1" });
+    const due = failing({ next_retry_at: iso(-1000), external_id: "UC2" });
+    world.provider([googleOk()]);
+    const results = await checkAll();
+    const byId = Object.fromEntries(results.map((r) => [r.account_id, r.outcome]));
+    assert.equal(byId[waiting.id], "waiting_to_retry");
+    assert.equal(byId[due.id], "healthy");
+    assert.equal(world.fetches.length, 1);
+  });
+
+  test("the button is named for what it does", () => {
+    assert.equal(MESSAGES_EN["healthReportDialog.checkAttention"], "Check what is due");
   });
 });

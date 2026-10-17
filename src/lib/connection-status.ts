@@ -51,6 +51,7 @@ export type StatusReasonCode =
   | "manual_token"
   | "unidentified"
   | "evidence_unavailable"
+  | "evidence_unreadable"
   | "not_verified"
   | "verified_not_synced"
   | "sync_stale"
@@ -102,8 +103,13 @@ export type ConnectionStatus = {
   action: NextAction;
 };
 
-/** Whether the saved verification results could be read at all. */
-export type EvidenceState = "ok" | "unavailable";
+/**
+ * Whether the saved verification results could be read at all.
+ *   ok           read
+ *   unavailable  the columns that hold them do not exist in this database yet
+ *   unreadable   they should exist, but the database did not answer the read
+ */
+export type EvidenceState = "ok" | "unavailable" | "unreadable";
 
 export type AccountLike = {
   platform: string;
@@ -127,6 +133,12 @@ export type AccountLike = {
   missing_scopes?: string[] | null;
   /** True when a refresh token is stored, so the access token renews itself. */
   renews?: boolean | null | undefined;
+  /**
+   * Whether the account still holds a token. A deliberate disconnect clears them, so a switched-off
+   * account with none was disconnected by hand; one that still holds its token was refused by the
+   * platform. Unknown (undefined) keeps the older reading: switched off means refused.
+   */
+  has_token?: boolean | null | undefined;
   /** The durable state model (connection-state.ts). Not evidence by itself. */
   connection_state?: string | null;
   last_error_at?: string | null;
@@ -158,6 +170,7 @@ export type StatusRowFields = {
   connect_method?: string | null | undefined;
   label?: string | null | undefined;
   renews?: boolean | null | undefined;
+  has_token?: boolean | null | undefined;
   connection_state?: string | null | undefined;
   last_validation_success_at?: string | null | undefined;
   last_validation_attempt_at?: string | null | undefined;
@@ -195,6 +208,7 @@ export function statusInputFromRow(row: StatusRowFields, evidence?: StatusEviden
     connect_method: row.connect_method ?? null,
     label: row.label ?? null,
     renews: row.renews ?? null,
+    has_token: row.has_token ?? null,
     legacy_manual_connection: row.legacy_manual_connection ?? null,
     authorization_id: row.authorization_id ?? null,
     missing_scopes: row.missing_scopes ?? null,
@@ -226,7 +240,10 @@ const NOTHING_AUTHORIZED = new Set([
 export function nextActionFor(code: StatusReasonCode, platform: string | undefined): NextAction {
   const meta = platform ? connector(platform) : undefined;
   // Without a platform (no account) we cannot know; assume it can be connected.
-  const built = platform ? Boolean(meta?.oauth) && !meta?.unavailableReason : true;
+  // Built = Flas can connect it: a sign-in it can run, or its own screen (WhatsApp's numbers).
+  const built = platform
+    ? (Boolean(meta?.oauth) || Boolean(meta?.healthHref)) && !meta?.unavailableReason
+    : true;
   const checkable = platform ? hasLiveCheck(platform) : true;
   switch (code) {
     case "never_connected":
@@ -238,6 +255,9 @@ export function nextActionFor(code: StatusReasonCode, platform: string | undefin
     case "evidence_unavailable":
     case "sync_stale":
       return checkable ? "verify" : "coming_soon";
+    case "evidence_unreadable":
+      // Pressing a check would not help: the problem is reading what is saved, not checking.
+      return "none";
     case "scopes_missing":
     case "scopes_unknown":
     case "manual_token":
@@ -287,9 +307,15 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   const state = account.connection_state ?? null;
 
   // Someone disconnected it on purpose (or it was never authorized). That is not a failure, and
-  // it must not read as "the platform refused the stored access".
-  if (state !== null && NOTHING_AUTHORIZED.has(state)) {
-    if (state === "disconnected") {
+  // it must not read as "the platform refused the stored access". Disconnecting takes three
+  // steps (switch off, clear the tokens, set the state) and the last can fail, so a switched-off
+  // account that holds no token is a disconnect whatever its saved state says -- unless that state
+  // says the platform revoked it.
+  const disconnectedByHand =
+    state === "disconnected" ||
+    (!account.active && account.has_token === false && state !== "revoked");
+  if (disconnectedByHand || (state !== null && NOTHING_AUTHORIZED.has(state))) {
+    if (disconnectedByHand) {
       return build(
         "not_connected",
         "disconnected",
@@ -312,7 +338,7 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
       "failing",
       "refresh_failed",
       "The platform did not accept the stored sign-in the last time Flas checked it.",
-      "Press Retry now. If it still fails, reconnect the account.",
+      "Reconnect the account.",
     );
   }
   if (state === "revoked" || !account.active) {
@@ -420,7 +446,16 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
     );
   }
 
-  // The results of checks could not be read or saved: say so, never guess green.
+  // The results of checks could not be read or saved: say so, never guess green. Two different
+  // things: the database cannot hold them yet (an update to finish), or it did not answer just now.
+  if (account.evidence === "unreadable") {
+    return build(
+      "unverified",
+      "evidence_unreadable",
+      "Flas could not read this account's saved check results just now, so it cannot say whether the account is verified.",
+      "Try again in a moment. If it keeps happening, tell Flas support.",
+    );
+  }
   if (account.evidence === "unavailable") {
     return build(
       "unverified",
@@ -435,7 +470,7 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
       "unverified",
       "not_verified",
       `Authorized, but Flas has not yet confirmed with ${platformName} that the token works.`,
-      `Press Verify now. Flas asks ${platformName} once and changes nothing else.`,
+      `Press Verify now. Flas checks with ${platformName} and saves the result.`,
     );
   }
 

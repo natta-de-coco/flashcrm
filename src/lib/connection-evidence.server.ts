@@ -133,7 +133,7 @@ export async function readEvidence(tenantId: string, accountId?: string): Promis
 
 /** The evidence of one account, in the shape statusInputFromRow() (connection-status.ts) takes. */
 export type EvidenceForStatus = {
-  state: "ok" | "unavailable";
+  state: "ok" | "unavailable" | "unreadable";
   connection_state: string | null;
   last_validation_success_at: string | null;
   last_validation_attempt_at: string | null;
@@ -144,7 +144,9 @@ export type EvidenceForStatus = {
 export function evidenceFor(read: EvidenceRead, accountId: string): EvidenceForStatus {
   const found = read.byId.get(accountId);
   return {
-    state: read.available ? "ok" : "unavailable",
+    // A read that failed is not the same as columns that do not exist: one is a finished update
+    // to ask for, the other a moment to wait.
+    state: read.available ? "ok" : read.failure === "error" ? "unreadable" : "unavailable",
     connection_state: found?.connection_state ?? null,
     last_validation_success_at: read.available ? (found?.last_validation_success_at ?? null) : null,
     last_validation_attempt_at: read.available ? (found?.last_validation_attempt_at ?? null) : null,
