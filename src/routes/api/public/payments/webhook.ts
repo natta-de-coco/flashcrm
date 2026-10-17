@@ -249,9 +249,15 @@ export const Route = createFileRoute("/api/public/payments/webhook")({
         // is attacker-controlled — hitting `?env=sandbox` on the prod URL
         // used to force verification against the sandbox secret, and if that
         // secret ever leaked, sandbox test events could mutate prod data.
-        const env = (
-          (process.env["PADDLE_ENV"] ?? "sandbox").toLowerCase() === "live" ? "live" : "sandbox"
-        ) as PaddleEnv;
+        //
+        // .env.example tells a deployment to write "production". Only the
+        // literal "live" used to be recognised, so following the instructions
+        // had live deliveries checked against the sandbox secret: each one
+        // failed, and paid subscriptions stopped syncing. Both words mean live
+        // now; anything else, including a value that is not recognised, stays
+        // sandbox, so a typing mistake can never turn test events into real ones.
+        const setting = (process.env["PADDLE_ENV"] ?? "").trim().toLowerCase();
+        const env: PaddleEnv = setting === "live" || setting === "production" ? "live" : "sandbox";
         let event: Awaited<ReturnType<typeof verifyWebhook>>;
         try {
           event = await verifyWebhook(request, env);
