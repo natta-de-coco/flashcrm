@@ -1767,6 +1767,20 @@ describe("a change made while a check runs is not overwritten (finding 2)", () =
     assert.equal(world.stored(account.id).active, false);
   });
 
+  test("a state set by somebody else meanwhile is not overwritten, even with the account still on", async () => {
+    // A second check, or a sync, moved the account while this one waited for the platform.
+    const account = world.account();
+    world.provider(
+      duringTheCheck(() => {
+        world.stored(account.id).connection_state = "token_expiring";
+      }),
+    );
+    const result = await check(account.id);
+    assert.equal(result.outcome, "changed_while_checking");
+    assert.equal(world.stored(account.id).connection_state, "token_expiring");
+    assert.equal(world.stored(account.id).last_validation_success_at, null);
+  });
+
   test("a token somebody else stored meanwhile is not overwritten", async () => {
     const account = world.account();
     world.provider(
