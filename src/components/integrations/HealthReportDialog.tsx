@@ -160,6 +160,18 @@ export function HealthReportDialog({ trigger }: { trigger?: ReactNode }) {
           </div>
         )}
 
+        {report.isError && (
+          // Never an empty window: say what happened. A refusal is not a failure to retry.
+          <p
+            role="alert"
+            className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600 dark:text-red-400"
+          >
+            {report.error?.message === ONLY_ADMIN_MESSAGE
+              ? t("healthReportDialog.onlyCompanyAdmin")
+              : t("healthReportDialog.reportFailed")}
+          </p>
+        )}
+
         {data && (
           <>
             <div className="flex flex-wrap gap-2 text-xs">

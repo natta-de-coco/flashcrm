@@ -120,6 +120,7 @@ export function createWorld() {
         { id: MEMBER_A, tenant_id: A, staff_role: "agent" },
         { id: ADMIN_B, tenant_id: B, staff_role: "company_admin" },
       ],
+      user_roles: [],
       ...rows,
     });
     world.audits.length = 0;
@@ -134,11 +135,27 @@ export function createWorld() {
     delete world.restoreFetch;
   };
 
+  /**
+   * The database's own admin rule, is_tenant_admin(): an admin under EITHER role system -- the staff
+   * role on the profile, or the older user_roles table. A test can replace it with
+   * db.onRpc("is_tenant_admin", ...) (the handler is given the caller as `_user`).
+   */
+  const isTenantAdmin = async (userId, args) => {
+    const handler = db.state.rpcHandlers["is_tenant_admin"];
+    if (handler) return handler({ ...(args ?? {}), _user: userId });
+    const legacy = db.table("user_roles").some((r) => r.user_id === userId && r.role === "admin");
+    const staff = db
+      .table("profiles")
+      .some((r) => r.id === userId && ["company_admin", "super_admin"].includes(r.staff_role));
+    return { data: legacy || staff, error: null };
+  };
+
   /** A signed-in caller of a company, the way the server functions receive one. */
   world.session = (tenantId, userId) => ({
     userId,
     supabase: {
-      rpc: wrapped.rpc,
+      rpc: (name, args) =>
+        name === "is_tenant_admin" ? isTenantAdmin(userId, args) : wrapped.rpc(name, args),
       from(table) {
         const q = wrapped.from(table);
         // Row-level security: a signed-in browser session sees only its own company's rows.

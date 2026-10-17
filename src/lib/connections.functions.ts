@@ -22,13 +22,20 @@ async function callerTenantId(supabase: Client, userId: string): Promise<string 
 }
 
 /**
- * The caller's workspace, for an action that asks the platforms something and writes the answer.
- * Only a company admin may do that: the screen hides the button from everyone else, but a hidden
- * button is not an authorization control.
+ * The caller's workspace, for an action behind the Health report dialog (asking the platforms,
+ * writing what they say, sealing stored credentials). Only an admin may do that: the screen hides
+ * the button from everyone else, but a hidden button is not an authorization control.
+ *
+ * "Admin" is the database's own rule, is_tenant_admin(): an admin by the staff role on the profile
+ * OR by the older user_roles table. The screen's `isAdmin` (useAuth) reads that older table, so
+ * everyone it shows the button to is let in here. (A company admin by staff role alone is let in
+ * by the server but is not shown the button until useAuth asks the same question.) The look-up
+ * runs as the caller, and a failed look-up lets nobody in.
  */
 async function adminCaller(
   supabase: Client,
   userId: string,
+  refusal: string = ONLY_ADMIN_MESSAGE,
 ): Promise<{ tenantId: string; staff: boolean }> {
   const { data: profile } = await supabase
     .from("profiles")
@@ -38,9 +45,9 @@ async function adminCaller(
   if (!profile?.tenant_id) {
     throw new Error("Your workspace is still being set up — try again in a moment.");
   }
-  if (!["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""))) {
-    throw new Error(ONLY_ADMIN_MESSAGE);
-  }
+  const { data: isAdmin, error } = await supabase.rpc("is_tenant_admin");
+  if (error) throw new Error("Flas could not check your role just now. Try again in a moment.");
+  if (isAdmin !== true) throw new Error(refusal);
   return { tenantId: profile.tenant_id, staff: profile.staff_role === "super_admin" };
 }
 
@@ -408,19 +415,13 @@ export const getIntegrationHealthReport = createServerFn({ method: "GET" })
 export const encryptStoredCredentials = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("tenant_id, staff_role")
-      .eq("id", context.userId)
-      .maybeSingle();
-    if (!profile?.tenant_id) {
-      throw new Error("Your workspace is still being set up — try again in a moment.");
-    }
-    if (!["company_admin", "super_admin"].includes(String(profile.staff_role ?? ""))) {
-      throw new Error("Only company admins can encrypt stored credentials.");
-    }
+    const { tenantId } = await adminCaller(
+      context.supabase,
+      context.userId,
+      "Only company admins can encrypt stored credentials.",
+    );
     const { sealTenantSecrets } = await import("@/lib/secret-box.server");
-    const report = await sealTenantSecrets(profile.tenant_id);
+    const report = await sealTenantSecrets(tenantId);
     if (!report.configured) {
       throw new Error(
         "No encryption key is configured. Add TOKEN_ENCRYPTION_KEYS to the server's secrets first.",
@@ -429,10 +430,10 @@ export const encryptStoredCredentials = createServerFn({ method: "POST" })
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
       action: "credentials.sealed",
-      tenantId: profile.tenant_id,
+      tenantId,
       actorId: context.userId,
       entityType: "workspace",
-      entityId: profile.tenant_id,
+      entityId: tenantId,
       details: { sealed: report.sealedNow },
     });
     return report;

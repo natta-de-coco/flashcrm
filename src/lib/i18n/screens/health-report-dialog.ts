@@ -117,6 +117,8 @@ export default screen({
     "healthReportDialog.outcomeWaiting":
       "Flas is waiting before it asks {Platform} again. Try again after {time}.",
     "healthReportDialog.diagStorageUnreadable": "Verification storage: could not be read",
+    "healthReportDialog.reportFailed":
+      "Flas could not load the report. Close this window and open it again.",
   },
   ar: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -228,6 +230,8 @@ export default screen({
     "healthReportDialog.outcomeWaiting":
       "ينتظر Flas قبل أن يسأل {Platform} مرة أخرى. حاول مرة أخرى بعد {time}.",
     "healthReportDialog.diagStorageUnreadable": "تخزين التحقق: تعذّرت قراءته",
+    "healthReportDialog.reportFailed":
+      "تعذّر على Flas تحميل التقرير. أغلق هذه النافذة وافتحها مرة أخرى.",
   },
   ms: {
     "healthReportDialog.encryptedStoredCredentialS": "{sealedNow} kelayakan tersimpan disulitkan.",
@@ -345,6 +349,8 @@ export default screen({
     "healthReportDialog.outcomeWaiting":
       "Flas sedang menunggu sebelum bertanya kepada {Platform} semula. Cuba lagi selepas {time}.",
     "healthReportDialog.diagStorageUnreadable": "Storan pengesahan: tidak dapat dibaca",
+    "healthReportDialog.reportFailed":
+      "Flas tidak dapat memuatkan laporan. Tutup tetingkap ini dan buka semula.",
   },
   fil: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -465,6 +471,8 @@ export default screen({
     "healthReportDialog.outcomeWaiting":
       "Naghihintay muna ang Flas bago magtanong muli sa {Platform}. Subukan muli pagkatapos ng {time}.",
     "healthReportDialog.diagStorageUnreadable": "Imbakan ng beripikasyon: hindi nabasa",
+    "healthReportDialog.reportFailed":
+      "Hindi ma-load ng Flas ang ulat. Isara ang window na ito at buksan muli.",
   },
   sw: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -585,5 +593,7 @@ export default screen({
     "healthReportDialog.outcomeWaiting":
       "Flas inasubiri kabla ya kuuliza {Platform} tena. Jaribu tena baada ya {time}.",
     "healthReportDialog.diagStorageUnreadable": "Hifadhi ya uthibitisho: haikuweza kusomwa",
+    "healthReportDialog.reportFailed":
+      "Flas haikuweza kupakia ripoti. Funga dirisha hili kisha ulifungue tena.",
   },
 });

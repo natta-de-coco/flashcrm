@@ -2506,3 +2506,67 @@ describe("the group check says plainly when an account is waiting (finding 13)",
     assert.equal(MESSAGES_EN["healthReportDialog.checkAttention"], "Check what is due");
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 2, finding 9: one rule decides who is an admin
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("the server and the screen use one admin rule (finding 9)", () => {
+  // An admin by the older role table only: the screen's `isAdmin` shows them the button.
+  const legacyAdmin = () => {
+    world.db.table("profiles").push({ id: "legacy-1", tenant_id: A, staff_role: "agent" });
+    world.db.table("user_roles").push({ user_id: "legacy-1", role: "admin" });
+    return world.session(A, "legacy-1");
+  };
+
+  test("an admin by the older role table is let in by every function the dialog calls", async () => {
+    const account = verified();
+    const session = legacyAdmin();
+    const rep = await report(session);
+    assert.ok(rowFor(rep, account.id));
+    assert.equal(rowFor(rep, account.id).diagnostics, null, "and is not Flas staff");
+    world.provider(facebookHealthy());
+    const run = await retryConnections({ data: { accountId: account.id }, context: session });
+    assert.equal(run.results.length, 1);
+    const sealed = await functions.encryptStoredCredentials({ context: session });
+    assert.equal(sealed.configured, true);
+  });
+
+  test("an admin by the staff role alone is let in too, and a member by neither is not", async () => {
+    verified();
+    await report(world.admin());
+    for (const attempt of [
+      () => report(world.member()),
+      () => retryConnections({ data: {}, context: world.member() }),
+      () => functions.encryptStoredCredentials({ context: world.member() }),
+    ]) {
+      await assert.rejects(attempt(), /Only (a )?company admins? can/);
+    }
+  });
+
+  test("if the role cannot be looked up, nobody is let in, and the platform is not asked", async () => {
+    verified();
+    world.provider([]);
+    world.db.onRpc("is_tenant_admin", async () => ({
+      data: null,
+      error: { message: "canceling statement due to statement timeout" },
+    }));
+    for (const attempt of [
+      () => report(),
+      () => retryConnections({ data: {}, context: world.admin() }),
+      () => functions.encryptStoredCredentials({ context: world.admin() }),
+    ]) {
+      await assert.rejects(attempt(), /could not check your role/i);
+    }
+    assert.equal(world.fetches.length, 0);
+    assert.equal(world.logRows().length, 0);
+  });
+
+  test("a failure of the dialog's report is shown in the dialog, not an empty window", () => {
+    const source = lf(readFileSync("src/components/integrations/HealthReportDialog.tsx", "utf8"));
+    assert.match(source, /report\.isError/);
+    assert.match(source, /healthReportDialog\.reportFailed/);
+    assert.match(source, /ONLY_ADMIN_MESSAGE/);
+    assert.ok(MESSAGES_EN["healthReportDialog.reportFailed"]);
+  });
+});
