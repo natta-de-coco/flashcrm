@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { canOpen } from "./permissions";
+import { canOpen, isCompanyManager } from "./permissions";
 
 /**
  * Home is available to every known role, but its customer overview and AI brief
@@ -10,6 +10,7 @@ import { canOpen } from "./permissions";
 export async function requireDashboardAccess(
   supabase: SupabaseClient,
   userId: string,
+  purpose: "overview" | "advisor" | "meta" = "overview",
 ): Promise<{ tenantId: string; role: string }> {
   if (!userId) throw new Error("Sign in again to view your workspace overview.");
 
@@ -30,7 +31,9 @@ export async function requireDashboardAccess(
     typeof tenantId !== "string" ||
     !tenantId ||
     !canOpen(role, "/inbox") ||
-    !canOpen(role, "/contacts")
+    !canOpen(role, "/contacts") ||
+    (purpose === "advisor" && !canOpen(role, "/advisor")) ||
+    (purpose === "meta" && !isCompanyManager(role))
   ) {
     throw new Error("Your role cannot view customer activity or generate a workspace brief.");
   }

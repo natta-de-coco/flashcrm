@@ -87,10 +87,10 @@ export default screen({
     "settingsWorkspace.invalid.website":
       "Use a full http:// or https:// website address without credentials.",
     "settingsWorkspace.invalid.paymentUrl": "Use an https:// payment link without credentials.",
-    "settingsWorkspace.alertTitle": "Lead alert preferences",
+    "settingsWorkspace.alertTitle": "Website chat lead alerts",
     "settingsWorkspace.alertDesc":
-      "Control in-app lead notifications and prepare your alert recipients.",
-    "settingsWorkspace.inAppAlerts": "In-app lead notifications",
+      "Notify your team about leads captured in website chat. Other forms and imports are not covered here yet.",
+    "settingsWorkspace.inAppAlerts": "In-app alerts for website chat leads",
     "settingsWorkspace.alertDeliveryLimited":
       "External email alerts are not implemented yet. WhatsApp alerts are paused until they use approved messaging support. Saving recipients does not send or enable external alerts.",
     "settingsWorkspace.alertRecipients": "Saved email recipients (up to 10)",
@@ -187,10 +187,10 @@ export default screen({
     "settingsWorkspace.invalid.website":
       "استخدم عنوان موقع كاملًا يبدأ بـ http:// أو https:// دون بيانات دخول.",
     "settingsWorkspace.invalid.paymentUrl": "استخدم رابط دفع يبدأ بـ https:// دون بيانات دخول.",
-    "settingsWorkspace.alertTitle": "تفضيلات تنبيهات العملاء المحتملين",
+    "settingsWorkspace.alertTitle": "تنبيهات العملاء من دردشة الموقع",
     "settingsWorkspace.alertDesc":
-      "تحكم في إشعارات العملاء داخل التطبيق وأعد قائمة مستلمي التنبيهات.",
-    "settingsWorkspace.inAppAlerts": "إشعارات العملاء داخل التطبيق",
+      "أبلغ فريقك بالعملاء المحتملين المسجلين عبر دردشة الموقع. لا تشمل هذه التنبيهات النماذج الأخرى أو الاستيراد بعد.",
+    "settingsWorkspace.inAppAlerts": "تنبيهات داخل التطبيق لعملاء دردشة الموقع",
     "settingsWorkspace.alertDeliveryLimited":
       "تنبيهات البريد الخارجي غير منفذة بعد. تنبيهات واتساب متوقفة حتى استخدام إرسال معتمد. حفظ المستلمين لا يرسل ولا يفعّل تنبيهات خارجية.",
     "settingsWorkspace.alertRecipients": "مستلمو البريد المحفوظون (حتى 10)",
@@ -289,10 +289,10 @@ export default screen({
       "Gunakan alamat penuh http:// atau https:// tanpa kelayakan log masuk.",
     "settingsWorkspace.invalid.paymentUrl":
       "Gunakan pautan pembayaran https:// tanpa kelayakan log masuk.",
-    "settingsWorkspace.alertTitle": "Keutamaan amaran prospek",
+    "settingsWorkspace.alertTitle": "Amaran prospek sembang laman web",
     "settingsWorkspace.alertDesc":
-      "Kawal pemberitahuan prospek dalam aplikasi dan sediakan penerima amaran.",
-    "settingsWorkspace.inAppAlerts": "Pemberitahuan prospek dalam aplikasi",
+      "Maklumkan pasukan tentang prospek daripada sembang laman web. Borang lain dan import belum diliputi di sini.",
+    "settingsWorkspace.inAppAlerts": "Amaran dalam aplikasi untuk prospek sembang laman web",
     "settingsWorkspace.alertDeliveryLimited":
       "Amaran e-mel luaran belum dilaksanakan. Amaran WhatsApp dijeda sehingga sokongan pemesejan diluluskan. Menyimpan penerima tidak menghantar atau mengaktifkan amaran luaran.",
     "settingsWorkspace.alertRecipients": "Penerima e-mel tersimpan (sehingga 10)",
@@ -396,10 +396,10 @@ export default screen({
       "Gumamit ng buong http:// o https:// address na walang credentials.",
     "settingsWorkspace.invalid.paymentUrl":
       "Gumamit ng https:// payment link na walang credentials.",
-    "settingsWorkspace.alertTitle": "Mga preference ng lead alert",
+    "settingsWorkspace.alertTitle": "Mga alert para sa lead mula sa website chat",
     "settingsWorkspace.alertDesc":
-      "Kontrolin ang in-app lead notifications at ihanda ang alert recipients.",
-    "settingsWorkspace.inAppAlerts": "In-app lead notifications",
+      "Abisuhan ang team tungkol sa mga lead mula sa website chat. Hindi pa sakop dito ang ibang form at import.",
+    "settingsWorkspace.inAppAlerts": "In-app alerts para sa website chat leads",
     "settingsWorkspace.alertDeliveryLimited":
       "Hindi pa implemented ang external email alerts. Naka-pause ang WhatsApp alerts hanggang gumamit ng approved messaging. Ang pag-save ng recipients ay hindi nagpapadala o nagpapagana ng external alerts.",
     "settingsWorkspace.alertRecipients": "Mga naka-save na email recipient (hanggang 10)",
@@ -501,10 +501,10 @@ export default screen({
       "Tumia anwani kamili ya http:// au https:// bila taarifa za kuingia.",
     "settingsWorkspace.invalid.paymentUrl":
       "Tumia kiungo cha malipo cha https:// bila taarifa za kuingia.",
-    "settingsWorkspace.alertTitle": "Mapendeleo ya arifa za wateja watarajiwa",
+    "settingsWorkspace.alertTitle": "Arifa za wateja kutoka gumzo la tovuti",
     "settingsWorkspace.alertDesc":
-      "Dhibiti arifa za wateja watarajiwa ndani ya programu na andaa wapokeaji.",
-    "settingsWorkspace.inAppAlerts": "Arifa za wateja watarajiwa ndani ya programu",
+      "Arifu timu kuhusu wateja watarajiwa waliopatikana kupitia gumzo la tovuti. Fomu nyingine na uagizaji bado hazijajumuishwa hapa.",
+    "settingsWorkspace.inAppAlerts": "Arifa ndani ya programu kwa wateja wa gumzo la tovuti",
     "settingsWorkspace.alertDeliveryLimited":
       "Arifa za barua pepe za nje bado hazijatekelezwa. Arifa za WhatsApp zimesitishwa hadi zitumie ujumbe ulioidhinishwa. Kuhifadhi wapokeaji hakutumi wala kuwasha arifa za nje.",
     "settingsWorkspace.alertRecipients": "Wapokeaji wa barua pepe waliohifadhiwa (hadi 10)",

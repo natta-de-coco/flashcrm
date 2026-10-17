@@ -631,7 +631,9 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     const tenantId = await requireTenantId(context.supabase);
     await ensureBillingSettings(context.supabase, tenantId);
 
-    const trn = data.tax_registration_number ?? data.vat_number ?? undefined;
+    // Null clears the tax number; only undefined falls back to the legacy alias.
+    const trn =
+      data.tax_registration_number !== undefined ? data.tax_registration_number : data.vat_number;
     const patch: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
@@ -654,6 +656,7 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     if (data.default_terms !== undefined) patch["default_terms"] = data.default_terms;
     if (data.online_payment_url !== undefined)
       patch["online_payment_url"] = data.online_payment_url;
+    if (data.logo_url !== undefined) patch["logo_url"] = data.logo_url;
 
     const { data: savedSettings, error } = await context.supabase
       .from("billing_settings")
@@ -664,20 +667,22 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
     if (error) throw error;
     if (!savedSettings) throw new Error("Company settings could not be saved. Please retry.");
 
-    // Keep business_profiles tax_registration_number synchronized if present in DB
+    // This is a second write, not a transaction. If it fails, say that the
+    // invoice settings were saved rather than acknowledging a complete save.
     if (trn !== undefined) {
-      await (
-        context.supabase as unknown as {
-          from: (table: string) => {
-            update: (values: Record<string, unknown>) => {
-              eq: (col: string, val: unknown) => Promise<unknown>;
-            };
-          };
-        }
-      )
-        .from("business_profiles")
-        .update({ tax_registration_number: trn })
-        .eq("tenant_id", tenantId);
+      try {
+        const { data: savedProfile, error: mirrorError } = await context.supabase
+          .from("business_profiles")
+          .update({ tax_registration_number: trn })
+          .eq("tenant_id", tenantId)
+          .select("tenant_id")
+          .maybeSingle();
+        if (mirrorError || !savedProfile) throw new Error("Tax mirror was not saved.");
+      } catch {
+        throw new Error(
+          "Company settings were saved, but the business profile tax number could not be saved. Please retry or contact support.",
+        );
+      }
     }
 
     const { logAudit } = await import("@/lib/audit.server");

@@ -26,6 +26,24 @@ const notificationMigration = fs.readFileSync(
   new URL("../migrations/20261014181000_workspace_notifications.sql", import.meta.url),
   "utf8",
 );
+const dedupMigration = fs.readFileSync(
+  new URL("../migrations/20261017100000_lead_alert_dispatch_dedup.sql", import.meta.url),
+  "utf8",
+);
+const emailAuditSource = fs.readFileSync(
+  new URL("../migrations/20260830000000_email_audit_otp_smtp.sql", import.meta.url),
+  "utf8",
+);
+const emailAuditTable = emailAuditSource.match(
+  /CREATE TABLE IF NOT EXISTS public\.email_delivery_log \([\s\S]*?\n\);/,
+)?.[0];
+const emailAuditFunction = emailAuditSource.match(
+  /CREATE OR REPLACE FUNCTION public\.log_email_delivery\([\s\S]*?\$\$;/,
+)?.[0];
+assert.ok(
+  emailAuditTable && emailAuditFunction,
+  "Real local email audit storage/function are available",
+);
 const A = "aaaaaaaa-0000-0000-0000-000000000001",
   B = "bbbbbbbb-0000-0000-0000-000000000001";
 const ADMIN = "aaaaaaaa-0000-0000-0000-000000000002",
@@ -340,6 +358,279 @@ try {
       )
     ).rows[0].lead_alerts_enabled,
     false,
+  );
+  // Add only the actual email audit prerequisite used by the new transaction.
+  await db.query(
+    "CREATE TABLE auth.users(id uuid PRIMARY KEY); ALTER TABLE public.profiles ADD COLUMN email text",
+  );
+  await db.query(emailAuditTable);
+  await db.query(emailAuditFunction);
+  await db.query(
+    "REVOKE ALL ON public.email_delivery_log FROM PUBLIC,anon,authenticated; GRANT ALL ON public.email_delivery_log TO service_role",
+  );
+  const lateManager = "ffffffff-0000-0000-0000-000000000001";
+  const listedMarketing = "cccccccc-0000-0000-0000-000000000001";
+  const unlistedMarketing = "cccccccc-0000-0000-0000-000000000002";
+  const leadIds = [101, 102, 103, 104, 105].map(
+    (n) => `aaaaaaaa-0000-0000-0000-${String(n).padStart(12, "0")}`,
+  );
+  for (const id of leadIds)
+    await db.query("INSERT INTO public.leads(id,tenant_id) VALUES($1,$2)", [id, A]);
+  await db.query(
+    "UPDATE public.profiles SET email=CASE id WHEN $1 THEN 'owner@example.test' WHEN $2 THEN 'Listed-Staff@example.test' ELSE 'foreign@example.test' END",
+    [ADMIN, STAFF],
+  );
+  // More than 100 eligible rows, including an administrator after those rows.
+  await db.query(`INSERT INTO public.profiles(id,tenant_id,staff_role,email)
+    SELECT ('dddddddd-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'${A}','staff','unlisted-'||n||'@example.test' FROM generate_series(1,130)n`);
+  await db.query(`INSERT INTO public.profiles(id,tenant_id,staff_role,email) VALUES
+    ('${lateManager}','${A}','company_admin','late-owner@example.test'),
+    ('${listedMarketing}','${A}','marketing_manager','listed-marketing@example.test'),
+    ('${unlistedMarketing}','${A}','marketing_manager','unlisted-marketing@example.test')`);
+  await db.query(`UPDATE public.tenant_alert_settings SET lead_alerts_enabled=true,
+    alert_email_addresses=ARRAY[' listed-staff@EXAMPLE.test ','listed-marketing@example.test','foreign@example.test','outside@example.test'],
+    alert_whatsapp_enabled=true,alert_whatsapp_phone='+971500000001' WHERE tenant_id='${A}'`);
+  const oldRowsBeforeDedup = await alertRows();
+  const oldNotificationsBeforeDedup = (
+    await db.query("SELECT * FROM public.workspace_notifications ORDER BY id")
+  ).rows;
+  async function rejectDedupFixture(statement, values, pattern) {
+    await db.query("BEGIN");
+    try {
+      await db.query(statement, values);
+      await assert.rejects(db.query(dedupMigration), pattern);
+    } finally {
+      await db.query("ROLLBACK");
+    }
+  }
+  await rejectDedupFixture(
+    "INSERT INTO public.workspace_notifications(tenant_id,recipient_user_id,lead_id,title,body) VALUES($1,$2,$2,'Legacy duplicate','Keep both rows for review')",
+    [A, ADMIN],
+    /duplicate notifications/,
+  );
+  await rejectDedupFixture(
+    "INSERT INTO public.lead_alerts_log(tenant_id,lead_id,alert_channel,recipient,status) VALUES($1,$2,'email','duplicate@example.test','failed'),($1,$2,'email','DUPLICATE@example.test','failed')",
+    [A, leadIds[0]],
+    /duplicate diagnostics/,
+  );
+  await rejectDedupFixture(
+    "INSERT INTO public.email_delivery_log(tenant_id,recipient,provider,template,provider_msg_id,status) VALUES($1,'duplicate@example.test','platform_smtp','internal_sales_lead_alert','alert_unsent_duplicate','failed'),($1,'DUPLICATE@example.test','platform_smtp','internal_sales_lead_alert','alert_unsent_duplicate','failed')",
+    [A],
+    /duplicate email diagnostics/,
+  );
+  // A same-name index must have the exact semantics needed by ON CONFLICT.
+  // NULLS NOT DISTINCT changes historical null-lead behavior; a deferrable
+  // constraint cannot serve as an ON CONFLICT arbiter at runtime.
+  await rejectDedupFixture(
+    "CREATE UNIQUE INDEX workspace_notifications_lead_recipient_unique ON public.workspace_notifications(tenant_id,recipient_user_id,lead_id) NULLS NOT DISTINCT",
+    [],
+    /index differs/,
+  );
+  await rejectDedupFixture(
+    "ALTER TABLE public.workspace_notifications ADD CONSTRAINT workspace_notifications_lead_recipient_unique UNIQUE(tenant_id,recipient_user_id,lead_id) DEFERRABLE INITIALLY IMMEDIATE",
+    [],
+    /index differs/,
+  );
+  assert.deepEqual(await alertRows(), oldRowsBeforeDedup);
+  assert.deepEqual(
+    (await db.query("SELECT * FROM public.workspace_notifications ORDER BY id")).rows,
+    oldNotificationsBeforeDedup,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT to_regclass('public.workspace_notifications_lead_recipient_unique') AS idx",
+      )
+    ).rows[0].idx,
+    null,
+  );
+  await db.query(dedupMigration);
+  await db.query(dedupMigration);
+  assert.deepEqual(await alertRows(), oldRowsBeforeDedup);
+  assert.deepEqual(
+    (await db.query("SELECT * FROM public.workspace_notifications ORDER BY id")).rows,
+    oldNotificationsBeforeDedup,
+  );
+  const callAlert = async (
+    client,
+    id,
+    tenant = A,
+    title = "New lead captured",
+    body = "Synthetic lead details.",
+  ) =>
+    (
+      await client.query("SELECT public.record_sales_lead_alert($1,$2,$3,$4) AS result", [
+        tenant,
+        id,
+        title,
+        body,
+      ])
+    ).rows[0].result;
+  const storedCounts = async (id) =>
+    (
+      await db.query(
+        `SELECT
+    (SELECT count(*)::int FROM public.workspace_notifications WHERE tenant_id=$1 AND lead_id=$2) AS notifications,
+    (SELECT count(*)::int FROM public.lead_alerts_log WHERE tenant_id=$1 AND lead_id=$2) AS alerts,
+    (SELECT count(*)::int FROM public.email_delivery_log WHERE tenant_id=$1 AND template='internal_sales_lead_alert' AND provider_msg_id='alert_unsent_'||$2::text) AS emails`,
+        [A, id],
+      )
+    ).rows[0];
+  for (const role of ["anon", "authenticated"]) {
+    await db.query(`SET ROLE ${role}`);
+    await assert.rejects(callAlert(db, leadIds[0]), /permission denied/);
+    await db.query("RESET ROLE");
+  }
+  const rpcAcl = (
+    await db.query(
+      "SELECT has_function_privilege('anon','public.record_sales_lead_alert(uuid,uuid,text,text)','EXECUTE') AS anon,has_function_privilege('authenticated','public.record_sales_lead_alert(uuid,uuid,text,text)','EXECUTE') AS browser,has_function_privilege('service_role','public.record_sales_lead_alert(uuid,uuid,text,text)','EXECUTE') AS server",
+    )
+  ).rows[0];
+  assert.deepEqual(rpcAcl, { anon: false, browser: false, server: true });
+  await db.query("SET ROLE service_role");
+  const firstAlert = await callAlert(db, leadIds[0]);
+  assert.deepEqual(firstAlert, {
+    notification_count: 4,
+    created_notification_count: 4,
+    email_recipient_count: 4,
+    diagnostics_pending: false,
+  });
+  assert.equal((await callAlert(db, leadIds[0])).created_notification_count, 0);
+  await db.query("RESET ROLE");
+  assert.deepEqual(await storedCounts(leadIds[0]), { notifications: 4, alerts: 5, emails: 4 });
+  assert.deepEqual(
+    (
+      await db.query(
+        "SELECT recipient_user_id FROM public.workspace_notifications WHERE lead_id=$1 ORDER BY recipient_user_id",
+        [leadIds[0]],
+      )
+    ).rows
+      .map((r) => r.recipient_user_id)
+      .sort(),
+    [ADMIN, STAFF, listedMarketing, lateManager].sort(),
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int AS n FROM public.lead_alerts_log WHERE lead_id=$1 AND status<>'failed'",
+        [leadIds[0]],
+      )
+    ).rows[0].n,
+    0,
+  );
+  assert.equal(
+    (
+      await db.query(
+        "SELECT count(*)::int AS n FROM public.email_delivery_log WHERE provider_msg_id=$1 AND status<>'failed'",
+        [`alert_unsent_${leadIds[0]}`],
+      )
+    ).rows[0].n,
+    0,
+  );
+  await db.query(
+    "UPDATE public.workspace_notifications SET read_at=now() WHERE lead_id=$1 AND recipient_user_id=$2",
+    [leadIds[0], ADMIN],
+  );
+  const acknowledged = (
+    await db.query("SELECT * FROM public.workspace_notifications WHERE lead_id=$1 ORDER BY id", [
+      leadIds[0],
+    ])
+  ).rows;
+  await callAlert(
+    db,
+    leadIds[0],
+    A,
+    "Different title on retry",
+    "Must not overwrite history or read state.",
+  );
+  assert.deepEqual(
+    (
+      await db.query("SELECT * FROM public.workspace_notifications WHERE lead_id=$1 ORDER BY id", [
+        leadIds[0],
+      ])
+    ).rows,
+    acknowledged,
+  );
+  // Current role and membership determine recipients on every retry.
+  await db.query("UPDATE public.profiles SET tenant_id=$1 WHERE id=$2;", [B, STAFF]);
+  assert.equal((await callAlert(db, leadIds[0])).notification_count, 3);
+  await db.query("UPDATE public.profiles SET staff_role='seo_editor' WHERE id=$1", [
+    listedMarketing,
+  ]);
+  assert.equal((await callAlert(db, leadIds[0])).notification_count, 2);
+  await db.query("UPDATE public.profiles SET tenant_id=$1 WHERE id=$2", [A, STAFF]);
+  await db.query("UPDATE public.profiles SET staff_role='marketing_manager' WHERE id=$1", [
+    listedMarketing,
+  ]);
+  // Actual concurrent PostgreSQL connections race on one lead; the DB lock and
+  // unique key, not a JavaScript pre-read, keep notifications and both logs once.
+  const raceClients = await Promise.all(
+    Array.from({ length: 8 }, async () => {
+      const client = new pg.Client({
+        host: "localhost",
+        port,
+        user: "postgres",
+        password: "postgres",
+        database: "postgres",
+      });
+      await client.connect();
+      await client.query("SET ROLE service_role");
+      return client;
+    }),
+  );
+  try {
+    const raced = await Promise.all(raceClients.map((client) => callAlert(client, leadIds[1])));
+    assert.equal(
+      raced.reduce((total, result) => total + result.created_notification_count, 0),
+      4,
+    );
+    assert.ok(
+      raced.every((result) => result.notification_count === 4 && !result.diagnostics_pending),
+    );
+  } finally {
+    await Promise.all(raceClients.map((client) => client.end()));
+  }
+  assert.deepEqual(await storedCounts(leadIds[1]), { notifications: 4, alerts: 5, emails: 4 });
+  // A primary notification failure is not acknowledged and leaves no diagnostics.
+  await db.query(`CREATE FUNCTION public.test_refuse_notification() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.lead_id='${leadIds[2]}' THEN RAISE EXCEPTION 'notification unavailable'; END IF; RETURN NEW; END $$;
+    CREATE TRIGGER test_refuse_notification BEFORE INSERT ON public.workspace_notifications FOR EACH ROW EXECUTE FUNCTION public.test_refuse_notification()`);
+  await assert.rejects(callAlert(db, leadIds[2]), /notification unavailable/);
+  assert.deepEqual(await storedCounts(leadIds[2]), { notifications: 0, alerts: 0, emails: 0 });
+  await db.query(
+    "DROP TRIGGER test_refuse_notification ON public.workspace_notifications; DROP FUNCTION public.test_refuse_notification()",
+  );
+  assert.equal((await callAlert(db, leadIds[2])).created_notification_count, 4);
+  // A diagnostics failure preserves real notifications; retries repair evidence
+  // without creating another unread notification or multiplying historical logs.
+  await db.query(
+    "CREATE FUNCTION public.test_refuse_email_diagnostic() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'email diagnostics unavailable'; END $$; CREATE TRIGGER test_refuse_email_diagnostic BEFORE INSERT ON public.email_delivery_log FOR EACH ROW EXECUTE FUNCTION public.test_refuse_email_diagnostic()",
+  );
+  assert.equal((await callAlert(db, leadIds[3])).diagnostics_pending, true);
+  assert.deepEqual(await storedCounts(leadIds[3]), { notifications: 4, alerts: 0, emails: 0 });
+  await db.query(
+    "DROP TRIGGER test_refuse_email_diagnostic ON public.email_delivery_log; DROP FUNCTION public.test_refuse_email_diagnostic()",
+  );
+  const diagnosticRetry = await callAlert(db, leadIds[3]);
+  assert.equal(diagnosticRetry.created_notification_count, 0);
+  assert.equal(diagnosticRetry.diagnostics_pending, false);
+  await callAlert(db, leadIds[3]);
+  assert.deepEqual(await storedCounts(leadIds[3]), { notifications: 4, alerts: 5, emails: 4 });
+  await assert.rejects(callAlert(db, FOREIGN, A), /does not belong/);
+  await assert.rejects(callAlert(db, leadIds[4], A, "X".repeat(201)), /bounded text/);
+  await assert.rejects(callAlert(db, leadIds[4], A, "Title", "X".repeat(1001)), /bounded text/);
+  await db.query(
+    "UPDATE public.tenant_alert_settings SET lead_alerts_enabled=false WHERE tenant_id=$1",
+    [A],
+  );
+  assert.equal((await callAlert(db, leadIds[4])).notification_count, 0);
+  assert.deepEqual(await storedCounts(leadIds[4]), { notifications: 0, alerts: 0, emails: 0 });
+  // New dedupe storage remains compatible with previous reviewed reruns.
+  await db.query(prerequisite);
+  await db.query(migration);
+  await db.query(notificationMigration);
+  await db.query(dedupMigration);
+  console.log(
+    "PASS: real lead-alert RPC denies browsers and cross-tenant leads; uncapped manager/listed-recipient selection, sequential/eight-way concurrent dedupe, preserved read history, current role/membership, notification-failure retry, diagnostics-savepoint retry and non-destructive legacy-duplicate stops.",
   );
   console.log(
     "PASS: narrow prerequisite creates fresh storage and repairs legacy grants, reruns without changing rows, refuses policy/column/type/constraint/index drift and rolls back partial setup; older Settings migrations rerun; manager-only alert reads, server writes, recipient/tenant-isolated notifications and read_at-only updates are enforced.",

@@ -369,84 +369,142 @@ test("a zero-row billing update cannot acknowledge a successful settings save", 
   );
   assert.deepEqual(db.calls.find((q) => q.op === "update").filters, [["tenant_id", "tenant-A"]]);
 });
-test("lead notification dispatcher never claims an email/WA send without transport", async () => {
-  const db = client((q) =>
-    q.table === "tenant_alert_settings"
-      ? {
-          data: {
-            lead_alerts_enabled: true,
-            alert_email_addresses: ["test@example.test"],
-            alert_whatsapp_enabled: true,
-            alert_whatsapp_phone: "+971500000001",
-          },
-          error: null,
-        }
-      : {
-          data:
-            q.table === "profiles"
-              ? [{ id: "admin-A", email: "admin@example.test", staff_role: "company_admin" }]
-              : null,
-          error: null,
-        },
-  );
-  globalThis.__settingsAdmin = db;
-  const result = await dispatcher.dispatchSalesLeadAlert({
-    tenantId: "tenant-A",
-    email: "demo@example.test",
-  });
-  assert.equal(result.notifiedEmails, 0);
-  assert.equal(result.notifiedWhatsApp, false);
-  assert.equal(result.notifiedInApp, true);
-  assert.match(result.emailNotSent, /not emailed/);
-  const evidence = db.calls.find((q) => q.table === "lead_alerts_log");
-  assert.equal(evidence.payload.length, 2);
-  assert.ok(evidence.payload.every((row) => row.status === "failed"));
-  const notification = db.calls.find((q) => q.table === "workspace_notifications");
-  assert.equal(notification.payload[0].tenant_id, "tenant-A");
-  assert.equal(notification.payload[0].recipient_user_id, "admin-A");
+const storedAlert = (overrides = {}) => ({
+  notification_count: 1,
+  created_notification_count: 1,
+  email_recipient_count: 2,
+  diagnostics_pending: false,
+  ...overrides,
 });
-test("disabled notifications and failed settings reads cannot trigger any write", async () => {
-  for (const error of [null, new Error("failed")]) {
-    const db = client((q) => ({ data: { lead_alerts_enabled: false }, error }));
-    globalThis.__settingsAdmin = db;
-    if (error)
-      await assert.rejects(
-        dispatcher.dispatchSalesLeadAlert({ tenantId: "tenant-A", email: "demo@example.test" }),
-        /no alerts were sent/,
-      );
-    else
-      assert.deepEqual(
-        await dispatcher.dispatchSalesLeadAlert({
-          tenantId: "tenant-A",
-          email: "demo@example.test",
-        }),
-        { notifiedEmails: 0, notifiedWhatsApp: false, notifiedInApp: false },
-      );
-    assert.equal(db.calls.length, 1);
+const leadAlertArgs = { tenantId: "tenant-A", leadId: "lead-A", email: "demo@example.test" };
+
+test("actual alert dispatcher pins the workspace and saved lead and delegates uncapped recipient selection to the server-only transaction", async () => {
+  const calls = [];
+  globalThis.__settingsAdmin = {
+    from() {
+      throw new Error("A capped or unscoped application recipient read must not run");
+    },
+    async rpc(name, args) {
+      calls.push({ name, args });
+      return { data: storedAlert(), error: null };
+    },
+  };
+  for (const [tenantId, leadId] of [
+    ["tenant-A", "lead-A"],
+    ["tenant-B", "lead-B"],
+  ]) {
+    const result = await dispatcher.dispatchSalesLeadAlert({
+      ...leadAlertArgs,
+      tenantId,
+      leadId,
+      name: "Example",
+      recipientIds: ["untrusted-other-user"],
+    });
+    assert.deepEqual(result, {
+      notifiedEmails: 0,
+      notifiedWhatsApp: false,
+      notifiedInApp: true,
+      emailNotSent: "Email sending is not connected yet, so this alert was not emailed.",
+    });
+    const call = calls.at(-1);
+    assert.equal(call.name, "record_sales_lead_alert");
+    assert.deepEqual(call.args, {
+      _tenant_id: tenantId,
+      _lead_id: leadId,
+      _title: "New lead captured",
+      _body: "Example submitted their contact details.",
+    });
   }
 });
-test("an in-app database error is not counted as a successful notification", async () => {
-  const db = client((q) =>
-    q.table === "tenant_alert_settings"
-      ? {
-          data: { lead_alerts_enabled: true, alert_email_addresses: ["test@example.test"] },
+
+test("a saved duplicate is truthfully present while disabled or recipient-free alerts are not", async () => {
+  for (const count of [0, 2]) {
+    globalThis.__settingsAdmin = {
+      async rpc() {
+        return {
+          data: storedAlert({
+            notification_count: count,
+            created_notification_count: 0,
+            email_recipient_count: 0,
+          }),
           error: null,
-        }
-      : q.table === "workspace_notifications"
-        ? { data: null, error: new Error("insert refused") }
-        : {
-            data:
-              q.table === "profiles"
-                ? [{ id: "admin-A", email: "admin@example.test", staff_role: "company_admin" }]
-                : null,
-            error: null,
-          },
-  );
-  globalThis.__settingsAdmin = db;
+        };
+      },
+    };
+    assert.deepEqual(await dispatcher.dispatchSalesLeadAlert(leadAlertArgs), {
+      notifiedEmails: 0,
+      notifiedWhatsApp: false,
+      notifiedInApp: count > 0,
+    });
+  }
+});
+
+test("failed or malformed persistence never acknowledges a saved notification", async () => {
+  for (const reply of [
+    { data: null, error: new Error("database unavailable") },
+    { data: null, error: null },
+    { data: storedAlert({ notification_count: -1 }), error: null },
+    { data: storedAlert({ email_recipient_count: "2" }), error: null },
+    { data: storedAlert({ diagnostics_pending: null }), error: null },
+  ]) {
+    globalThis.__settingsAdmin = {
+      async rpc() {
+        return reply;
+      },
+    };
+    await assert.rejects(
+      dispatcher.dispatchSalesLeadAlert(leadAlertArgs),
+      /could not be stored.*Retrying/,
+    );
+  }
+});
+
+test("an unsaved lead cannot bypass database deduplication with an unkeyed alert", async () => {
+  globalThis.__settingsAdmin = {
+    rpc() {
+      throw new Error("No database call is allowed");
+    },
+  };
   await assert.rejects(
-    dispatcher.dispatchSalesLeadAlert({ tenantId: "tenant-A", email: "demo@example.test" }),
-    /could not be saved/,
+    dispatcher.dispatchSalesLeadAlert({ ...leadAlertArgs, leadId: null }),
+    /saved lead is required/,
   );
+});
+
+test("diagnostics pending preserves the real internal notification and never claims an external send", async () => {
+  globalThis.__settingsAdmin = {
+    async rpc() {
+      return { data: storedAlert({ diagnostics_pending: true }), error: null };
+    },
+  };
+  const result = await dispatcher.dispatchSalesLeadAlert(leadAlertArgs);
+  assert.equal(result.notifiedInApp, true);
+  assert.equal(result.notifiedEmails, 0);
+  assert.equal(result.notifiedWhatsApp, false);
+  assert.equal(result.diagnosticsPending, true);
+  assert.match(result.emailNotSent, /not emailed/);
+});
+
+test("notification text stays bounded plain data, including HTML-looking customer input", async () => {
+  let recorded;
+  globalThis.__settingsAdmin = {
+    async rpc(_name, args) {
+      recorded = args;
+      return { data: storedAlert(), error: null };
+    },
+  };
+  await dispatcher.dispatchSalesLeadAlert({
+    ...leadAlertArgs,
+    name: "<script>plain customer text</script>",
+    isQuoteRequest: true,
+  });
+  assert.equal(
+    recorded._body,
+    "<script>plain customer text</script> submitted their contact details.",
+  );
+  assert.equal(recorded._title, "New quotation request");
+  await dispatcher.dispatchSalesLeadAlert({ ...leadAlertArgs, name: "😀".repeat(1200) });
+  assert.equal(Array.from(recorded._body).length, 1000);
 });
 test("notifications list and read acknowledgements are bound to caller and company", async () => {
   const id = "aaaaaaaa-0000-0000-0000-000000000001";

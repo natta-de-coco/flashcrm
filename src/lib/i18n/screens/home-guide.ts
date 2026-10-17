@@ -2,6 +2,16 @@ import { screen } from "../define";
 
 export default screen({
   en: {
+    "home.health.insufficient": "Not enough activity yet",
+    "home.health.noData": "Not enough complete data",
+    "home.activity.partial":
+      "Some activity breakdowns show a limited sample. Weekly charts, lead trends or audience may be incomplete; incomplete factors are excluded from the activity score.",
+    "home.health.detail.responsiveness":
+      "{replies} replies to {inbound} incoming messages this week",
+    "home.health.detail.inbox": "{count} chats with unread messages",
+    "home.health.detail.pipeline": "{count} new leads in the last 7 days",
+    "home.health.detail.social": "{count} incoming social interactions in the last 7 days",
+    "home.health.detail.consent": "{rate}% of recent leads recorded marketing consent",
     "home.eyebrow": "Your workspace",
     "home.title": "One place to look after your customers",
     "home.subtitle":
@@ -90,6 +100,15 @@ export default screen({
       "AI summary from {time}. It may differ from the latest activity. Generate a new summary when you need one.",
   },
   ar: {
+    "home.health.insufficient": "لا يوجد نشاط كافٍ بعد",
+    "home.health.noData": "لا تتوفر بيانات مكتملة كافية",
+    "home.activity.partial":
+      "تعرض بعض تفاصيل النشاط عينة محدودة. قد تكون الرسوم الأسبوعية أو اتجاهات العملاء المحتملين أو بيانات الجمهور غير مكتملة؛ تُستبعد العوامل غير المكتملة من درجة النشاط.",
+    "home.health.detail.responsiveness": "{replies} ردًا على {inbound} رسالة واردة هذا الأسبوع",
+    "home.health.detail.inbox": "{count} محادثة تحتوي على رسائل غير مقروءة",
+    "home.health.detail.pipeline": "{count} عميل محتمل جديد خلال آخر 7 أيام",
+    "home.health.detail.social": "{count} تفاعل وارد من التواصل الاجتماعي خلال آخر 7 أيام",
+    "home.health.detail.consent": "سجل {rate}% من العملاء المحتملين مؤخرًا موافقة تسويقية",
     "home.eyebrow": "مساحة عملك",
     "home.title": "مكان واحد للاهتمام بعملائك",
     "home.subtitle": "اقرأ الرسائل، واجمع تفاصيل العملاء، وتابع معهم بثقة.",
@@ -169,6 +188,16 @@ export default screen({
       "ملخص الذكاء الاصطناعي من {time}. قد لا يعكس أحدث نشاط. أنشئ ملخصا جديدا عندما تحتاج إليه.",
   },
   ms: {
+    "home.health.insufficient": "Belum cukup aktiviti",
+    "home.health.noData": "Data lengkap belum mencukupi",
+    "home.activity.partial":
+      "Sesetengah pecahan aktiviti menunjukkan sampel terhad. Carta mingguan, aliran prospek atau khalayak mungkin tidak lengkap; faktor tidak lengkap dikecualikan daripada skor aktiviti.",
+    "home.health.detail.responsiveness":
+      "{replies} balasan kepada {inbound} mesej masuk minggu ini",
+    "home.health.detail.inbox": "{count} sembang dengan mesej belum dibaca",
+    "home.health.detail.pipeline": "{count} prospek baharu dalam 7 hari lalu",
+    "home.health.detail.social": "{count} interaksi sosial masuk dalam 7 hari lalu",
+    "home.health.detail.consent": "{rate}% prospek terkini merekodkan persetujuan pemasaran",
     "home.eyebrow": "Ruang kerja anda",
     "home.title": "Satu tempat untuk menjaga hubungan dengan pelanggan",
     "home.subtitle": "Baca mesej, kumpulkan butiran pelanggan dan buat susulan dengan yakin.",
@@ -260,6 +289,17 @@ export default screen({
       "Ringkasan AI dari {time}. Ia mungkin berbeza daripada aktiviti terkini. Jana ringkasan baharu apabila anda memerlukannya.",
   },
   fil: {
+    "home.health.insufficient": "Hindi pa sapat ang aktibidad",
+    "home.health.noData": "Kulang pa ang kumpletong datos",
+    "home.activity.partial":
+      "Limitadong sample ang ilang detalye ng aktibidad. Maaaring hindi kumpleto ang lingguhang chart, trend ng leads o audience; hindi kasama sa activity score ang hindi kumpletong salik.",
+    "home.health.detail.responsiveness":
+      "{replies} sagot sa {inbound} papasok na mensahe ngayong linggo",
+    "home.health.detail.inbox": "{count} chat na may hindi pa nababasang mensahe",
+    "home.health.detail.pipeline": "{count} bagong lead sa nakaraang 7 araw",
+    "home.health.detail.social": "{count} papasok na social interaction sa nakaraang 7 araw",
+    "home.health.detail.consent":
+      "May naitalang pahintulot sa marketing ang {rate}% ng mga kamakailang lead",
     "home.eyebrow": "Iyong workspace",
     "home.title": "Isang lugar para maalagaan ang iyong mga customer",
     "home.subtitle":
@@ -352,6 +392,17 @@ export default screen({
       "Buod ng AI mula {time}. Maaaring hindi nito saklaw ang pinakabagong aktibidad. Gumawa ng bagong buod kapag kailangan mo.",
   },
   sw: {
+    "home.health.insufficient": "Bado hakuna shughuli za kutosha",
+    "home.health.noData": "Data kamili haitoshi bado",
+    "home.activity.partial":
+      "Baadhi ya maelezo ya shughuli yanaonyesha sampuli ndogo. Chati za wiki, mwenendo wa wateja watarajiwa au hadhira huenda havijakamilika; vipengele visivyokamilika havihesabiwi kwenye alama ya shughuli.",
+    "home.health.detail.responsiveness": "Majibu {replies} kwa ujumbe {inbound} ulioingia wiki hii",
+    "home.health.detail.inbox": "Mazungumzo {count} yenye ujumbe ambao haujasomwa",
+    "home.health.detail.pipeline": "Wateja watarajiwa wapya {count} katika siku 7 zilizopita",
+    "home.health.detail.social":
+      "Mwingiliano wa mitandao ulioingia {count} katika siku 7 zilizopita",
+    "home.health.detail.consent":
+      "{rate}% ya wateja watarajiwa wa hivi karibuni wamerekodi ridhaa ya masoko",
     "home.eyebrow": "Eneo lako la kazi",
     "home.title": "Sehemu moja ya kuwahudumia wateja wako",
     "home.subtitle": "Soma ujumbe, weka taarifa za wateja pamoja na ufuatilie kwa kujiamini.",
