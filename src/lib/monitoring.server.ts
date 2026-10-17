@@ -231,60 +231,62 @@ async function resolveThresholds(num: WaNumberHealth): Promise<EffectiveThreshol
  */
 export async function checkNumberHealth(waNumberId: string | null) {
   if (!waNumberId) return;
-  const { data: raw } = await supabaseAdmin
+  const { data: raw, error: numberError } = await supabaseAdmin
     .from("wa_numbers")
     .select("*")
     .eq("id", waNumberId)
     .maybeSingle();
+  if (numberError) {
+    console.error("[health] could not read the number", numberError.code ?? "");
+    return;
+  }
   const num = raw as WaNumberHealth | null;
   if (!num || !num.alerts_enabled) return;
 
-  const { data: convs } = await supabaseAdmin
+  const {
+    data: convs,
+    count: conversationCount,
+    error: conversationError,
+  } = await supabaseAdmin
     .from("conversations")
-    .select("id")
+    .select("id", { count: "exact" })
     .eq("wa_number_id", waNumberId);
+  if (conversationError || conversationCount == null) {
+    console.error(
+      "[health] could not count the number's conversations",
+      conversationError?.code ?? "",
+    );
+    return;
+  }
   const convIds = (convs ?? []).map((c) => c.id);
   if (convIds.length === 0) return;
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const { data: msgs } = await supabaseAdmin
+  const {
+    data: msgs,
+    count: messageCount,
+    error: messageError,
+  } = await supabaseAdmin
     .from("messages")
-    .select("status")
+    .select("status, body, sender, wa_message_id", { count: "exact" })
     .in("conversation_id", convIds)
     .eq("direction", "outbound")
     .gte("created_at", since);
-
-  const statuses = (msgs ?? []).map((m) => m.status);
-  const counted = statuses.filter((s) =>
-    ["sent", "delivered", "read", "failed"].includes(s),
-  ).length;
-
-  // The line FLAS writes under a reply Meta refused is a failed row as well,
-  // but nothing was sent for it: it is not a second message. Counting it made
-  // every refusal count twice, and the alert came early. It is told apart by
-  // what it is, not by an origin, so this does not depend on the database
-  // keeping one yet.
-  const { data: unsent, error: unsentError } = await supabaseAdmin
-    .from("messages")
-    .select("body, sender, wa_message_id")
-    .in("conversation_id", convIds)
-    .eq("direction", "outbound")
-    .eq("status", "failed")
-    .eq("sender", "bot")
-    .is("wa_message_id", null)
-    .gte("created_at", since);
-  if (unsentError) {
-    // Without this the figures would be wrong, and an alert on wrong figures
-    // is worse than none: the next status update checks again.
-    console.error("[health] could not count the day's messages", unsentError.code ?? "");
+  if (messageError || messageCount == null) {
+    // A refused read is unknown, not zero messages or a healthy number.
+    console.error("[health] could not count the day's messages", messageError?.code ?? "");
     return;
   }
-  const notes = (unsent ?? []).filter(isNotDeliveredNote).length;
-
-  const total = counted - notes;
+  // Classify annotations in the SAME returned population as the statuses.
+  // A separate filtered read can contain notes outside a capped status sample,
+  // so subtracting its length can hide real failures or create negative rates.
+  const statuses = (msgs ?? [])
+    .filter((message) => message.status !== "failed" || !isNotDeliveredNote(message))
+    .map((message) => message.status);
+  const total = statuses.filter((s) => ["sent", "delivered", "read", "failed"].includes(s)).length;
   if (total < 20) return; // too little traffic to judge
 
-  const failed = statuses.filter((s) => s === "failed").length - notes;
+  const failed = statuses.filter((s) => s === "failed").length;
   const delivered = statuses.filter((s) => s === "delivered" || s === "read").length;
   const read = statuses.filter((s) => s === "read").length;
 
@@ -292,11 +294,16 @@ export async function checkNumberHealth(waNumberId: string | null) {
   const readRate = delivered > 0 ? (read / delivered) * 100 : 0;
   const thresholds = await resolveThresholds(num);
   const basis = thresholds.source === "plan" ? "plan default" : "number override";
+  const partial = conversationCount > convIds.length || messageCount > (msgs ?? []).length;
+  const population = partial ? "sampled messages" : "messages";
+  const coverage = partial
+    ? ` Sample only: ${(msgs ?? []).length} of ${messageCount} outbound records from ${convIds.length} of ${conversationCount} conversations for this number were assessed; remaining activity was not assessed.`
+    : "";
 
   if (deliverability < thresholds.deliverabilityMin) {
     await raiseAlert({
       title: `Low deliverability on ${num.label}`,
-      message: `${deliverability.toFixed(1)}% of ${total} messages delivered in the last 24h (${basis} threshold ${thresholds.deliverabilityMin}%). ${failed} failed — check the number's quality rating and credentials in Meta.`,
+      message: `${deliverability.toFixed(1)}% of ${total} ${population} delivered in the last 24h (${basis} threshold ${thresholds.deliverabilityMin}%). ${failed} failed — check the number's quality rating and credentials in Meta.${coverage}`,
       severity: "critical",
       source: "health",
       dedupeMinutes: 360,
@@ -306,7 +313,7 @@ export async function checkNumberHealth(waNumberId: string | null) {
   if (readRate < thresholds.readRateMin) {
     await raiseAlert({
       title: `Low read rate on ${num.label}`,
-      message: `${readRate.toFixed(1)}% of delivered messages were read in the last 24h (${basis} threshold ${thresholds.readRateMin}%). Review message timing and content quality.`,
+      message: `${readRate.toFixed(1)}% of delivered ${population} were read in the last 24h (${basis} threshold ${thresholds.readRateMin}%). Review message timing and content quality.${coverage}`,
       severity: "warning",
       source: "health",
       dedupeMinutes: 360,

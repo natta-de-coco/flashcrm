@@ -2268,8 +2268,33 @@ describe("an alert belongs to the company it is about", () => {
 // refusal counted twice and the deliverability alert came early.
 describe("a note under a refused reply is not a second failure", () => {
   const LOW = "Low deliverability on Sales line";
+  let originalFrom;
   beforeEach(() => {
     rows.wa_numbers[0].alerts_enabled = true;
+    // PostgREST's exact count covers all matching rows, even when its response
+    // row cap limits data. Keep the double's cap while returning that contract.
+    originalFrom = db.client.from;
+    db.client.from = (table) => {
+      const query = originalFrom(table);
+      const originalThen = query.then;
+      query.then = function (resolve, reject) {
+        const count =
+          this.counting && this.mode === "read"
+            ? (db.state.rows[table] ?? []).filter((row) =>
+                this.filters.every((filter) => filter(row)),
+              ).length
+            : null;
+        return originalThen.call(
+          this,
+          (result) => resolve({ ...result, count: result.error ? null : count }),
+          reject,
+        );
+      };
+      return query;
+    };
+  });
+  afterEach(() => {
+    db.client.from = originalFrom;
   });
   /** A refused assistant reply and the line FLAS wrote under it, as the database holds them. */
   function refusedReplyWithNote(n, { reason = "Messaging window closed" } = {}) {
@@ -2284,6 +2309,57 @@ describe("a note under a refused reply is not a second failure", () => {
       wa_message_id: null,
     });
   }
+
+  it("does not subtract notes outside the capped status sample and names its coverage", async () => {
+    db.state.rowCap = 100;
+    manyOfA(100, "failed", "real");
+    for (let i = 0; i < 100; i += 1) {
+      outboundOfA(`note-only-${i}`, "failed", {
+        sender: "bot",
+        body: "(Not delivered: Messaging window closed)",
+        wa_message_id: null,
+      });
+    }
+    let messageReads = 0;
+    db.fail("messages:read", () => {
+      messageReads += 1;
+    });
+    await checkNumberHealth("num-a");
+    const [alert] = alertsTitled(LOW);
+    assert.ok(alert, "real failures were hidden by notes outside the status sample");
+    assert.match(alert.message, /^0\.0% of 100 sampled messages delivered/);
+    assert.match(alert.message, /100 failed/);
+    assert.match(
+      alert.message,
+      /Sample only: 100 of 200 outbound records from 1 of 1 conversations/,
+    );
+    assert.match(alert.message, /remaining activity was not assessed/);
+    assert.equal(messageReads, 1, "notes must be classified in the same message population");
+  });
+
+  it("also names partial coverage when the conversation-id response was capped", async () => {
+    db.state.rowCap = 20;
+    for (let i = 0; i < 20; i += 1) {
+      rows.conversations.push({ id: `extra-${i}`, tenant_id: A, wa_number_id: "num-a" });
+    }
+    manyOfA(20, "failed");
+    await checkNumberHealth("num-a");
+    const [alert] = alertsTitled(LOW);
+    assert.ok(alert);
+    assert.match(alert.message, /^0\.0% of 20 sampled messages delivered/);
+    assert.match(alert.message, /20 of 20 outbound records from 20 of 21 conversations/);
+  });
+
+  it("raises no rate alert when the number or conversation read fails", async () => {
+    manyOfA(20, "failed");
+    db.fail("wa_numbers:read", STATEMENT_TIMEOUT);
+    await checkNumberHealth("num-a");
+    assert.equal(alertsTitled(LOW).length, 0);
+    db.fail("wa_numbers:read", undefined);
+    db.fail("conversations:read", STATEMENT_TIMEOUT);
+    await checkNumberHealth("num-a");
+    assert.equal(alertsTitled(LOW).length, 0);
+  });
 
   it("counts a reply Meta refused once, however the thread shows it", async () => {
     // The real thing: Meta refuses the assistant's reply, and FLAS stores the
@@ -2398,9 +2474,9 @@ describe("a note under a refused reply is not a second failure", () => {
   it("raises no rate alert on a count it could not make", async () => {
     manyOfA(17, "delivered");
     for (const n of [1, 2, 3]) refusedReplyWithNote(n);
-    // Only the read that looks for the notes -- the one with more filters than
-    // the plain count of the day's messages -- is refused.
-    db.fail("messages:read", (query) => (query.filters.length > 3 ? STATEMENT_TIMEOUT : undefined));
+    // Status and annotation classification share one read. If it fails there
+    // is no known rate; it is not a zero or a healthy result.
+    db.fail("messages:read", STATEMENT_TIMEOUT);
     await checkNumberHealth("num-a");
     assert.equal(alertsTitled(LOW).length, 0, "an alert was raised on a count that was not made");
   });
@@ -2460,6 +2536,81 @@ describe("the webhook endpoint", () => {
       null,
       "one company was shown a failure that may be another's",
     );
+    assert.equal(
+      rows.webhook_events.at(-1).tenant_id ?? null,
+      null,
+      "one company could read the other company's full webhook payload",
+    );
+  });
+
+  it("keeps a successful mixed-company payload private while applying each receipt to its own company", async () => {
+    outboundOfA("out-a", "sent", { wa_message_id: "wamid.OUT-A" });
+    rows.messages.push({
+      id: "out-b",
+      tenant_id: B,
+      conversation_id: "conv-b",
+      direction: "outbound",
+      sender: "agent",
+      body: "B private reply",
+      status: "sent",
+      wa_message_id: "wamid.OUT-B",
+    });
+    const both = statusPayload("pn-a", { id: "wamid.OUT-A", status: "delivered" });
+    both.entry.push(statusPayload("pn-b", { id: "wamid.OUT-B", status: "read" }).entry[0]);
+    const response = await deliver({ request: signed(both) });
+    assert.equal(response.status, 200);
+    const event = rows.webhook_events.at(-1);
+    assert.equal(event.tenant_id ?? null, null);
+    assert.equal(event.status, "processed");
+    assert.deepEqual(
+      rows.messages
+        .filter((m) => ["out-a", "out-b"].includes(m.id))
+        .map((m) => [m.tenant_id, m.status]),
+      [
+        [A, "delivered"],
+        [B, "read"],
+      ],
+    );
+    assert.equal(provider.calls.length, 0);
+  });
+
+  it("files the full payload under one company only when every number belongs to it", async () => {
+    rows.wa_numbers[1].tenant_id = A;
+    const both = statusPayload("pn-a", { id: "wamid.UNKNOWN-A", status: "delivered" });
+    both.entry[0].changes.push(
+      statusPayload("pn-b", { id: "wamid.UNKNOWN-B", status: "delivered" }).entry[0].changes[0],
+    );
+    const response = await deliver({ request: signed(both) });
+    assert.equal(response.status, 200);
+    assert.equal(rows.webhook_events.at(-1).tenant_id, A);
+  });
+
+  it("keeps a signed legacy-unowned number's full batch platform-only", async () => {
+    rows.wa_numbers[1].tenant_id = null;
+    const both = statusPayload("pn-a", { id: "wamid.UNKNOWN-A", status: "delivered" });
+    both.entry.push(statusPayload("pn-b", { id: "wamid.UNKNOWN-B", status: "delivered" }).entry[0]);
+    const response = await deliver({ request: signed(both) });
+    assert.equal(response.status, 200);
+    assert.equal(rows.webhook_events.at(-1).tenant_id ?? null, null);
+  });
+
+  it("does not attribute an empty entry to the other entry's company", async () => {
+    const payload = statusPayload("pn-a", { id: "wamid.UNKNOWN-A", status: "delivered" });
+    payload.entry.push({ changes: [] });
+    const response = await deliver({ request: signed(payload) });
+    assert.equal(response.status, 200);
+    assert.equal(rows.webhook_events.at(-1).tenant_id ?? null, null);
+  });
+
+  it("keeps an unknown number's rejected batch platform-only", async () => {
+    const payload = statusPayload("pn-a", { id: "wamid.UNKNOWN-A", status: "delivered" });
+    payload.entry.push(
+      statusPayload("pn-unknown", { id: "wamid.UNKNOWN-B", status: "delivered" }).entry[0],
+    );
+    const response = await deliver({ request: signed(payload) });
+    assert.equal(response.status, 401);
+    assert.equal(rows.webhook_events.at(-1).tenant_id ?? null, null);
+    assert.equal(provider.calls.length, 0);
   });
 
   it("files nothing under a company on the word of a delivery it could not verify", async () => {
