@@ -617,14 +617,24 @@ check(
   await holder.query("begin");
   await holder.query("lock table storage.objects in access share mode");
   const started = Date.now();
-  const r = await apply(c, mineSql);
+  const running = apply(c, mineSql);
+  // If the file does not give up by itself it would wait for ever, so stop waiting after 30 seconds.
+  const early = await Promise.race([
+    running,
+    new Promise((resolve) => setTimeout(resolve, 30_000)),
+  ]);
   const waited = (Date.now() - started) / 1000;
   await holder.query("rollback");
   await holder.end();
+  const r = early ?? (await running);
   check(
     "a lock held elsewhere: the file gives up after about 10 seconds",
-    r.error?.code === "55P03" && waited >= 9 && waited < 25,
-    r.error ? `${r.error.code} after ${waited.toFixed(1)}s` : "it did NOT fail",
+    early !== undefined && r.error?.code === "55P03" && waited >= 9 && waited < 25,
+    early === undefined
+      ? `still waiting after ${waited.toFixed(0)}s: no lock timeout`
+      : r.error
+        ? `${r.error.code} after ${waited.toFixed(1)}s`
+        : "it did NOT fail",
   );
   check(
     "...having created gates on every earlier table first, all undone",

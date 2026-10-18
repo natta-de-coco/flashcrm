@@ -30,11 +30,13 @@
 -- !!! ROLL-OUT ORDER IS PART OF THE SAFETY OF THIS FILE !!!
 --   1. PR #68 (the app asks for the code) is live.
 --   2. The app code of the pull request that ships this file is live.
---   3. ONLY THEN paste this file.
+--   3. ONLY THEN paste this file, and after every other pending migration.
 -- Pasted first, every person with a verified factor loses all access to their
 -- data (the old app never asks them for the code). People without a factor are
 -- not affected whatever the order. Read the pre-flight query in the pull
--- request before pasting.
+-- request before pasting. A table that appears AFTER this file (a later
+-- migration) is not covered until SELECT public.apply_mfa_session_gate(); is
+-- run again; the verification query at the bottom lists any that were missed.
 --
 -- NOT COVERED HERE (on purpose; listed in the pull request):
 --   * tenant_alert_settings and lead_alerts_log (the lead-alert recipients and
