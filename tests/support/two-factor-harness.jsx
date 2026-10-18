@@ -3,7 +3,7 @@
 // enough to read.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { I18nProvider } from "@/hooks/useI18n";
 import { Route as ShellRoute } from "@/routes/_authenticated/route";
 import { Route as AuthRoute } from "@/routes/auth";
@@ -43,6 +43,22 @@ function pageAt(pathname) {
 /** The query cache of the app that was last drawn, so a test can put data in it and see what a sign-out leaves. */
 export const lastQueryClient = { current: null };
 
+/**
+ * What the auth provider says about the person's roles, as data attributes, so a
+ * test can read the admin flags the rest of the app reads. Drawn beside the page,
+ * never inside it.
+ */
+function RolesProbe() {
+  const { isAdmin, isSuperAdmin } = useAuth();
+  return (
+    <output
+      data-testid="auth-flags"
+      data-admin={String(isAdmin)}
+      data-super={String(isSuperAdmin)}
+    />
+  );
+}
+
 /** The app, as far as sign-in is concerned. */
 export function App({ startAt, language = "en" }) {
   const [location, setLocation] = useState(() => parse(startAt));
@@ -72,6 +88,7 @@ export function App({ startAt, language = "en" }) {
             </div>
           </I18nProvider>
         </RouterContext.Provider>
+        <RolesProbe />
       </AuthProvider>
     </QueryClientProvider>
   );

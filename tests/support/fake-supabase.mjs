@@ -153,7 +153,21 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
           msg: "Session from session_id claim in JWT does not exist",
         }),
       };
-    return { session, user: users.get(session.userId) };
+    return { session, user: users.get(session.userId), claims };
+  }
+
+  /**
+   * The database's own rule, as migration 20261020000000_mfa_session_gate.sql
+   * writes it: a request is let through when its token says aal2, or when its
+   * person has no verified authenticator app. The token's own claim decides, not
+   * the session's current level: a token issued before the code was entered
+   * still says aal1 until the browser holds a newer one.
+   */
+  function databaseGate(who) {
+    if (who.claims.aal === "aal2") return true;
+    return !who.user.factors.some(
+      (factor) => factor.status === "verified" && factor.type === "totp",
+    );
   }
 
   async function route(request) {
@@ -170,14 +184,21 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
     else if (/^\/auth\/v1\/factors\/[^/]+\/challenge$/.test(pathname)) name = "factors:challenge";
     else if (/^\/auth\/v1\/factors\/[^/]+\/verify$/.test(pathname)) name = "factors:verify";
     else if (pathname === "/rest/v1/rpc/access_state") name = "rpc:access_state";
+    else if (pathname === "/rest/v1/user_roles") name = "rest:user_roles";
+    else if (pathname === "/rest/v1/profiles") name = "rest:profiles";
     else if (pathname.startsWith("/rest/v1/")) name = "rest";
 
+    const authorization = request.headers.get("authorization");
     calls.push({
       name,
       method,
       pathname,
-      authorization: request.headers.get("authorization"),
+      authorization,
       apikey: request.headers.get("apikey"),
+      // The assurance level the token itself claims ("aal1", "aal2"), if it is one of ours.
+      aal: issued.has(authorization?.slice(7) ?? "")
+        ? JSON.parse(Buffer.from(authorization.slice(7).split(".")[1], "base64url").toString()).aal
+        : undefined,
     });
 
     const fault = faults.get(name);
@@ -259,6 +280,8 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
         id: `30000000-0000-4000-8000-${String((serial += 1)).padStart(12, "0")}`,
         email: body.email,
         password: body.password,
+        roles: [],
+        staffRole: "staff",
         factors: [],
       };
       users.set(user.id, user);
@@ -303,6 +326,20 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
     }
 
     if (name === "rpc:access_state") return json(200, "active");
+    // The two reads the auth provider makes for the admin flags. The rows exist
+    // for people the test made admins; the database hands them out only through
+    // its two-factor rule, so a token that has not entered the code gets none.
+    if (name === "rest:user_roles" || name === "rest:profiles") {
+      const who = authenticate(request);
+      if (who.refusal) return json(401, { message: "JWT invalid" });
+      const idColumn = name === "rest:user_roles" ? "user_id" : "id";
+      const asked = searchParams.get(idColumn);
+      const mine = asked === `eq.${who.user.id}`;
+      if (!mine || !databaseGate(who)) return json(200, []);
+      if (name === "rest:user_roles")
+        return json(200, who.user.roles.includes("admin") ? [{ role: "admin" }] : []);
+      return json(200, [{ staff_role: who.user.staffRole }]);
+    }
     if (name === "rest") return json(200, []);
 
     return json(404, { msg: `fake Supabase has no ${method} ${pathname}` });
@@ -319,12 +356,24 @@ export async function createFakeSupabase({ url = "https://fake-project.supabase.
     count: (name) => calls.filter((call) => call.name === name).length,
     clearCalls: () => calls.splice(0),
 
-    /** factors: [{ id, status: "verified" | "unverified", type?: "totp", code?, updatedAt? }] */
-    addUser({ id, email, password = "correct horse", factors = [] }) {
+    /**
+     * factors: [{ id, status: "verified" | "unverified", type?: "totp", code?, updatedAt? }]
+     * roles: ["admin"] makes the account a company admin; staffRole: "super_admin" a platform manager.
+     */
+    addUser({
+      id,
+      email,
+      password = "correct horse",
+      factors = [],
+      roles = [],
+      staffRole = "staff",
+    }) {
       const user = {
         id,
         email,
         password,
+        roles,
+        staffRole,
         factors: factors.map((factor) => ({ type: "totp", code: "123456", ...factor })),
       };
       users.set(id, user);

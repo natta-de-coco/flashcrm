@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { forgetDraftsExcept } from "@/lib/inbox-draft-keeper";
+import { assuranceLevelOf, sessionOwesSecondFactor } from "@/lib/two-factor";
 import type { Session, User } from "@supabase/supabase-js";
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
@@ -53,9 +54,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, [queryClient]);
 
+  // The database also asks for the second sign-in step: a session that has the
+  // password but not yet the code (and whose person has a verified factor) is
+  // shown none of the person's rows, these two included. So the two reads below
+  // wait until the code has been entered, and run again when it is: the person
+  // id does not change when the code is verified, the token's assurance level
+  // does. Without that, the admin flags would stay false until a reload.
+  const owesCode = sessionOwesSecondFactor(session);
+  const assurance = assuranceLevelOf(session?.access_token);
+
   useEffect(() => {
     const userId = session?.user?.id;
-    if (!userId) {
+    if (!userId || owesCode) {
       setIsAdmin(false);
       setIsSuperAdmin(false);
       return;
@@ -82,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, owesCode, assurance]);
 
   return (
     <AuthContext.Provider

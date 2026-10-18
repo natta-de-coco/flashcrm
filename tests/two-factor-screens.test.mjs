@@ -40,6 +40,52 @@ process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fake_for_tests";
 const realFetch = globalThis.fetch;
 globalThis.fetch = fake.fetch;
 
+// A stand-in for Supabase Realtime's WebSocket, speaking just enough of its
+// protocol (Phoenix channels, version 2: every message is the array
+// [join_ref, ref, topic, event, payload]) for a channel to join, and recording
+// what the browser sends. Installed before the app is loaded because the client
+// picks its WebSocket when it is created.
+class FakeRealtimeSocket {
+  static sockets = [];
+  constructor(url) {
+    this.url = url;
+    this.readyState = 0;
+    this.binaryType = "arraybuffer";
+    /** Every message the browser sent, decoded: { joinRef, ref, topic, event, payload }. */
+    this.sent = [];
+    FakeRealtimeSocket.sockets.push(this);
+    setTimeout(() => {
+      this.readyState = 1;
+      this.onopen?.({ type: "open" });
+    }, 0);
+  }
+  reply(joinRef, ref, topic, response) {
+    const data = JSON.stringify([joinRef, ref, topic, "phx_reply", { status: "ok", response }]);
+    setTimeout(() => this.onmessage?.({ data }), 0);
+  }
+  send(data) {
+    const [joinRef, ref, topic, event, payload] = JSON.parse(data);
+    this.sent.push({ joinRef, ref, topic, event, payload });
+    // The server confirms the changes the channel asked for, numbered.
+    if (event === "phx_join")
+      this.reply(joinRef, ref, topic, {
+        postgres_changes: (payload.config?.postgres_changes ?? []).map((change, i) => ({
+          ...change,
+          id: i + 1,
+        })),
+      });
+    else if (event === "heartbeat" || event === "access_token") this.reply(joinRef, ref, topic, {});
+  }
+  close() {
+    this.readyState = 3;
+    this.onclose?.({ type: "close", code: 1000 });
+  }
+  addEventListener() {}
+  removeEventListener() {}
+}
+const realWebSocket = globalThis.WebSocket;
+globalThis.WebSocket = FakeRealtimeSocket;
+
 const app = await import(await buildScreensBundle());
 const { supabase, watched, lastQueryClient } = app;
 
@@ -65,6 +111,7 @@ before(() => {
 after(() => {
   mock.restoreAll();
   globalThis.fetch = realFetch;
+  globalThis.WebSocket = realWebSocket;
   browser.window.close();
 });
 
@@ -181,7 +228,7 @@ async function arriveWithSession(person, options) {
 
 let people = 0;
 /** A fresh account each time, so no test leans on what another left behind. */
-function person({ factors = [] } = {}) {
+function person({ factors = [], roles = [], staffRole = "staff" } = {}) {
   people += 1;
   const id = `20000000-0000-4000-8000-${String(people).padStart(12, "0")}`;
   const account = {
@@ -189,7 +236,7 @@ function person({ factors = [] } = {}) {
     email: `person${people}@example.test`,
     password: `pw-${people}-correct-horse`,
   };
-  fake.addUser({ ...account, factors });
+  fake.addUser({ ...account, factors, roles, staffRole });
   return account;
 }
 const VERIFIED = { id: "factor-verified", status: "verified" };
@@ -1463,5 +1510,200 @@ describe("while the router is still making a move", () => {
     assert.ok(await until(() => watched.navigations.length > 0));
     await settle(500);
     assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The database also asks for the second sign-in step (migration
+// 20261020000000_mfa_session_gate.sql): a token that has not entered the code,
+// for a person who has a verified authenticator app, is shown none of that
+// person's rows. The Auth/REST double applies the same rule to the two reads
+// the auth provider makes, so these tests see what the app would see.
+
+describe("the admin flags, with the database also asking for the second step", () => {
+  const ADMIN = { roles: ["admin"], staffRole: "super_admin" };
+  const flags = () => {
+    const probe = doc.querySelector("[data-testid='auth-flags']");
+    return { admin: probe?.getAttribute("data-admin"), super: probe?.getAttribute("data-super") };
+  };
+  const roleReads = (name) =>
+    fake.calls.filter((call) =>
+      name ? call.name === name : /^rest:(user_roles|profiles)$/.test(call.name),
+    );
+  const flagsOn = () => flags().admin === "true" && flags().super === "true";
+
+  test("a session that owes its code reads no roles and shows no admin rights", async () => {
+    const me = person({ factors: [VERIFIED], ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => codeField()), "the code prompt never appeared");
+    await settle(300);
+    assert.deepEqual(
+      roleReads().map((call) => `${call.name} at ${call.aal}`),
+      [],
+      "the roles were read with a token that has not entered its code",
+    );
+    assert.deepEqual(flags(), { admin: "false", super: "false" });
+  });
+
+  test("the same, when the person has just typed the password on the sign-in page", async () => {
+    const me = person({ factors: [VERIFIED], ...ADMIN });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code prompt never appeared");
+    await settle(300);
+    assert.deepEqual(roleReads(), [], "the roles were read before the code was entered");
+    assert.deepEqual(flags(), { admin: "false", super: "false" });
+  });
+
+  test("once the code is right, the roles are read again with the new token and the flags come on without a reload", async () => {
+    const me = person({ factors: [VERIFIED], ...ADMIN });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code prompt never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(flagsOn), `the admin flags never turned on: ${JSON.stringify(flags())}`);
+    await settle(300);
+    assert.equal(roleReads("rest:user_roles").length, 1, "user_roles was not read exactly once");
+    assert.equal(roleReads("rest:profiles").length, 1, "profiles was not read exactly once");
+    assert.deepEqual(
+      roleReads().map((call) => call.aal),
+      ["aal2", "aal2"],
+      "a read was made with a token that had not entered its code",
+    );
+  });
+
+  test("a person with two-factor who is not an admin is read, and stays not an admin", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()));
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => roleReads().length === 2), "the roles were never read");
+    await settle(200);
+    assert.deepEqual(flags(), { admin: "false", super: "false" });
+  });
+
+  test("an account without two-factor is read once, as before, and its flags are on", async () => {
+    const me = person({ ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(flagsOn), `the admin flags never turned on: ${JSON.stringify(flags())}`);
+    await settle(300);
+    assert.deepEqual(
+      roleReads().map((call) => `${call.name} at ${call.aal}`),
+      ["rest:user_roles at aal1", "rest:profiles at aal1"],
+    );
+  });
+
+  test("a token refresh at the same level does not read the roles again", async () => {
+    const me = person({ ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(flagsOn));
+    await act(async () => {
+      await supabase.auth.refreshSession();
+    });
+    await settle(400);
+    assert.equal(roleReads().length, 2, "a refresh at the same level read the roles again");
+    assert.ok(flagsOn());
+  });
+
+  test("finishing two-factor set-up on the open page reads the roles again at the new level", async () => {
+    const me = person({ factors: [UNVERIFIED], ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(flagsOn));
+    assert.equal(roleReads().length, 2);
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: UNVERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    assert.ok(await until(() => roleReads().length === 4), "the roles were not read again");
+    await settle(300);
+    assert.deepEqual(
+      roleReads().map((call) => call.aal),
+      ["aal1", "aal1", "aal2", "aal2"],
+    );
+    assert.ok(flagsOn(), "the flags went off while set-up finished");
+  });
+
+  test("signing out turns the flags off", async () => {
+    const me = person({ ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(flagsOn));
+    await act(async () => {
+      await supabase.auth.signOut({ scope: "local" });
+    });
+    assert.ok(
+      await until(() => flags().admin === "false" && flags().super === "false"),
+      "the admin flags stayed on after sign-out",
+    );
+  });
+});
+
+describe("realtime: a channel that was opened before the code was entered", () => {
+  const joinOf = (socket) => socket.sent.find((m) => m.event === "phx_join");
+  const levelOf = (token) =>
+    JSON.parse(Buffer.from(String(token).split(".")[1], "base64url").toString()).aal;
+  const tokensPushed = (socket) =>
+    socket.sent.filter((m) => m.event === "access_token").map((m) => m.payload.access_token);
+
+  afterEach(async () => {
+    await supabase.removeAllChannels();
+    supabase.realtime.disconnect();
+    FakeRealtimeSocket.sockets.length = 0;
+  });
+
+  test("is handed the token that has entered its code on the next heartbeat, with no help from the page", async () => {
+    // The inbox opens its channel with whatever token the browser holds. For a
+    // person finishing two-factor set-up on the open page that token is aal1,
+    // and from the moment the factor is verified the database wants aal2.
+    const me = person({ factors: [UNVERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    const held = (await supabase.auth.getSession()).data.session.access_token;
+    assert.equal(levelOf(held), "aal1");
+
+    let joined = false;
+    await act(async () => {
+      supabase
+        .channel("inbox-live")
+        .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {})
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") joined = true;
+        });
+    });
+    assert.ok(await until(() => joined, 4000), "the channel never joined");
+    const socket = FakeRealtimeSocket.sockets.at(-1);
+    assert.equal(levelOf(joinOf(socket).payload.access_token), "aal1", "joined with another token");
+
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: UNVERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    await settle(200);
+    const stored = (await supabase.auth.getSession()).data.session.access_token;
+    assert.equal(levelOf(stored), "aal2", "the browser did not store the new token");
+    assert.notEqual(stored, held);
+    // Nothing has pushed it yet: the verification itself does not reach Realtime.
+    assert.deepEqual(tokensPushed(socket), [], "the token was pushed without a heartbeat");
+
+    await act(async () => {
+      await supabase.realtime.sendHeartbeat();
+    });
+    assert.ok(await until(() => tokensPushed(socket).length > 0, 3000), "no token was ever pushed");
+    assert.deepEqual(
+      tokensPushed(socket).map(levelOf),
+      ["aal2"],
+      "the channel was not given the token that has entered its code",
+    );
+    assert.equal(tokensPushed(socket)[0], stored);
   });
 });
