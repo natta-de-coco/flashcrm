@@ -343,6 +343,132 @@ const gapWrite = await as(AT(alice, AAL1), (run) =>
 check("...and could delete them (rolled back here)", gapWrite.ok && gapWrite.rowCount === 1);
 
 // ---------------------------------------------------------------------------
+// open_contact_whatsapp(): what it does today (PR #66's body), recorded now so
+// that the same calls can be compared after the gate. A definer function skips
+// policies, so the gate has to be written into the function itself; the only
+// permitted difference is that a person who has a verified factor and no code
+// is refused.
+
+const WA_FILE = "20261007130000_open_contact_whatsapp_phone_identity.sql";
+const WA = {
+  ok: "aaaaaaaa-0000-0000-0000-0000000000f1", // phone on the record, consent given
+  noConsent: "aaaaaaaa-0000-0000-0000-0000000000f2",
+  noNumber: "aaaaaaaa-0000-0000-0000-0000000000f3", // an email identity only
+  otherCompany: "bbbbbbbb-0000-0000-0000-0000000000f4",
+  unknown: "cccccccc-0000-0000-0000-0000000000f5", // no such contact
+};
+const waBase = (withNumber = true) => [
+  ...(withNumber
+    ? [
+        `insert into wa_numbers(tenant_id,label,phone_number_id,access_token,is_default,active) values ('${orgA}','A line','pn-a','t',true,true)`,
+      ]
+    : []),
+  `insert into contacts(id,tenant_id,name,phone,consent_given) values ('${WA.ok}','${orgA}','WA ok','+971500000001',true)`,
+  `insert into contacts(id,tenant_id,name,phone,consent_given) values ('${WA.noConsent}','${orgA}','WA no consent','+971500000002',false)`,
+  `insert into contacts(id,tenant_id,name,phone,consent_given) values ('${WA.noNumber}','${orgA}','WA no number',null,true)`,
+  `insert into contact_identities(tenant_id,contact_id,kind,value,is_primary) values ('${orgA}','${WA.noNumber}','email','nonumber@acme.test',true)`,
+  `insert into contacts(id,tenant_id,name,phone,consent_given) values ('${WA.otherCompany}','${orgB}','WA other company','+971500000004',true)`,
+];
+const WA_SCENARIOS = [
+  ["a normal contact", WA.ok, waBase()],
+  ["the contact of another company", WA.otherCompany, waBase()],
+  ["a contact that does not exist", WA.unknown, waBase()],
+  ["no consent recorded", WA.noConsent, waBase()],
+  ["no phone number", WA.noNumber, waBase()],
+  [
+    "the subscription is paused",
+    WA.ok,
+    [...waBase(), `update organizations set suspended = true where id = '${orgA}'`],
+  ],
+  ["no default WhatsApp number", WA.ok, waBase(false)],
+];
+const WA_OPEN_CALLERS = [
+  ["no factor, aal1", AT(bob, AAL1)],
+  ["only an unverified app, aal1", AT(carol, AAL1)],
+  ["only a verified phone, aal1", AT(dave, AAL1)],
+  ["verified app, code entered (aal2)", AT(alice, AAL2)],
+  ["no identity at all, aal1", NOBODY(AAL1)],
+  ["service role", SERVICE],
+  ["anon", ANON],
+];
+const WA_GATED_CALLERS = [
+  ["verified app, no code (aal1)", AT(alice, AAL1)],
+  ["verified app, token without an aal claim", AT(alice, undefined)],
+  ["verified app AND verified phone, aal1", AT(erin, AAL1)],
+];
+/** What the call answered and what it left behind, as one comparable line. */
+async function waOutcome(who, contactId, setup) {
+  return as(
+    who,
+    async (run) => {
+      const r = await run(`select public.open_contact_whatsapp('${contactId}') as id`);
+      await c.query("reset role"); // look at the result as the owner, not as the caller
+      const left = (
+        await c.query(
+          `select count(*)::int as n, count(wa_number_id)::int as on_a_line
+             from conversations where contact_id = $1 and channel = 'whatsapp'`,
+          [contactId],
+        )
+      ).rows[0];
+      const effect = `conversations: ${left.n}, on a line: ${left.on_a_line}`;
+      return r.ok ? `ok (${effect})` : `${r.code} ${r.message} (${effect})`;
+    },
+    { beforeBecoming: setup },
+  );
+}
+async function waAll(callers) {
+  const out = new Map();
+  for (const [scenario, contactId, setup] of WA_SCENARIOS)
+    for (const [who, caller] of callers)
+      out.set(`${scenario} / ${who}`, await waOutcome(caller, contactId, setup));
+  return out;
+}
+const waFunctionFacts = async () =>
+  JSON.stringify(
+    (
+      await c.query(`
+        select p.proowner::regrole::text as owner, p.prosecdef, p.proconfig, p.proacl::text as acl,
+               pg_get_function_arguments(p.oid) as args, pg_get_function_result(p.oid) as result,
+               p.provolatile, p.proisstrict, p.prolang::regclass::text as lang
+          from pg_proc p where p.oid = 'public.open_contact_whatsapp(uuid)'::regprocedure`)
+    ).rows[0],
+  );
+const waDefinition = async () =>
+  (
+    await c.query(
+      "select pg_get_functiondef('public.open_contact_whatsapp(uuid)'::regprocedure) as d",
+    )
+  ).rows[0].d;
+const waOpenBefore = await waAll(WA_OPEN_CALLERS);
+const waGatedBefore = await waAll(WA_GATED_CALLERS);
+const waFactsBefore = await waFunctionFacts();
+const waDefinitionBefore = await waDefinition();
+heading("open_contact_whatsapp() before the gate (PR #66's body, live)");
+check(
+  "a normal contact is opened by everybody who may call it, including a verified-factor person with no code (the gap)",
+  waOpenBefore.get("a normal contact / no factor, aal1")?.startsWith("ok") &&
+    waGatedBefore.get("a normal contact / verified app, no code (aal1)")?.startsWith("ok"),
+  `${waOpenBefore.get("a normal contact / no factor, aal1")} | ${waGatedBefore.get("a normal contact / verified app, no code (aal1)")}`,
+);
+check(
+  "the sample cases reach the function's own refusals (the comparison below is not vacuous)",
+  [
+    "the contact of another company / no factor, aal1",
+    "no consent recorded / no factor, aal1",
+    "no phone number / no factor, aal1",
+    "the subscription is paused / no factor, aal1",
+    "no default WhatsApp number / no factor, aal1",
+  ].every((k) => /^P0001 /.test(waOpenBefore.get(k) ?? "")),
+  [...waOpenBefore.entries()]
+    .filter(([k]) => k.endsWith("no factor, aal1"))
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(" | "),
+);
+console.log(
+  `  (${waOpenBefore.size} + ${waGatedBefore.size} recorded answers to compare after the gate)`,
+);
+
+// ---------------------------------------------------------------------------
 // The tables, from the catalogue
 
 const listProtected = async () =>
@@ -612,6 +738,25 @@ check(
   check("...and nothing was installed", (await snapshot()) === untouched);
 }
 {
+  // (d) PR #66 is not applied (the live open_contact_whatsapp does not read contact_identities):
+  // the file must not install #66's body on its own
+  await c.query(`create or replace function public.open_contact_whatsapp(p_contact_id uuid)
+    returns uuid language plpgsql security definer set search_path = public, pg_temp
+    as $$ begin return null; end; $$`);
+  const r = await apply(c, mineSql);
+  await apply(c, fs.readFileSync(path.join(MIG, WA_FILE), "utf8"));
+  check(
+    "PR #66 not applied: the file stops, naming #66's file",
+    r.error && new RegExp(WA_FILE.replace(".", "\.")).test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+  check(
+    "...(the harness put #66's function back as it was)",
+    (await waDefinition()) === waDefinitionBefore,
+  );
+}
+{
   // (c) another session holds a lock the file needs, for longer than 10 seconds
   const holder = await connect();
   await holder.query("begin");
@@ -663,6 +808,73 @@ check(
 console.log(
   `  (${publicCount} tables with row-level security in public, ${leftOutNow} left out by name, plus storage.objects: ${protectedNow.length} gated)`,
 );
+
+heading("open_contact_whatsapp(): guarded, and otherwise exactly PR #66's function");
+{
+  const open = await waAll(WA_OPEN_CALLERS);
+  const changed = [...waOpenBefore.entries()].filter(([k, v]) => open.get(k) !== v);
+  check(
+    `everybody the gate lets in gets the same answer and the same effect as before (${waOpenBefore.size} cases)`,
+    changed.length === 0,
+    changed
+      .slice(0, 3)
+      .map(([k, v]) => `${k}: was "${v}" now "${open.get(k)}"`)
+      .join(" | "),
+  );
+  const gated = await waAll(WA_GATED_CALLERS);
+  const notRefused = [...gated.entries()].filter(
+    ([, v]) => !/^42501 Two-factor code required \(conversations: 0, on a line: 0\)$/.test(v),
+  );
+  check(
+    `a verified-factor person without the code is refused, and nothing is opened (${gated.size} cases, every scenario)`,
+    notRefused.length === 0,
+    notRefused
+      .slice(0, 3)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(" | "),
+  );
+  check(
+    "the same person with the code (aal2) opens the conversation",
+    open.get("a normal contact / verified app, code entered (aal2)")?.startsWith("ok"),
+    open.get("a normal contact / verified app, code entered (aal2)"),
+  );
+  check(
+    "owner, security mode, search_path, grants, arguments and result are as PR #66 set them",
+    (await waFunctionFacts()) === waFactsBefore,
+    `${waFactsBefore} -> ${await waFunctionFacts()}`,
+  );
+  // The new body must be #66's body with the guard added and nothing else.
+  const functionBlock = (sql, label) => {
+    const m = sql
+      .replace(/\r\n/g, "\n")
+      .match(
+        /^CREATE OR REPLACE FUNCTION public\.open_contact_whatsapp\(p_contact_id uuid\)[\s\S]*?\n\$\$;/m,
+      );
+    if (!m) throw new Error(`no open_contact_whatsapp definition found in ${label}`);
+    return m[0];
+  };
+  const GUARD = `  IF NOT public.session_meets_mfa() THEN
+    RAISE EXCEPTION 'Two-factor code required' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+`;
+  const theirs = functionBlock(fs.readFileSync(path.join(MIG, WA_FILE), "utf8"), WA_FILE);
+  const mine = functionBlock(mineSql, MINE);
+  check(
+    "the migration's body is PR #66's body plus exactly one guard (the guard removed gives #66's text, character for character)",
+    mine.includes(GUARD) && mine.replace(GUARD, "") === theirs,
+    !mine.includes(GUARD)
+      ? "no guard in the body"
+      : mine.replace(GUARD, "") === theirs
+        ? ""
+        : "the bodies differ",
+  );
+  check(
+    "...and the guard comes right after the sign-in check, before anything is read",
+    mine.indexOf("IF auth.uid() IS NULL") !== -1 &&
+      mine.indexOf("IF auth.uid() IS NULL") < mine.indexOf(GUARD) &&
+      mine.indexOf(GUARD) < mine.indexOf("v_tenant := public.current_tenant_id()"),
+  );
+}
 
 heading("the policy itself, on every table from the catalogue");
 // Postgres prints the policy's `(SELECT public.session_meets_mfa())` back as a sub-select.
@@ -1094,7 +1306,7 @@ const snapshotAll = async () =>
         select (select count(*) from pg_policies where policyname = 'mfa_session_gate')::int as policies,
                (select md5(string_agg(pg_get_functiondef(p.oid), '' order by p.proname)) from pg_proc p
                  where p.pronamespace = 'public'::regnamespace
-                   and p.proname in ('session_meets_mfa','apply_mfa_session_gate','list_subscribers')) as functions,
+                   and p.proname in ('session_meets_mfa','apply_mfa_session_gate','list_subscribers','open_contact_whatsapp')) as functions,
                (select md5(string_agg(polrelid::regclass::text || pg_get_expr(polqual, polrelid) || pg_get_expr(polwithcheck, polrelid), '' order by polrelid::regclass::text))
                   from pg_policy where polname = 'mfa_session_gate') as policies_md5`)
     ).rows[0],
@@ -1198,10 +1410,6 @@ heading("guard: SECURITY DEFINER functions the browser role can call");
     "session_meets_mfa", // the rule itself: answers only about the caller's own session
   ]);
   const KNOWN_GAPS = new Map([
-    [
-      "open_contact_whatsapp",
-      "PR #66 redefines it; guard it in a follow-up once #66 is applied live",
-    ],
     [
       "record_integration_error",
       "accepts any tenant id: a separate, older problem, not a two-factor one",
@@ -1329,6 +1537,13 @@ heading("full rollback (the single statement printed in the file)");
     await c.query("select pg_get_functiondef('public.list_subscribers()'::regprocedure) as d")
   ).rows[0].d;
   check("...and is the original body", !/session_meets_mfa/.test(def));
+  check(
+    "open_contact_whatsapp() is PR #66's function again, byte for byte, and a verified-factor person at aal1 opens a conversation again",
+    (await waDefinition()) === waDefinitionBefore &&
+      (await waFunctionFacts()) === waFactsBefore &&
+      (await waOutcome(AT(alice, AAL1), WA.ok, waBase())).startsWith("ok"),
+    await waOutcome(AT(alice, AAL1), WA.ok, waBase()),
+  );
   const again = await apply(c, mineSql);
   check("the file applies again after a rollback", again.error === null, again.error?.message);
   check("...and everything is as after the first run", (await snapshotAll()) === afterFirst);

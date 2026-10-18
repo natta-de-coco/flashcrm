@@ -26,6 +26,12 @@
 --   * public.list_subscribers()         a SECURITY DEFINER function runs as its
 --                                       owner and skips policies, so it gets the
 --                                       same rule as its first line.
+--   * public.open_contact_whatsapp()    same reason, same rule. PR #66's body
+--                                       (20261007130000, live) with one guard
+--                                       added right after its sign-in check;
+--                                       nothing else in it, and not its owner,
+--                                       its security mode or its grants, changes.
+--                                       The file stops if #66 is not applied.
 --
 -- !!! ROLL-OUT ORDER IS PART OF THE SAFETY OF THIS FILE !!!
 --   1. PR #68 (the app asks for the code) is live.
@@ -47,9 +53,6 @@
 --     left out of apply_mfa_session_gate() below, by name, until that check
 --     ignores a policy called mfa_session_gate; then delete the two names from
 --     the list and run SELECT public.apply_mfa_session_gate();
---   * open_contact_whatsapp(): PR #66 redefines the same function, and these
---     files are pasted by hand in any order, so guarding it here would be
---     silently undone by whichever file runs last. Guard it after #66 is live.
 --   * record_integration_error(): a separate, older problem (it accepts any
 --     tenant id). Not a two-factor question.
 --   * Enrolling a factor from a password-only session: the database cannot see
@@ -69,8 +72,9 @@
 --
 -- FULL ROLLBACK, one statement: drops every mfa_session_gate policy (public
 -- tables and storage.objects), puts list_subscribers() back exactly as it was
--- in 20260904010000, and drops the two functions. (list_subscribers goes first
--- because its new first line calls the function that is being dropped.)
+-- in 20260904010000 and open_contact_whatsapp() back exactly as PR #66 made it,
+-- and drops the two functions. (The two come first because their guard line
+-- calls the function that is being dropped.)
 -- <rollback>
 -- DO $rollback$
 -- DECLARE
@@ -88,6 +92,69 @@
 --     END IF;
 --     RETURN QUERY SELECT * FROM public.super_admin_subscribers ORDER BY company_created_at DESC;
 --   END; $$;
+-- CREATE OR REPLACE FUNCTION public.open_contact_whatsapp(p_contact_id uuid)
+-- RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+-- DECLARE
+--   v_tenant uuid;
+--   v_contact public.contacts%ROWTYPE;
+--   v_conversation public.conversations%ROWTYPE;
+--   v_number uuid;
+--   v_id uuid;
+--   v_actual_number uuid;
+-- BEGIN
+--   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Please sign in again.'; END IF;
+--   v_tenant := public.current_tenant_id();
+--   IF v_tenant IS NULL THEN RAISE EXCEPTION 'Your workspace is not ready.'; END IF;
+--   SELECT * INTO v_contact FROM public.contacts
+--     WHERE id = p_contact_id AND tenant_id = v_tenant FOR UPDATE;
+--   IF NOT FOUND THEN RAISE EXCEPTION 'Contact not found.'; END IF;
+--
+--   -- A number the contact card shows: a phone identity, or the phone on the
+--   -- contact record.
+--   IF btrim(coalesce(v_contact.phone, '')) = '' AND NOT EXISTS (
+--     SELECT 1 FROM public.contact_identities i
+--      WHERE i.tenant_id = v_tenant AND i.contact_id = p_contact_id
+--        AND i.kind = 'phone' AND i.normalized <> ''
+--   ) THEN
+--     RAISE EXCEPTION 'Add a WhatsApp phone number to this contact first.';
+--   END IF;
+--
+--   IF NOT coalesce(v_contact.consent_given, false) THEN
+--     RAISE EXCEPTION 'Record this contact''s permission before starting a WhatsApp conversation.';
+--   END IF;
+--   IF NOT EXISTS (SELECT 1 FROM public.organizations WHERE id = v_tenant
+--     AND NOT suspended AND subscription_status IN ('trial', 'active')) THEN
+--     RAISE EXCEPTION 'Sending is paused for this workspace. Check its subscription.';
+--   END IF;
+--   SELECT * INTO v_conversation FROM public.conversations
+--     WHERE tenant_id = v_tenant AND contact_id = p_contact_id AND channel = 'whatsapp';
+--   SELECT assigned_wa_number_id INTO v_number FROM public.leads
+--     WHERE tenant_id = v_tenant AND contact_id = p_contact_id AND assigned_wa_number_id IS NOT NULL
+--     ORDER BY created_at, id LIMIT 1;
+--   IF v_number IS NOT NULL AND v_conversation.wa_number_id IS NOT NULL
+--      AND v_number <> v_conversation.wa_number_id THEN
+--     RAISE EXCEPTION 'This contact is assigned to a different WhatsApp line. Ask an administrator to resolve its routing.';
+--   END IF;
+--   v_number := coalesce(v_number, v_conversation.wa_number_id);
+--   IF v_number IS NULL THEN
+--     SELECT id INTO v_number FROM public.wa_numbers
+--       WHERE tenant_id = v_tenant AND active AND is_default ORDER BY id LIMIT 1;
+--   END IF;
+--   IF v_number IS NULL OR NOT EXISTS (SELECT 1 FROM public.wa_numbers
+--     WHERE id = v_number AND tenant_id = v_tenant AND active) THEN
+--     RAISE EXCEPTION 'Choose an active default WhatsApp number in Settings first.';
+--   END IF;
+--   INSERT INTO public.conversations (tenant_id, contact_id, channel, wa_number_id, bot_enabled)
+--     VALUES (v_tenant, p_contact_id, 'whatsapp', v_number, false)
+--     ON CONFLICT (tenant_id, contact_id) WHERE channel = 'whatsapp'
+--     DO UPDATE SET wa_number_id = coalesce(conversations.wa_number_id, EXCLUDED.wa_number_id)
+--     RETURNING id, wa_number_id INTO v_id, v_actual_number;
+--   IF v_actual_number IS DISTINCT FROM v_number THEN
+--     RAISE EXCEPTION 'The conversation was opened on another WhatsApp line. Refresh and check its routing.';
+--   END IF;
+--   RETURN v_id;
+-- END;
+-- $$;
 --   DROP FUNCTION IF EXISTS public.apply_mfa_session_gate();
 --   DROP FUNCTION IF EXISTS public.session_meets_mfa();
 -- END
@@ -144,6 +211,20 @@ $$;
 
 REVOKE ALL ON FUNCTION public.session_meets_mfa() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.session_meets_mfa() TO authenticated, service_role;
+
+-- ── 1b. open_contact_whatsapp() must be PR #66's version before it is guarded ─
+-- This file re-creates the function from #66's body. If #66 is not applied, that
+-- would install #66 behind its back; so stop and say which file comes first.
+DO $$
+BEGIN
+  IF to_regprocedure('public.open_contact_whatsapp(uuid)') IS NULL
+     OR pg_get_functiondef(to_regprocedure('public.open_contact_whatsapp(uuid)')) NOT LIKE '%contact_identities%'
+  THEN
+    RAISE EXCEPTION
+      'mfa_session_gate: apply 20261007130000_open_contact_whatsapp_phone_identity.sql first (open_contact_whatsapp is missing or is not that version); nothing was changed';
+  END IF;
+END
+$$;
 
 -- ── 2. Pre-flight: stop before changing anything if the rule cannot run ─────
 -- Calls the real function the way a request does (a token with no code, for a
@@ -260,6 +341,81 @@ BEGIN
 END; $$;
 REVOKE ALL ON FUNCTION public.list_subscribers() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.list_subscribers() TO authenticated;
+
+-- ── 5. open_contact_whatsapp(): a definer function skips policies, too ───────
+-- PR #66's body (20261007130000_open_contact_whatsapp_phone_identity.sql), copied
+-- unchanged, plus ONE guard placed right after its own sign-in check, so a caller
+-- with no identity still gets #66's message and everybody else the gate lets in
+-- gets exactly what #66 gave. REVOKE/GRANT are #66's, repeated so a re-run can
+-- never leave the function more open than #66 left it.
+CREATE OR REPLACE FUNCTION public.open_contact_whatsapp(p_contact_id uuid)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE
+  v_tenant uuid;
+  v_contact public.contacts%ROWTYPE;
+  v_conversation public.conversations%ROWTYPE;
+  v_number uuid;
+  v_id uuid;
+  v_actual_number uuid;
+BEGIN
+  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Please sign in again.'; END IF;
+  IF NOT public.session_meets_mfa() THEN
+    RAISE EXCEPTION 'Two-factor code required' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  v_tenant := public.current_tenant_id();
+  IF v_tenant IS NULL THEN RAISE EXCEPTION 'Your workspace is not ready.'; END IF;
+  SELECT * INTO v_contact FROM public.contacts
+    WHERE id = p_contact_id AND tenant_id = v_tenant FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Contact not found.'; END IF;
+
+  -- A number the contact card shows: a phone identity, or the phone on the
+  -- contact record.
+  IF btrim(coalesce(v_contact.phone, '')) = '' AND NOT EXISTS (
+    SELECT 1 FROM public.contact_identities i
+     WHERE i.tenant_id = v_tenant AND i.contact_id = p_contact_id
+       AND i.kind = 'phone' AND i.normalized <> ''
+  ) THEN
+    RAISE EXCEPTION 'Add a WhatsApp phone number to this contact first.';
+  END IF;
+
+  IF NOT coalesce(v_contact.consent_given, false) THEN
+    RAISE EXCEPTION 'Record this contact''s permission before starting a WhatsApp conversation.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.organizations WHERE id = v_tenant
+    AND NOT suspended AND subscription_status IN ('trial', 'active')) THEN
+    RAISE EXCEPTION 'Sending is paused for this workspace. Check its subscription.';
+  END IF;
+  SELECT * INTO v_conversation FROM public.conversations
+    WHERE tenant_id = v_tenant AND contact_id = p_contact_id AND channel = 'whatsapp';
+  SELECT assigned_wa_number_id INTO v_number FROM public.leads
+    WHERE tenant_id = v_tenant AND contact_id = p_contact_id AND assigned_wa_number_id IS NOT NULL
+    ORDER BY created_at, id LIMIT 1;
+  IF v_number IS NOT NULL AND v_conversation.wa_number_id IS NOT NULL
+     AND v_number <> v_conversation.wa_number_id THEN
+    RAISE EXCEPTION 'This contact is assigned to a different WhatsApp line. Ask an administrator to resolve its routing.';
+  END IF;
+  v_number := coalesce(v_number, v_conversation.wa_number_id);
+  IF v_number IS NULL THEN
+    SELECT id INTO v_number FROM public.wa_numbers
+      WHERE tenant_id = v_tenant AND active AND is_default ORDER BY id LIMIT 1;
+  END IF;
+  IF v_number IS NULL OR NOT EXISTS (SELECT 1 FROM public.wa_numbers
+    WHERE id = v_number AND tenant_id = v_tenant AND active) THEN
+    RAISE EXCEPTION 'Choose an active default WhatsApp number in Settings first.';
+  END IF;
+  INSERT INTO public.conversations (tenant_id, contact_id, channel, wa_number_id, bot_enabled)
+    VALUES (v_tenant, p_contact_id, 'whatsapp', v_number, false)
+    ON CONFLICT (tenant_id, contact_id) WHERE channel = 'whatsapp'
+    DO UPDATE SET wa_number_id = coalesce(conversations.wa_number_id, EXCLUDED.wa_number_id)
+    RETURNING id, wa_number_id INTO v_id, v_actual_number;
+  IF v_actual_number IS DISTINCT FROM v_number THEN
+    RAISE EXCEPTION 'The conversation was opened on another WhatsApp line. Refresh and check its routing.';
+  END IF;
+  RETURN v_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.open_contact_whatsapp(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.open_contact_whatsapp(uuid) TO authenticated;
 
 COMMIT;
 
