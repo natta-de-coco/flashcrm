@@ -2850,3 +2850,234 @@ describe("no secret is ever in a request address (round 3, finding 1)", () => {
     assert.deepEqual(result.map((r) => r.outcome).sort(), ["healthy", "healthy"]);
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 3, finding 2: a reconnect is noticed whichever columns it writes
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("a reconnect through the channel picker is not overwritten by a check that was running (round 3, finding 2)", () => {
+  const OLD_AUTH = "aaaaaaaa-0000-4000-8000-0000000000c1";
+  const NEW_AUTH = "aaaaaaaa-0000-4000-8000-0000000000c2";
+
+  const encrypted = (accessToken) =>
+    tokenStore.encryptTokensForStorage({
+      tenantId: A,
+      platform: "facebook",
+      accessToken,
+      refreshToken: null,
+    });
+
+  /** A Facebook Page that keeps its token encrypted on the account itself, as the channel picker stores it. */
+  const page = async (over = {}) =>
+    world.account({
+      access_token: null,
+      refresh_token: null,
+      authorization_id: OLD_AUTH,
+      ...(await encrypted(SECRET.meta)),
+      last_validation_success_at: iso(-HOUR),
+      last_validation_attempt_at: iso(-HOUR),
+      ...over,
+    });
+
+  /** What connectDiscoveredChannels writes when the same channel comes back. */
+  const reconnectColumns = async () => ({
+    ...(await encrypted(SECRET.metaNew)),
+    authorization_id: NEW_AUTH,
+    active: true,
+    health: "connected",
+    connection_state: "connected",
+    last_error: null,
+    last_error_at: null,
+    retry_count: 0,
+    next_retry_at: null,
+    last_validation_success_at: null,
+    last_validation_attempt_at: null,
+  });
+
+  /** Facebook answers the first question with `answer`, after `flip` has run (the person acts meanwhile). */
+  const answering = (answer, flip) => [
+    on(`${GRAPH}/1000?fields=id`, () => {
+      flip();
+      return answer();
+    }),
+    on(`${GRAPH}/me/permissions`, () =>
+      json(200, {
+        data: requiredScopesFor("facebook").map((permission) => ({
+          permission,
+          status: "granted",
+        })),
+      }),
+    ),
+  ];
+  const refused = () => json(401, { error: { message: "Invalid OAuth access token.", code: 190 } });
+  const accepted = () => json(200, { id: "1000" });
+
+  for (const [what, answer] of [
+    ["refuses the old token", refused],
+    ["accepts the old token", accepted],
+  ]) {
+    test(`a reconnect that lands while the platform ${what}: the new sign-in is kept as it is`, async () => {
+      const account = await page();
+      const fresh = await reconnectColumns();
+      let snapshot;
+      world.provider(
+        answering(answer, () => {
+          Object.assign(world.stored(account.id), fresh);
+          snapshot = clone(world.stored(account.id));
+        }),
+      );
+      const result = await check(account.id);
+
+      assert.equal(result.outcome, "changed_while_checking");
+      const row = world.stored(account.id);
+      assert.equal(
+        row.active,
+        true,
+        "the account is not switched off by an answer about the old token",
+      );
+      assert.equal(row.connection_state, "connected", "and is not called revoked");
+      assert.equal(row.authorization_id, NEW_AUTH);
+      assert.equal(row.access_token_enc, fresh.access_token_enc);
+      assert.equal(
+        row.last_validation_success_at,
+        null,
+        "no proof about the old token on the new one",
+      );
+      assert.deepEqual(clone(row), snapshot, "nothing at all was written over the reconnect");
+    });
+  }
+
+  // A reconnect writes several columns at once; whichever of them alone differs, the check is stale.
+  const alone = {
+    "the encrypted access token": async () => ({
+      access_token_enc: (await reconnectColumns()).access_token_enc,
+    }),
+    "the encrypted refresh token": async () => ({
+      refresh_token_enc: "v1:k1:another-refresh-token",
+    }),
+    "the sign-in the channel belongs to": async () => ({ authorization_id: NEW_AUTH }),
+  };
+  for (const [name, columns] of Object.entries(alone)) {
+    test(`a change to ${name} alone is noticed`, async () => {
+      const account = await page();
+      const changed = await columns();
+      let snapshot;
+      world.provider(
+        answering(accepted, () => {
+          Object.assign(world.stored(account.id), changed);
+          snapshot = clone(world.stored(account.id));
+        }),
+      );
+      const result = await check(account.id);
+      assert.equal(result.outcome, "changed_while_checking");
+      assert.deepEqual(clone(world.stored(account.id)), snapshot);
+    });
+  }
+
+  test("a refresh token stored meanwhile on an account of the old kind is noticed too", async () => {
+    const account = world.account({ access_token: `sealed:${SECRET.meta}`, refresh_token: null });
+    let snapshot;
+    world.provider(
+      answering(accepted, () => {
+        world.stored(account.id).refresh_token = "sealed:stored-by-a-reconnect";
+        snapshot = clone(world.stored(account.id));
+      }),
+    );
+    const result = await check(account.id);
+    assert.equal(result.outcome, "changed_while_checking");
+    assert.deepEqual(clone(world.stored(account.id)), snapshot);
+  });
+
+  test("a channel on a sign-in: a reconnect that moves it to a new sign-in is noticed", async () => {
+    const account = world.account({
+      platform: "youtube",
+      external_id: "UC1",
+      access_token: null,
+      refresh_token: null,
+      authorization_id: OLD_AUTH,
+      access_token_enc: null,
+      refresh_token_enc: null,
+    });
+    const tokens = await authorizations.encryptAuthorizationTokens({
+      tenantId: A,
+      authorizationId: OLD_AUTH,
+      accessToken: SECRET.googleAccess,
+      refreshToken: SECRET.googleRefresh,
+    });
+    world.db.table("social_authorizations").push({
+      id: OLD_AUTH,
+      tenant_id: A,
+      provider: "google",
+      platform: "youtube",
+      authorization_state: "active",
+      expires_at: null,
+      granted_scopes: requiredScopesFor("youtube"),
+      requested_scopes: requiredScopesFor("youtube"),
+      ...tokens,
+    });
+    let snapshot;
+    world.provider([
+      tokeninfo(() => {
+        Object.assign(world.stored(account.id), { authorization_id: NEW_AUTH });
+        snapshot = clone(world.stored(account.id));
+        return json(200, { scope: requiredScopesFor("youtube").join(" "), expires_in: "3000" });
+      }),
+    ]);
+    const result = await check(account.id);
+    assert.equal(result.outcome, "changed_while_checking");
+    assert.deepEqual(clone(world.stored(account.id)), snapshot);
+  });
+
+  test("a sign-in, a switch or a state that changes between the last look and the write is refused by the write itself", async () => {
+    // The look at the credentials and the write are two requests. What the write can match without
+    // naming a secret -- the sign-in, whether the account is on, its state -- it matches in the
+    // database, so a change landing between the two is still refused.
+    for (const change of [
+      { authorization_id: NEW_AUTH },
+      { active: false },
+      { connection_state: "token_expiring" },
+    ]) {
+      world.reset();
+      const account = await page();
+      let snapshot;
+      world.provider(answering(accepted, () => {}));
+      world.db.fail("social_accounts:update", () => {
+        Object.assign(world.stored(account.id), change);
+        snapshot = clone(world.stored(account.id));
+        return undefined;
+      });
+      const result = await check(account.id);
+      assert.equal(result.outcome, "changed_while_checking", JSON.stringify(change));
+      assert.deepEqual(clone(world.stored(account.id)), snapshot);
+      world.restore();
+    }
+  });
+
+  test("where the channel columns do not exist the old kind of account is still checked and saved", async () => {
+    const account = world.account();
+    world.provider(facebookHealthy());
+    world.db.fail("social_accounts:read", (q) =>
+      String(q.columns ?? "").includes("authorization_id")
+        ? { code: "42703", message: "column social_accounts.authorization_id does not exist" }
+        : undefined,
+    );
+    const result = await check(account.id);
+    assert.equal(result.outcome, "healthy");
+    assert.ok(world.stored(account.id).last_validation_success_at);
+  });
+
+  test("a read of the credentials that fails for another reason stops the check without writing", async () => {
+    const account = world.account();
+    world.provider([]);
+    world.db.fail("social_accounts:read", (q) =>
+      String(q.columns ?? "").includes("authorization_id")
+        ? { code: "57014", message: "canceling statement due to statement timeout" }
+        : undefined,
+    );
+    const before = clone(world.stored(account.id));
+    const result = await check(account.id);
+    assert.equal(result.outcome, "failed");
+    assert.deepEqual(clone(world.stored(account.id)), before);
+    assert.equal(world.fetches.length, 0);
+  });
+});

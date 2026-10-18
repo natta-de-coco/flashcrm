@@ -664,6 +664,7 @@ async function runCheck(
     active: row.active,
     connection_state: row.connection_state,
     credentials: started.fingerprint,
+    authorizationId: started.authorization_id,
   };
   let refreshed = false;
   let refreshError: string | null = null;
@@ -781,6 +782,7 @@ async function runCheck(
       expiresAt = cur.token_expires_at;
       // The answer is about somebody else's renewed token, so that is the token to match.
       unchangedSince.credentials = cur.fingerprint;
+      unchangedSince.authorizationId = cur.authorization_id;
       probe = token
         ? await runProbe(row.platform, token, row.external_id)
         : ({ kind: "unreachable", message: "No token." } as const);

@@ -11,10 +11,8 @@
 // they are read on their own, through an untyped client, and a missing column means "this account
 // has no such token".
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { isMissingColumnError } from "@/lib/connection-evidence.server";
+import { CHANNEL_COLUMNS, isMissingColumnError } from "@/lib/connection-evidence.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-
-const CHANNEL_COLUMNS = ["authorization_id", "access_token_enc", "refresh_token_enc"] as const;
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type UntypedClient = SupabaseClient<any, "public", any>;

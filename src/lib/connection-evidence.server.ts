@@ -225,12 +225,27 @@ export type CheckStart = {
   active: boolean;
   /** Left out (undefined) when the write is not about the state, only about keeping a new token. */
   connection_state?: string | null | undefined;
-  /** credentialsOf().fingerprint of the stored credentials the check used. */
+  /** The fingerprint of the stored credentials the check used (readCredentials). */
   credentials: string;
+  /**
+   * The sign-in the channel belongs to: an id, not a secret, so the write itself can match it.
+   * undefined where the column does not exist.
+   */
+  authorizationId?: string | null | undefined;
 };
 
-/** The columns whose values are the account's credentials. Their values never leave the server. */
-const CREDENTIAL_COLUMNS = ["access_token", "refresh_token"] as const;
+/**
+ * Where an account keeps its credentials. A reconnect writes some or all of these (the old way
+ * replaces access_token; the channel picker writes the encrypted columns and a new sign-in), so all
+ * of them are part of the fingerprint. Their values never leave the server.
+ */
+const TOKEN_COLUMNS = ["access_token", "refresh_token"] as const;
+/** Written by the channel-picker migrations; a database may not have them yet. */
+export const CHANNEL_COLUMNS = [
+  "authorization_id",
+  "access_token_enc",
+  "refresh_token_enc",
+] as const;
 
 export type CredentialsRead =
   | {
@@ -238,7 +253,9 @@ export type CredentialsRead =
       access_token: string | null;
       refresh_token: string | null;
       token_expires_at: string | null;
-      /** SHA-256 of the stored credentials, as they are stored. Safe to compare, keep and log. */
+      /** The sign-in this account belongs to. undefined where the column does not exist. */
+      authorization_id: string | null | undefined;
+      /** SHA-256 of every stored credential, as stored. Safe to compare, keep and log. */
       fingerprint: string;
     }
   /** The account is not there (any more) for this workspace. */
@@ -255,28 +272,37 @@ async function fingerprintOf(parts: ReadonlyArray<string | null>): Promise<strin
 /**
  * Reads what an account stores as credentials, once, and fingerprints it. The comparison of "is it
  * still the credentials the check used" is made here, in memory, on a fresh read -- not by asking
- * the database to match the token in a filter, which would write the token into the request address.
+ * the database to match a token in a filter, which would write the token into the request address.
+ * Where the channel columns do not exist the account has no such credentials.
  */
 export async function readCredentials(
   tenantId: string,
   accountId: string,
 ): Promise<CredentialsRead> {
-  try {
-    const { data, error } = await untyped()
+  const read = async (columns: readonly string[]) =>
+    await untyped()
       .from("social_accounts")
-      .select([...CREDENTIAL_COLUMNS, "token_expires_at"].join(", "))
+      .select([...columns, "token_expires_at"].join(", "))
       .eq("id", accountId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
-    if (error) return { kind: "error" };
-    if (!data) return { kind: "gone" };
-    const row = data as unknown as Record<string, string | null | undefined>;
+  try {
+    let result = await read([...TOKEN_COLUMNS, ...CHANNEL_COLUMNS]);
+    if (result.error && isMissingColumnError(result.error, CHANNEL_COLUMNS)) {
+      result = await read(TOKEN_COLUMNS);
+    }
+    if (result.error) return { kind: "error" };
+    if (!result.data) return { kind: "gone" };
+    const row = result.data as unknown as Record<string, string | null | undefined>;
     return {
       kind: "ok",
       access_token: row["access_token"] ?? null,
       refresh_token: row["refresh_token"] ?? null,
       token_expires_at: row["token_expires_at"] ?? null,
-      fingerprint: await fingerprintOf(CREDENTIAL_COLUMNS.map((column) => row[column] ?? null)),
+      authorization_id: "authorization_id" in row ? (row["authorization_id"] ?? null) : undefined,
+      fingerprint: await fingerprintOf(
+        [...TOKEN_COLUMNS, ...CHANNEL_COLUMNS].map((column) => row[column] ?? null),
+      ),
     };
   } catch {
     return { kind: "error" };
@@ -348,6 +374,11 @@ export async function writeCheck(args: {
     query = equalsOrNull(query, "active", start.active);
     if (start.connection_state !== undefined) {
       query = equalsOrNull(query, "connection_state", start.connection_state);
+    }
+    // The sign-in is an id, not a secret: the database itself refuses a write onto a channel that
+    // was moved to another sign-in after the credentials were last looked at.
+    if (start.authorizationId !== undefined) {
+      query = equalsOrNull(query, "authorization_id", start.authorizationId);
     }
     // The evidence columns are only asked for back when they are part of this attempt.
     return await query.select(
