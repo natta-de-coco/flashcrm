@@ -37,6 +37,14 @@
 -- request before pasting.
 --
 -- NOT COVERED HERE (on purpose; listed in the pull request):
+--   * tenant_alert_settings and lead_alerts_log (the lead-alert recipients and
+--     their log): 20261016142000_settings_alert_prerequisites.sql (PR #87)
+--     stops with "Alert prerequisite policy drift" when either table carries a
+--     policy it does not know, and it runs in the repository's re-run check. A
+--     gate policy there would make that file fail the day it is pasted. They are
+--     left out of apply_mfa_session_gate() below, by name, until that check
+--     ignores a policy called mfa_session_gate; then delete the two names from
+--     the list and run SELECT public.apply_mfa_session_gate();
 --   * open_contact_whatsapp(): PR #66 redefines the same function, and these
 --     files are pasted by hand in any order, so guarding it here would be
 --     silently undone by whichever file runs last. Guard it after #66 is live.
@@ -171,6 +179,9 @@ AS $$
 DECLARE
   target record;
   covered integer := 0;
+  -- See "NOT COVERED HERE" at the top of the file. Delete a name once nothing
+  -- refuses a policy on that table any more.
+  left_out constant text[] := ARRAY['tenant_alert_settings', 'lead_alerts_log'];
 BEGIN
   FOR target IN
     SELECT n.nspname AS schema_name, c.relname AS table_name
@@ -179,6 +190,7 @@ BEGIN
      WHERE c.relkind IN ('r', 'p')
        AND c.relrowsecurity
        AND n.nspname = 'public'
+       AND NOT (c.relname = ANY (left_out))
      UNION ALL
     SELECT n.nspname, c.relname
       FROM pg_catalog.pg_class c
@@ -217,6 +229,7 @@ BEGIN
    WHERE c.relkind IN ('r', 'p')
      AND c.relrowsecurity
      AND n.nspname = 'public'
+     AND c.relname NOT IN ('tenant_alert_settings', 'lead_alerts_log')
      AND NOT EXISTS (
        SELECT 1 FROM pg_catalog.pg_policy p
         WHERE p.polrelid = c.oid
@@ -248,14 +261,18 @@ GRANT EXECUTE ON FUNCTION public.list_subscribers() TO authenticated;
 
 COMMIT;
 
--- ── Verification (read-only). Expect: missing = 0, gated = rls_tables + 1 ───
--- (the +1 is storage.objects).
+-- ── Verification (read-only). Expect: missing = 0 and
+--    gated = rls_tables - left_out + 1   (the +1 is storage.objects) ─────────
 SELECT
   (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relrowsecurity) AS rls_tables,
+  (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relrowsecurity
+      AND c.relname IN ('tenant_alert_settings', 'lead_alerts_log')) AS left_out,
   (SELECT count(*) FROM pg_policies
     WHERE policyname = 'mfa_session_gate' AND permissive = 'RESTRICTIVE') AS gated,
   (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relrowsecurity
+      AND c.relname NOT IN ('tenant_alert_settings', 'lead_alerts_log')
       AND NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid
                        AND p.polname = 'mfa_session_gate' AND NOT p.polpermissive)) AS missing;

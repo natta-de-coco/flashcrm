@@ -355,6 +355,24 @@ const listProtected = async () =>
        order by 1, 2`)
   ).rows;
 const qname = (t) => `"${t.schema}"."${t.name}"`;
+/**
+ * Tables the migration leaves out of the gate on purpose, and why. The set of
+ * tables that really lack the gate must equal this list exactly: a table taken
+ * off it without being gated, or left off the gate without being listed, fails.
+ */
+const LEFT_OUT = new Map([
+  [
+    "tenant_alert_settings",
+    "20261016142000_settings_alert_prerequisites.sql (PR #87) stops when this table has a policy it does not know",
+  ],
+  [
+    "lead_alerts_log",
+    "20261016142000_settings_alert_prerequisites.sql (PR #87) stops when this table has a policy it does not know",
+  ],
+]);
+const isLeftOut = (t) => t.schema === "public" && LEFT_OUT.has(t.name);
+/** What the gate is meant to cover: every protected table except the ones named above. */
+const listGated = async () => (await listProtected()).filter((t) => !isLeftOut(t));
 
 /** Everything about a table the matrix needs to put one row in it and try the four verbs. */
 async function describe(t) {
@@ -619,17 +637,22 @@ heading("applying the migration");
 const first = await apply(c, mineSql);
 check("the migration applies", first.error === null, first.error?.message);
 const verification = first.results?.[first.results.length - 1]?.rows?.[0];
-const protectedNow = await listProtected();
-const publicCount = protectedNow.filter((t) => t.schema === "public").length;
+const allProtected = await listProtected();
+const protectedNow = await listGated();
+const publicCount = allProtected.filter((t) => t.schema === "public").length;
+const leftOutNow = allProtected.filter(isLeftOut).length;
 check(
   "its own closing query reports every table gated and none missing",
   verification &&
     Number(verification.rls_tables) === publicCount &&
-    Number(verification.gated) === publicCount + 1 &&
+    Number(verification.left_out) === leftOutNow &&
+    Number(verification.gated) === publicCount - leftOutNow + 1 &&
     Number(verification.missing) === 0,
   JSON.stringify(verification),
 );
-console.log(`  (${publicCount} tables with row-level security in public, plus storage.objects)`);
+console.log(
+  `  (${publicCount} tables with row-level security in public, ${leftOutNow} left out by name, plus storage.objects: ${protectedNow.length} gated)`,
+);
 
 heading("the policy itself, on every table from the catalogue");
 // Postgres prints the policy's `(SELECT public.session_meets_mfa())` back as a sub-select.
@@ -1085,16 +1108,20 @@ if (after.length === 0) console.log("  (none yet)");
 heading(
   "guard: every table with row-level security has the gate; every table has row-level security",
 );
+/** RLS tables in public with no gate policy, other than the ones LEFT_OUT names. */
 const gateMissing = async () =>
   (
     await c.query(`
-      select n.nspname || '.' || c.relname as t
+      select c.relname as name
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname = 'public' and c.relkind in ('r','p') and c.relrowsecurity
          and not exists (select 1 from pg_policy p where p.polrelid = c.oid
                            and p.polname = 'mfa_session_gate' and not p.polpermissive)
        order by 1`)
-  ).rows.map((r) => r.t);
+  ).rows
+    .map((r) => r.name)
+    .filter((name) => !LEFT_OUT.has(name))
+    .map((name) => `public.${name}`);
 {
   const missing = await gateMissing();
   check(
@@ -1103,6 +1130,22 @@ const gateMissing = async () =>
     missing.length
       ? `${missing.join(", ")} -- end the migration that adds it with: SELECT public.apply_mfa_session_gate();`
       : "",
+  );
+  const ungated = (
+    await c.query(`
+      select c.relname as name
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind in ('r','p') and c.relrowsecurity
+         and not exists (select 1 from pg_policy p where p.polrelid = c.oid
+                           and p.polname = 'mfa_session_gate' and not p.polpermissive)
+       order by 1`)
+  ).rows.map((r) => r.name);
+  for (const name of ungated)
+    console.log(`  KNOWN GAP  table ${name} has no gate: ${LEFT_OUT.get(name) ?? "NOT LISTED"}`);
+  check(
+    "the tables without the gate are exactly the ones the migration leaves out by name",
+    [...ungated].sort().join(",") === [...LEFT_OUT.keys()].sort().join(","),
+    ungated.join(", "),
   );
   const noRls = (
     await c.query(`
