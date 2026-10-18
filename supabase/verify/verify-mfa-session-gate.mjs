@@ -720,22 +720,75 @@ check(
   );
   check("...and nothing was installed", (await snapshot()) === untouched);
 }
+/** A role the way the SQL editor might run as: may create in public and see the auth schema, nothing more. */
+async function makeRole(name, attributes = "login") {
+  await c.query(`create role ${name} ${attributes} password '${name}'`);
+  await c.query(`grant create, usage on schema public to ${name}`);
+  await c.query(`grant usage on schema auth, extensions to ${name}`);
+}
+const dropRole = async (name) => {
+  await c.query(`drop owned by ${name}`);
+  await c.query(`drop role ${name}`);
+};
 {
-  // (b) the owner of the file is not allowed to read the factor table
-  await c.query("create role migrator login password 'migrator'");
-  await c.query("grant create, usage on schema public to migrator");
-  await c.query("grant usage on schema auth, extensions to migrator");
+  // (b) the owner of the file has no SELECT on the factor table (row-level security off here,
+  // so that this is the only thing in the way; with it on, the answer is case (b2) below)
+  await c.query("alter table auth.mfa_factors disable row level security");
+  await makeRole("migrator");
   const m = await connect("migrator", "migrator");
   const r = await apply(m, mineSql);
   await m.end();
-  await c.query("drop owned by migrator");
-  await c.query("drop role migrator");
+  await dropRole("migrator");
+  await c.query("alter table auth.mfa_factors enable row level security");
   check(
     "owner may not read the factor table: the file fails before creating a policy",
     r.error && /permission denied for table mfa_factors/.test(r.error.message),
     r.error ? r.error.message : "it did NOT fail",
   );
   check("...and nothing was installed", (await snapshot()) === untouched);
+}
+{
+  // (b2) the reviewer's case: the owner may SELECT, but row-level security is on for the
+  // factor table and the owner is exempt from it in no way. It reads ZERO rows, no error,
+  // so "no factor" would be the answer for everybody and the gate would be inert.
+  await makeRole("migrator");
+  await c.query("grant select on auth.mfa_factors to migrator");
+  const m = await connect("migrator", "migrator");
+  const r = await apply(m, mineSql);
+  await m.end();
+  await dropRole("migrator");
+  check(
+    "owner can select but is not exempt from row-level security on the factor table: the file fails, in plain words",
+    r.error &&
+      /mfa_factors/.test(r.error.message) &&
+      /row-level security/i.test(r.error.message) &&
+      /nothing was changed/i.test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+}
+{
+  // (b3) the same, when the rule already exists with such an owner and a different role runs the file
+  // (CREATE OR REPLACE keeps the owner). The owner of the RULE is what matters, not who pastes the file.
+  await makeRole("migrator");
+  await c.query("grant select on auth.mfa_factors to migrator");
+  await c.query(
+    "create function public.session_meets_mfa() returns boolean language sql as 'select true'",
+  );
+  await c.query("alter function public.session_meets_mfa() owner to migrator");
+  const r = await apply(c, mineSql);
+  const left = (await snapshot()) === JSON.stringify({ ...JSON.parse(untouched), functions: 1 });
+  await c.query("drop function public.session_meets_mfa()");
+  await dropRole("migrator");
+  check(
+    "the rule is owned by a role that sees no factor rows: the file fails, whoever runs it",
+    r.error &&
+      /row-level security/i.test(r.error.message) &&
+      /nothing was changed/i.test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing else was installed", left);
+  check("...(harness clean-up done)", (await snapshot()) === untouched);
 }
 {
   // (d) PR #66 is not applied (the live open_contact_whatsapp does not read contact_identities):
@@ -935,6 +988,11 @@ heading("the helper");
   check(
     "SECURITY DEFINER with an empty search_path",
     fn.prosecdef && (fn.proconfig ?? []).some((x) => /^search_path=("")?$/.test(x)),
+    JSON.stringify(fn.proconfig),
+  );
+  check(
+    "row_security = off in its settings: if its owner could not see the factor table it ERRORS instead of reading nothing",
+    (fn.proconfig ?? []).includes("row_security=off"),
     JSON.stringify(fn.proconfig),
   );
   check("STABLE (so a policy may evaluate it once per statement)", fn.provolatile === "s");
@@ -1297,6 +1355,42 @@ heading("the helper cannot fail open");
   );
 }
 
+heading("the rule never turns itself off in silence");
+{
+  // Later, the role that owns the rule loses its exemption (someone takes BYPASSRLS away,
+  // the project moves to another owner). The rule must then ERROR for the people who need
+  // the factor table, never answer "no factor".
+  await makeRole("migrator");
+  await c.query("grant select on auth.mfa_factors to migrator");
+  await c.query("alter function public.session_meets_mfa() owner to migrator");
+  const a1 = await mfaAnswer(AT(alice, AAL1));
+  const b1 = await mfaAnswer(AT(bob, AAL1));
+  const a2 = await mfaAnswer(AT(alice, AAL2));
+  const read = await countOf(AT(alice, AAL1), "contacts");
+  await c.query("alter function public.session_meets_mfa() owner to postgres");
+  await dropRole("migrator");
+  check(
+    "owner not exempt from row-level security: a verified-factor person at aal1 gets an error, not 'true'",
+    typeof a1 === "string" && a1.startsWith("error 42501"),
+    String(a1),
+  );
+  check(
+    "...a person with no factor gets an error too (a visible outage, not a silent pass)",
+    typeof b1 === "string" && b1.startsWith("error 42501"),
+    String(b1),
+  );
+  check("...a person with the code never needs the table and is fine", a2 === true, String(a2));
+  check(
+    "...and reading company data at aal1 is an error, never a row",
+    typeof read === "string" && read.startsWith("error"),
+    String(read),
+  );
+  check(
+    "...and with the owner back, the rule is right again",
+    (await mfaAnswer(AT(alice, AAL1))) === false && (await mfaAnswer(AT(bob, AAL1))) === true,
+  );
+}
+
 // ---------------------------------------------------------------------------
 heading("run twice");
 const snapshotAll = async () =>
@@ -1548,6 +1642,97 @@ heading("full rollback (the single statement printed in the file)");
   check("the file applies again after a rollback", again.error === null, again.error?.message);
   check("...and everything is as after the first run", (await snapshotAll()) === afterFirst);
   check("...and it blocks again", (await countOf(AT(alice, AAL1), "contacts")) === 0);
+}
+
+// ---------------------------------------------------------------------------
+heading(
+  "who may own the rule: only a role that is exempt from row-level security on the factor table",
+);
+{
+  await apply(c, ROLLBACK); // start from the database without the gate
+  const clean = await snapshot();
+  const scenarios_ = [
+    {
+      label:
+        "a role with BYPASSRLS, not a superuser (what the hosted postgres role is believed to be)",
+      attributes: "login bypassrls",
+      setup: async () => {},
+      undo: async () => {},
+      accepted: true,
+    },
+    {
+      label: "the owner of the factor table (exempt as its owner)",
+      attributes: "login",
+      setup: async () => c.query("alter table auth.mfa_factors owner to rule_owner"),
+      undo: async () => c.query("alter table auth.mfa_factors owner to postgres"),
+      accepted: true,
+    },
+    {
+      label:
+        "the owner of the factor table, with FORCE ROW LEVEL SECURITY (the owner is then not exempt)",
+      attributes: "login",
+      setup: async () => {
+        await c.query("alter table auth.mfa_factors owner to rule_owner");
+        await c.query("alter table auth.mfa_factors force row level security");
+      },
+      undo: async () => {
+        await c.query("alter table auth.mfa_factors no force row level security");
+        await c.query("alter table auth.mfa_factors owner to postgres");
+      },
+      accepted: false,
+    },
+    {
+      label: "a plain role with no exemption",
+      attributes: "login",
+      setup: async () => {},
+      undo: async () => {},
+      accepted: false,
+    },
+  ];
+  for (const sc of scenarios_) {
+    await makeRole("rule_owner", sc.attributes);
+    await c.query("grant select on auth.mfa_factors to rule_owner");
+    await sc.setup();
+    await c.query(
+      "create function public.session_meets_mfa() returns boolean language sql as 'select true'",
+    );
+    await c.query("alter function public.session_meets_mfa() owner to rule_owner");
+    const r = await apply(c, mineSql);
+    if (sc.accepted) {
+      const answers = [
+        await mfaAnswer(AT(alice, AAL1)),
+        await mfaAnswer(AT(bob, AAL1)),
+        await mfaAnswer(AT(alice, AAL2)),
+      ];
+      const reads = [
+        await countOf(AT(alice, AAL1), "contacts"),
+        await countOf(AT(bob, AAL1), "contacts"),
+      ];
+      check(
+        `${sc.label}: the file is accepted, and the rule is right (aal1+factor ${answers[0]}, aal1 no factor ${answers[1]}, aal2 ${answers[2]}; contacts ${reads})`,
+        r.error === null &&
+          answers[0] === false &&
+          answers[1] === true &&
+          answers[2] === true &&
+          reads[0] === 0 &&
+          reads[1] === 2,
+        r.error?.message,
+      );
+      await apply(c, ROLLBACK);
+    } else {
+      check(
+        `${sc.label}: the file is refused, in plain words, before any policy`,
+        r.error &&
+          /row-level security/i.test(r.error.message) &&
+          /nothing was changed/i.test(r.error.message),
+        r.error ? r.error.message : "it did NOT fail",
+      );
+      await c.query("drop function if exists public.session_meets_mfa()");
+    }
+    await sc.undo();
+    await dropRole("rule_owner");
+    check("...and the database is back to without the gate", (await snapshot()) === clean);
+  }
 }
 
 await finish();

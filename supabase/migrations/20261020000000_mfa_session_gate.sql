@@ -172,6 +172,14 @@ SET LOCAL lock_timeout = '10s';
 -- There is deliberately no EXCEPTION block: if this function cannot do its job
 -- the statement fails loudly (an outage we would notice and kill-switch) rather
 -- than answering "true" in silence (a gap nobody would notice).
+-- SET row_security = off is the same promise for one case that is otherwise
+-- silent: if row-level security is on for auth.mfa_factors and the role that
+-- owns this function is exempt from it neither as a superuser, nor by BYPASSRLS,
+-- nor as the table's owner, a plain query reads ZERO rows without any error, so
+-- "no factor" would be the answer for everybody and the gate would be inert. With
+-- row_security off, PostgreSQL raises "query would be affected by row-level
+-- security policy" instead. An exempt owner (the project's postgres role) is not
+-- affected by the setting. The pre-flight below turns the error into plain words.
 --   * no identity at all                 -> false
 --   * token says aal2                    -> true  (no table is read)
 --   * anything else (aal1, no claim,
@@ -191,6 +199,7 @@ LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = ''
+SET row_security = off
 AS $$
 BEGIN
   IF auth.uid() IS NULL THEN
@@ -227,23 +236,65 @@ END
 $$;
 
 -- ── 2. Pre-flight: stop before changing anything if the rule cannot run ─────
--- Calls the real function the way a request does (a token with no code, for a
--- person who has no factor), which reads auth.mfa_factors as this file's owner,
--- exactly as the function will at run time. If that is refused or a column is
--- missing, the transaction ends here and no policy has been created.
+-- Calls the real function the way a request does, which reads auth.mfa_factors
+-- as the function's OWNER (not necessarily whoever pastes this file), exactly as
+-- it will at run time:
+--   a. for a person with no factor at all: must answer true. If the owner cannot
+--      read the table (no SELECT; or row-level security on and the owner exempt
+--      from it neither as a superuser, nor by BYPASSRLS, nor as the table's owner,
+--      which would make a plain query see no rows and the gate inert) the call
+--      raises; this block turns that into plain words and ends the transaction
+--      before any policy is created.
+--   b. when somebody already has a verified authenticator app: the rule must
+--      answer false for that person at aal1. This is the only proof on real data
+--      that the rule can see a factor; if nobody has one yet it says so and goes on.
 DO $$
 DECLARE
   nobody constant text := '00000000-0000-0000-0000-000000000000';
   answer boolean;
+  sample uuid;
+  owner_name text;
+  has_rls boolean;
+  exempt_by_role boolean;
+  exempt_as_owner boolean;
 BEGIN
   PERFORM set_config('request.jwt.claim.sub', nobody, true);
   PERFORM set_config('request.jwt.claims', '{"sub":"' || nobody || '","aal":"aal1"}', true);
-  answer := public.session_meets_mfa();
-  PERFORM set_config('request.jwt.claim.sub', '', true);
-  PERFORM set_config('request.jwt.claims', '', true);
+  BEGIN
+    answer := public.session_meets_mfa();
+  EXCEPTION WHEN insufficient_privilege THEN
+    SELECT r.rolname, c.relrowsecurity, (r.rolsuper OR r.rolbypassrls),
+           (pg_has_role(r.oid, c.relowner, 'USAGE') AND NOT c.relforcerowsecurity)
+      INTO owner_name, has_rls, exempt_by_role, exempt_as_owner
+      FROM pg_proc p
+      JOIN pg_roles r ON r.oid = p.proowner,
+           pg_class c
+     WHERE p.oid = 'public.session_meets_mfa()'::regprocedure
+       AND c.oid = 'auth.mfa_factors'::regclass;
+    RAISE EXCEPTION 'mfa_session_gate pre-flight: the role that owns the rule (%) cannot read auth.mfa_factors (%). Row-level security on that table is %; the role is exempt from it as superuser/BYPASSRLS: %; as the table''s owner: %. Without reading it the rule would see no factors and let everybody in, so nothing was changed. Run this file as the project''s postgres role.',
+      owner_name, SQLERRM, CASE WHEN has_rls THEN 'on' ELSE 'off' END, exempt_by_role, exempt_as_owner;
+  END;
   IF answer IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'mfa_session_gate pre-flight: the rule answered % for a person without a factor; nothing was changed', answer;
   END IF;
+
+  SELECT f.user_id INTO sample
+    FROM auth.mfa_factors f
+   WHERE f.status::text = 'verified' AND f.factor_type::text = 'totp'
+   LIMIT 1;
+  IF sample IS NULL THEN
+    RAISE NOTICE 'mfa_session_gate pre-flight: nobody has a verified authenticator app yet, so the rule could not be tried on a real one';
+  ELSE
+    PERFORM set_config('request.jwt.claim.sub', sample::text, true);
+    PERFORM set_config('request.jwt.claims', '{"sub":"' || sample::text || '","aal":"aal1"}', true);
+    answer := public.session_meets_mfa();
+    IF answer IS DISTINCT FROM false THEN
+      RAISE EXCEPTION 'mfa_session_gate pre-flight: the rule answered % for a person who has a verified authenticator app and has not entered the code; the gate would let that person in; nothing was changed', answer;
+    END IF;
+  END IF;
+
+  PERFORM set_config('request.jwt.claim.sub', '', true);
+  PERFORM set_config('request.jwt.claims', '', true);
 END;
 $$;
 

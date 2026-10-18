@@ -51,6 +51,13 @@ CREATE TABLE auth.mfa_factors (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Auth's own tables are assumed to have row-level security on (not confirmed for
+-- the hosted project; on is the worse case for a function that has to read them).
+-- The postgres role of this harness is a superuser and so exempt; a role that is
+-- neither a superuser, nor BYPASSRLS, nor the table's owner sees no rows at all,
+-- which is the silent failure the gate's pre-flight has to catch.
+ALTER TABLE auth.mfa_factors ENABLE ROW LEVEL SECURITY;
+
 -- Realtime publication the first migration adds tables to.
 CREATE PUBLICATION supabase_realtime;
 
