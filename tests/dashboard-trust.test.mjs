@@ -72,8 +72,15 @@ describe("business health score (M7: brief said 62, card said 60)", () => {
     assert.equal(figures.healthGrade(49), "At risk");
   });
 
-  test("no factors is 0, not a division by zero", () => {
-    assert.equal(figures.summariseHealth([]).score, 0);
+  test("no factors or fewer than three measurements cannot fabricate a risk grade", () => {
+    assert.deepEqual(figures.summariseHealth([]), {
+      score: null,
+      grade: "Not enough activity yet",
+    });
+    assert.deepEqual(figures.summariseHealth([{ score: 100 }, { score: null }]), {
+      score: null,
+      grade: "Not enough activity yet",
+    });
   });
 
   test("the method is stated to the reader, and says the weights are equal", () => {

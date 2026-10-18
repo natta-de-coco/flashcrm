@@ -23,7 +23,7 @@ export default screen({
     "dashboard.stat.botRepliesTrend": "replies sent vs last week",
     "dashboard.health.title": "Business health score",
     "dashboard.health.method":
-      "Average of the five factors below, weighted equally and recalculated on every refresh.",
+      "Average of measured factors, weighted equally and recalculated on every refresh. At least three factors need data; missing or partial factors are excluded.",
     "dashboard.health.grade.excellent": "Excellent",
     "dashboard.health.grade.good": "Good",
     "dashboard.health.grade.needsWork": "Needs work",
@@ -31,7 +31,7 @@ export default screen({
     "dashboard.health.factor.responsiveness": "Responsiveness",
     "dashboard.health.factor.inbox": "Inbox hygiene",
     "dashboard.health.factor.pipeline": "Lead flow",
-    "dashboard.health.factor.social": "Social presence",
+    "dashboard.health.factor.social": "Social activity",
     "dashboard.health.factor.consent": "Marketing compliance",
     "dashboard.brief.title": "Flas AI daily brief",
     "dashboard.brief.subtitle":
@@ -107,7 +107,7 @@ export default screen({
     "dashboard.stat.botRepliesTrend": "الردود المرسلة مقارنة بالأسبوع الماضي",
     "dashboard.health.title": "مؤشر صحة الأعمال",
     "dashboard.health.method":
-      "متوسط العوامل الخمسة أدناه بأوزان متساوية، ويُعاد حسابه عند كل تحديث.",
+      "متوسط العوامل المقاسة بأوزان متساوية، ويُعاد حسابه عند كل تحديث. يلزم توفر بيانات لثلاثة عوامل على الأقل؛ تُستبعد العوامل الناقصة أو غير المكتملة.",
     "dashboard.health.grade.excellent": "ممتاز",
     "dashboard.health.grade.good": "جيد",
     "dashboard.health.grade.needsWork": "يحتاج إلى تحسين",
@@ -115,7 +115,7 @@ export default screen({
     "dashboard.health.factor.responsiveness": "سرعة الاستجابة",
     "dashboard.health.factor.inbox": "تنظيم صندوق الوارد",
     "dashboard.health.factor.pipeline": "تدفق العملاء المحتملين",
-    "dashboard.health.factor.social": "الحضور على التواصل الاجتماعي",
+    "dashboard.health.factor.social": "نشاط التواصل الاجتماعي",
     "dashboard.health.factor.consent": "الامتثال التسويقي",
     "dashboard.brief.title": "الموجز اليومي من Flas AI",
     "dashboard.brief.subtitle":
@@ -191,7 +191,7 @@ export default screen({
     "dashboard.stat.botRepliesTrend": "balasan dihantar berbanding minggu lalu",
     "dashboard.health.title": "Skor kesihatan perniagaan",
     "dashboard.health.method":
-      "Purata lima faktor di bawah, diberi wajaran sama dan dikira semula setiap kali dimuat semula.",
+      "Purata faktor yang diukur, diberi wajaran sama dan dikira semula setiap kali dimuat semula. Sekurang-kurangnya tiga faktor memerlukan data; faktor tiada data atau separa dikecualikan.",
     "dashboard.health.grade.excellent": "Cemerlang",
     "dashboard.health.grade.good": "Baik",
     "dashboard.health.grade.needsWork": "Perlu diperbaiki",
@@ -199,7 +199,7 @@ export default screen({
     "dashboard.health.factor.responsiveness": "Kepantasan membalas",
     "dashboard.health.factor.inbox": "Kekemasan peti masuk",
     "dashboard.health.factor.pipeline": "Aliran prospek",
-    "dashboard.health.factor.social": "Kehadiran sosial",
+    "dashboard.health.factor.social": "Aktiviti sosial",
     "dashboard.health.factor.consent": "Pematuhan pemasaran",
     "dashboard.brief.title": "Ringkasan harian Flas AI",
     "dashboard.brief.subtitle":
@@ -278,7 +278,7 @@ export default screen({
     "dashboard.stat.botRepliesTrend": "naipadalang sagot kumpara sa nakaraang linggo",
     "dashboard.health.title": "Marka ng kalusugan ng negosyo",
     "dashboard.health.method":
-      "Average ng limang salik sa ibaba, pantay ang timbang at kinakalkula muli sa bawat refresh.",
+      "Average ng mga nasukat na salik, pantay ang timbang at kinakalkula muli sa bawat refresh. Kailangan ng datos sa hindi bababa sa tatlong salik; hindi kasama ang kulang o bahagyang datos.",
     "dashboard.health.grade.excellent": "Napakahusay",
     "dashboard.health.grade.good": "Mahusay",
     "dashboard.health.grade.needsWork": "Kailangang ayusin",
@@ -286,7 +286,7 @@ export default screen({
     "dashboard.health.factor.responsiveness": "Bilis ng pagtugon",
     "dashboard.health.factor.inbox": "Kaayusan ng inbox",
     "dashboard.health.factor.pipeline": "Daloy ng leads",
-    "dashboard.health.factor.social": "Presensya sa social media",
+    "dashboard.health.factor.social": "Aktibidad sa social media",
     "dashboard.health.factor.consent": "Pagsunod sa marketing",
     "dashboard.brief.title": "Pang-araw-araw na brief ng Flas AI",
     "dashboard.brief.subtitle":
@@ -365,7 +365,7 @@ export default screen({
     "dashboard.stat.botRepliesTrend": "majibu yaliyotumwa ikilinganishwa na wiki iliyopita",
     "dashboard.health.title": "Alama ya afya ya biashara",
     "dashboard.health.method":
-      "Wastani wa vipengele vitano vilivyo hapa chini, vyenye uzito sawa na hukokotolewa upya kila unapoonyesha upya.",
+      "Wastani wa vipengele vilivyopimwa, kwa uzito sawa, unaohesabiwa upya kila unapoonyesha upya. Angalau vipengele vitatu vinahitaji data; vipengele vyenye data iliyokosekana au isiyokamilika huondolewa.",
     "dashboard.health.grade.excellent": "Bora sana",
     "dashboard.health.grade.good": "Nzuri",
     "dashboard.health.grade.needsWork": "Inahitaji kazi",
@@ -373,7 +373,7 @@ export default screen({
     "dashboard.health.factor.responsiveness": "Kasi ya kujibu",
     "dashboard.health.factor.inbox": "Usafi wa kikasha",
     "dashboard.health.factor.pipeline": "Mtiririko wa wateja watarajiwa",
-    "dashboard.health.factor.social": "Uwepo mitandaoni",
+    "dashboard.health.factor.social": "Shughuli za mitandao",
     "dashboard.health.factor.consent": "Uzingatiaji wa masoko",
     "dashboard.brief.title": "Muhtasari wa kila siku wa Flas AI",
     "dashboard.brief.subtitle":
