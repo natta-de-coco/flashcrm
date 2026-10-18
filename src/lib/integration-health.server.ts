@@ -1053,31 +1053,35 @@ async function runCheck(
     : statusOf(row, {}, stored, renewsAsStored);
 
   // The log of the check. It is never allowed to change the result: a log that cannot be written
-  // is reported as log_saved: false.
+  // is reported as log_saved: false. An answer that was thrown away because the account changed
+  // meanwhile is not a check that happened to this account, so it leaves no line (its retry count
+  // would describe a result that was never kept).
   let logSaved = false;
   try {
-    const logged = await supabaseAdmin.from("connection_retry_log").insert({
-      tenant_id: row.tenant_id,
-      account_id: row.id,
-      platform: row.platform,
-      outcome,
-      reason: said,
-      trigger: args.trigger,
-      // connection_retry_log is readable by every member of the workspace (through the database's
-      // own API as well as the dialog), so it holds plain facts only: no permission names, no
-      // words from the platform (they can name an app or a Page) and only the short reference of
-      // the check. What staff need is read from the account and from that reference.
-      details: {
-        stage,
-        probe: PROBES[row.platform] ? row.platform : null,
-        http_status: httpStatus,
-        correlation_id: check.reference,
-        evidence_saved: evidenceSaved,
-        refreshed,
-        retry_count: retryCount,
-      } as never,
-    });
-    logSaved = !logged.error;
+    if (!changedMeanwhile) {
+      const logged = await supabaseAdmin.from("connection_retry_log").insert({
+        tenant_id: row.tenant_id,
+        account_id: row.id,
+        platform: row.platform,
+        outcome,
+        reason: said,
+        trigger: args.trigger,
+        // connection_retry_log is readable by every member of the workspace (through the database's
+        // own API as well as the dialog), so it holds plain facts only: no permission names, no
+        // words from the platform (they can name an app or a Page) and only the short reference of
+        // the check. What staff need is read from the account and from that reference.
+        details: {
+          stage,
+          probe: PROBES[row.platform] ? row.platform : null,
+          http_status: httpStatus,
+          correlation_id: check.reference,
+          evidence_saved: evidenceSaved,
+          refreshed,
+          retry_count: retryCount,
+        } as never,
+      });
+      logSaved = !logged.error;
+    }
   } catch {
     logSaved = false;
   }
@@ -1119,7 +1123,7 @@ async function runCheck(
         }),
     correlation_id: check.reference,
     http_status: httpStatus,
-    log_saved: logSaved,
+    ...(changedMeanwhile ? {} : { log_saved: logSaved }),
     params: { permissions: features, retry_at: retryAt },
   };
 }

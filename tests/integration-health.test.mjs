@@ -1728,10 +1728,11 @@ describe("a change made while a check runs is not overwritten (finding 2)", () =
         world.audits.some((a) => a.action === "connection.state_changed"),
         false,
       );
-      assert.equal(world.logRows().length, 1, "the check is still on record");
-      assert.equal(world.logRows()[0].outcome, "changed_while_checking");
-      assert.match(world.logRows()[0].reason, /changed while Flas was checking it/);
-      assert.doesNotMatch(world.logRows()[0].reason, /Verified/);
+      // An answer that was thrown away leaves no trace anywhere: no log line (it would carry a retry
+      // count for a result that was never kept) and no audit line.
+      assert.deepEqual(world.logRows(), []);
+      assert.deepEqual(world.audits, []);
+      assert.equal(result.log_saved, undefined, "so there is no log to report on either");
     });
   }
 
@@ -3079,5 +3080,95 @@ describe("a reconnect through the channel picker is not overwritten by a check t
     assert.equal(result.outcome, "failed");
     assert.deepEqual(clone(world.stored(account.id)), before);
     assert.equal(world.fetches.length, 0);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 3, finding 3: a check whose answer was thrown away writes nothing at all
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("a check that changed while it ran leaves no log line and no audit line (round 3, finding 3)", () => {
+  const asked = (answer, flip) => [
+    on(`${GRAPH}/1000?fields=id`, () => {
+      flip();
+      return answer();
+    }),
+  ];
+  const nothingWritten = (result) => {
+    assert.equal(result.outcome, "changed_while_checking");
+    assert.deepEqual(world.logRows(), [], "no row in the check log");
+    assert.deepEqual(world.audits, [], "no audit row");
+    assert.equal(result.log_saved, undefined);
+  };
+
+  for (const [name, answer] of [
+    ["a healthy answer", () => json(200, { id: "1000" })],
+    // (A 401 would send a Facebook account down the renewal path, which adopts a token somebody else
+    // stored under the lease and checks that one; that path has its own tests.)
+    ["a refused permission", () => json(403, { error: { message: "no", code: 200 } })],
+    ["an outage", () => json(503, { error: { message: "down" } })],
+  ]) {
+    test(`${name} about an account that was reconnected meanwhile`, async () => {
+      const account = world.account({ retry_count: 2, last_error: "earlier" });
+      world.provider(
+        asked(answer, () => {
+          Object.assign(world.stored(account.id), {
+            access_token: "sealed:stored-by-a-reconnect",
+            retry_count: 0,
+            last_error: null,
+          });
+        }),
+      );
+      nothingWritten(await check(account.id));
+      assert.equal(world.stored(account.id).retry_count, 0, "and no retry was counted");
+    });
+  }
+
+  test("a renewal whose result could not be kept because the account moved on", async () => {
+    const account = channel({ token_expires_at: iso(-HOUR) });
+    world.provider([googleOk()]);
+    world.refreshImpl = async (args) => {
+      Object.assign(world.stored(account.id), { active: false, connection_state: "disconnected" });
+      return {
+        token: SECRET.metaNew,
+        refreshToken: args.refreshToken,
+        expiresAt: iso(HOUR),
+        scopes: [],
+      };
+    };
+    nothingWritten(await check(account.id));
+  });
+
+  test("the group check logs the accounts it really checked, and none it threw away", async () => {
+    const moved = world.account({ external_id: "1000" });
+    const other = world.account({ external_id: "2000" });
+    world.provider([
+      on(`${GRAPH}/1000?fields=id`, () => {
+        Object.assign(world.stored(moved.id), { active: false, connection_state: "disconnected" });
+        return json(200, { id: "1000" });
+      }),
+      on(`${GRAPH}/2000?fields=id`, () => json(200, { id: "2000" })),
+      on(`${GRAPH}/me/permissions`, () =>
+        json(200, {
+          data: requiredScopesFor("facebook").map((permission) => ({
+            permission,
+            status: "granted",
+          })),
+        }),
+      ),
+    ]);
+    const results = await checkAll();
+    assert.equal(results.find((r) => r.account_id === moved.id).outcome, "changed_while_checking");
+    assert.deepEqual(
+      world.logRows().map((r) => r.account_id),
+      [other.id],
+    );
+  });
+
+  test("a check that did run is still logged", async () => {
+    const account = world.account();
+    world.provider(facebookHealthy());
+    assert.equal((await check(account.id)).outcome, "healthy");
+    assert.equal(world.logRows().length, 1);
   });
 });

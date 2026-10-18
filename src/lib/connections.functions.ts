@@ -460,6 +460,10 @@ export const retryConnections = createServerFn({ method: "POST" })
         ]
       : await retryDueConnections({ tenantId, trigger: "manual", actorId: context.userId });
 
+    // A check whose answer was thrown away because the account changed meanwhile leaves no trace:
+    // it is not recorded as a check of that account here, as it is not in the check log either.
+    const recorded = results.filter((r) => r.outcome !== "changed_while_checking");
+    if (recorded.length === 0 && results.length > 0) return { results };
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
       action: "connection.retry",
@@ -470,7 +474,7 @@ export const retryConnections = createServerFn({ method: "POST" })
       // What happened, never what the platform said or what the account holds: the result's
       // sentences and statuses are for the screen, not for the audit trail.
       details: {
-        results: results.map((r) => ({
+        results: recorded.map((r) => ({
           platform: r.platform,
           account_id: r.account_id ?? null,
           outcome: r.outcome,
