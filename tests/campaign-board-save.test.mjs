@@ -89,6 +89,7 @@ const stubs = {
   sonner: `export const toast = {
     success: (message) => globalThis.boardToasts.push({ kind: "success", message }),
     error: (message) => globalThis.boardToasts.push({ kind: "error", message }),
+    warning: (message) => globalThis.boardToasts.push({ kind: "warning", message }),
   };`,
   // A server function becomes an ordinary async function that runs the real
   // validator and the real handler, with the server's database client.
@@ -113,6 +114,7 @@ await build({
     contents: `export { CampaignBoard } from './src/components/marketing/CampaignBoard';
       export * as serverFns from './src/lib/campaign-audience.functions';
       export * as audience from './src/lib/campaign-audience';
+      export { AUDIENCE_ROW_LIMIT } from './src/lib/audience-rows.server';
       export { default as marketing } from './src/lib/i18n/screens/marketing';`,
     resolveDir: process.cwd(),
   },
@@ -490,6 +492,36 @@ describe("PR #58 re-review: the rendered board saves through the guarded server 
     assert.ok(document.body.textContent.includes(messages["marketing.checkingWhoHasOptedIn"]));
   });
 
+  test("a cut-short audience read is shown as partial, not as a number", async () => {
+    const view = await mount(baseProps({ audienceCount: null, audiencePartial: true }));
+    assert.ok(document.body.textContent.includes(messages["marketing.audiencePartial"]));
+    assert.doesNotMatch(document.body.textContent, /Audience pool: \d/);
+    assert.doesNotMatch(document.body.textContent, /at least/i);
+    await view.rerender(baseProps({ audienceCount: 7, audiencePartial: false }));
+    assert.match(document.body.textContent, /Audience pool: 7 consented subscribers/);
+    assert.ok(!document.body.textContent.includes(messages["marketing.audiencePartial"]));
+  });
+
+  test("a save over a cut-short read is stored, and the person is told the count is partial", async () => {
+    db.table("leads").push(
+      ...Array.from({ length: board.AUDIENCE_ROW_LIMIT }, (_, i) => ({
+        id: `l${String(i).padStart(5, "0")}`,
+        contact_id: null,
+        name: null,
+        email: `p${i}@example.com`,
+        phone: null,
+        consent_given: true,
+        subscribed: true,
+      })),
+    );
+    await mount(baseProps());
+    await openNewCampaign();
+    await fillAndSave();
+    assert.equal(campaigns().length, 1);
+    assert.deepEqual(toasts("success"), [messages["marketing.campaignSavedAsADraft"]]);
+    assert.deepEqual(toasts("warning"), [messages["marketing.audiencePartial"]]);
+  });
+
   test("a draft written by Flas AI opens in the composer, ready to save through the same path", async () => {
     const view = await mount(baseProps());
     await view.rerender(
@@ -661,7 +693,11 @@ describe("PR #58 re-review: the route has no second way to save", () => {
 
   test("the route never hands the board a count it made up", () => {
     assert.doesNotMatch(route, /emailAudience\?\.total \?\? 0/);
-    assert.match(route, /audienceCount=\{emailAudience\?\.total \?\? null\}/);
+    assert.match(
+      route,
+      /audienceCount=\{emailAudience && !emailAudience\.truncated \? emailAudience\.total : null\}/,
+    );
+    assert.match(route, /audiencePartial=\{emailAudience\?\.truncated === true\}/);
   });
 
   test("the board saves through the server function and does not insert or update a campaign's content itself", () => {

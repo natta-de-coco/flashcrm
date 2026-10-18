@@ -84,6 +84,11 @@ export type SaveCampaignResult =
       recipientsCount: number;
       /** False when this id was a campaign already: it was updated, and no other was made. */
       created: boolean;
+      /**
+       * True when the audience read stopped at its ceiling: `recipientsCount` is
+       * then only what was read, not the audience.
+       */
+      partial?: true;
     }
   | { ok: false; reason: "audience_unavailable" };
 
@@ -130,6 +135,7 @@ export async function saveCampaignDraft(
     return { ok: false, reason: "audience_unavailable" };
   }
 
+  const partial = audience.truncated ? { partial: true as const } : {};
   const fields: Record<string, unknown> = {
     name: input.name,
     subject: input.subject,
@@ -142,7 +148,7 @@ export async function saveCampaignDraft(
   };
 
   if (input.id && (await updateCampaign(supabase, input.id, fields))) {
-    return { ok: true, recipientsCount: audience.total, created: false };
+    return { ok: true, recipientsCount: audience.total, created: false, ...partial };
   }
 
   const { error } = await supabase.from("campaigns").insert({
@@ -157,11 +163,11 @@ export async function saveCampaignDraft(
     // else's campaign (or to nothing the caller may see) is a failure, never a
     // success.
     if (input.id && error.code === "23505" && (await updateCampaign(supabase, input.id, fields))) {
-      return { ok: true, recipientsCount: audience.total, created: false };
+      return { ok: true, recipientsCount: audience.total, created: false, ...partial };
     }
     throw new Error(error.message);
   }
-  return { ok: true, recipientsCount: audience.total, created: true };
+  return { ok: true, recipientsCount: audience.total, created: true, ...partial };
 }
 
 export type DraftRequest = {

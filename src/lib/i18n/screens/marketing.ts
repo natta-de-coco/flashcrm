@@ -164,6 +164,8 @@ export default screen({
       "That is too long for Flas AI to use. Shorten the goal or the audience and try again.",
     "marketing.draftOpenedInComposer":
       "Draft opened in the campaign window. Check it, then save it.",
+    "marketing.audiencePartial":
+      "Flas could only check part of this audience, so it cannot say how many people agreed to hear from you.",
   },
   ar: {
     "marketing.checkingWhoHasOptedIn": "جارٍ التحقق ممن وافقوا على الاشتراك…",
@@ -323,6 +325,8 @@ export default screen({
     "marketing.draftTooLong":
       "هذا النص أطول من أن يستخدمه Flas AI. اختصر الهدف أو الجمهور ثم حاول مرة أخرى.",
     "marketing.draftOpenedInComposer": "فُتحت المسودة في نافذة الحملة. راجعها ثم احفظها.",
+    "marketing.audiencePartial":
+      "لم يتمكن Flas من فحص سوى جزء من هذا الجمهور، لذلك لا يستطيع تحديد عدد من وافقوا على تلقي رسائلك.",
   },
   ms: {
     "marketing.checkingWhoHasOptedIn": "Menyemak siapa yang telah memberi persetujuan…",
@@ -486,6 +490,8 @@ export default screen({
       "Ini terlalu panjang untuk digunakan oleh Flas AI. Pendekkan matlamat atau audiens dan cuba lagi.",
     "marketing.draftOpenedInComposer":
       "Draf dibuka dalam tetingkap kempen. Semak, kemudian simpan.",
+    "marketing.audiencePartial":
+      "Flas hanya dapat menyemak sebahagian daripada audiens ini, jadi ia tidak dapat memberitahu berapa ramai yang bersetuju untuk menerima mesej anda.",
   },
   fil: {
     "marketing.checkingWhoHasOptedIn": "Tinitingnan kung sino ang pumayag…",
@@ -650,6 +656,8 @@ export default screen({
       "Masyadong mahaba ito para magamit ng Flas AI. Paikliin ang layunin o ang audience at subukan ulit.",
     "marketing.draftOpenedInComposer":
       "Binuksan ang draft sa window ng campaign. Suriin ito, pagkatapos ay i-save.",
+    "marketing.audiencePartial":
+      "Bahagi lang ng audience na ito ang nasuri ng Flas, kaya hindi nito masasabi kung ilang tao ang pumayag na makatanggap ng mensahe mula sa iyo.",
   },
   sw: {
     "marketing.checkingWhoHasOptedIn": "Inakagua nani amekubali…",
@@ -813,5 +821,7 @@ export default screen({
       "Hii ni ndefu mno kwa Flas AI kutumia. Fupisha lengo au hadhira na ujaribu tena.",
     "marketing.draftOpenedInComposer":
       "Rasimu imefunguliwa kwenye dirisha la kampeni. Iangalie, kisha uihifadhi.",
+    "marketing.audiencePartial":
+      "Flas iliweza kukagua sehemu tu ya hadhira hii, kwa hiyo haiwezi kusema ni watu wangapi walikubali kupokea ujumbe kutoka kwako.",
   },
 });

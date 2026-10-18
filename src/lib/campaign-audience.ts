@@ -121,6 +121,15 @@ export const CAMPAIGN_EXTRA_LIMITS = {
   attachmentUrl: 2048,
 } as const;
 
+/**
+ * What is said, to the campaign writer and to the reader, when a read stopped at
+ * its ceiling. Rows that were not read can hold an unsubscribe or a duplicate of
+ * someone already counted, so what was read is neither the total nor a minimum:
+ * no figure is given, and never "at least N".
+ */
+export const AUDIENCE_PARTIAL_SENTENCE =
+  "Flas could only check part of this audience, so it cannot say how many people agreed to hear from you.";
+
 /** The same for the Flas AI campaign writer's two free-text fields. */
 export const AI_DRAFT_FIELD_LIMITS = { goal: 500, audience: 300 } as const;
 
@@ -476,6 +485,10 @@ const CHANNEL_NOUN: Record<CampaignChannel, string> = {
  */
 export function audienceBlockedReason(audience: CampaignAudience): string | null {
   if (audience.total > 0) return null;
+  // Nobody in the part that was read is not nobody: say what was and was not checked.
+  if (audience.truncated) {
+    return `${AUDIENCE_PARTIAL_SENTENCE} No one who agreed was found in the part that was checked.`;
+  }
   const noun = CHANNEL_NOUN[audience.channel];
   if (audience.optedInUnreachable > 0) {
     return `${audience.optedInUnreachable} ${audience.optedInUnreachable === 1 ? "person has" : "people have"} given consent, but none of them has a ${noun} on file — add one, or switch the channel.`;
@@ -488,8 +501,14 @@ export function audienceBlockedReason(audience: CampaignAudience): string | null
 
 /** The audience, as one factual line for the AI writer's prompt. */
 export function describeAudience(audience: CampaignAudience): string {
+  const channel = audience.channel === "email" ? "email" : "WhatsApp";
+  // A read that stopped at its ceiling gives no figures at all: not the total, not
+  // a minimum, and not the split by where people came from.
+  if (audience.truncated) {
+    return `${channel} audience: the number of opted-in recipients is not available. ${AUDIENCE_PARTIAL_SENTENCE} Some recipients were found in the part that was checked. Do not state or estimate how many people opted in.`;
+  }
   const parts = [
-    `${audience.truncated ? "at least " : ""}${audience.total} opted-in ${audience.channel === "email" ? "email" : "WhatsApp"} ${audience.total === 1 ? "recipient" : "recipients"}`,
+    `${audience.total} opted-in ${channel} ${audience.total === 1 ? "recipient" : "recipients"}`,
     `${audience.fromContacts} from CRM contacts`,
     `${audience.fromLeads} from website leads`,
   ];

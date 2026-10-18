@@ -75,6 +75,11 @@ interface CampaignBoardProps {
   audienceCount: number | null;
   /** Why the audience could not be read, when that is the reason it is not known. */
   audienceError?: string | null;
+  /**
+   * True when the audience read stopped at its ceiling. There is then no figure
+   * to show, not even a minimum (`audienceCount` is null).
+   */
+  audiencePartial?: boolean;
   /** Each new object opens the composer with this draft once. */
   prefill?: CampaignPrefill | null;
 }
@@ -145,6 +150,7 @@ export function CampaignBoard({
   isSmtpVerified,
   audienceCount,
   audienceError,
+  audiencePartial,
   prefill,
 }: CampaignBoardProps) {
   const { t } = useI18n();
@@ -271,6 +277,8 @@ export function CampaignBoard({
             ? t("marketing.campaignSavedAsADraft")
             : "Campaign updated successfully",
       );
+      // The server read only part of the audience: what it stored is what it read.
+      if (result.partial) toast.warning(t("marketing.audiencePartial"));
       void qc.invalidateQueries({ queryKey: ["campaigns"] });
       return true;
     } catch (e) {
@@ -293,11 +301,13 @@ export function CampaignBoard({
           <h2 className="text-lg font-bold">Email Campaigns Kanban Board</h2>
           <p className="text-xs text-muted-foreground">
             Manage your campaigns across 5 lifecycle stages.{" "}
-            {audienceCount !== null
-              ? `Audience pool: ${audienceCount} consented subscribers.`
-              : audienceError
-                ? t("marketing.couldNotCheckWhoHas", { message: audienceError })
-                : t("marketing.checkingWhoHasOptedIn")}
+            {audiencePartial
+              ? t("marketing.audiencePartial")
+              : audienceCount !== null
+                ? `Audience pool: ${audienceCount} consented subscribers.`
+                : audienceError
+                  ? t("marketing.couldNotCheckWhoHas", { message: audienceError })
+                  : t("marketing.checkingWhoHasOptedIn")}
           </p>
           {!EMAIL_CAMPAIGNS_CAN_SEND && (
             <p role="status" className="mt-2 text-xs text-muted-foreground">

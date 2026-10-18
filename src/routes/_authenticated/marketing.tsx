@@ -852,7 +852,8 @@ function MarketingPage() {
         <CampaignBoard
           campaigns={(campaigns.data ?? []) as unknown as CampaignItem[]}
           isSmtpVerified={isSmtpVerified}
-          audienceCount={emailAudience?.total ?? null}
+          audienceCount={emailAudience && !emailAudience.truncated ? emailAudience.total : null}
+          audiencePartial={emailAudience?.truncated === true}
           audienceError={audience.isError ? friendlyError(audience.error) : null}
           prefill={prefill}
         />

@@ -3,7 +3,7 @@
 // client; only Meta credentials are read with the admin client.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { AUDIENCE_IDENTITY_LIMIT, readAudienceRows } from "./audience-rows.server";
-import { countOptedInPeople } from "./campaign-audience";
+import { AUDIENCE_PARTIAL_SENTENCE, countOptedInPeople } from "./campaign-audience";
 
 export const FLASH_MODEL = "openai/gpt-5.6-sol";
 
@@ -556,8 +556,7 @@ export const CONSENT_SCAN_LIMIT = 20_000;
  * What the AI is told when the scan could not read every row. A line of the
  * prompt, not text on a screen: it is in English whatever the reader's language.
  */
-export const OPTED_IN_PARTIAL_SENTENCE =
-  "Flas could only check part of this audience, so it cannot say how many people agreed to hear from you.";
+export const OPTED_IN_PARTIAL_SENTENCE = AUDIENCE_PARTIAL_SENTENCE;
 
 export type LeadSummary = {
   /** Every website lead, counted by the database. Not the size of the sample below. */

@@ -42,6 +42,10 @@ const audienceMod = await import("../node_modules/.cache/flas-campaign-audience.
 const draftMod = await import("../node_modules/.cache/flas-campaign-draft.mjs");
 const { isOptedIn, channelAddress, audienceBlockedReason, describeAudience } = audienceMod;
 
+// What the writer's prompt and any screen say when a read stopped at its ceiling.
+const PARTIAL_SENTENCE =
+  "Flas could only check part of this audience, so it cannot say how many people agreed to hear from you.";
+
 const MUTATION = process.env.MUTATION ?? "";
 if (MUTATION) console.log(`!! MUTATION: ${MUTATION} — the suite must FAIL`);
 
@@ -196,14 +200,15 @@ describe("the count shown is the count a sender would use", () => {
     );
   });
 
-  test("a full page of rows is reported as a floor, not an exact figure", () => {
+  test("a full page of rows is reported as partial: no figure, and no lower bound", () => {
     const many = Array.from({ length: 5 }, (_, i) => ({
       email: `l${i}@example.com`,
       consent_given: true,
     }));
     const a = resolve({ contacts: [], leads: many, channel: "email", rowLimit: 5 });
     assert.equal(a.truncated, true);
-    assert.match(describeAudience(a), /at least 5/);
+    assert.ok(describeAudience(a).includes(PARTIAL_SENTENCE));
+    assert.doesNotMatch(describeAudience(a), /at least/i);
   });
 });
 
@@ -608,15 +613,16 @@ describe("PR #33: the whole workspace is read, or the figure says it is a floor"
     assert.deepEqual(addresses(email), ["late@example.com"]);
   });
 
-  test("past the ceiling the figure is a floor, and is described as one", async () => {
+  test("past the ceiling the figure is partial, and is described as unavailable", async () => {
     db.reset({ contacts: manyContacts(server.AUDIENCE_ROW_LIMIT + 1) });
     const { email } = await server.gatherCampaignAudiences(client);
     assert.equal(email.total, server.AUDIENCE_ROW_LIMIT);
     assert.equal(email.truncated, true);
-    assert.match(describeAudience(email), /^at least /);
+    assert.ok(describeAudience(email).includes(PARTIAL_SENTENCE));
+    assert.doesNotMatch(describeAudience(email), /at least/i);
   });
 
-  test("a workspace that fits is not called a floor", async () => {
+  test("a workspace that fits is not called partial", async () => {
     db.reset({ contacts: manyContacts(3), leads: [aLead("l1")] });
     const { email } = await server.gatherCampaignAudiences(client);
     assert.equal(email.total, 4);
@@ -1150,7 +1156,8 @@ describe("PR #58: the paged reads are checked against what they can really do", 
     const base = { channel: "email", contacts: [aContact("c1")], identities: rows };
     const full = audienceMod.resolveCampaignAudience({ ...base, identityRowLimit: 10 });
     assert.equal(full.truncated, true);
-    assert.match(describeAudience(full), /^at least /);
+    assert.ok(describeAudience(full).includes(PARTIAL_SENTENCE));
+    assert.doesNotMatch(describeAudience(full), /at least/i);
     const room = audienceMod.resolveCampaignAudience({ ...base, identityRowLimit: 11 });
     assert.equal(room.truncated, false);
   });
@@ -1163,7 +1170,8 @@ describe("PR #58: the paged reads are checked against what they can really do", 
     const { email } = await server.gatherCampaignAudiences(client);
     assert.equal(email.total, 1);
     assert.equal(email.truncated, true, "10,000 identities is where the read stops");
-    assert.match(describeAudience(email), /^at least 1 /);
+    assert.ok(describeAudience(email).includes(PARTIAL_SENTENCE));
+    assert.doesNotMatch(describeAudience(email), /at least/i);
     db.reset({
       contacts: [aContact("c1", { email: "a@example.com" })],
       contact_identities: rows.slice(1),
@@ -1180,6 +1188,124 @@ describe("PR #58: the paged reads are checked against what they can really do", 
     const { email } = await server.gatherCampaignAudiences(client);
     assert.equal(email.total, server.AUDIENCE_ROW_LIMIT);
     assert.equal(email.truncated, true);
+  });
+});
+
+describe("PR #58 re-review: a figure from a cut-short read is not a lower bound", () => {
+  // The same rule as the AI's summary (tests/ai-audience-consent.test.mjs): rows
+  // that were not read can hold an unsubscribe or a duplicate of someone already
+  // counted, so what was read proves neither the total nor a minimum.
+  const context = { supabase: client, userId: "user-1" };
+  const ceiling = () => server.AUDIENCE_ROW_LIMIT;
+  const leadsToTheCeiling = () => {
+    const leads = Array.from({ length: ceiling() }, (_, i) =>
+      aLead(`l${String(i).padStart(5, "0")}`, { email: `p${i}@example.com` }),
+    );
+    // One row past the ceiling, never read: an unsubscribe at the first person's address.
+    const unread = aLead(`l${String(ceiling()).padStart(5, "0")}`, {
+      email: "p0@example.com",
+      subscribed: false,
+    });
+    return { leads, unread };
+  };
+
+  test("the read stops at the ceiling and its count is more than the true one: 'at least' would have been false", async () => {
+    const { leads, unread } = leadsToTheCeiling();
+    db.reset({ contacts: [], leads: [...leads, unread], campaigns: [] });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.truncated, true);
+    assert.equal(email.total, ceiling(), "what the capped read found");
+    const whole = audienceMod.resolveCampaignAudience({
+      contacts: [],
+      leads: [...leads, unread],
+      channel: "email",
+    });
+    assert.equal(
+      whole.total,
+      ceiling() - 1,
+      "the whole table has one person fewer: p0 unsubscribed in a row beyond the ceiling",
+    );
+    assert.ok(email.total > whole.total, "so the capped figure is not a lower bound");
+    const line = describeAudience(email);
+    assert.doesNotMatch(line, /at least/i);
+    assert.doesNotMatch(
+      line,
+      new RegExp(String(ceiling())),
+      "and no number is offered as the total",
+    );
+    assert.ok(line.includes(PARTIAL_SENTENCE));
+  });
+
+  test("the writer's prompt says the count is not available, whatever the read found", async () => {
+    const { leads, unread } = leadsToTheCeiling();
+    db.reset({ contacts: [], leads: [...leads, unread], campaigns: [] });
+    let prompt = "";
+    const original = globalThis.campaignAi;
+    globalThis.campaignAi = async (_system, user) => {
+      prompt = user;
+      return "Hi {name}, our spring range is in. Reply STOP to opt out.";
+    };
+    try {
+      const result = await server.draftCampaignForAudience(
+        client,
+        { goal: "Spring launch", tone: "friendly", channel: "email" },
+        { userId: "u1" },
+      );
+      assert.equal(result.ok, true, "an audience was found, so there is something to write to");
+    } finally {
+      globalThis.campaignAi = original;
+    }
+    assert.ok(prompt.includes(PARTIAL_SENTENCE), prompt);
+    assert.doesNotMatch(prompt, /at least/i);
+    assert.doesNotMatch(prompt, new RegExp(`${ceiling()} opted-in`));
+  });
+
+  test("a complete read is still described with its real figures", async () => {
+    db.reset({ contacts: [aContact("c1", { email: "a@example.com" })], leads: [aLead("l1")] });
+    const { email } = await server.gatherCampaignAudiences(client);
+    assert.equal(email.truncated, false);
+    assert.match(
+      describeAudience(email),
+      /^2 opted-in email recipients; 1 from CRM contacts; 1 from website leads/,
+    );
+    assert.ok(!describeAudience(email).includes(PARTIAL_SENTENCE));
+  });
+
+  test("no one found in the part that was read does not say that no one agreed", () => {
+    const few = Array.from({ length: 5 }, (_, i) => ({
+      email: `l${i}@example.com`,
+      consent_given: false,
+    }));
+    const a = resolve({ contacts: [], leads: few, channel: "email", rowLimit: 5 });
+    assert.equal(a.truncated, true);
+    assert.equal(a.total, 0);
+    const reason = audienceBlockedReason(a);
+    assert.ok(reason.includes(PARTIAL_SENTENCE), reason);
+    assert.doesNotMatch(reason, /No one has consented yet|nobody to send to/i);
+  });
+
+  test("a save of a campaign over a cut-short read says so", async () => {
+    const { leads } = leadsToTheCeiling();
+    db.reset({ contacts: [], leads, campaigns: [] });
+    const saved = await server.serverFns.saveCampaignDraft({
+      data: { name: "Spring", subject: "New in", body: "Hi" },
+      context,
+    });
+    assert.equal(saved.ok, true);
+    assert.equal(saved.partial, true);
+    db.reset({ contacts: [aContact("c1", { email: "a@example.com" })], campaigns: [] });
+    const whole = await server.serverFns.saveCampaignDraft({
+      data: { name: "Spring", subject: "New in", body: "Hi" },
+      context,
+    });
+    assert.equal(whole.partial, undefined, "a complete read says nothing about being partial");
+  });
+
+  test("no source builds 'at least' out of a read that can be cut short", () => {
+    for (const file of ["src/lib/campaign-audience.ts", "src/lib/campaign-audience.server.ts"]) {
+      const source = readFileSync(file, "utf8").split("\r\n").join("\n");
+      assert.doesNotMatch(source, /"at least "/, file);
+    }
   });
 });
 
