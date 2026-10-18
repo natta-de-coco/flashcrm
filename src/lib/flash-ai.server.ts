@@ -547,9 +547,17 @@ const SUMMARY_SAMPLE_ROWS = 500;
 
 /**
  * The most rows of either table read to work out how many different people
- * opted in. Past it the answer is given as "at least", never as the total.
+ * opted in. Past it there is no answer at all, not a smaller one: see
+ * `optedInPeople`.
  */
 export const CONSENT_SCAN_LIMIT = 20_000;
+
+/**
+ * What the AI is told when the scan could not read every row. A line of the
+ * prompt, not text on a screen: it is in English whatever the reader's language.
+ */
+export const OPTED_IN_PARTIAL_SENTENCE =
+  "Flas could only check part of this audience, so it cannot say how many people agreed to hear from you.";
 
 export type LeadSummary = {
   /** Every website lead, counted by the database. Not the size of the sample below. */
@@ -575,10 +583,16 @@ export type LeadSummary = {
    * Worked out by `countOptedInPeople`, the grouping of rows into people the
    * campaign page uses too, so a shared address or a duplicate contact is one
    * person in both, and someone who unsubscribed is in neither.
+   *
+   * Null when the scan stopped at its ceiling. Rows that were not read can hold
+   * an unsubscribe or a duplicate of someone already counted, so what the
+   * scanned rows give is neither the total nor a lower bound, and the number of
+   * opted-in contact rows is not one either: it counts a person once for each
+   * duplicate and keeps someone who has since unsubscribed. No figure is given.
    */
-  optedInPeople: number;
-  /** True when the scan stopped at `CONSENT_SCAN_LIMIT`: `optedInPeople` is then a floor. */
-  optedInIsFloor: boolean;
+  optedInPeople: number | null;
+  /** True when the scan stopped at its ceiling: `optedInPeople` is then null. */
+  optedInIsPartial: boolean;
   /** How many leads the three breakdowns below were worked out from (the most recent). */
   sampledLeads: number;
   bySource: Record<string, number>;
@@ -657,8 +671,8 @@ export async function gatherLeadSummary(
   // function, as the campaign page's audience, so a lead and the contact made
   // from it, two records at one address and an unsubscribe are all counted the
   // way the page counts them. Nobody opted in means there is nothing to count.
-  let people = 0;
-  let optedInIsFloor = false;
+  let people: number | null = 0;
+  let optedInIsPartial = false;
   if (optedInContacts > 0 || optedInLeads > 0) {
     const rows = await readAudienceRows(supabase as never, {
       rowLimit: scanLimit,
@@ -669,8 +683,10 @@ export async function gatherLeadSummary(
       rowLimit: scanLimit,
       identityRowLimit: AUDIENCE_IDENTITY_LIMIT,
     });
-    people = counted.people;
-    optedInIsFloor = counted.truncated;
+    // A scan that stopped at its ceiling proves nothing about the rows it did
+    // not read, so it gives no number, however many people it found.
+    optedInIsPartial = counted.truncated;
+    people = counted.truncated ? null : counted.people;
   }
 
   const bySource: Record<string, number> = {};
@@ -694,10 +710,8 @@ export async function gatherLeadSummary(
     totalContacts,
     optedInLeads,
     optedInContacts,
-    // Every opted-in contact is a person, so that is a floor even when the scan
-    // was cut short.
-    optedInPeople: optedInIsFloor ? Math.max(people, optedInContacts) : people,
-    optedInIsFloor,
+    optedInPeople: people,
+    optedInIsPartial,
     sampledLeads: leadRows.length,
     bySource,
     topTags: [...tagCounts.entries()]
@@ -715,7 +729,8 @@ export async function gatherLeadSummary(
  * for one workspace. Leads and contacts are reported as what they are, each
  * with its own total and opted-in count (so no line claims more opt-ins than it
  * has people on it), then the number of different people across both. A
- * breakdown that covers fewer rows than exist says how many it covers.
+ * breakdown that covers fewer rows than exist says how many it covers. When the
+ * scan for people could not finish, that line says so and gives no number.
  */
 export function leadSummaryFacts(summary: LeadSummary): string[] {
   const sample = (sampled: number, total: number, noun: string) =>
@@ -727,7 +742,9 @@ export function leadSummaryFacts(summary: LeadSummary): string[] {
   return [
     `Website leads: ${summary.totalLeads} in total, ${summary.optedInLeads} opted in`,
     `Contacts: ${summary.totalContacts} in total, ${summary.optedInContacts} opted in`,
-    `Opted-in people overall: ${summary.optedInIsFloor ? "at least " : ""}${summary.optedInPeople} (a website lead and the contact made from it are one person, counted once; people who have unsubscribed are not counted)`,
+    summary.optedInPeople === null
+      ? `Opted-in people overall: not available. ${OPTED_IN_PARTIAL_SENTENCE} Do not state or estimate how many people opted in.`
+      : `Opted-in people overall: ${summary.optedInPeople} (a website lead and the contact made from it are one person, counted once; people who have unsubscribed are not counted)`,
     `Lead sources${sample(summary.sampledLeads, summary.totalLeads, "leads")}: ${counts(summary.bySource)}`,
     `Top tags${sample(summary.sampledLeads, summary.totalLeads, "leads")}: ${summary.topTags.join(", ") || "none"}`,
     `Pipeline stages${sample(summary.sampledContacts, summary.totalContacts, "contacts")}: ${counts(summary.contactsByStage)}`,

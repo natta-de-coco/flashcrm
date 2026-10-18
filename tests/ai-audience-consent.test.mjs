@@ -23,6 +23,11 @@ import * as summaryModule from "../node_modules/.cache/flas-onboarding.mjs";
 
 const { gatherLeadSummary, leadSummaryFacts } = summaryModule;
 
+// What the AI is told when the scan could not finish. It is a line of the prompt,
+// not text on a screen, so it is English and is not in the five-language files.
+const PARTIAL_SENTENCE =
+  "Flas could only check part of this audience, so it cannot say how many people agreed to hear from you.";
+
 const read = (path) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
     .split("\r\n")
@@ -201,7 +206,7 @@ describe("PR #35: totals are counts of the whole table, not of the first rows", 
     assert.equal(summary.totalContacts, 1700);
     assert.equal(summary.optedInContacts, 1100);
     assert.equal(summary.optedInPeople, 1100);
-    assert.equal(summary.optedInIsFloor, false);
+    assert.equal(summary.optedInIsPartial, false);
   });
 
   it("counts every lead, and every lead's consent", async () => {
@@ -267,28 +272,31 @@ describe("PR #35: totals are counts of the whole table, not of the first rows", 
     }
   });
 
-  it("the people figure is given as a floor when the scan was cut short", () => {
+  it("the people figure is withheld, not given as a floor, when the scan was cut short", () => {
     const facts = leadSummaryFacts({
       totalLeads: 90000,
       totalContacts: 90000,
       optedInLeads: 20000,
       optedInContacts: 20000,
-      optedInPeople: 20000,
-      optedInIsFloor: true,
+      optedInPeople: null,
+      optedInIsPartial: true,
       sampledLeads: 500,
       bySource: {},
       topTags: [],
       sampledContacts: 500,
       contactsByStage: {},
     }).join("\n");
-    // The database counted these two, so they are not floors; only the figure
-    // that needs the rows themselves is.
+    // The database counted these two rows-for-rows; only the figure that needs
+    // the rows themselves to be worked out as people is withheld.
     assert.match(facts, /Website leads: 90000 in total, 20000 opted in/);
     assert.match(facts, /Contacts: 90000 in total, 20000 opted in/);
-    assert.match(facts, /Opted-in people overall: at least 20000/);
+    assert.match(facts, /Opted-in people overall: not available\./);
+    assert.ok(facts.includes(PARTIAL_SENTENCE), "the sentence the reader is given");
+    assert.doesNotMatch(facts, /at least/i, "no lower bound is promised");
+    assert.doesNotMatch(facts, /Opted-in people overall: \d/, "and no number stands in for it");
   });
 
-  it("a scan that hits its ceiling reports a floor, and never more than it found", async () => {
+  it("a scan that hits its ceiling gives no figure, and an unfinished scan never gives a number", async () => {
     // 2,500 opted-in contacts, 600 website leads linked to the first 600 of them
     // and 100 unlinked ones; the scan is allowed to read 1,500 rows of a table.
     const contacts = Array.from({ length: 2500 }, (_, i) => aContact(i, OPTED_IN));
@@ -300,16 +308,17 @@ describe("PR #35: totals are counts of the whole table, not of the first rows", 
     const summary = await gatherLeadSummary(client, { scanLimit: 1500 });
     assert.equal(summary.optedInContacts, 2500);
     assert.equal(summary.optedInLeads, 700);
-    assert.equal(summary.optedInIsFloor, true);
-    // True answer: 2,600. It may be lower than that, never higher, and it is
-    // never lower than the contacts alone.
-    assert.ok(summary.optedInPeople >= 2500, String(summary.optedInPeople));
-    assert.ok(summary.optedInPeople <= 2600, String(summary.optedInPeople));
-    assert.match(leadSummaryFacts(summary).join("\n"), /Opted-in people overall: at least /);
+    assert.equal(summary.optedInIsPartial, true);
+    // True answer: 2,600. The rows that were not read can hold an unsubscribe or
+    // a duplicate, so the scan cannot prove even a lower bound: no figure.
+    assert.equal(summary.optedInPeople, null);
+    const facts = leadSummaryFacts(summary).join("\n");
+    assert.ok(facts.includes(PARTIAL_SENTENCE));
+    assert.doesNotMatch(facts, /at least/i);
 
     // Given room to finish, the same data is exact.
     const exact = await gatherLeadSummary(client, { scanLimit: 5000 });
-    assert.equal(exact.optedInIsFloor, false);
+    assert.equal(exact.optedInIsPartial, false);
     assert.equal(exact.optedInPeople, 2600);
   });
 });
@@ -481,7 +490,7 @@ describe("PR #58: the page and the AI count the same people", () => {
       const { email } = await gatherCampaignAudiences(client);
       assert.equal(summary.optedInPeople, people, "what the AI is told");
       assert.equal(email.total, people, "what the page shows");
-      assert.equal(summary.optedInIsFloor, false);
+      assert.equal(summary.optedInIsPartial, false);
     });
   }
 
@@ -530,7 +539,7 @@ describe("PR #58: the page and the AI count the same people", () => {
       optedInLeads: 0,
       optedInContacts: 1,
       optedInPeople: 0,
-      optedInIsFloor: false,
+      optedInIsPartial: false,
       sampledLeads: 1,
       bySource: {},
       topTags: [],
@@ -585,7 +594,7 @@ describe("PR #58: the summary's reads are checked against what they can really d
     const summary = await gatherLeadSummary(low.client);
     assert.equal(summary.optedInContacts, 1200);
     assert.equal(summary.optedInPeople, 1200);
-    assert.equal(summary.optedInIsFloor, false);
+    assert.equal(summary.optedInIsPartial, false);
   });
 
   it("people are read in a stable order, so no one is lost or counted twice between pages", async () => {
@@ -598,7 +607,7 @@ describe("PR #58: the summary's reads are checked against what they can really d
     assert.equal((await gatherLeadSummary(client)).optedInPeople, 1700);
   });
 
-  it("a workspace with as many card addresses as the ceiling reads is given as a floor", async () => {
+  it("a workspace with as many card addresses as the ceiling reads gets no figure", async () => {
     const identities = Array.from({ length: 10_000 }, (_, i) => ({
       id: `i${String(i).padStart(6, "0")}`,
       contact_id: "c-elsewhere",
@@ -608,14 +617,92 @@ describe("PR #58: the summary's reads are checked against what they can really d
     }));
     db.reset({ contacts: [aContact(1, OPTED_IN)], leads: [], contact_identities: identities });
     const summary = await gatherLeadSummary(client);
-    assert.equal(summary.optedInPeople, 1);
-    assert.equal(summary.optedInIsFloor, true);
-    assert.match(leadSummaryFacts(summary).join("\n"), /Opted-in people overall: at least 1 /);
+    assert.equal(summary.optedInPeople, null);
+    assert.equal(summary.optedInIsPartial, true);
+    const facts = leadSummaryFacts(summary).join("\n");
+    assert.ok(facts.includes(PARTIAL_SENTENCE));
+    assert.doesNotMatch(facts, /at least/i);
     db.reset({
       contacts: [aContact(1, OPTED_IN)],
       leads: [],
       contact_identities: identities.slice(1),
     });
-    assert.equal((await gatherLeadSummary(client)).optedInIsFloor, false);
+    const whole = await gatherLeadSummary(client);
+    assert.equal(whole.optedInIsPartial, false);
+    assert.equal(whole.optedInPeople, 1);
+  });
+});
+
+describe("PR #58 re-review: a count the scan could not finish is not a lower bound", () => {
+  // CX-00: Math.max(people, optedInContacts) is not a valid consented-person
+  // floor after dedup and suppression. Three duplicate opted-in contacts, all
+  // linked to a lead that has unsubscribed, scan limit 2: the summary claimed
+  // "at least 3" and the full grouping returns 0.
+  const sameAddress = "amal@example.com";
+  const reviewersRepro = () => {
+    const contacts = [1, 2, 3].map((i) => ({ ...aContact(i, OPTED_IN), email: sameAddress }));
+    const leads = [
+      aLead(1, { ...OPTED_IN, subscribed: false, contact_id: "c00003", email: sameAddress }),
+    ];
+    db.reset({ contacts, leads, contact_identities: [] });
+  };
+
+  it("the full grouping of the reviewer's workspace is nobody", async () => {
+    reviewersRepro();
+    const whole = await gatherLeadSummary(client);
+    assert.equal(whole.optedInContacts, 3, "three contact rows are marked as consented");
+    assert.equal(whole.optedInPeople, 0, "and the one person has unsubscribed");
+    assert.equal(whole.optedInIsPartial, false);
+  });
+
+  it("scan limit 2 does not claim at least 3", async () => {
+    reviewersRepro();
+    const summary = await gatherLeadSummary(client, { scanLimit: 2 });
+    const facts = leadSummaryFacts(summary).join("\n");
+    assert.doesNotMatch(facts, /at least/i);
+    assert.doesNotMatch(facts, /Opted-in people overall: \d/);
+    assert.equal(summary.optedInPeople, null);
+    assert.equal(summary.optedInIsPartial, true);
+    assert.match(
+      facts,
+      /Opted-in people overall: not available\. Flas could only check part of this audience, so it cannot say how many people agreed to hear from you\./,
+    );
+  });
+
+  it("the lines the database counted are still given, as what they are", async () => {
+    reviewersRepro();
+    const facts = leadSummaryFacts(await gatherLeadSummary(client, { scanLimit: 2 })).join("\n");
+    assert.match(facts, /Contacts: 3 in total, 3 opted in/);
+    assert.match(facts, /Website leads: 1 in total, 0 opted in/);
+  });
+
+  it("nobody opted in is a true zero, not a partial answer", async () => {
+    db.reset({ contacts: [aContact(1)], leads: [aLead(1)], contact_identities: [] });
+    const summary = await gatherLeadSummary(client, { scanLimit: 1 });
+    assert.equal(summary.optedInPeople, 0);
+    assert.equal(summary.optedInIsPartial, false);
+  });
+
+  it("the advisor and the campaign writer are told the same, through the real snapshot", async () => {
+    // As many opted-in contacts as the default ceiling reads: the scan stops
+    // there and cannot say whether the next rows hold an unsubscribe.
+    const contacts = Array.from({ length: 20_000 }, (_, i) => ({
+      ...aContact(i, OPTED_IN),
+      email: `p${i}@example.com`,
+    }));
+    db.reset({ contacts, leads: [], contact_identities: [] });
+    const { facts } = await gatherAdvisorSnapshot(client);
+    assert.ok(facts.includes(PARTIAL_SENTENCE));
+    assert.doesNotMatch(facts, /at least/i);
+    assert.doesNotMatch(facts, /Opted-in people overall: \d/);
+  });
+
+  it("the source no longer takes the larger of two counts", () => {
+    const source = read("src/lib/flash-ai.server.ts");
+    assert.doesNotMatch(source, /Math\.max\(people, optedInContacts\)/);
+    const facts =
+      source.split("export function leadSummaryFacts")[1]?.split("export type")[0] ?? "";
+    assert.ok(facts.length > 0, "leadSummaryFacts could not be located");
+    assert.doesNotMatch(facts, /at least/i);
   });
 });
