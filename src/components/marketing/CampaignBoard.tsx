@@ -16,9 +16,12 @@ import {
 } from "@/components/marketing/CampaignComposerModal";
 import { friendlyError } from "@/lib/friendly-error";
 import { supabase } from "@/integrations/supabase/client";
+import { CAMPAIGN_TOO_LONG } from "@/lib/campaign-audience";
+import { saveCampaignDraft } from "@/lib/campaign-audience.functions";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { dispatchCampaignNow } from "@/lib/marketing.functions";
+import type { CampaignAttachment } from "@/types/tenant-email";
 import {
   AlertCircle,
   Clock,
@@ -33,7 +36,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export type CampaignStatus = "draft" | "scheduled" | "in_progress" | "sent" | "paused";
@@ -45,6 +48,7 @@ export interface CampaignItem {
   body: string;
   template_id?: string | null;
   image_url?: string | null;
+  attachments?: CampaignAttachment[] | null;
   status: CampaignStatus;
   recipients_count: number;
   scheduled_at?: string | null;
@@ -52,17 +56,47 @@ export interface CampaignItem {
   created_at: string;
 }
 
+/** A draft written elsewhere on the page (Flas AI), to be opened in the composer. */
+export interface CampaignPrefill {
+  name: string;
+  subject: string;
+  body: string;
+}
+
 interface CampaignBoardProps {
   campaigns: CampaignItem[];
   isSmtpVerified: boolean;
-  audienceCount: number;
+  /**
+   * How many people the audience has, as the server counted it, for the line at
+   * the top of the board. Null while that is not known: still being read, or
+   * (see `audienceError`) it could not be. It is only shown. A saved campaign
+   * records the number the server works out when it saves, never this one.
+   */
+  audienceCount: number | null;
+  /** Why the audience could not be read, when that is the reason it is not known. */
+  audienceError?: string | null;
+  /** Each new object opens the composer with this draft once. */
+  prefill?: CampaignPrefill | null;
 }
 
+/** The one write the board makes itself: a stage button on a card. It carries no count. */
 interface CampaignsTableClient {
   update: (values: Record<string, unknown>) => {
     eq: (col: string, val: unknown) => Promise<{ error: unknown }>;
   };
-  insert: (values: Record<string, unknown>) => Promise<{ error: unknown }>;
+}
+
+/**
+ * One open composer. It names the campaign it is writing from the moment it
+ * opens: a campaign being edited keeps its own id, a new one gets an id now, so
+ * every save of this draft, a retry after a refusal or a second click included,
+ * is the same campaign. A session also remounts the composer, so it never shows
+ * the text of the one before.
+ */
+interface ComposerSession {
+  key: string;
+  id: string;
+  initial: Partial<CampaignComposerData> | undefined;
 }
 
 const STAGES: {
@@ -106,11 +140,42 @@ const STAGES: {
 // Keep disabled until campaign delivery has a real transport and per-recipient evidence.
 const EMAIL_CAMPAIGNS_CAN_SEND = false;
 
-export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: CampaignBoardProps) {
+export function CampaignBoard({
+  campaigns,
+  isSmtpVerified,
+  audienceCount,
+  audienceError,
+  prefill,
+}: CampaignBoardProps) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [editingCampaign, setEditingCampaign] = useState<CampaignItem | null>(null);
+  const [session, setSession] = useState<ComposerSession | null>(null);
+
+  function openComposer(campaign: CampaignItem | null, draft?: CampaignPrefill) {
+    setSession({
+      key: crypto.randomUUID(),
+      id: campaign?.id ?? crypto.randomUUID(),
+      initial: campaign
+        ? {
+            name: campaign.name,
+            subject: campaign.subject,
+            body: campaign.body,
+            templateId: campaign.template_id || undefined,
+            imageUrl: campaign.image_url || undefined,
+            attachments: campaign.attachments ?? undefined,
+          }
+        : draft,
+    });
+  }
+
+  const openedPrefill = useRef<CampaignPrefill | null>(null);
+  useEffect(() => {
+    if (!prefill || openedPrefill.current === prefill) return;
+    openedPrefill.current = prefill;
+    openComposer(null, prefill);
+  }, [prefill]);
+
+  const saveCampaign = useServerFn(saveCampaignDraft);
 
   const dispatchNowFn = useServerFn(dispatchCampaignNow);
   const dispatchNowMutation = useMutation({
@@ -171,46 +236,53 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
-  async function handleSaveCampaign(data: CampaignComposerData, isScheduled?: boolean) {
-    const status: CampaignStatus = isScheduled ? "scheduled" : "draft";
-    const campaignsTable = supabase.from("campaigns") as unknown as CampaignsTableClient;
-
-    if (editingCampaign) {
-      const { error } = await campaignsTable
-        .update({
+  /**
+   * Creates or updates the campaign through the server, which counts the
+   * audience itself. Says whether it was saved: the composer closes only if so,
+   * and otherwise keeps what the person wrote and the id it will be saved under.
+   */
+  async function handleSaveCampaign(
+    data: CampaignComposerData,
+    isScheduled?: boolean,
+  ): Promise<boolean> {
+    if (!session) return false;
+    try {
+      const result = await saveCampaign({
+        data: {
+          id: session.id,
           name: data.name,
           subject: data.subject,
           body: data.body,
-          template_id: data.templateId,
-          image_url: data.imageUrl,
+          templateId: data.templateId,
+          imageUrl: data.imageUrl,
           attachments: data.attachments,
-          status,
-          recipients_count: audienceCount,
-        })
-        .eq("id", editingCampaign.id);
-
-      if (error) throw error;
-      toast.success(
-        isScheduled ? t("marketing.markedAsQueuedFlasCrm") : "Campaign updated successfully",
-      );
-    } else {
-      const { error } = await campaignsTable.insert({
-        name: data.name,
-        subject: data.subject,
-        body: data.body,
-        template_id: data.templateId,
-        image_url: data.imageUrl,
-        attachments: data.attachments,
-        status,
-        recipients_count: audienceCount,
+          status: isScheduled ? "scheduled" : "draft",
+        },
       });
-
-      if (error) throw error;
-      toast.success(isScheduled ? t("marketing.markedAsQueuedFlasCrm") : "Draft campaign saved");
+      // `ok: false` means the audience could not be read, so nothing was saved.
+      if (!result.ok) {
+        toast.error(t("marketing.campaignNotSaved"));
+        return false;
+      }
+      toast.success(
+        isScheduled
+          ? t("marketing.markedAsQueuedFlasCrm")
+          : result.created
+            ? t("marketing.campaignSavedAsADraft")
+            : "Campaign updated successfully",
+      );
+      void qc.invalidateQueries({ queryKey: ["campaigns"] });
+      return true;
+    } catch (e) {
+      // A field that got past the form is refused by the server with a code,
+      // which is shown as a sentence and not as the validator's own text.
+      toast.error(
+        e instanceof Error && e.message === CAMPAIGN_TOO_LONG
+          ? t("marketing.campaignTooLong")
+          : friendlyError(e),
+      );
+      return false;
     }
-
-    setEditingCampaign(null);
-    void qc.invalidateQueries({ queryKey: ["campaigns"] });
   }
 
   return (
@@ -220,8 +292,12 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         <div>
           <h2 className="text-lg font-bold">Email Campaigns Kanban Board</h2>
           <p className="text-xs text-muted-foreground">
-            Manage your campaigns across 5 lifecycle stages. Audience pool: {audienceCount}{" "}
-            consented subscribers.
+            Manage your campaigns across 5 lifecycle stages.{" "}
+            {audienceCount !== null
+              ? `Audience pool: ${audienceCount} consented subscribers.`
+              : audienceError
+                ? t("marketing.couldNotCheckWhoHas", { message: audienceError })
+                : t("marketing.checkingWhoHasOptedIn")}
           </p>
           {!EMAIL_CAMPAIGNS_CAN_SEND && (
             <p role="status" className="mt-2 text-xs text-muted-foreground">
@@ -236,10 +312,7 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
               <TooltipTrigger asChild>
                 <span>
                   <Button
-                    onClick={() => {
-                      setEditingCampaign(null);
-                      setComposerOpen(true);
-                    }}
+                    onClick={() => openComposer(null)}
                     className="bg-emerald-600 hover:bg-emerald-700"
                   >
                     <Plus className="mr-1.5 h-4 w-4" />
@@ -254,10 +327,7 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
             </Tooltip>
           ) : (
             <Button
-              onClick={() => {
-                setEditingCampaign(null);
-                setComposerOpen(true);
-              }}
+              onClick={() => openComposer(null)}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
               <Plus className="mr-1.5 h-4 w-4" />
@@ -430,10 +500,7 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
                               size="icon"
                               variant="ghost"
                               className="h-6 w-6"
-                              onClick={() => {
-                                setEditingCampaign(camp);
-                                setComposerOpen(true);
-                              }}
+                              onClick={() => openComposer(camp)}
                             >
                               <Edit2 className="h-3 w-3" />
                             </Button>
@@ -458,27 +525,19 @@ export function CampaignBoard({ campaigns, isSmtpVerified, audienceCount }: Camp
         })}
       </div>
 
-      {/* Composer Modal */}
-      <CampaignComposerModal
-        open={composerOpen}
-        onOpenChange={(isOpen) => {
-          setComposerOpen(isOpen);
-          if (!isOpen) setEditingCampaign(null);
-        }}
-        onSave={handleSaveCampaign}
-        isSmtpVerified={isSmtpVerified}
-        initialData={
-          editingCampaign
-            ? {
-                name: editingCampaign.name,
-                subject: editingCampaign.subject,
-                body: editingCampaign.body,
-                templateId: editingCampaign.template_id || undefined,
-                imageUrl: editingCampaign.image_url || undefined,
-              }
-            : undefined
-        }
-      />
+      {/* Composer Modal: one per open session, so each opens with its own text. */}
+      {session && (
+        <CampaignComposerModal
+          key={session.key}
+          open
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setSession(null);
+          }}
+          onSave={handleSaveCampaign}
+          isSmtpVerified={isSmtpVerified}
+          initialData={session.initial}
+        />
+      )}
     </div>
   );
 }

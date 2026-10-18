@@ -768,7 +768,10 @@ describe("campaign board", () => {
 
   it("shows that sentence everywhere a campaign is saved or moved to 'scheduled'", () => {
     const uses = board.match(/toast\.success\([^;]*t\("marketing\.markedAsQueuedFlasCrm"\)/g) ?? [];
-    assert.equal(uses.length, 3, "new campaign, edited campaign, and a card moved to scheduled");
+    // A new campaign and an edited one are saved by the same server call (PR #58
+    // re-review), so they share one use; the other is a card moved to scheduled.
+    assert.equal(uses.length, 2, "campaign saved as scheduled, and a card moved to scheduled");
+    assert.match(board, /isScheduled\s*\?\s*t\("marketing\.markedAsQueuedFlasCrm"\)/);
   });
 });
 

@@ -65,25 +65,45 @@ export type SaveCampaignInput = {
   subject: string;
   body: string;
   /**
-   * One id per draft on the page, new after each successful save. The campaign
-   * is stored under it, so the same draft arriving twice (a double click, a
-   * retry after a dropped answer) is one campaign. Optional: without it a save
-   * is always a new campaign, as before.
+   * The campaign's id. The page makes one for each draft it opens, and uses the
+   * campaign's own for an edit, so the same draft arriving twice (a double
+   * click, a retry after a dropped answer, a second Save) is one campaign.
+   * Optional: without it a save is always a new campaign.
    */
   id?: string | undefined;
+  /** Each of these is left as it is when not given. */
+  templateId?: string | undefined;
+  imageUrl?: string | undefined;
+  attachments?: unknown[] | undefined;
+  status?: "draft" | "scheduled" | undefined;
 };
 
 export type SaveCampaignResult =
   | {
       ok: true;
       recipientsCount: number;
-      /** This draft had been saved already; nothing new was stored. */
-      repeated?: true;
+      /** False when this id was a campaign already: it was updated, and no other was made. */
+      created: boolean;
     }
   | { ok: false; reason: "audience_unavailable" };
 
 /**
- * Saves a campaign as a draft with the audience it has right now.
+ * Updates the campaign with this id. Says whether there was one: a row the
+ * caller's own client cannot see is, to it, no row at all, so an id that is
+ * someone else's is never reported as saved. A refused update is thrown.
+ */
+async function updateCampaign(
+  supabase: SupabaseClient,
+  id: string,
+  fields: Record<string, unknown>,
+): Promise<boolean> {
+  const { data, error } = await supabase.from("campaigns").update(fields).eq("id", id).select("id");
+  if (error) throw new Error(error.message);
+  return Array.isArray(data) && data.length > 0;
+}
+
+/**
+ * Creates or updates a campaign with the audience it has right now.
  *
  * The recipient count is read here, as part of the save, and is not taken from
  * the page. The page used to send whatever its audience request had returned so
@@ -92,7 +112,10 @@ export type SaveCampaignResult =
  * saved". If the audience cannot be read, nothing is saved: a campaign with a
  * made-up count is worse than one the user is asked to save again.
  *
- * A refused insert is thrown, as it always was.
+ * With an id, a campaign that exists is updated and one that does not is made
+ * under that id. Two saves of one id at the same moment both find nothing and
+ * both insert; the table's key refuses the second, which then updates the row
+ * the first made. A refused insert or update is thrown, as it always was.
  */
 export async function saveCampaignDraft(
   supabase: SupabaseClient,
@@ -107,33 +130,38 @@ export async function saveCampaignDraft(
     return { ok: false, reason: "audience_unavailable" };
   }
 
-  const { error } = await supabase.from("campaigns").insert({
-    ...(input.id ? { id: input.id } : {}),
+  const fields: Record<string, unknown> = {
     name: input.name,
     subject: input.subject,
     body: input.body,
+    ...(input.templateId !== undefined ? { template_id: input.templateId } : {}),
+    ...(input.imageUrl !== undefined ? { image_url: input.imageUrl || null } : {}),
+    ...(input.attachments !== undefined ? { attachments: input.attachments } : {}),
+    ...(input.status !== undefined ? { status: input.status } : {}),
     recipients_count: audience.total,
+  };
+
+  if (input.id && (await updateCampaign(supabase, input.id, fields))) {
+    return { ok: true, recipientsCount: audience.total, created: false };
+  }
+
+  const { error } = await supabase.from("campaigns").insert({
+    ...(input.id ? { id: input.id } : {}),
+    ...fields,
     created_by: actor.userId ?? null,
   });
   if (error) {
-    // 23505 is unique_violation. On a draft's own id it means "already saved",
-    // but only if the caller can see that campaign: the row is read back through
-    // the caller's own client, so an id that belongs to someone else's campaign
-    // (or to nothing the caller may see) is a failure, never a success.
-    if (input.id && error.code === "23505") {
-      const { data, error: readError } = await supabase
-        .from("campaigns")
-        .select("id, recipients_count")
-        .eq("id", input.id)
-        .maybeSingle();
-      if (readError) throw new Error(readError.message);
-      if (!data) throw new Error(error.message);
-      const stored = (data as { recipients_count?: number | null }).recipients_count;
-      return { ok: true, recipientsCount: typeof stored === "number" ? stored : 0, repeated: true };
+    // 23505 is unique_violation. On a campaign's own id it means another save of
+    // it got in first, but only if the caller can see that campaign: it is
+    // updated through the caller's own client, so an id that belongs to someone
+    // else's campaign (or to nothing the caller may see) is a failure, never a
+    // success.
+    if (input.id && error.code === "23505" && (await updateCampaign(supabase, input.id, fields))) {
+      return { ok: true, recipientsCount: audience.total, created: false };
     }
     throw new Error(error.message);
   }
-  return { ok: true, recipientsCount: audience.total };
+  return { ok: true, recipientsCount: audience.total, created: true };
 }
 
 export type DraftRequest = {

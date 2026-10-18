@@ -108,6 +108,19 @@ export type AudienceInput = {
  */
 export const CAMPAIGN_FIELD_LIMITS = { name: 200, subject: 500, body: 100_000 } as const;
 
+/**
+ * The same for what else a saved campaign carries: the picture, the template it
+ * was started from and the attached files. Read by the composer and by the
+ * server's check, like the limits above.
+ */
+export const CAMPAIGN_EXTRA_LIMITS = {
+  imageUrl: 2048,
+  templateId: 100,
+  attachments: 50,
+  attachmentName: 300,
+  attachmentUrl: 2048,
+} as const;
+
 /** The same for the Flas AI campaign writer's two free-text fields. */
 export const AI_DRAFT_FIELD_LIMITS = { goal: 500, audience: 300 } as const;
 

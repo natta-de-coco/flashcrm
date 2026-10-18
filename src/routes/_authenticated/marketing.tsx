@@ -10,8 +10,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/hooks/useI18n";
 import { navMessageKey } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
-import { AI_DRAFT_FIELD_LIMITS, CAMPAIGN_TOO_LONG } from "@/lib/campaign-audience";
-import { getCampaignAudience, saveCampaignDraft } from "@/lib/campaign-audience.functions";
+import { AI_DRAFT_FIELD_LIMITS } from "@/lib/campaign-audience";
+import { getCampaignAudience } from "@/lib/campaign-audience.functions";
 import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -20,7 +20,11 @@ import { Copy, Download, Loader2, Mail, Plus, Send, Sparkles, Trash2 } from "luc
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
-import { CampaignBoard, type CampaignItem } from "@/components/marketing/CampaignBoard";
+import {
+  CampaignBoard,
+  type CampaignItem,
+  type CampaignPrefill,
+} from "@/components/marketing/CampaignBoard";
 import { DripSequenceBuilder } from "@/components/marketing/DripSequenceBuilder";
 import { getTenantSmtpConfig } from "@/lib/tenant-smtp.functions";
 
@@ -109,7 +113,9 @@ function MarketingPage() {
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
-  const [campaignForm, setCampaignForm] = useState({ name: "", subject: "", body: "" });
+  // A draft written by Flas AI, handed to the campaign board to open in its
+  // composer. The board saves it, through the server, like any other campaign.
+  const [prefill, setPrefill] = useState<CampaignPrefill | null>(null);
   const [ruleForm, setRuleForm] = useState({
     name: "",
     match_field: "tag" as RoutingRule["match_field"],
@@ -127,11 +133,6 @@ function MarketingPage() {
   const [aiDraft, setAiDraft] = useState("");
   const draftWithFlashAi = useServerFn(draftCampaignMessage);
   const loadAudience = useServerFn(getCampaignAudience);
-  const saveCampaign = useServerFn(saveCampaignDraft);
-  // One id for the draft on screen. The server stores the campaign under it, so
-  // a second click, or a retry after an answer that never arrived, cannot make a
-  // second campaign. It is replaced once the draft has been saved.
-  const [draftId, setDraftId] = useState(() => crypto.randomUUID());
   const getSmtpConfigFn = useServerFn(getTenantSmtpConfig);
   const smtpConfigQuery = useQuery({
     queryKey: ["tenant-smtp-config-marketing"],
@@ -278,38 +279,6 @@ function MarketingPage() {
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
-  // The recipient count is worked out on the server as part of the save. It used
-  // to be `emailAudience?.total ?? 0`, taken from this page's own audience
-  // request: zero while that was still loading and zero again if it had failed,
-  // and the list below showed that zero as the audience "when saved".
-  const createCampaign = useMutation({
-    mutationFn: () =>
-      saveCampaign({
-        data: {
-          id: draftId,
-          name: campaignForm.name,
-          subject: campaignForm.subject,
-          body: campaignForm.body,
-        },
-      }),
-    onSuccess: (res) => {
-      // `ok: false` means the audience could not be read, so nothing was saved.
-      // The form is left as it is for another try.
-      if (!res.ok) {
-        toast.error(t("marketing.campaignNotSaved"));
-        return;
-      }
-      setCampaignForm({ name: "", subject: "", body: "" });
-      setDraftId(crypto.randomUUID());
-      toast.success(t("marketing.campaignSavedAsADraft"));
-      void qc.invalidateQueries({ queryKey: ["campaigns"] });
-    },
-    // A field that got past `maxLength` is refused by the server with a code,
-    // which is shown as a sentence and not as the validator's own text.
-    onError: (e: Error) =>
-      toast.error(e.message === CAMPAIGN_TOO_LONG ? t("marketing.campaignTooLong") : e.message),
-  });
-
   const generateDraft = useMutation({
     mutationFn: async () =>
       draftWithFlashAi({
@@ -330,24 +299,12 @@ function MarketingPage() {
   function useDraftInCampaign() {
     if (!aiDraft.trim()) return;
     const subjectMatch = aiDraft.match(/^Subject:\s*(.+)$/m);
-    setCampaignForm({
+    setPrefill({
       name: aiForm.goal.slice(0, 60) || "Flas AI campaign",
       subject: aiForm.channel === "email" ? (subjectMatch?.[1] ?? "") : "",
       body: aiForm.channel === "email" ? aiDraft.replace(/^Subject:.*\n?/m, "").trim() : aiDraft,
     });
-    toast.success("Draft copied into the campaign form below");
-  }
-
-  async function queueCampaign(id: string) {
-    const { error } = await supabase
-      .from("campaigns")
-      .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) toast.error(friendlyError(error));
-    else {
-      toast.success("Campaign queued. It sends once your email sending domain is verified.");
-      void qc.invalidateQueries({ queryKey: ["campaigns"] });
-    }
+    toast.success(t("marketing.draftOpenedInComposer"));
   }
 
   function copy(value: string) {
@@ -895,7 +852,9 @@ function MarketingPage() {
         <CampaignBoard
           campaigns={(campaigns.data ?? []) as unknown as CampaignItem[]}
           isSmtpVerified={isSmtpVerified}
-          audienceCount={emailAudience?.total ?? 0}
+          audienceCount={emailAudience?.total ?? null}
+          audienceError={audience.isError ? friendlyError(audience.error) : null}
+          prefill={prefill}
         />
       </div>
     </main>

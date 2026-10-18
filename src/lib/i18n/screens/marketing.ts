@@ -162,6 +162,8 @@ export default screen({
       "That is too long to save. Shorten the name or subject and try again.",
     "marketing.draftTooLong":
       "That is too long for Flas AI to use. Shorten the goal or the audience and try again.",
+    "marketing.draftOpenedInComposer":
+      "Draft opened in the campaign window. Check it, then save it.",
   },
   ar: {
     "marketing.checkingWhoHasOptedIn": "جارٍ التحقق ممن وافقوا على الاشتراك…",
@@ -320,6 +322,7 @@ export default screen({
       "هذا النص أطول من أن يُحفظ. اختصر الاسم أو الموضوع ثم حاول مرة أخرى.",
     "marketing.draftTooLong":
       "هذا النص أطول من أن يستخدمه Flas AI. اختصر الهدف أو الجمهور ثم حاول مرة أخرى.",
+    "marketing.draftOpenedInComposer": "فُتحت المسودة في نافذة الحملة. راجعها ثم احفظها.",
   },
   ms: {
     "marketing.checkingWhoHasOptedIn": "Menyemak siapa yang telah memberi persetujuan…",
@@ -481,6 +484,8 @@ export default screen({
       "Ini terlalu panjang untuk disimpan. Pendekkan nama atau subjek dan cuba lagi.",
     "marketing.draftTooLong":
       "Ini terlalu panjang untuk digunakan oleh Flas AI. Pendekkan matlamat atau audiens dan cuba lagi.",
+    "marketing.draftOpenedInComposer":
+      "Draf dibuka dalam tetingkap kempen. Semak, kemudian simpan.",
   },
   fil: {
     "marketing.checkingWhoHasOptedIn": "Tinitingnan kung sino ang pumayag…",
@@ -643,6 +648,8 @@ export default screen({
       "Masyadong mahaba ito para i-save. Paikliin ang pangalan o subject at subukan ulit.",
     "marketing.draftTooLong":
       "Masyadong mahaba ito para magamit ng Flas AI. Paikliin ang layunin o ang audience at subukan ulit.",
+    "marketing.draftOpenedInComposer":
+      "Binuksan ang draft sa window ng campaign. Suriin ito, pagkatapos ay i-save.",
   },
   sw: {
     "marketing.checkingWhoHasOptedIn": "Inakagua nani amekubali…",
@@ -804,5 +811,7 @@ export default screen({
       "Hii ni ndefu mno kuhifadhiwa. Fupisha jina au mada na ujaribu tena.",
     "marketing.draftTooLong":
       "Hii ni ndefu mno kwa Flas AI kutumia. Fupisha lengo au hadhira na ujaribu tena.",
+    "marketing.draftOpenedInComposer":
+      "Rasimu imefunguliwa kwenye dirisha la kampeni. Iangalie, kisha uihifadhi.",
   },
 });

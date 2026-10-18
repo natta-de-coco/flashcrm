@@ -693,7 +693,7 @@ describe("PR #33: a saved campaign records the audience it really had", () => {
     // request was still loading, and zero again if that request had failed.
     seed();
     const result = await server.serverFns.saveCampaignDraft({ data: form, context });
-    assert.deepEqual(result, { ok: true, recipientsCount: 2 });
+    assert.deepEqual(result, { ok: true, recipientsCount: 2, created: true });
     assert.equal(db.table("campaigns").length, 1);
     const saved = db.table("campaigns")[0];
     assert.equal(saved.recipients_count, 2);
@@ -742,15 +742,24 @@ describe("PR #33: a saved campaign records the audience it really had", () => {
     assert.equal(db.table("campaigns").length, 0);
   });
 
-  test("the page saves through it and no longer supplies a count of its own", () => {
+  test("the board saves through it and no longer supplies a count of its own", () => {
+    // The rendered path is exercised by tests/campaign-board-save.test.mjs; this
+    // pins the two sources that path is made of.
+    const board = readFileSync("src/components/marketing/CampaignBoard.tsx", "utf8")
+      .split("\r\n")
+      .join("\n");
     const route = readFileSync("src/routes/_authenticated/marketing.tsx", "utf8")
       .split("\r\n")
       .join("\n");
-    assert.match(route, /useServerFn\(saveCampaignDraft\)/);
+    assert.match(board, /useServerFn\(saveCampaignDraft\)/);
+    assert.doesNotMatch(board, /recipients_count: audienceCount/);
     assert.doesNotMatch(route, /recipients_count: emailAudience/);
-    assert.doesNotMatch(route, /\.from\("campaigns"\)\s*\.insert\(/);
+    assert.doesNotMatch(board + route, /\.from\("campaigns"\)\s*\.insert\(/);
     // "Not saved" has to be said, in the reader's language.
-    assert.match(route, /if \(!res\.ok\) \{\s*toast\.error\(t\("marketing\.campaignNotSaved"\)\)/);
+    assert.match(
+      board,
+      /if \(!result\.ok\) \{\s*toast\.error\(t\("marketing\.campaignNotSaved"\)\)/,
+    );
   });
 });
 
@@ -1195,28 +1204,85 @@ describe("PR #58: saving the same draft twice makes one campaign", () => {
     db.unique("campaigns", ["id"]);
   });
 
-  test("the second save of one draft is the same campaign, reported as already saved", async () => {
+  test("the second save of one draft updates that campaign and makes no other", async () => {
     const first = await save({ id: DRAFT });
-    const second = await save({ id: DRAFT });
-    assert.deepEqual(first, { ok: true, recipientsCount: 2 });
-    assert.deepEqual(second, { ok: true, recipientsCount: 2, repeated: true });
+    const second = await save({ id: DRAFT, name: "Spring launch, second go" });
+    assert.deepEqual(first, { ok: true, recipientsCount: 2, created: true });
+    assert.deepEqual(second, { ok: true, recipientsCount: 2, created: false });
     assert.equal(db.table("campaigns").length, 1);
     assert.equal(db.table("campaigns")[0].id, DRAFT, "stored under the id the page sent");
+    assert.equal(db.table("campaigns")[0].name, "Spring launch, second go", "the new text is kept");
+    assert.equal(db.table("campaigns")[0].created_by, "user-1", "and who made it is not rewritten");
   });
 
   test("two saves at once are one campaign", async () => {
     const results = await Promise.all([save({ id: DRAFT }), save({ id: DRAFT })]);
     assert.equal(db.table("campaigns").length, 1);
-    assert.equal(results.filter((r) => r.repeated === true).length, 1);
+    assert.equal(results.filter((r) => r.created === true).length, 1, "only one of them made it");
     assert.ok(results.every((r) => r.ok === true && r.recipientsCount === 2));
   });
 
-  test("the count reported for a repeat is the one that was stored", async () => {
+  test("the count of an updated campaign is the one worked out again, by the server", async () => {
     await save({ id: DRAFT });
     db.table("contacts").push(aContact("c3", { email: "c@example.com" }));
     const second = await save({ id: DRAFT });
-    assert.equal(second.recipientsCount, 2, "not re-counted: nothing new was saved");
-    assert.equal(db.table("campaigns")[0].recipients_count, 2);
+    assert.equal(second.recipientsCount, 3);
+    assert.equal(db.table("campaigns")[0].recipients_count, 3);
+  });
+
+  test("an update the audience cannot be read for changes nothing", async () => {
+    await save({ id: DRAFT, name: "Before" });
+    db.fail("contacts:read", { message: "permission denied for table" });
+    const second = await save({ id: DRAFT, name: "After" });
+    assert.deepEqual(second, { ok: false, reason: "audience_unavailable" });
+    assert.equal(db.table("campaigns")[0].name, "Before");
+    assert.equal(db.table("campaigns")[0].recipients_count, 2, "and the count is not zeroed");
+  });
+
+  test("an update the database refuses is an error, not a saved campaign", async () => {
+    await save({ id: DRAFT });
+    db.fail("campaigns:update", { message: "new row violates row-level security policy" });
+    await assert.rejects(save({ id: DRAFT, name: "After" }), /row-level security/);
+    assert.equal(db.table("campaigns")[0].name, "Spring launch");
+  });
+
+  test("what a save carries is stored, and what it leaves out is left as it was", async () => {
+    const attachment = {
+      id: "att_1",
+      name: "Brochure.pdf",
+      url: "https://x.example/b.pdf",
+      type: "application/pdf",
+      size: 1024,
+    };
+    await save({
+      id: DRAFT,
+      templateId: "newsletter",
+      imageUrl: "https://x.example/hero.png",
+      attachments: [attachment],
+      status: "scheduled",
+    });
+    const row = db.table("campaigns")[0];
+    assert.equal(row.template_id, "newsletter");
+    assert.equal(row.image_url, "https://x.example/hero.png");
+    assert.deepEqual(row.attachments, [attachment]);
+    assert.equal(row.status, "scheduled");
+
+    await save({ id: DRAFT, name: "Only the name" });
+    assert.equal(row.name, "Only the name");
+    assert.equal(row.template_id, "newsletter");
+    assert.deepEqual(row.attachments, [attachment]);
+    assert.equal(row.status, "scheduled", "a stage is not changed by a save that names none");
+
+    await save({ id: DRAFT, imageUrl: "", status: "draft" });
+    assert.equal(row.image_url, null, "an emptied picture is no picture");
+    assert.equal(row.status, "draft");
+  });
+
+  test("no save can claim a stage beyond draft and scheduled", async () => {
+    for (const status of ["sent", "in_progress", "sending", "paused", "failed", "SENT"]) {
+      await assert.rejects(save({ id: DRAFT, status }), undefined, status);
+    }
+    assert.equal(db.table("campaigns").length, 0);
   });
 
   test("a new draft gets a new id and is a new campaign", async () => {
@@ -1226,18 +1292,28 @@ describe("PR #58: saving the same draft twice makes one campaign", () => {
   });
 
   test("an id the caller cannot see is a failure, not a success", async () => {
-    // Someone else's campaign under that id: the unique key refuses the insert,
-    // and the caller's own client cannot read it back.
+    // Someone else's campaign under that id: the caller's update finds no row it
+    // may change, the unique key refuses the insert, and the update after that
+    // finds none either.
     db.table("campaigns").push({ id: DRAFT, name: "Theirs", recipients_count: 40 });
-    db.fail("campaigns:read", { empty: true });
+    db.fail("campaigns:update", { empty: true });
     await assert.rejects(save({ id: DRAFT }), /duplicate key/);
     assert.equal(db.table("campaigns").length, 1);
+    assert.equal(db.table("campaigns")[0].name, "Theirs");
+    assert.equal(db.table("campaigns")[0].recipients_count, 40);
   });
 
-  test("a failed read-back is a failure too", async () => {
-    await save({ id: DRAFT });
-    db.fail("campaigns:read", { message: "permission denied for table" });
+  test("a refused update after a lost race is a failure too", async () => {
+    // The first update finds nothing, the insert loses to a save that got in
+    // first, and the update that follows is refused.
+    db.table("campaigns").push({ id: DRAFT, name: "Theirs", recipients_count: 40 });
+    let updates = 0;
+    db.fail("campaigns:update", () => {
+      updates += 1;
+      return updates === 1 ? { empty: true } : { message: "permission denied for table" };
+    });
     await assert.rejects(save({ id: DRAFT }), /permission denied/);
+    assert.equal(db.table("campaigns")[0].name, "Theirs");
   });
 
   test("a unique violation without an id from the page is still an error", async () => {
@@ -1261,19 +1337,13 @@ describe("PR #58: saving the same draft twice makes one campaign", () => {
     assert.equal(db.table("campaigns").length, 0);
   });
 
-  test("the page sends one id per draft and takes a new one after each save", () => {
-    const route = readFileSync("src/routes/_authenticated/marketing.tsx", "utf8")
+  test("the board names the campaign on every save: its own id, or the one it made when the composer opened", () => {
+    // Exercised through the rendered board in tests/campaign-board-save.test.mjs.
+    const board = readFileSync("src/components/marketing/CampaignBoard.tsx", "utf8")
       .split("\r\n")
       .join("\n");
-    assert.match(
-      route,
-      /const \[draftId, setDraftId\] = useState\(\(\) => crypto\.randomUUID\(\)\)/,
-    );
-    assert.match(route, /data: \{\s*id: draftId,/);
-    assert.match(
-      route,
-      /setCampaignForm\(\{ name: "", subject: "", body: "" \}\);\s*setDraftId\(crypto\.randomUUID\(\)\);/,
-    );
+    assert.match(board, /id: campaign\?\.id \?\? crypto\.randomUUID\(\)/);
+    assert.match(board, /data: \{\s*id: session\.id,/);
   });
 });
 
