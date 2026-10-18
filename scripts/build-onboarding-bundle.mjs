@@ -31,8 +31,16 @@ await build({
       name: "onboarding-boundaries",
       setup(b) {
         const stubs = {
-          "client.server":
-            "export const supabaseAdmin = new Proxy({}, {get: (_, key) => globalThis.onboardingDb[key]});",
+          // A double that models no database functions is a database that has
+          // none: asked for one, it answers the way the API does when a
+          // function's migration has not been applied.
+          "client.server": `const noFunctions = async (name) => ({
+              data: null,
+              error: { code: "PGRST202", message: "Could not find the function public." + name + " in the schema cache" },
+            });
+            export const supabaseAdmin = new Proxy({}, {
+              get: (_, key) => globalThis.onboardingDb[key] ?? (key === "rpc" ? noFunctions : undefined),
+            });`,
           "auth-middleware": "export const requireSupabaseAuth = {};",
           "@tanstack/react-start":
             "export function createServerFn() { return {middleware(){return this},inputValidator(){return this},handler(fn){return fn}}; }",

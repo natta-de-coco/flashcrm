@@ -249,6 +249,135 @@ export function createDb() {
         // connection. Without one, the call succeeds with whatever rpcResults holds.
         const handler = state.rpcHandlers[name];
         if (handler) return handler(args);
+        // Only models the persistence boundary for public-intake/email tests.
+        // Tenant permissions, SQL locks and concurrency are tested in real PG.
+        if (name === "record_sales_lead_alert") {
+          const rows = (table) => (state.rows[table] ??= []);
+          const { _tenant_id: tenant, _lead_id: lead, _title: title, _body: body } = args;
+          if (!rows("leads").some((r) => r.id === lead && r.tenant_id === tenant))
+            return {
+              data: null,
+              error: { message: "Lead belongs to another workspace or is missing" },
+            };
+          const settings = rows("tenant_alert_settings").find((r) => r.tenant_id === tenant);
+          const result = {
+            notification_count: 0,
+            created_notification_count: 0,
+            email_recipient_count: 0,
+            diagnostics_pending: false,
+          };
+          if (settings?.lead_alerts_enabled === false) return { data: result, error: null };
+          const normalized = (value) =>
+            String(value ?? "")
+              .trim()
+              .toLowerCase();
+          const configured = [
+            ...new Set((settings?.alert_email_addresses ?? []).map(normalized).filter(Boolean)),
+          ];
+          const managers = rows("profiles").filter(
+            (p) =>
+              p.tenant_id === tenant && ["company_admin", "super_admin"].includes(p.staff_role),
+          );
+          const recipients = rows("profiles").filter(
+            (p) =>
+              p.tenant_id === tenant &&
+              (["company_admin", "super_admin"].includes(p.staff_role) ||
+                (["marketing_manager", "staff"].includes(p.staff_role) &&
+                  configured.includes(normalized(p.email)))),
+          );
+          const emails = configured.length
+            ? configured
+            : [...new Set(managers.map((p) => normalized(p.email)).filter(Boolean))];
+          result.email_recipient_count = emails.length;
+          if (state.faults["workspace_notifications:insert"])
+            return { data: null, error: { message: "Notification insert refused" } };
+          for (const recipient of recipients) {
+            const existing = rows("workspace_notifications").find(
+              (r) =>
+                r.tenant_id === tenant &&
+                r.lead_id === lead &&
+                r.recipient_user_id === recipient.id,
+            );
+            if (!existing) {
+              rows("workspace_notifications").push({
+                id: `alert-${++state.ids}`,
+                tenant_id: tenant,
+                lead_id: lead,
+                recipient_user_id: recipient.id,
+                title,
+                body,
+              });
+              result.created_notification_count++;
+            }
+            result.notification_count++;
+          }
+          // Both diagnostic tables share a savepoint; notification persistence survives.
+          if (state.faults["lead_alerts_log:insert"] || state.faults["email_delivery_log:insert"])
+            return { data: { ...result, diagnostics_pending: true }, error: null };
+          const reason = "Email sending is not connected yet, so this alert was not emailed.";
+          for (const email of emails) {
+            if (
+              !rows("lead_alerts_log").some(
+                (r) =>
+                  r.tenant_id === tenant &&
+                  r.lead_id === lead &&
+                  r.alert_channel === "email" &&
+                  normalized(r.recipient) === email,
+              )
+            )
+              rows("lead_alerts_log").push({
+                tenant_id: tenant,
+                lead_id: lead,
+                alert_channel: "email",
+                recipient: email,
+                subject: title,
+                status: "failed",
+                error: reason,
+              });
+            const key = `alert_unsent_${lead}`;
+            if (
+              !rows("email_delivery_log").some(
+                (r) =>
+                  r.tenant_id === tenant &&
+                  normalized(r.recipient) === email &&
+                  r.provider_msg_id === key &&
+                  r.template === "internal_sales_lead_alert" &&
+                  r.provider === "platform_smtp",
+              )
+            )
+              rows("email_delivery_log").push({
+                tenant_id: tenant,
+                recipient: email,
+                subject: title,
+                provider_msg_id: key,
+                template: "internal_sales_lead_alert",
+                provider: "platform_smtp",
+                status: "failed",
+                error: reason,
+              });
+          }
+          const phone = settings?.alert_whatsapp_phone?.trim();
+          if (
+            settings?.alert_whatsapp_enabled &&
+            phone &&
+            !rows("lead_alerts_log").some(
+              (r) =>
+                r.tenant_id === tenant &&
+                r.lead_id === lead &&
+                r.alert_channel === "whatsapp" &&
+                r.recipient === phone,
+            )
+          )
+            rows("lead_alerts_log").push({
+              tenant_id: tenant,
+              lead_id: lead,
+              alert_channel: "whatsapp",
+              recipient: phone,
+              status: "failed",
+              error: "FLAS_WHATSAPP_ALERT_PIPELINE_UNAVAILABLE",
+            });
+          return { data: result, error: null };
+        }
         return { data: state.rpcResults[name] ?? null, error: null };
       },
     },

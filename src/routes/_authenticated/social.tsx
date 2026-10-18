@@ -23,6 +23,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { manualSocialFormError } from "@/lib/form-validation";
 import { connector } from "@/lib/connections-catalog";
 import { connectorDefinition, resolveCapability } from "@/lib/social-connector-definitions";
+import { isUnfinishedConnection } from "@/lib/social-account-readiness";
+import {
+  draftFromPost,
+  emptyDraft,
+  platformIsKept,
+  submitDraft,
+  type ComposerDraft,
+} from "@/lib/social-drafts";
 import { SOCIAL_HUB_CAN_PUBLISH, publishReality } from "@/lib/social-publishing";
 import {
   groupPostsByState,
@@ -134,6 +142,8 @@ type Account = {
   platform: PlatformId;
   label: string;
   external_id: string | null;
+  /** "oauth" for a connection made by signing in; "manual" for a pasted one. */
+  connect_method?: string | null;
   active: boolean;
   last_synced_at: string | null;
   stats: Record<string, number> | null;
@@ -331,18 +341,6 @@ function PlatformBadge({ platform, label }: { platform: string | null; label?: s
       <PlatformIcon platform={platform} />
       {label ?? platformDisplayName(platform)}
     </Badge>
-  );
-}
-
-/** ISO instant → the value a `datetime-local` input expects, in local time. */
-function toLocalInputValue(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
-    `T${pad(date.getHours())}:${pad(date.getMinutes())}`
   );
 }
 
@@ -650,7 +648,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
                   <span className="truncate">{a.label}</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {!a.external_id
+                  {isUnfinishedConnection(a)
                     ? i18n.t("social.signInDoneChooseWhich")
                     : `${audienceStat(a.stats, i18n.t) ? `${audienceStat(a.stats, i18n.t)} · ` : ""}${
                         a.last_synced_at
@@ -662,7 +660,7 @@ function AccountsCard({ accounts, onChanged }: { accounts: Account[]; onChanged:
               <div className="flex shrink-0 items-center gap-1">
                 {/* Analytics and ads connections report rather than sync:
                     Sync pulls posts and comments, which they do not have. */}
-                {!a.external_id ? (
+                {isUnfinishedConnection(a) ? (
                   // The sign-in finished but no Page was chosen, so there is
                   // nothing to sync -- pressing Sync could only ever fail with
                   // "Add the Meta account ID and access token first", which is
@@ -913,13 +911,7 @@ function ComposerTab({
   });
   // One piece of work in the composer: a new caption, or the draft being
   // rewritten. `id` is what tells the two apart on save.
-  const [draft, setDraft] = useState<{
-    id: string | null;
-    caption: string;
-    platform: PlatformId;
-    accountId: string | null;
-    plannedAt: string;
-  }>({ id: null, caption: "", platform: "instagram", accountId: null, plannedAt: "" });
+  const [draft, setDraft] = useState<ComposerDraft<PlatformId>>(() => emptyDraft("instagram"));
 
   // Accounts a post can be written for. The composer's own platform list is
   // what the server accepts (ComposeSchema / SavePostSchema), so an analytics or
@@ -930,16 +922,8 @@ function ComposerTab({
 
   useEffect(() => {
     if (!editing) return;
-    setDraft((d) => ({
-      id: editing.id,
-      caption: editing.caption,
-      accountId: editing.account_id,
-      platform:
-        ((writableAccounts.find((a) => a.id === editing.account_id)?.platform as PlatformId) ??
-          d.platform) ||
-        "instagram",
-      plannedAt: toLocalInputValue(editing.scheduled_at),
-    }));
+    // What the composer holds for a saved post is decided in social-drafts.ts.
+    setDraft((d) => draftFromPost(editing, writableAccounts, d.platform));
     // Only the identity of the post being edited should reload the form —
     // re-running on every account refetch would throw away typing in progress.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -950,7 +934,7 @@ function ComposerTab({
   const saved = [...groups.planned, ...groups.drafts];
 
   const resetDraft = () => {
-    setDraft({ id: null, caption: "", platform: draft.platform, accountId: null, plannedAt: "" });
+    setDraft(emptyDraft(draft.platform));
     onEdit(null);
   };
 
@@ -975,37 +959,16 @@ function ComposerTab({
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (plan: boolean) => {
-      const caption = draft.caption.trim();
-      const scheduledAt =
-        plan && draft.plannedAt ? new Date(draft.plannedAt).toISOString() : undefined;
-      if (draft.id) {
-        return update({
-          data: {
-            id: draft.id,
-            caption,
-            accountId: draft.accountId,
-            scheduledAt: scheduledAt ?? null,
-          },
-        });
+    // What is sent, and what is said about it, is decided in social-drafts.ts,
+    // where it is tested.
+    mutationFn: (plan: boolean) => submitDraft(draft, plan, { save, update }),
+    onSuccess: (outcome) => {
+      if (outcome.kind === "unreadable-date") {
+        // Nothing was sent or saved; the form stays as it is so the date can be chosen again.
+        toast.error(i18n.t("social.plannedDateUnreadable"));
+        return;
       }
-      return save({
-        data: {
-          caption,
-          platform: draft.platform,
-          ...(draft.accountId ? { accountId: draft.accountId } : {}),
-          ...(scheduledAt ? { scheduledAt } : {}),
-        },
-      });
-    },
-    onSuccess: (_res, plan) => {
-      toast.success(
-        draft.id
-          ? i18n.t("social.draftUpdated")
-          : plan
-            ? i18n.t("social.savedWithAPlannedDate")
-            : i18n.t("social.draftSaved"),
-      );
+      toast.success(i18n.t(outcome.messageKey));
       resetDraft();
       onChanged();
     },
@@ -1116,13 +1079,18 @@ function ComposerTab({
                   ))}
                 </SelectContent>
               </Select>
-              {draft.accountId !== null ? (
+              {platformIsKept(draft) ? (
                 <p className="text-xs text-muted-foreground">
                   {i18n.tr("social.setByTheAccountYou", {
                     platformDisplayName: platformDisplayName(draft.platform),
                   })}
                 </p>
-              ) : null}
+              ) : (
+                // A draft with no account has nowhere to keep the platform.
+                <p className="text-xs text-muted-foreground">
+                  {i18n.t("social.platformNotSavedWithoutAccount")}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1202,6 +1170,7 @@ function ComposerTab({
               <Input
                 id="social-planned-at"
                 type="datetime-local"
+                max="9999-12-31T23:59"
                 className="w-56"
                 value={draft.plannedAt}
                 onChange={(e) => setDraft((d) => ({ ...d, plannedAt: e.target.value }))}

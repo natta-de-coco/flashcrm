@@ -26,9 +26,9 @@ function trendLine(
  * Builds the daily brief: aggregates the dashboard overview, adds business
  * context, and returns a headline, a two-sentence summary and 3 next actions.
  */
-async function generateDailyBrief(supabase: SupabaseClient): Promise<DailyBrief> {
+async function generateDailyBrief(supabase: SupabaseClient, role: string): Promise<DailyBrief> {
   const [overview, profile] = await Promise.all([
-    getDashboardOverviewData(supabase),
+    getDashboardOverviewData(supabase, { role }),
     getBusinessContext(supabase as never).catch(() => null),
   ]);
 
@@ -36,13 +36,29 @@ async function generateDailyBrief(supabase: SupabaseClient): Promise<DailyBrief>
     profile?.business_name ? `Business: ${profile.business_name}` : null,
     profile?.industry ? `Industry: ${profile.industry}` : null,
     profile?.description ? `About: ${profile.description}` : null,
-    `Business health score: ${overview.health.score}/100 (${overview.health.grade})`,
-    ...overview.health.factors.map((f) => `${f.label}: ${f.score}/100 — ${f.detail}`),
-    trendLine("Total messages", overview.trends.messages),
-    trendLine("Inbound messages", overview.trends.inbound),
-    trendLine("New leads", overview.trends.leads),
-    `Open conversations: ${overview.stats.open}, unread: ${overview.stats.unread}, contacts: ${overview.stats.contacts}`,
-    `Social: ${overview.social.accounts.length} accounts, ${overview.social.pendingTotal} interactions waiting for a reply`,
+    overview.health.score === null
+      ? "CRM activity score: not enough measured activity yet. No grade is available; do not infer business risk."
+      : `CRM activity score: ${overview.health.score}/100 (${overview.health.grade}); not financial health`,
+    ...overview.health.factors.map((f) =>
+      f.score === null
+        ? `${f.label}: insufficient or incomplete data; no score`
+        : `${f.label}: ${f.score}/100 — ${f.detail}`,
+    ),
+    ...(overview.sampling?.messages
+      ? ["Message activity is a limited sample; do not describe totals or trends as complete."]
+      : [
+          trendLine("Total messages", overview.trends.messages),
+          trendLine("Inbound messages", overview.trends.inbound),
+        ]),
+    overview.visibility?.leads === false
+      ? null
+      : overview.sampling?.leads
+        ? "Recent leads are a limited sample; no complete lead trend is available."
+        : trendLine("New leads", overview.trends.leads),
+    `Open conversations: ${overview.stats.open}, chats to read: ${overview.stats.unreadConversations}, contacts: ${overview.stats.contacts}`,
+    overview.visibility?.social === false
+      ? null
+      : `Social: ${overview.social.accounts.length} accounts, ${overview.social.pendingTotal} interactions waiting for a reply`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -90,20 +106,22 @@ function utcDay(): string {
  */
 export async function buildDailyBrief(
   supabase: SupabaseClient,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; role?: string } = {},
 ): Promise<DailyBrief> {
   const today = utcDay();
 
-  const { data: tenantId } = await supabase.rpc("current_tenant_id");
-  if (!tenantId) return generateDailyBrief(supabase);
+  const { data: tenantId, error: tenantError } = await supabase.rpc("current_tenant_id");
+  if (tenantError || !tenantId)
+    throw new Error("Your workspace could not be checked. Please try again.");
 
   if (!opts.force) {
-    const { data: existing } = await supabase
+    const { data: existing, error: cacheError } = await supabase
       .from("daily_briefs")
       .select("headline, summary, actions, created_at")
       .eq("tenant_id", tenantId as string)
       .eq("brief_date", today)
       .maybeSingle();
+    if (cacheError) throw new Error("Your saved summary could not be checked. Please try again.");
     if (existing) {
       return {
         headline: existing.headline,
@@ -115,9 +133,9 @@ export async function buildDailyBrief(
     }
   }
 
-  const fresh = await generateDailyBrief(supabase);
+  const fresh = await generateDailyBrief(supabase, opts.role ?? "staff");
 
-  await supabase.from("daily_briefs").upsert(
+  const { error: saveError } = await supabase.from("daily_briefs").upsert(
     {
       tenant_id: tenantId as string,
       brief_date: today,
@@ -128,6 +146,7 @@ export async function buildDailyBrief(
     },
     { onConflict: "tenant_id,brief_date" },
   );
+  if (saveError) throw new Error("The AI summary could not be saved. Please try again.");
 
   return fresh;
 }
