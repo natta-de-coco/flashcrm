@@ -82,6 +82,8 @@ await bundle("src/lib/connections.server.ts", "flas-health-connections-server.mj
 await bundle("src/lib/social-authorizations.server.ts", "flas-health-authorizations.mjs");
 // How a channel's token is stored encrypted on the account itself (the tests store one the real way).
 await bundle("src/lib/social-token-store.server.ts", "flas-health-token-store.mjs");
+// Where a channel's own token is found when access_token is empty (read on its own by the tests).
+await bundle("src/lib/connection-tokens.server.ts", "flas-health-tokens.mjs");
 // The browser-safe model: counts, outcome summary, CSV.
 await bundle("src/lib/integration-health.ts", "flas-health-model.mjs");
 // The words: which sentence each status and outcome is, and the messages of all five languages.

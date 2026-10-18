@@ -3332,3 +3332,79 @@ describe("an account with no sign-in is not called 'disconnected on purpose' (ro
     });
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 3, finding 5: the two tenant filters round 2 added are pinned
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const channelTokens = await import("../node_modules/.cache/flas-health-tokens.mjs");
+
+describe("another workspace's accounts are never read or listed (round 3, finding 5)", () => {
+  const B_AUTH = "bbbbbbbb-0000-4000-8000-0000000000e1";
+
+  const theirPage = async (over = {}) =>
+    world.account({
+      tenant_id: B,
+      access_token: null,
+      refresh_token: null,
+      authorization_id: B_AUTH,
+      ...(await tokenStore.encryptTokensForStorage({
+        tenantId: B,
+        platform: "facebook",
+        accessToken: SECRET.meta,
+        refreshToken: null,
+      })),
+      ...over,
+    });
+
+  test("the token of a channel is only read for the workspace it belongs to", async () => {
+    const theirs = await theirPage();
+    assert.deepEqual(
+      await channelTokens.readChannelTokens({ id: theirs.id, tenant_id: A, platform: "facebook" }),
+      { kind: "none" },
+      "asked as another workspace, it is not there",
+    );
+    const own = await channelTokens.readChannelTokens({
+      id: theirs.id,
+      tenant_id: B,
+      platform: "facebook",
+    });
+    assert.equal(own.kind, "found", "asked as its own workspace, it is");
+  });
+
+  test("the group check lists only its own workspace's accounts, whichever column holds the sign-in", async () => {
+    const theirs = [
+      await theirPage({ external_id: "b1" }),
+      await theirPage({ external_id: "b2", access_token_enc: null }),
+      await theirPage({ external_id: "b3", access_token_enc: null, authorization_id: null }),
+      world.account({ tenant_id: B, external_id: "b4" }),
+    ];
+    const before = clone(theirs.map((r) => world.stored(r.id)));
+    world.provider([]); // any request at all would throw
+    assert.deepEqual(await checkAll(), [], "workspace A has nothing to check");
+    assert.equal(world.fetches.length, 0);
+    assert.deepEqual(world.logRows(), []);
+    assert.deepEqual(
+      clone(theirs.map((r) => world.stored(r.id))),
+      before,
+      "and the other workspace's accounts are untouched",
+    );
+  });
+
+  test("while its own account in the same situation is listed", async () => {
+    await theirPage({ external_id: "b1" });
+    const tokens = await tokenStore.encryptTokensForStorage({
+      tenantId: A,
+      platform: "facebook",
+      accessToken: SECRET.meta,
+      refreshToken: null,
+    });
+    const mine = world.account({ access_token: null, authorization_id: "auth-a", ...tokens });
+    world.provider(facebookHealthy());
+    const results = await checkAll();
+    assert.deepEqual(
+      results.map((r) => [r.account_id, r.outcome]),
+      [[mine.id, "healthy"]],
+    );
+  });
+});
