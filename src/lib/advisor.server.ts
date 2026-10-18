@@ -88,11 +88,23 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
 
   if (overview) {
     lines.push("\n## Channel performance");
-    lines.push(`Health score: ${overview.health.score}/100 (${overview.health.grade})`);
-    for (const f of overview.health.factors)
-      lines.push(`- ${f.label}: ${f.score}/100 — ${f.detail}`);
     lines.push(
-      `Messages this week ${overview.trends.messages.current} vs ${overview.trends.messages.previous} last week; inbound ${overview.trends.inbound.current} vs ${overview.trends.inbound.previous}; new leads ${overview.trends.leads.current} vs ${overview.trends.leads.previous}`,
+      overview.health.score === null
+        ? "CRM activity score: insufficient measured activity; no grade or business-risk conclusion is available."
+        : `CRM activity score: ${overview.health.score}/100 (${overview.health.grade}); not financial health`,
+    );
+    for (const f of overview.health.factors)
+      lines.push(
+        f.score === null
+          ? `- ${f.label}: insufficient or incomplete data; no score`
+          : `- ${f.label}: ${f.score}/100 — ${f.detail}`,
+      );
+    if (overview.sampling && Object.values(overview.sampling).some(Boolean))
+      lines.push(
+        "Some activity is sampled and incomplete. Do not treat weekly totals, trends or audience as exact.",
+      );
+    lines.push(
+      `Messages this week ${overview.trends.messages.current} vs ${overview.trends.messages.previous} last week; inbound ${overview.trends.inbound.current} vs ${overview.trends.inbound.previous}`,
     );
     lines.push(
       `Conversations open ${overview.stats.open}, unread ${overview.stats.unread}, contacts ${overview.stats.contacts}`,
@@ -102,9 +114,12 @@ export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<A
         .map((d) => `${d.day} in=${d.received} out=${d.sent}`)
         .join(", ")}`,
     );
-    lines.push(
-      `Social: ${overview.social.accounts.length} accounts, audience ${overview.social.totalAudience}, ${overview.social.interactions7d} interactions in 7 days, ${overview.social.pendingTotal} awaiting reply`,
-    );
+    if (overview.visibility?.leads !== false)
+      lines.push(`New leads ${overview.trends.leads.current} vs ${overview.trends.leads.previous}`);
+    if (overview.visibility?.social !== false)
+      lines.push(
+        `Social: ${overview.social.accounts.length} accounts, audience ${overview.social.totalAudience}, ${overview.social.interactions7d} interactions in 7 days, ${overview.social.pendingTotal} awaiting reply`,
+      );
   }
 
   if (messaging) {

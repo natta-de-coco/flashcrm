@@ -563,7 +563,11 @@ describe("a marketing email is never sent without a working unsubscribe link", (
   });
 
   it("capturing a lead still works with no key; the welcome and the first drip email are held back", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [welcomeConfig()] });
+    db.reset({
+      leads: [],
+      tenant_smtp_config: [welcomeConfig()],
+      profiles: [{ id: "admin-a", tenant_id: A, staff_role: "company_admin", email: null }],
+    });
     setKey(undefined);
 
     const saved = await ingestLead({
@@ -575,7 +579,11 @@ describe("a marketing email is never sent without a working unsubscribe link", (
 
     assert.equal(saved.email, "new@example.com");
     assert.equal(db.table("leads").length, 1);
-    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
+    assert.equal(
+      db.table("workspace_notifications").length,
+      1,
+      "the in-app sales alert is still raised",
+    );
 
     assert.equal(statuses().length >= 2, true);
     assert.deepEqual([...new Set(statuses())], ["failed"], "no email is recorded as sent");

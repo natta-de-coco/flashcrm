@@ -36,6 +36,9 @@ const GOOD_KEY = crypto.randomBytes(32).toString("hex");
 const A = "company-a";
 const B = "company-b";
 const EMAIL = "new@example.com";
+const alertRecipients = [
+  { id: "admin-a", tenant_id: A, staff_role: "company_admin", email: "owner@example.com" },
+];
 
 const NOT_CONNECTED = "Email sending is not connected yet, so nothing was sent.";
 const ALERT_NOT_EMAILED = "Email sending is not connected yet, so this alert was not emailed.";
@@ -58,6 +61,16 @@ const database = {
   },
   rpc: async (name, args) => {
     attempts.push({ name, args });
+    if (name === "record_sales_lead_alert" && logFault) {
+      const previous = db.state.faults["email_delivery_log:insert"];
+      db.fail("email_delivery_log:insert", { message: "Delivery diagnostic unavailable" });
+      try {
+        return await db.client.rpc(name, args);
+      } finally {
+        if (previous) db.fail("email_delivery_log:insert", previous);
+        else db.recover("email_delivery_log:insert");
+      }
+    }
     if (logFault === "unreachable") throw new Error("the delivery log is unreachable");
     if (logFault === "error") {
       return { data: null, error: { code: "XX000", message: "the delivery log refused it" } };
@@ -117,7 +130,10 @@ const dripRows = (extra = {}) => ({
 });
 
 const claims = () => attempts.filter((c) => c.name === "log_email_delivery").map((c) => c.args);
-const statuses = () => claims().map((c) => c._status);
+const statuses = () => [
+  ...claims().map((c) => c._status),
+  ...db.table("email_delivery_log").map((r) => r.status),
+];
 const enrolment = () => db.table("drip_enrollments").find((r) => r.id === "en-1");
 
 const stepOne = () =>
@@ -182,38 +198,50 @@ describe("welcome email", () => {
   });
 
   it("the lead is still captured, with the sales alert, when the email cannot be sent", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
 
     const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
+    assert.equal(
+      db.table("workspace_notifications").length,
+      1,
+      "the in-app sales alert is still raised",
+    );
     assertNothingClaimedAsSent();
     assert.ok(statuses().length >= 1);
   });
 
   it("the lead is still captured when the welcome step itself throws", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
     unreachableTable = "tenant_smtp_config";
 
     const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
+    assert.equal(
+      db.table("workspace_notifications").length,
+      1,
+      "the in-app sales alert is still raised",
+    );
     assertNothingClaimedAsSent();
   });
 
   it("the lead is still captured when the delivery log is unreachable", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
     logFault = "unreachable";
 
     const saved = await ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: true });
 
     assert.equal(saved.email, EMAIL);
     assert.equal(db.table("leads").length, 1);
-    assert.equal(db.table("notifications").length, 1, "the in-app sales alert is still raised");
+    assert.equal(
+      db.table("workspace_notifications").length,
+      1,
+      "the in-app sales alert is still raised",
+    );
   });
 });
 
@@ -420,6 +448,9 @@ describe("campaign broadcast", () => {
 });
 
 describe("alert to the sales team", () => {
+  // The RPC only records an alert for a persisted lead in the same workspace.
+  const seedAlert = (rows) =>
+    db.reset({ leads: [{ id: "lead-1", tenant_id: A, email: EMAIL }], ...rows });
   const settings = (overrides = {}) => ({
     tenant_id: A,
     lead_alerts_enabled: true,
@@ -431,7 +462,7 @@ describe("alert to the sales team", () => {
     dispatchSalesLeadAlert({ tenantId: A, leadId: "lead-1", email: EMAIL, name: "Sam" });
 
   it("is not recorded as sent, is not counted, and says plainly that it was not emailed", async () => {
-    db.reset({ tenant_alert_settings: [settings()] });
+    seedAlert({ tenant_alert_settings: [settings()], profiles: alertRecipients });
 
     const result = await alert();
 
@@ -449,8 +480,10 @@ describe("alert to the sales team", () => {
   });
 
   it("falls back to the company's staff, and is still not claimed as sent", async () => {
-    db.reset({
-      profiles: [{ id: "u1", tenant_id: A, role: "admin", email: "owner@example.com" }],
+    seedAlert({
+      profiles: [
+        { id: "u1", tenant_id: A, staff_role: "company_admin", email: "owner@example.com" },
+      ],
     });
 
     const result = await alert();
@@ -464,28 +497,28 @@ describe("alert to the sales team", () => {
   });
 
   it("the in-app notification, which really is written, is still raised", async () => {
-    db.reset({ tenant_alert_settings: [settings()] });
+    seedAlert({ tenant_alert_settings: [settings()], profiles: alertRecipients });
     await alert();
-    assert.equal(db.table("notifications").length, 1);
+    assert.equal(db.table("workspace_notifications").length, 1);
   });
 
   it("with nobody to email there is nothing to refuse", async () => {
-    db.reset({ tenant_alert_settings: [settings({ alert_email_addresses: [] })] });
+    seedAlert({ tenant_alert_settings: [settings({ alert_email_addresses: [] })] });
     const result = await alert();
     assert.equal(result.emailNotSent, undefined);
     assert.deepEqual(statuses(), []);
   });
 
   it("alerts switched off write nothing", async () => {
-    db.reset({ tenant_alert_settings: [settings({ lead_alerts_enabled: false })] });
+    seedAlert({ tenant_alert_settings: [settings({ lead_alerts_enabled: false })] });
     const result = await alert();
-    assert.deepEqual(result, { notifiedEmails: 0, notifiedWhatsApp: false });
+    assert.deepEqual(result, { notifiedEmails: 0, notifiedWhatsApp: false, notifiedInApp: false });
     assert.deepEqual(statuses(), []);
-    assert.equal(db.table("notifications").length, 0);
+    assert.equal(db.table("workspace_notifications").length, 0);
   });
 
   it("a delivery log or alert log that refuses the record does not break the alert", async () => {
-    db.reset({ tenant_alert_settings: [settings()] });
+    seedAlert({ tenant_alert_settings: [settings()], profiles: alertRecipients });
     logFault = "unreachable";
     db.fail("lead_alerts_log:insert", { code: "XX000", message: "down" });
 
@@ -493,7 +526,17 @@ describe("alert to the sales team", () => {
 
     assert.equal(result.notifiedEmails, 0);
     assert.equal(result.emailNotSent, ALERT_NOT_EMAILED);
-    assert.equal(db.table("notifications").length, 1);
+    assert.equal(db.table("workspace_notifications").length, 1);
+    assert.equal(result.diagnosticsPending, true);
+    assert.equal(alertLog().length, 0, "failed diagnostics roll back together");
+    logFault = null;
+    db.recover("lead_alerts_log:insert");
+    const retried = await alert();
+    assert.equal(retried.diagnosticsPending, undefined);
+    assert.equal(db.table("workspace_notifications").length, 1, "retry retains one notification");
+    assert.equal(alertLog().length, 2);
+    assert.deepEqual(statuses(), ["failed", "failed"]);
+    assertNothingClaimedAsSent();
   });
 
   it("a captured lead raises it with no 'sent' claim anywhere", async () => {
@@ -735,7 +778,7 @@ describe("welcome step runs when consent is newly given, not on every message", 
     ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven });
 
   it("three messages from the same consented visitor make one welcome attempt", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
 
     await capture();
     await capture();
@@ -743,6 +786,16 @@ describe("welcome step runs when consent is newly given, not on every message", 
 
     assert.equal(db.table("leads").length, 1);
     assert.equal(welcomes().length, 1);
+    assert.equal(
+      db.table("workspace_notifications").length,
+      1,
+      "later messages reuse the lead alert",
+    );
+    assert.equal(
+      db.table("lead_alerts_log").length,
+      1,
+      "the unsent alert diagnostic is not spammed",
+    );
   });
 
   it("a visitor who was already consented here gets no welcome step at all", async () => {
@@ -758,7 +811,7 @@ describe("welcome step runs when consent is newly given, not on every message", 
   });
 
   it("messages without consent never start it; the message that gives consent does, once", async () => {
-    db.reset({ leads: [], tenant_smtp_config: [smtp()] });
+    db.reset({ leads: [], tenant_smtp_config: [smtp()], profiles: alertRecipients });
 
     await capture(false);
     await capture(false);
@@ -792,5 +845,63 @@ describe("welcome step runs when consent is newly given, not on every message", 
     await capture(true);
 
     assert.equal(welcomes().length, 1);
+  });
+});
+
+describe("saved website-chat leads retry alerts without duplicating them", () => {
+  const capture = () => ingestLead({ tenantId: A, email: EMAIL, name: "Sam", consentGiven: false });
+  const seed = () => db.reset({ leads: [], profiles: alertRecipients });
+  const assertStoredOnce = () => {
+    assert.equal(db.table("leads").length, 1);
+    assert.equal(db.table("workspace_notifications").length, 1);
+    assert.equal(db.table("lead_alerts_log").length, 1);
+    assert.equal(db.table("email_delivery_log").length, 1);
+    assertNothingClaimedAsSent();
+    assert.equal(claims().length, 0, "without consent there is no welcome attempt");
+  };
+
+  it("later messages without marketing consent reuse the same lead notification", async () => {
+    seed();
+    await capture();
+    await capture();
+    await capture();
+    assertStoredOnce();
+  });
+
+  it("concurrent captures pass the same persisted lead into the deduplicating RPC", async () => {
+    seed();
+    await Promise.all(Array.from({ length: 8 }, capture));
+    assertStoredOnce();
+    const alertCalls = attempts.filter((call) => call.name === "record_sales_lead_alert");
+    assert.equal(alertCalls.length, 8);
+    assert.ok(
+      alertCalls.every(
+        (call) => call.args._tenant_id === A && call.args._lead_id === db.table("leads")[0].id,
+      ),
+    );
+  });
+
+  it("a saved lead whose notification failed can recover on a later capture", async () => {
+    seed();
+    db.fail("workspace_notifications:insert", { message: "storage unavailable" });
+    const saved = await capture();
+    assert.ok(saved.id);
+    assert.equal(db.table("workspace_notifications").length, 0);
+    db.recover("workspace_notifications:insert");
+    await capture();
+    await capture();
+    assertStoredOnce();
+  });
+
+  it("pending diagnostics recover without multiplying the already saved notification", async () => {
+    seed();
+    db.fail("email_delivery_log:insert", { message: "diagnostics unavailable" });
+    await capture();
+    assert.equal(db.table("workspace_notifications").length, 1);
+    assert.equal(db.table("lead_alerts_log").length, 0);
+    db.recover("email_delivery_log:insert");
+    await capture();
+    await capture();
+    assertStoredOnce();
   });
 });

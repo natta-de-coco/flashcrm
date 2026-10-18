@@ -13,12 +13,15 @@ const MAX_ACTIVATION_ATTEMPTS_PER_HOUR = 3;
 /** Counts recent activation requests for this site via the audit log (no new table needed). */
 async function recentActivationAttempts(siteId: string): Promise<number> {
   const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count } = await supabaseAdmin
+  const { count, error } = await supabaseAdmin
     .from("audit_log")
     .select("id", { count: "exact", head: true })
     .eq("action", "plugin.activation_requested")
     .eq("entity_id", siteId)
     .gte("created_at", since);
+  // A count that failed used to read as "no attempts yet", which let every
+  // request through for as long as the database was struggling.
+  if (error) throw new Error(`Could not check recent activation attempts: ${error.message}`);
   return count ?? 0;
 }
 
@@ -51,7 +54,12 @@ export async function requestSiteActivation(input: ActivationInput): Promise<{
   // whatever address this particular request happens to supply. Without
   // this, anyone who knew the site key could redirect activation emails (and
   // real emails from your domain) to an address of their choosing.
-  const adminEmail = site.admin_email ?? input.adminEmail ?? null;
+  //
+  // An active site that has no address on file does not take one from here
+  // either: it used to accept the first one offered, which is the same claim
+  // made by the same unknown caller.
+  const locked = site.status === "active";
+  const adminEmail = site.admin_email ?? (locked ? null : input.adminEmail) ?? null;
 
   // The domain and platform are claimed the same way, and for the same reason.
   // The site key lives in public website code, so anyone who reads it could
@@ -60,11 +68,17 @@ export async function requestSiteActivation(input: ActivationInput): Promise<{
   // Before activation these are still being set up, so a pending site may
   // still change them; an active one may not, and a workspace admin changes
   // them from inside FLAS instead.
-  const locked = site.status === "active";
+  //
+  // That includes an active site whose domain was never set (one that went
+  // live before it reported a domain, or before domains were recorded at all).
+  // It stays unpinned here, and checkDomainPin accepts every origin for it,
+  // which is a gap -- but nothing this endpoint is sent proves who is calling,
+  // so "the first domain offered" would hand the pin to whoever asked first.
+  // Closing the gap needs a signed-in admin to set the domain.
   const domain = locked ? site.domain : (input.domain ?? site.domain);
   const platform = locked ? undefined : input.platform;
 
-  await supabaseAdmin
+  const { error: saveError } = await supabaseAdmin
     .from("lead_sites")
     .update({
       domain,
@@ -72,6 +86,9 @@ export async function requestSiteActivation(input: ActivationInput): Promise<{
       ...(platform ? { platform } : {}),
     })
     .eq("id", site.id);
+  // An update that failed used to be ignored: the email still went out and the
+  // plugin was told it had, for a site whose address and domain were not saved.
+  if (saveError) throw new Error(`Could not save the site's details: ${saveError.message}`);
 
   const { logAudit } = await import("@/lib/audit.server");
   await logAudit({

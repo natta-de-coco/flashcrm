@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reconcileSocialPending, summariseHealth } from "@/lib/dashboard-figures";
+import { canOpen } from "./permissions";
 
 export type DayBucket = { day: string; received: number; sent: number };
 
@@ -36,24 +37,35 @@ export type HealthFactor = {
   key: string;
   label: string;
   /** 0-100 sub-score. */
-  score: number;
+  score: number | null;
   detail: string;
+  values?: Record<string, number>;
 };
 
 export type BusinessHealth = {
   /**
-   * 0-100. The mean of the factor scores below — five equal weights, no hidden
-   * ones. Computed by summariseHealth so the card, the type and the number
-   * cannot describe different things (QA M7).
+   * 0-100 only when at least three factors have complete measurements.
+   * Missing/partial factors are excluded; no activity means no score or risk
+   * grade. Computed by summariseHealth with equal measured-factor weights.
    */
-  score: number;
-  grade: "Excellent" | "Good" | "Needs work" | "At risk";
+  score: number | null;
+  grade: "Excellent" | "Good" | "Needs work" | "At risk" | "Not enough activity yet";
   factors: HealthFactor[];
 };
 
 export type DashboardOverview = {
-  stats: { open: number; unread: number; contacts: number; botReplies: number };
-  activity: { buckets: DayBucket[]; weekTotal: number; todayTotal: number };
+  stats: {
+    open: number;
+    /** Legacy message sum from the bounded recent-conversation sample. */
+    unread: number;
+    /** Exact number of conversations with one or more unread messages. */
+    unreadConversations?: number;
+    contacts: number;
+    botReplies: number;
+  };
+  activity: { buckets: DayBucket[]; weekTotal: number; todayTotal: number; partial?: boolean };
+  visibility?: { social: boolean; leads: boolean };
+  sampling?: { messages: boolean; leads: boolean; socialAccounts: boolean };
   trends: {
     messages: Trend;
     inbound: Trend;
@@ -114,7 +126,13 @@ function audienceStat(stats: Record<string, number> | null): string | null {
  */
 export async function getDashboardOverviewData(
   supabase: SupabaseClient,
+  access: { role: string } = { role: "staff" },
 ): Promise<DashboardOverview> {
+  const socialVisible = canOpen(access.role, "/social");
+  const leadsVisible = canOpen(access.role, "/marketing");
+  // Redacted fields retain the legacy DTO shape, with explicit visibility.
+  // No query for a hidden module is sent for a front-line staff role.
+  const hidden = { data: [], count: 0, error: null };
   const weekStart = new Date();
   weekStart.setHours(0, 0, 0, 0);
   weekStart.setDate(weekStart.getDate() - 6);
@@ -126,8 +144,9 @@ export async function getDashboardOverviewData(
 
   const [
     convs,
+    openCount,
+    unreadConversationCount,
     contactCount,
-    contactSample,
     botReplyCount,
     weekMsgs,
     accounts,
@@ -143,53 +162,79 @@ export async function getDashboardOverviewData(
       )
       .order("last_message_at", { ascending: false })
       .limit(100),
+    supabase
+      .from("conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "open"),
+    supabase
+      .from("conversations")
+      .select("id", { count: "exact", head: true })
+      .gt("unread_count", 0),
     // Real totals come from database-side counts, not a capped row sample —
     // otherwise the numbers freeze once a workspace passes the limit.
     supabase.from("contacts").select("id", { count: "exact", head: true }),
-    supabase.from("contacts").select("id, stage, value").limit(500),
-    supabase.from("messages").select("id", { count: "exact", head: true }).eq("sender", "bot"),
+    canOpen(access.role, "/chatbot")
+      ? supabase.from("messages").select("id", { count: "exact", head: true }).eq("sender", "bot")
+      : hidden,
     supabase
       .from("messages")
-      .select("id, sender, created_at")
+      .select("id, sender, created_at", { count: "exact" })
       .gte("created_at", priorStart.toISOString())
+      .order("created_at", { ascending: false })
       .limit(10000),
-    supabase.from("social_accounts").select("id, platform, label, active, last_synced_at, stats"),
+    socialVisible
+      ? supabase
+          .from("social_accounts")
+          .select("id, platform, label, active, last_synced_at, stats", { count: "exact" })
+      : hidden,
     // Only incoming, still-open interactions, newest first, for the per-account
     // breakdown. `direction` matters: sending a reply inserts an outbound row
     // (social.functions.ts) and social_interactions.status defaults to 'open',
     // so counting both directions made the dashboard's "to reply" grow by one
     // with every reply sent — 27 here against 22 in the Inbox (QA M7).
-    supabase
-      .from("social_interactions")
-      .select("id, account_id, kind, status, created_at")
-      .eq("direction", "in")
-      .eq("status", "open")
-      .order("created_at", { ascending: false })
-      .limit(500),
+    socialVisible
+      ? supabase
+          .from("social_interactions")
+          .select("id, account_id, kind, status, created_at")
+          .eq("direction", "in")
+          .eq("status", "open")
+          .order("created_at", { ascending: false })
+          .limit(500)
+      : hidden,
     // The totals themselves are database-side counts, like contacts above: a
     // capped sample stops being the truth as soon as a workspace outgrows it.
-    supabase
-      .from("social_interactions")
-      .select("id", { count: "exact", head: true })
-      .eq("direction", "in")
-      .eq("status", "open"),
-    supabase
-      .from("social_interactions")
-      .select("id", { count: "exact", head: true })
-      .eq("direction", "in")
-      .gte("created_at", weekAgoIso),
-    supabase
-      .from("leads")
-      .select("id, created_at, consent_given")
-      .gte("created_at", priorStart.toISOString())
-      .limit(5000),
+    socialVisible
+      ? supabase
+          .from("social_interactions")
+          .select("id", { count: "exact", head: true })
+          .eq("direction", "in")
+          .eq("status", "open")
+      : hidden,
+    socialVisible
+      ? supabase
+          .from("social_interactions")
+          .select("id", { count: "exact", head: true })
+          .eq("direction", "in")
+          .gte("created_at", weekAgoIso)
+      : hidden,
+    leadsVisible
+      ? supabase
+          .from("leads")
+          .select("id, created_at, consent_given", { count: "exact" })
+          .gte("created_at", priorStart.toISOString())
+          .order("created_at", { ascending: false })
+          .limit(5000)
+      : hidden,
   ]);
 
-  // One failing table must degrade its own widget, not blank the dashboard.
+  // These values also feed recommendations. A failed read must not become a
+  // zero, a clean inbox, or advice based on an incomplete workspace snapshot.
+  let failed = false;
   for (const result of [
     convs,
+    openCount,
+    unreadConversationCount,
     contactCount,
-    contactSample,
     botReplyCount,
     weekMsgs,
     accounts,
@@ -198,13 +243,29 @@ export async function getDashboardOverviewData(
     weekInteractionCount,
     leadRows,
   ]) {
-    if (result.error) console.error("[dashboard] partial failure", result.error.message);
+    if (result.error) {
+      failed = true;
+      console.error("[dashboard] query failed", result.error.message);
+    }
+  }
+  if (failed)
+    throw new Error("Your workspace overview is unavailable right now. Please try again.");
+
+  // A head-count response without a count is not evidence that there are zero
+  // records. Refuse it rather than falling back to a capped row sample.
+  function exactCount(result: { count: number | null }, name: string): number {
+    if (typeof result.count !== "number" || !Number.isInteger(result.count) || result.count < 0) {
+      console.error("[dashboard] exact count unavailable", name);
+      throw new Error("Your workspace overview is unavailable right now. Please try again.");
+    }
+    return result.count;
   }
 
   const conversations = convs.data ?? [];
-  const contactRows = contactSample.data ?? [];
-  const contactsTotal = contactCount.count ?? contactRows.length;
-  const botReplies = botReplyCount.count ?? 0;
+  const openTotal = exactCount(openCount, "open conversations");
+  const unreadConversations = exactCount(unreadConversationCount, "unread conversations");
+  const contactsTotal = exactCount(contactCount, "contacts");
+  const botReplies = exactCount(botReplyCount, "bot replies");
   const fortnightMessageRows = weekMsgs.data ?? [];
   const weekStartMs = weekStart.getTime();
   const weekMessageRows = fortnightMessageRows.filter(
@@ -216,6 +277,12 @@ export async function getDashboardOverviewData(
   const accountRows = accounts.data ?? [];
   const interactionRows = interactions.data ?? [];
   const leads = leadRows.data ?? [];
+  const sampling = {
+    messages: exactCount(weekMsgs, "message sample coverage") > fortnightMessageRows.length,
+    leads: leadsVisible && exactCount(leadRows, "lead sample coverage") > leads.length,
+    socialAccounts:
+      socialVisible && exactCount(accounts, "social account coverage") > accountRows.length,
+  };
 
   // ---- 7-day activity buckets (received vs sent) ----
   const buckets: DayBucket[] = [];
@@ -249,16 +316,14 @@ export async function getDashboardOverviewData(
     sampledByAccount.set(i.account_id, (sampledByAccount.get(i.account_id) ?? 0) + 1);
   }
   const pending = reconcileSocialPending({
-    // The head count failing must not invent a number: fall back to what the
-    // sample actually holds.
-    exactTotal: pendingCount.count ?? interactionRows.length,
+    exactTotal: exactCount(pendingCount, "pending social replies"),
     sampledByAccount,
   });
   const pendingByAccount = pending.perAccount;
   // Incoming interactions in the last 7 days, counted in the database. Our own
   // replies are not "interactions this week": including them made a busy team
   // look twice as engaged with as it was.
-  const interactions7d = weekInteractionCount.count ?? 0;
+  const interactions7d = exactCount(weekInteractionCount, "social interactions");
 
   const pulseAccounts: SocialPulseAccount[] = accountRows.map((a) => ({
     id: a.id,
@@ -294,20 +359,18 @@ export async function getDashboardOverviewData(
   // ---- Business Health Score ----
   const unreadTotal = conversations.reduce((sum, c) => sum + (c.unread_count ?? 0), 0);
   const responsiveness =
-    inboundNow === 0 ? 70 : Math.max(0, Math.min(100, Math.round((repliesNow / inboundNow) * 100)));
-  const inboxHygiene = Math.max(0, 100 - unreadTotal * 5);
-  const pipeline = Math.min(100, leadsNow * 10);
+    sampling.messages || inboundNow === 0
+      ? null
+      : Math.max(0, Math.min(100, Math.round((repliesNow / inboundNow) * 100)));
+  const inboxHygiene =
+    conversations.length === 0 ? null : Math.max(0, 100 - unreadConversations * 5);
+  const pipeline =
+    !leadsVisible || sampling.leads || leadsNow === 0 ? null : Math.min(100, leadsNow * 10);
   const socialPresence =
-    accountRows.length === 0
-      ? 0
-      : Math.min(
-          100,
-          Math.round((accountRows.filter((a) => a.active).length / accountRows.length) * 60) +
-            Math.min(40, interactions7d * 4),
-        );
+    !socialVisible || interactions7d === 0 ? null : Math.min(100, interactions7d * 4);
   const consentRate =
-    leads.length === 0
-      ? 60
+    !leadsVisible || sampling.leads || leads.length === 0
+      ? null
       : Math.round((leads.filter((l) => l.consent_given).length / leads.length) * 100);
 
   const factors: HealthFactor[] = [
@@ -315,51 +378,68 @@ export async function getDashboardOverviewData(
       key: "responsiveness",
       label: "Responsiveness",
       score: responsiveness,
+      values: { replies: repliesNow, inbound: inboundNow },
       detail: `${repliesNow} replies to ${inboundNow} inbound messages this week`,
     },
     {
       key: "inbox",
       label: "Inbox hygiene",
       score: inboxHygiene,
-      detail: unreadTotal === 0 ? "No unread messages" : `${unreadTotal} unread messages waiting`,
+      values: { count: unreadConversations },
+      detail:
+        conversations.length === 0
+          ? "No conversations recorded yet"
+          : `${unreadConversations} chats with unread messages`,
     },
     {
       key: "pipeline",
       label: "Lead flow",
       score: pipeline,
+      values: { count: leadsNow },
       detail: `${leadsNow} new leads in the last 7 days`,
     },
     {
       key: "social",
-      label: "Social presence",
+      label: "Social activity",
       score: socialPresence,
+      values: { count: interactions7d },
       detail:
         accountRows.length === 0
           ? "No social accounts connected"
-          : `${accountRows.filter((a) => a.active).length}/${accountRows.length} accounts active · ${interactions7d} interactions`,
+          : `${interactions7d} incoming interactions in the last 7 days; not a connection-health check`,
     },
     {
       key: "consent",
       label: "Marketing compliance",
       score: consentRate,
+      values: { rate: consentRate ?? 0 },
       detail:
         leads.length === 0
           ? "No leads captured yet"
-          : `${consentRate}% of recent leads gave marketing consent`,
+          : sampling.leads
+            ? "Recent lead sample is incomplete"
+            : `${consentRate}% of recent leads gave marketing consent`,
     },
-  ];
+  ].filter(
+    (factor) =>
+      (socialVisible || factor.key !== "social") &&
+      (leadsVisible || !["pipeline", "consent"].includes(factor.key)),
+  );
 
   // One implementation of the score, shared with the tests that pin it down.
   const { score, grade } = summariseHealth(factors);
 
   return {
     stats: {
-      open: conversations.filter((c) => c.status === "open").length,
+      open: openTotal,
       unread: unreadTotal,
+      unreadConversations,
       contacts: contactsTotal,
       botReplies,
     },
-    activity: { buckets, weekTotal, todayTotal },
+    activity: { buckets, weekTotal, todayTotal, partial: sampling.messages },
+    visibility: { social: socialVisible, leads: leadsVisible },
+    sampling,
     trends,
     health: { score, grade, factors },
     social: {
