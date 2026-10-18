@@ -119,6 +119,8 @@ export default screen({
     "healthReportDialog.diagStorageUnreadable": "Verification storage: could not be read",
     "healthReportDialog.reportFailed":
       "Flas could not load the report. Close this window and open it again.",
+    "healthReportDialog.outcomeNoSignIn":
+      "No sign-in is saved for this account, so there is nothing to check. Connect it to use it.",
   },
   ar: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -232,6 +234,8 @@ export default screen({
     "healthReportDialog.diagStorageUnreadable": "تخزين التحقق: تعذّرت قراءته",
     "healthReportDialog.reportFailed":
       "تعذّر على Flas تحميل التقرير. أغلق هذه النافذة وافتحها مرة أخرى.",
+    "healthReportDialog.outcomeNoSignIn":
+      "لا يوجد تسجيل دخول محفوظ لهذا الحساب، لذلك لا يوجد ما يمكن فحصه. اربطه لاستخدامه.",
   },
   ms: {
     "healthReportDialog.encryptedStoredCredentialS": "{sealedNow} kelayakan tersimpan disulitkan.",
@@ -351,6 +355,8 @@ export default screen({
     "healthReportDialog.diagStorageUnreadable": "Storan pengesahan: tidak dapat dibaca",
     "healthReportDialog.reportFailed":
       "Flas tidak dapat memuatkan laporan. Tutup tetingkap ini dan buka semula.",
+    "healthReportDialog.outcomeNoSignIn":
+      "Tiada log masuk disimpan untuk akaun ini, jadi tiada apa yang boleh disemak. Sambungkannya untuk menggunakannya.",
   },
   fil: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -473,6 +479,8 @@ export default screen({
     "healthReportDialog.diagStorageUnreadable": "Imbakan ng beripikasyon: hindi nabasa",
     "healthReportDialog.reportFailed":
       "Hindi ma-load ng Flas ang ulat. Isara ang window na ito at buksan muli.",
+    "healthReportDialog.outcomeNoSignIn":
+      "Walang naka-save na sign-in para sa account na ito, kaya walang masusuri. Ikonekta ito para magamit.",
   },
   sw: {
     "healthReportDialog.encryptedStoredCredentialS":
@@ -595,5 +603,7 @@ export default screen({
     "healthReportDialog.diagStorageUnreadable": "Hifadhi ya uthibitisho: haikuweza kusomwa",
     "healthReportDialog.reportFailed":
       "Flas haikuweza kupakia ripoti. Funga dirisha hili kisha ulifungue tena.",
+    "healthReportDialog.outcomeNoSignIn":
+      "Hakuna kuingia kulikohifadhiwa kwa akaunti hii, kwa hiyo hakuna cha kukagua. Iunganishe ili kuitumia.",
   },
 });

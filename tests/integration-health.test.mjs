@@ -2264,13 +2264,14 @@ describe("an account that keeps its token elsewhere is checked, not called disco
     assert.deepEqual(await checkAll(), []);
   });
 
-  test("a sign-in that was disconnected on purpose reads as that", async () => {
+  test("a sign-in that was disconnected leaves the account with no sign-in, which is not a deliberate disconnect of the account", async () => {
     const account = await onAuthorization({
       authorization: { authorization_state: "disconnected" },
     });
     world.provider([]);
     const result = await check(account.id);
-    assert.equal(result.outcome, "skipped_disconnected");
+    assert.equal(result.outcome, "no_sign_in");
+    assert.doesNotMatch(result.reason, /on purpose/);
     assert.equal(world.fetches.length, 0);
   });
 
@@ -2347,7 +2348,7 @@ describe("an account that keeps its token elsewhere is checked, not called disco
         : undefined,
     );
     const result = await check(account.id);
-    assert.equal(result.outcome, "skipped_disconnected");
+    assert.equal(result.outcome, "no_sign_in");
     assert.equal(world.fetches.length, 0);
   });
 });
@@ -3170,5 +3171,164 @@ describe("a check that changed while it ran leaves no log line and no audit line
     world.provider(facebookHealthy());
     assert.equal((await check(account.id)).outcome, "healthy");
     assert.equal(world.logRows().length, 1);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Round 3, finding 4: only a deliberate disconnect is called one
+   ══════════════════════════════════════════════════════════════════════════ */
+
+describe("an account with no sign-in is not called 'disconnected on purpose' (round 3, finding 4)", () => {
+  const ON_PURPOSE = /disconnected on purpose/;
+  const AUTH_GONE = "aaaaaaaa-0000-4000-8000-0000000000d1";
+  const nothingStored = (over = {}) =>
+    world.account({
+      access_token: null,
+      refresh_token: null,
+      external_id: "1000",
+      connection_state: "ready_to_authorize",
+      ...over,
+    });
+
+  test("an active, identified account that never had a token is told so", async () => {
+    const account = nothingStored();
+    world.provider([]);
+    const before = clone(world.stored(account.id));
+    const result = await check(account.id);
+    assert.equal(result.outcome, "no_sign_in");
+    assert.doesNotMatch(result.reason, ON_PURPOSE);
+    assert.match(result.reason, /No sign-in is saved for this account/);
+    assert.equal(result.stage, "gate");
+    assert.equal(world.fetches.length, 0);
+    assert.deepEqual(clone(world.stored(account.id)), before);
+    assert.deepEqual(world.logRows(), []);
+  });
+
+  test("so is one whose saved state still says connected", async () => {
+    const account = nothingStored({ connection_state: "connected" });
+    world.provider([]);
+    const result = await check(account.id);
+    assert.equal(result.outcome, "no_sign_in");
+    assert.doesNotMatch(result.reason, ON_PURPOSE);
+  });
+
+  test("so is a channel whose sign-in was disconnected or revoked", async () => {
+    const tokens = await authorizations.encryptAuthorizationTokens({
+      tenantId: A,
+      authorizationId: AUTH_GONE,
+      accessToken: SECRET.googleAccess,
+      refreshToken: SECRET.googleRefresh,
+    });
+    world.db.table("social_authorizations").push({
+      id: AUTH_GONE,
+      tenant_id: A,
+      provider: "google",
+      platform: "youtube",
+      authorization_state: "disconnected",
+      expires_at: null,
+      granted_scopes: [],
+      requested_scopes: [],
+      ...tokens,
+    });
+    const account = nothingStored({
+      platform: "youtube",
+      external_id: "UC1",
+      connection_state: "connected",
+      authorization_id: AUTH_GONE,
+      access_token_enc: null,
+      refresh_token_enc: null,
+    });
+    world.provider([]);
+    const result = await check(account.id);
+    assert.equal(result.outcome, "no_sign_in");
+    assert.doesNotMatch(result.reason, ON_PURPOSE);
+    assert.equal(world.fetches.length, 0);
+  });
+
+  test("a deliberate disconnect still gets that sentence, at every step of the disconnect", async () => {
+    for (const over of [
+      { active: false, connection_state: "disconnected", health: "disconnected" },
+      // The three steps of a disconnect, when the last one did not happen.
+      { active: false, connection_state: "connected", health: "disconnected" },
+      { active: false, connection_state: "disconnected", access_token: `sealed:${SECRET.meta}` },
+    ]) {
+      world.reset();
+      const account = nothingStored(over);
+      world.provider([]);
+      const result = await check(account.id);
+      assert.equal(result.outcome, "skipped_disconnected", JSON.stringify(over));
+      assert.match(result.reason, ON_PURPOSE);
+    }
+  });
+
+  test("an account the platform revoked, with nothing stored, is told to reconnect instead", async () => {
+    const account = nothingStored({ active: false, connection_state: "revoked" });
+    world.provider([]);
+    const result = await check(account.id);
+    assert.equal(result.outcome, "needs_reconnect");
+    assert.doesNotMatch(result.reason, ON_PURPOSE);
+  });
+
+  test("the group check keeps accounts that hold nothing out of its list and out of its 25 places", async () => {
+    for (let i = 0; i < 30; i++) nothingStored({ external_id: `n${i}` });
+    const real = world.account({ external_id: "1000" });
+    world.provider(facebookHealthy());
+    const results = await checkAll();
+    assert.deepEqual(
+      results.map((r) => [r.account_id, r.outcome]),
+      [[real.id, "healthy"]],
+    );
+    assert.equal(
+      results.some((r) => r.outcome === "skipped_disconnected" || r.outcome === "no_sign_in"),
+      false,
+    );
+  });
+
+  test("a channel account is still in the group check, and a gone sign-in reads as such there", async () => {
+    const tokens = await tokenStore.encryptTokensForStorage({
+      tenantId: A,
+      platform: "facebook",
+      accessToken: SECRET.meta,
+      refreshToken: null,
+    });
+    const page = world.account({ access_token: null, authorization_id: "auth-x", ...tokens });
+    const orphan = nothingStored({
+      external_id: "2000",
+      authorization_id: AUTH_GONE,
+      access_token_enc: null,
+      refresh_token_enc: null,
+    });
+    world.provider(facebookHealthy());
+    const results = await checkAll();
+    const byId = Object.fromEntries(results.map((r) => [r.account_id, r.outcome]));
+    assert.equal(byId[page.id], "healthy");
+    assert.equal(byId[orphan.id], "no_sign_in");
+    assert.equal(
+      results.some((r) => ON_PURPOSE.test(r.reason)),
+      false,
+    );
+  });
+
+  test("the sentence exists in all five languages and reads the same everywhere", () => {
+    const key = "healthReportDialog.outcomeNoSignIn";
+    const [part] = textMod.describeResult(
+      { platform: "facebook", outcome: "no_sign_in", reason: "x" },
+      { time: (v) => v },
+    );
+    assert.equal(part.key, key);
+    for (const language of ["en", "ar", "ms", "fil", "sw"]) {
+      assert.ok(ALL_MESSAGES[language][key], `${language} has it`);
+    }
+    assert.doesNotMatch(MESSAGES_EN[key], ON_PURPOSE);
+    assert.equal(
+      modelMod.describeOutcome("no_sign_in", { platform: "Facebook" }),
+      MESSAGES_EN[key],
+    );
+    assert.deepEqual(modelMod.summariseOutcomes([{ outcome: "no_sign_in" }]), {
+      checked: 1,
+      verified: 0,
+      attention: 0,
+      skipped: 1,
+    });
   });
 });

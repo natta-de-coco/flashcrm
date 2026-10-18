@@ -114,6 +114,7 @@ export type RetryOutcomeCode =
   | "save_failed"
   | "evidence_unavailable"
   | "skipped_disconnected"
+  | "no_sign_in"
   | "not_identified"
   | "reconnect_needed"
   | "in_progress"
@@ -197,6 +198,8 @@ export function describeOutcome(
       return `${p.platform} accepted the token, but this workspace cannot store verification results yet. Reference ${ref}.`;
     case "skipped_disconnected":
       return "This account was disconnected on purpose. Connect it again to use it.";
+    case "no_sign_in":
+      return "No sign-in is saved for this account, so there is nothing to check. Connect it to use it.";
     case "in_progress":
       return "Another check for this account is already running. Try again in a minute.";
     case "recently_checked":
@@ -226,6 +229,7 @@ const VERIFIED_OUTCOMES: readonly RetryOutcomeCode[] = ["healthy", "recovered", 
 const NOT_CHECKED_OUTCOMES: readonly RetryOutcomeCode[] = [
   "not_checkable",
   "skipped_disconnected",
+  "no_sign_in",
   "not_identified",
   "reconnect_needed",
   "in_progress",

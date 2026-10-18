@@ -30,7 +30,7 @@ import {
   writeCheck,
 } from "./connection-evidence.server";
 import type { CheckStart } from "./connection-evidence.server";
-import { readChannelTokens } from "./connection-tokens.server";
+import { readChannelModelAccounts, readChannelTokens } from "./connection-tokens.server";
 import type { ChannelTokens } from "./connection-tokens.server";
 import { normalizeProviderError } from "./integration-errors.server";
 import { connectorDefinition } from "./social-connector-definitions";
@@ -616,8 +616,13 @@ async function runCheck(
     saved_at: stored.last_validation_attempt_at,
     correlation_id: check.reference,
   });
-  if (from === "disconnected" || (!row.access_token && !channel)) {
-    return gate("skipped_disconnected");
+  // Only a real disconnect is called one: its state says so, or it was switched off and its tokens
+  // cleared (a disconnect whose last step did not happen -- the rule the status uses too). An account
+  // that is still on and holds no sign-in anywhere was not disconnected by anyone.
+  if (from === "disconnected") return gate("skipped_disconnected");
+  if (!row.access_token && !channel) {
+    if (!row.active && from !== "revoked") return gate("skipped_disconnected");
+    return gate(from === "revoked" ? "needs_reconnect" : "no_sign_in");
   }
   if (row.connect_method === "manual") return gate("reconnect_needed");
   // A revoked account can only come back through a new sign-in, so asking the platform again would
@@ -652,7 +657,7 @@ async function runCheck(
       correlation_id: check.reference,
     };
   }
-  if (!token) return gate("skipped_disconnected");
+  if (!token) return gate("no_sign_in");
 
   const provider = connector(row.platform)?.provider;
   const now = new Date().toISOString();
@@ -1139,18 +1144,19 @@ export async function retryDueConnections(args: {
   const base = () =>
     supabaseAdmin.from("social_accounts").select(columns).eq("tenant_id", args.tenantId);
   // Two kinds of account can be checked: one with a stored token, and one that is still switched on
-  // and keeps its token elsewhere (the channel picker's accounts leave access_token empty). A
-  // deliberate disconnect is neither: it clears its tokens and switches the account off.
+  // and keeps its token elsewhere (the channel picker's accounts leave access_token empty, and hold
+  // a sign-in or an encrypted token instead). A deliberate disconnect is neither: it clears its
+  // tokens and switches the account off. An account that is on but holds nothing anywhere has
+  // nothing to check and takes none of the places in the list.
   const [withToken, channelModel] = await Promise.all([
     base().not("access_token", "is", null),
-    base().is("access_token", null).eq("active", true),
+    readChannelModelAccounts(args.tenantId, columns),
   ]);
-  const error = withToken.error ?? channelModel.error;
   // A failed read must stop here: an empty list would read as "everything is fine".
-  if (error) {
+  if (withToken.error || channelModel.failed) {
     throw new Error("Flas could not read this workspace's connections. Try again in a moment.");
   }
-  const data = [...(withToken.data ?? []), ...(channelModel.data ?? [])];
+  const data = [...(withToken.data ?? []), ...channelModel.rows];
   const evidence = await readEvidence(args.tenantId);
 
   const wanted = ((data ?? []) as unknown as Partial<AccountRow>[]).filter((row) => {

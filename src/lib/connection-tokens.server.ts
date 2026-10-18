@@ -87,3 +87,40 @@ export async function readChannelTokens(account: {
     return { kind: "error", stage: "credentials" };
   }
 }
+
+/**
+ * The accounts of a workspace that are switched on, hold nothing in access_token and keep a sign-in
+ * or an encrypted token somewhere else (any of the channel columns is set). An account that is on
+ * but holds nothing anywhere has nothing to check and is not listed. A channel column that does not
+ * exist in this database contributes no accounts; a read that fails for any other reason is an
+ * error, never an empty list.
+ */
+export async function readChannelModelAccounts(
+  tenantId: string,
+  columns: string,
+): Promise<{ rows: Record<string, unknown>[]; failed: boolean }> {
+  const client = supabaseAdmin as unknown as UntypedClient;
+  const answers = await Promise.all(
+    CHANNEL_COLUMNS.map(
+      async (column) =>
+        await client
+          .from("social_accounts")
+          .select(columns)
+          .eq("tenant_id", tenantId)
+          .is("access_token", null)
+          .eq("active", true)
+          .not(column, "is", null),
+    ),
+  );
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const [index, answer] of answers.entries()) {
+    if (answer.error) {
+      if (isMissingColumnError(answer.error, [CHANNEL_COLUMNS[index] as string])) continue;
+      return { rows: [], failed: true };
+    }
+    for (const row of (answer.data ?? []) as unknown as Record<string, unknown>[]) {
+      byId.set(String(row["id"]), row);
+    }
+  }
+  return { rows: [...byId.values()], failed: false };
+}

@@ -176,6 +176,8 @@ export function describeResult(result: RetryResult, format: Format): Described[]
       return [{ key: "healthReportDialog.outcomeEvidenceUnavailable", values: { Platform, id } }];
     case "skipped_disconnected":
       return [{ key: "healthReportDialog.outcomeSkippedDisconnected", values: {} }];
+    case "no_sign_in":
+      return [{ key: "healthReportDialog.outcomeNoSignIn", values: {} }];
     case "in_progress":
       return [{ key: "healthReportDialog.outcomeInProgress", values: {} }];
     case "recently_checked":
@@ -251,6 +253,7 @@ export const ALL_OUTCOMES: readonly RetryOutcomeCode[] = [
   "save_failed",
   "evidence_unavailable",
   "skipped_disconnected",
+  "no_sign_in",
   "not_identified",
   "reconnect_needed",
   "in_progress",
