@@ -57,6 +57,7 @@ jobs:
         run: npm install --no-save --package-lock=false --no-audit --no-fund embedded-postgres@17.10.0-beta.17 pg@8.23.0
       - name: Migration and readiness guards
         run: node supabase/verify/verify-migrations.mjs
+      - { name: The database requires the second sign-in step too, run: node supabase/verify/verify-mfa-session-gate.mjs }
       - name: OAuth state and refresh leases
         run: node supabase/verify/verify-oauth-security.mjs
       - name: Social tenant isolation

@@ -89,3 +89,39 @@ function reads the table, the policy runs again — and this harness hit "stack
 depth limit exceeded" on the first run. Production had not fallen over only
 because the planner happened to short-circuit the `OR`, which SQL does not
 guarantee. Fixed in `20260907200000`.
+
+
+## verify-mfa-session-gate.mjs
+
+Proves that the database itself asks for the second sign-in step, not only the
+app. Migration `20261020000000_mfa_session_gate.sql` puts one RESTRICTIVE policy
+(`mfa_session_gate`) on every table with row-level security in `public` and on
+`storage.objects`; a person who has a verified authenticator app but whose token
+has not entered the code (`aal1`) must reach nothing, and everybody else must
+reach exactly what they reached before.
+
+```bash
+node supabase/verify/verify-mfa-session-gate.mjs
+```
+
+It takes the list of tables from the catalogue (never a typed list), tries
+select, insert, update and delete on each as eleven kinds of caller, and also
+checks: the gap before the migration, the migration stopping without changes when
+the rule cannot run or the lock is not available, another company staying out,
+storage, `list_subscribers()`, the service role, one helper call per statement,
+running twice, the kill switch and the one-statement rollback printed in the
+migration, and a table added later.
+
+Three guards fail a future pull request, on purpose:
+
+- a table with row-level security but no `mfa_session_gate` policy: end the
+  migration that adds it with `SELECT public.apply_mfa_session_gate();`
+- a table with no row-level security at all, or a view the browser can read that
+  is not `security_invoker`
+- a `SECURITY DEFINER` function the browser role can call that does not start with
+  `IF NOT public.session_meets_mfa() THEN RAISE ...` and is not listed in the
+  script with the reason it may stay open (a definer function skips every policy)
+
+The shim has a stand-in for `auth.mfa_factors` that the browser role cannot read,
+like the real one. What this cannot prove: Realtime delivery, Supabase's real
+grants on `auth`, and PostgREST turning the `Authorization` header into claims.
