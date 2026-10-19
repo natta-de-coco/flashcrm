@@ -61,6 +61,8 @@ jobs:
         run: node supabase/verify/verify-oauth-security.mjs
       - name: Social tenant isolation
         run: node supabase/verify/verify-social-tenant-isolation.mjs
+      - name: Webhook events are deleted by the server only, integration errors written by the server only
+        run: node supabase/verify/verify-webhook-delete-and-integration-error.mjs
 
       - name: WhatsApp conversation isolation and concurrent opening
         run: node supabase/verify/verify-whatsapp-conversations.mjs
