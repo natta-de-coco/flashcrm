@@ -32,6 +32,7 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import {
   ArrowLeft,
+  BookmarkPlus,
   Check,
   CheckCircle2,
   Copy,
@@ -432,9 +433,9 @@ function SeoStudioPage() {
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_300px]">
+      <div className="grid gap-4 lg:grid-cols-12 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
         {/* Left: vision intake */}
-        <div className="space-y-4">
+        <div className="space-y-4 order-2 lg:order-1 lg:col-span-4 xl:col-auto xl:order-none">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">{t("seoBlogStudio.imageVisionIntake")}</CardTitle>
@@ -567,7 +568,7 @@ function SeoStudioPage() {
         </div>
 
         {/* Center: parameters + editor */}
-        <div className="space-y-4">
+        <div className="space-y-4 order-1 lg:order-2 lg:col-span-8 xl:col-auto xl:order-none">
           <Card>
             <CardContent className="grid gap-2 pt-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="grid gap-1">
@@ -904,11 +905,11 @@ function SeoStudioPage() {
                                     },
                                   });
                                   toast.success(
-                                    `Published to ${p.platformName} pipeline! Saved to Social Hub.`,
+                                    `Saved to Social Hub drafts for ${p.platformName}! You can review and copy it from Social posts.`,
                                   );
                                 } catch (err) {
                                   toast.error(
-                                    err instanceof Error ? err.message : "Publishing failed",
+                                    err instanceof Error ? err.message : "Saving draft failed",
                                   );
                                 } finally {
                                   setPublishingPlatform(null);
@@ -918,9 +919,9 @@ function SeoStudioPage() {
                               {publishingPlatform === p.platform ? (
                                 <Loader2 className="size-3 animate-spin" />
                               ) : (
-                                <Send className="size-3.5" />
+                                <BookmarkPlus className="size-3.5" />
                               )}
-                              Publish
+                              Save to Drafts
                             </Button>
                           </div>
                         </div>
@@ -1090,7 +1091,7 @@ function SeoStudioPage() {
         </div>
 
         {/* Right: realtime SEO audit */}
-        <div className="space-y-4">
+        <div className="space-y-4 order-3 lg:col-span-12 xl:col-auto xl:order-none">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">{t("seoBlogStudio.seoScore")}</CardTitle>

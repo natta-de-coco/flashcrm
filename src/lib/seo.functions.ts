@@ -126,7 +126,13 @@ export const testWpConnectionFn = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        siteUrl: z.string().url(),
+        siteUrl: z
+          .string()
+          .min(3)
+          .transform((v) => {
+            const trimmed = v.trim();
+            return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+          }),
         username: z.string().min(1),
         appPassword: z.string().min(4),
       })

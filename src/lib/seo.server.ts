@@ -481,16 +481,55 @@ export async function humanizeHtml(
 
 export type WpCreds = { siteUrl: string; username: string; appPassword: string };
 
+export function normalizeWpUrl(rawUrl: string): string {
+  let u = (rawUrl ?? "").trim();
+  if (!u) return "";
+  if (!/^https?:\/\//i.test(u)) {
+    u = `https://${u}`;
+  }
+  u = u.replace(/\/+$/, "");
+  u = u.replace(/\/wp-admin(?:\/.*)?$/i, "");
+  u = u.replace(/\/wp-json(?:\/.*)?$/i, "");
+  return u;
+}
+
 function wpAuth(c: WpCreds): string {
-  return `Basic ${Buffer.from(`${c.username}:${c.appPassword}`).toString("base64")}`;
+  const cleanAppPass = (c.appPassword ?? "").replace(/\s+/g, "");
+  return `Basic ${Buffer.from(`${c.username.trim()}:${cleanAppPass}`).toString("base64")}`;
 }
 
 async function wpFetch(c: WpCreds, path: string, init?: RequestInit): Promise<Response> {
-  const url = `${c.siteUrl.replace(/\/+$/, "")}/wp-json/wp/v2${path}`;
-  return fetch(url, {
+  const cleanBase = normalizeWpUrl(c.siteUrl);
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const url = `${cleanBase}/wp-json/wp/v2${cleanPath}`;
+
+  const defaultHeaders: Record<string, string> = {
+    Authorization: wpAuth(c),
+    Accept: "application/json",
+    "User-Agent": "FlasCRM/1.0 (+https://flas.mobidigisol.com; WordPress Integration)",
+  };
+
+  let res = await fetch(url, {
     ...init,
-    headers: { Authorization: wpAuth(c), ...(init?.headers ?? {}) },
+    headers: {
+      ...defaultHeaders,
+      ...(init?.headers ?? {}),
+    },
   });
+
+  // When fetch follows cross-scheme or cross-domain redirects (e.g. http->https or non-www->www),
+  // standard fetch drops Authorization headers, returning 401. Re-attempt with auth on redirected url.
+  if (res.status === 401 && res.url && res.url !== url) {
+    res = await fetch(res.url, {
+      ...init,
+      headers: {
+        ...defaultHeaders,
+        ...(init?.headers ?? {}),
+      },
+    });
+  }
+
+  return res;
 }
 
 export async function testWpConnection(c: WpCreds): Promise<{
@@ -498,30 +537,62 @@ export async function testWpConnection(c: WpCreds): Promise<{
   categories: Array<{ id: number; name: string }>;
   tags: Array<{ id: number; name: string }>;
 }> {
-  const me = await wpFetch(c, "/users/me");
-  if (!me.ok) {
-    const body = await me.text();
+  let me: Response;
+  try {
+    me = await wpFetch(c, "/users/me");
+  } catch (err) {
     throw new Error(
-      `WordPress rejected the connection [${me.status}] — check the site URL, username and application password. ${body.slice(0, 200)}`,
+      `Could not reach WordPress site at ${c.siteUrl}: ${err instanceof Error ? err.message : String(err)}. Check that the domain is online and reachable.`,
     );
   }
+
+  if (!me.ok) {
+    const body = await me.text();
+    let detail = "";
+    try {
+      const parsed = JSON.parse(body) as { message?: string; code?: string };
+      if (parsed.message) detail = `: ${parsed.message}`;
+    } catch {
+      detail = body ? `: ${body.slice(0, 150)}` : "";
+    }
+
+    if (me.status === 401) {
+      throw new Error(
+        `WordPress authentication failed (HTTP 401)${detail}. Check that your Application Password is correct, and that your site URL uses HTTPS.`,
+      );
+    }
+    if (me.status === 403) {
+      throw new Error(
+        `WordPress access denied (HTTP 403)${detail}. Check your user permissions in WordPress (Administrator/Editor role needed) or firewall rules (Wordfence/Cloudflare).`,
+      );
+    }
+    if (me.status === 404) {
+      throw new Error(
+        `WordPress REST API not found (HTTP 404). Ensure permalinks are enabled in WordPress (Settings > Permalinks, select 'Post name' rather than 'Plain').`,
+      );
+    }
+    throw new Error(`WordPress rejected the connection [${me.status}]${detail}`);
+  }
+
   const user = (await me.json()) as { name?: string };
   const [cats, tags] = await Promise.all([
-    wpFetch(c, "/categories?per_page=100"),
-    wpFetch(c, "/tags?per_page=100"),
+    wpFetch(c, "/categories?per_page=100").catch(() => null),
+    wpFetch(c, "/tags?per_page=100").catch(() => null),
   ]);
-  const categories = cats.ok
-    ? ((await cats.json()) as Array<{ id: number; name: string }>).map((x) => ({
-        id: x.id,
-        name: x.name,
-      }))
-    : [];
-  const tagList = tags.ok
-    ? ((await tags.json()) as Array<{ id: number; name: string }>).map((x) => ({
-        id: x.id,
-        name: x.name,
-      }))
-    : [];
+  const categories =
+    cats && cats.ok
+      ? ((await cats.json()) as Array<{ id: number; name: string }>).map((x) => ({
+          id: x.id,
+          name: x.name,
+        }))
+      : [];
+  const tagList =
+    tags && tags.ok
+      ? ((await tags.json()) as Array<{ id: number; name: string }>).map((x) => ({
+          id: x.id,
+          name: x.name,
+        }))
+      : [];
   return { user: user.name ?? "connected", categories, tags: tagList };
 }
 
@@ -642,12 +713,32 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
         body: JSON.stringify(payload),
       });
     } else {
-      throw new Error(`WordPress publish failed [${res.status}]: ${body.slice(0, 300)}`);
+      let detail = "";
+      try {
+        const parsed = JSON.parse(body) as { message?: string };
+        if (parsed.message) detail = `: ${parsed.message}`;
+      } catch {
+        detail = body ? `: ${body.slice(0, 150)}` : "";
+      }
+      throw new Error(`WordPress publish failed [${res.status}]${detail}`);
     }
   }
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`WordPress publish failed [${res.status}]: ${body.slice(0, 300)}`);
+    let detail = "";
+    try {
+      const parsed = JSON.parse(body) as { message?: string };
+      if (parsed.message) detail = `: ${parsed.message}`;
+    } catch {
+      detail = body ? `: ${body.slice(0, 150)}` : "";
+    }
+    if (res.status === 401) {
+      throw new Error(`WordPress publishing unauthorized (HTTP 401)${detail}. Check that your Application Password has not expired or been revoked.`);
+    }
+    if (res.status === 403) {
+      throw new Error(`WordPress publishing denied (HTTP 403)${detail}. Ensure this WordPress user account has permission to publish posts (Administrator or Editor).`);
+    }
+    throw new Error(`WordPress publish failed [${res.status}]${detail}`);
   }
 
   const post = (await res.json()) as { id?: number; link?: string };
