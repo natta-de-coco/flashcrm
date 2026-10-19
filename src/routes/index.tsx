@@ -302,7 +302,7 @@ const FAQS = [
   },
 ];
 
-const WHATSAPP = "https://wa.me/9710509630506";
+const WHATSAPP = "https://wa.me/971509630506";
 
 function Landing() {
   const { t, tr, tx } = useI18n();
