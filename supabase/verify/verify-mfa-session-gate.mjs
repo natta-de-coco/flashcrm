@@ -266,6 +266,23 @@ for (const [org, name] of [
     [conv, org],
   );
 }
+// A partitioned table with row-level security (relkind 'p'), the way a future migration might
+// create one. Rows live in its partitions; policies on the parent apply to queries through it.
+// None exists among the real migrations, so without this the 'p' branch of the gate would
+// never be exercised. The partitions are protected too (a partition can be queried directly).
+await c.query(`
+  create table public.zz_partitioned (
+    id uuid not null default gen_random_uuid(), region text not null default 'a', tenant_id uuid,
+    primary key (id, region)) partition by list (region);
+  create table public.zz_partitioned_a partition of public.zz_partitioned for values in ('a');
+  create table public.zz_partitioned_rest partition of public.zz_partitioned default;
+  alter table public.zz_partitioned enable row level security;
+  alter table public.zz_partitioned_a enable row level security;
+  alter table public.zz_partitioned_rest enable row level security;
+  create policy zz_partitioned_all on public.zz_partitioned for all to authenticated using (true) with check (true);
+  create policy zz_partitioned_a_all on public.zz_partitioned_a for all to authenticated using (true) with check (true);
+  create policy zz_partitioned_rest_all on public.zz_partitioned_rest for all to authenticated using (true) with check (true);
+  insert into public.zz_partitioned(region, tenant_id) values ('a', '${orgA}'), ('b', '${orgA}');`);
 await c.query("insert into storage.buckets(id,name) values('invoices','invoices')");
 for (const org of [orgA, orgB])
   await c.query("insert into storage.objects(bucket_id,name) values('invoices',$1)", [
@@ -474,7 +491,7 @@ console.log(
 const listProtected = async () =>
   (
     await c.query(`
-      select n.nspname as schema, c.relname as name
+      select n.nspname as schema, c.relname as name, c.relispartition as partition
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where c.relkind in ('r','p') and c.relrowsecurity
          and (n.nspname = 'public' or (n.nspname = 'storage' and c.relname = 'objects'))
@@ -661,7 +678,14 @@ async function probe(t, list, { blockedOnly = false } = {}) {
   return { wrong, clean, passedPolicyThenFailed };
 }
 
+/**
+ * A partition cannot take a generic sample row directly (its bound refuses it), so the
+ * matrix probes the parent, whose policies and gate apply to every row read through it,
+ * and each partition is tested by name in "a partitioned table" below.
+ */
+const probeable = (tables) => tables.filter((t) => !t.partition);
 async function matrix(tables, list, options) {
+  tables = probeable(tables);
   const wrong = [];
   let clean = 0;
   let late = 0;
@@ -675,7 +699,9 @@ async function matrix(tables, list, options) {
 }
 
 const tablesBefore = await listProtected();
-heading(`before the migration: the same probe reaches all ${tablesBefore.length} tables at aal1`);
+heading(
+  `before the migration: the same probe reaches all ${probeable(tablesBefore).length} tables at aal1`,
+);
 {
   const open = scenarios().map(([label, who]) => [label, who, "open"]);
   const r = await matrix(
@@ -683,7 +709,7 @@ heading(`before the migration: the same probe reaches all ${tablesBefore.length}
     open.filter(([label]) => /^verified app, no code|AND verified phone/.test(label)),
   );
   check(
-    `a person with a verified factor and no code can select, insert, update and delete on all ${tablesBefore.length} tables (the probe is sound)`,
+    `a person with a verified factor and no code can select, insert, update and delete on all ${probeable(tablesBefore).length} tables (the probe is sound)`,
     r.wrong.length === 0,
     r.wrong.slice(0, 3).join(" | "),
   );
@@ -993,6 +1019,40 @@ heading("open_contact_whatsapp(): guarded, and otherwise exactly PR #66's functi
   );
 }
 
+heading("a partitioned table (relkind 'p')");
+{
+  const kinds = (
+    await c.query(`
+      select c.relname, c.relkind::text as kind,
+             exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'mfa_session_gate'
+                       and not p.polpermissive) as gated
+        from pg_class c where c.relname like 'zz_partitioned%' and c.relnamespace = 'public'::regnamespace
+          and c.relkind in ('r','p')
+       order by 1`)
+  ).rows;
+  check(
+    "the partitioned parent and both partitions are in the catalogue and all three are gated",
+    kinds.length === 3 &&
+      kinds.some((k) => k.kind === "p") &&
+      kinds.filter((k) => k.kind === "r").length === 2 &&
+      kinds.every((k) => k.gated),
+    JSON.stringify(kinds),
+  );
+  const through = (who) => countOf(who, "public.zz_partitioned");
+  check(
+    "rows read THROUGH the parent: a verified-factor person at aal1 sees none; at aal2 and without a factor, both",
+    (await through(AT(alice, AAL1))) === 0 &&
+      (await through(AT(alice, AAL2))) === 2 &&
+      (await through(AT(bob, AAL1))) === 2,
+    `${await through(AT(alice, AAL1))} / ${await through(AT(alice, AAL2))} / ${await through(AT(bob, AAL1))}`,
+  );
+  check(
+    "rows read straight from a partition: none at aal1 with a factor",
+    (await countOf(AT(alice, AAL1), "public.zz_partitioned_a")) === 0 &&
+      (await countOf(AT(alice, AAL1), "public.zz_partitioned_rest")) === 0,
+  );
+}
+
 heading("the policy itself, on every table from the catalogue");
 // Postgres prints the policy's `(SELECT public.session_meets_mfa())` back as a sub-select.
 const ONCE_PER_STATEMENT = /\(\s*SELECT\s+(public\.)?session_meets_mfa\(\)/i;
@@ -1121,7 +1181,7 @@ heading("every table, every kind of caller, every verb (generated from the catal
 const list = scenarios();
 const full = await matrix(protectedNow, list);
 check(
-  `${protectedNow.length} tables x ${list.length} callers x 4 verbs: ${protectedNow.length * list.length * 4} cases behave as expected`,
+  `${probeable(protectedNow).length} tables x ${list.length} callers x 4 verbs: ${probeable(protectedNow).length * list.length * 4} cases behave as expected`,
   full.wrong.length === 0,
   full.wrong.slice(0, 5).join(" | "),
 );
@@ -1580,55 +1640,159 @@ const gateMissing = async () =>
 heading("guard: SECURITY DEFINER functions the browser role can call");
 {
   // A definer function runs as its owner and skips every policy, gate included.
-  // So each one the browser can call must either ask the rule itself, return only
-  // the caller's own flags, or be named below with the reason it is allowed to be
-  // open. A new one that is none of those fails here, in the pull request that adds it.
-  const OPEN_BY_DESIGN = new Set([
-    "access_state", // the account's own state; the layout and the generated middleware ask it at aal1
-    "am_i_super_admin", // own flag, used inside policies
-    "am_i_tenant_admin", // own flag, used inside policies
-    "current_tenant_id", // own company id, used inside policies and by the settings page
-    "is_tenant_admin", // own flag, used inside policies
-    "my_tenant_id", // own company id, used inside policies
-    "session_meets_mfa", // the rule itself: answers only about the caller's own session
+  // So each one the browser can call must be guarded, be open by design, or be named
+  // below with the reason and how serious it is. A new one that is none of those fails
+  // here, in the pull request that adds it.
+  //
+  // "Guarded" is decided by CALLING the function, never by reading its text: a person
+  // with a verified factor and no code (aal1) must get "Two-factor code required"
+  // (42501) back, a person without a factor at aal1 and the same person at aal2 must
+  // not. A comment that mentions the rule, or a PERFORM whose answer is ignored, or an
+  // IF that raises nothing, do not pass this. (A call that raises is undone as a whole,
+  // so where in the function the guard sits does not matter for the data.)
+  const OPEN_BY_DESIGN = new Map([
+    ["am_i_super_admin", "own flag, used inside policies"],
+    ["am_i_tenant_admin", "own flag, used inside policies"],
+    ["current_tenant_id", "own company id, used inside policies and by the settings page"],
+    ["my_tenant_id", "own company id, used inside policies"],
+    ["session_meets_mfa", "the rule itself: answers only about the caller's own session"],
+  ]);
+  const OPEN_BUT_LOOSE = new Map([
+    // They have to stay callable at aal1 (the layout and the generated middleware ask
+    // access_state before the code is entered), but they answer for whichever user id
+    // they are given, not only the caller's. Reported in the pull request; LOW.
+    [
+      "access_state",
+      "LOW: answers for any user id it is given (information only); must stay open at aal1",
+    ],
+    [
+      "is_tenant_admin",
+      "LOW: answers for any user id it is given (information only); used inside policies",
+    ],
   ]);
   const KNOWN_GAPS = new Map([
     [
-      "record_integration_error",
-      "accepts any tenant id: a separate, older problem, not a two-factor one",
+      "check_and_prune_tenant_email_storage",
+      "HIGH, older than the gate and not a two-factor question: no caller check, executable by anon too; PR #81 revokes it",
     ],
-    ["check_and_prune_tenant_email_storage", "PR #81 revokes it from the browser role"],
+    [
+      "record_integration_error",
+      "MEDIUM, older than the gate: accepts any tenant id, so a signed-in person can write another company's error log; separate fix",
+    ],
   ]);
-  const fns = (
-    await c.query(`
-      select p.proname, p.prosrc
-        from pg_proc p
-       where p.pronamespace = 'public'::regnamespace and p.prosecdef and p.prorettype <> 'trigger'::regtype
-         and has_function_privilege('authenticated', p.oid, 'EXECUTE')
-       order by 1`)
-  ).rows;
+  /** A value of each argument type, enough to reach the first statement of the function. */
+  const sample = (type) => {
+    if (type === "uuid") return "'11111111-1111-1111-1111-111111111111'::uuid";
+    if (/^(text|character varying|character|name|citext)/.test(type)) return "'x'";
+    if (/^(integer|smallint|bigint|numeric|double precision|real)$/.test(type)) return "1";
+    if (type === "boolean") return "false";
+    if (/^jsonb?$/.test(type)) return "'{}'";
+    if (/^timestamp/.test(type)) return "now()";
+    if (type === "date") return "current_date";
+    if (type.endsWith("[]")) return "'{}'";
+    throw new Error(
+      `the guard probe has no sample value for an argument of type ${type}; add one in sample()`,
+    );
+  };
+  const definerFunctions = async () =>
+    (
+      await c.query(`
+        select p.proname,
+               (select coalesce(array_agg(format_type(t, null) order by o), '{}')
+                  from unnest(p.proargtypes::oid[]) with ordinality as a(t, o)) as arg_types
+          from pg_proc p
+         where p.pronamespace = 'public'::regnamespace and p.prosecdef and p.prorettype <> 'trigger'::regtype
+           and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+         order by 1, 2`)
+    ).rows;
+  const TWO_FACTOR = (r) =>
+    !r.ok && r.code === "42501" && /Two-factor code required/.test(r.message);
+  /** Calls the function as three people; guarded only if the answers are exactly the rule's. */
+  const guardedByBehaviour = async (f) => {
+    const call = `select * from public.${f.proname}(${f.arg_types.map(sample).join(", ")})`;
+    const noCode = await as(AT(alice, AAL1), (run) => run(call));
+    const withCode = await as(AT(alice, AAL2), (run) => run(call));
+    const noFactor = await as(AT(bob, AAL1), (run) => run(call));
+    return TWO_FACTOR(noCode) && !TWO_FACTOR(withCode) && !TWO_FACTOR(noFactor);
+  };
+
+  // The probe has to be able to say no. Three throwaway definer functions that LOOK guarded
+  // in different ways but are not, and one that is, are classified first.
+  await c.query(`
+    create function public.zz_guard_ok(_x uuid) returns integer language plpgsql security definer set search_path = '' as $$
+    begin
+      if not public.session_meets_mfa() then raise exception 'Two-factor code required' using errcode = 'insufficient_privilege'; end if;
+      return 1;
+    end $$;
+    create function public.zz_guard_comment_only(_x uuid) returns integer language plpgsql security definer set search_path = '' as $$
+    begin
+      -- TODO: if not public.session_meets_mfa() then raise exception 'Two-factor code required'; end if;
+      return 1;
+    end $$;
+    create function public.zz_guard_ignored(_x uuid) returns integer language plpgsql security definer set search_path = '' as $$
+    begin
+      perform public.session_meets_mfa();
+      return 1;
+    end $$;
+    create function public.zz_guard_no_raise(_x uuid) returns integer language plpgsql security definer set search_path = '' as $$
+    begin
+      if not public.session_meets_mfa() then null; end if;
+      return 1;
+    end $$;`);
+  const probeTargets = new Map(
+    (await definerFunctions())
+      .filter((f) => f.proname.startsWith("zz_guard_"))
+      .map((f) => [f.proname, f]),
+  );
+  const verdicts = {};
+  for (const [name, f] of probeTargets) verdicts[name] = await guardedByBehaviour(f);
+  check(
+    "the guard probe accepts a real guard and rejects: a comment that mentions the rule, a PERFORM whose answer is ignored, a guard that raises nothing",
+    verdicts.zz_guard_ok === true &&
+      verdicts.zz_guard_comment_only === false &&
+      verdicts.zz_guard_ignored === false &&
+      verdicts.zz_guard_no_raise === false,
+    JSON.stringify(verdicts),
+  );
+  await c.query(`
+    drop function public.zz_guard_ok(uuid); drop function public.zz_guard_comment_only(uuid);
+    drop function public.zz_guard_ignored(uuid); drop function public.zz_guard_no_raise(uuid);`);
+
+  const fns = await definerFunctions();
   const unclassified = [];
+  const guarded = [];
   for (const f of fns) {
-    if (/session_meets_mfa/.test(f.prosrc)) continue;
     if (OPEN_BY_DESIGN.has(f.proname)) continue;
+    if (OPEN_BUT_LOOSE.has(f.proname)) {
+      console.log(`  OPEN       ${f.proname}: ${OPEN_BUT_LOOSE.get(f.proname)}`);
+      continue;
+    }
     if (KNOWN_GAPS.has(f.proname)) {
       console.log(`  KNOWN GAP  ${f.proname}: ${KNOWN_GAPS.get(f.proname)}`);
       continue;
     }
-    unclassified.push(f.proname);
+    if (await guardedByBehaviour(f)) guarded.push(f.proname);
+    else unclassified.push(f.proname);
   }
   check(
-    `every one of the ${fns.length} definer functions callable by the browser role is guarded, open by design, or a named known gap`,
+    `every one of the ${fns.length} definer functions callable by the browser role is guarded (proved by calling it), open by design, or a named known gap`,
     unclassified.length === 0,
     unclassified.length
-      ? `${unclassified.join(", ")} -- start it with IF NOT public.session_meets_mfa() THEN RAISE ... ERRCODE 'insufficient_privilege', or list it in this script with the reason`
-      : "",
+      ? `${unclassified.join(", ")} -- make its first statements IF NOT public.session_meets_mfa() THEN RAISE EXCEPTION 'Two-factor code required' USING ERRCODE = 'insufficient_privilege'; END IF; or list it in this script with the reason and how serious it is`
+      : `guarded: ${guarded.join(", ")}`,
   );
-  const guarded = fns.filter((f) => /session_meets_mfa/.test(f.prosrc)).map((f) => f.proname);
   check(
-    "list_subscribers is among the guarded ones",
-    guarded.includes("list_subscribers"),
+    "list_subscribers and open_contact_whatsapp are among the guarded ones",
+    guarded.includes("list_subscribers") && guarded.includes("open_contact_whatsapp"),
     guarded.join(", "),
+  );
+  // The two loose ones, for the record in the pull request: asked by alice (Acme) about a Globex person.
+  const loose = await as(AT(alice, AAL1), async (run) => ({
+    tenantAdmin: await run(`select public.is_tenant_admin('${frank.id}') as v`),
+    state: await run(`select public.access_state('${frank.id}') as v`),
+  }));
+  console.log(
+    `  (for the record: at aal1, an Acme admin asking about a Globex admin gets is_tenant_admin -> ${loose.tenantAdmin.ok ? loose.tenantAdmin.rows[0].v : loose.tenantAdmin.message}, access_state -> ${loose.state.ok ? loose.state.rows[0].v : loose.state.message})`,
   );
 }
 

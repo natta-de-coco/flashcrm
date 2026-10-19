@@ -123,9 +123,16 @@ Three guards fail a future pull request, on purpose:
   `20261020000000_mfa_session_gate.sql` and expect `missing = 0`.
 - a table with no row-level security at all, or a view the browser can read that
   is not `security_invoker`
-- a `SECURITY DEFINER` function the browser role can call that does not start with
-  `IF NOT public.session_meets_mfa() THEN RAISE ...` and is not listed in the
-  script with the reason it may stay open (a definer function skips every policy)
+- a `SECURITY DEFINER` function the browser role can call that is not guarded and is
+  not listed in the script with the reason (and how serious it is) it may stay open (a
+  definer function skips every policy). "Guarded" is decided by calling it, never by
+  reading its text: a verified-factor person at `aal1` must get `42501 Two-factor code
+  required`, the same person at `aal2` and a person with no factor at `aal1` must not.
+  A comment that mentions the rule, a `PERFORM` whose answer is ignored or an `IF` that
+  raises nothing do not pass; the script proves its probe can say no with throwaway
+  functions of each kind before it classifies the real ones. A guarded function starts
+  `IF NOT public.session_meets_mfa() THEN RAISE EXCEPTION 'Two-factor code required'
+  USING ERRCODE = 'insufficient_privilege'; END IF;`
 
 The shim has a stand-in for `auth.mfa_factors` that the browser role cannot read,
 like the real one. What this cannot prove: Realtime delivery, Supabase's real
