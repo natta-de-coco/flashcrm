@@ -87,9 +87,10 @@
 --     that are not two-factor questions (each is proved by calling it in the verify
 --     script, which fails on any new one): check_and_prune_tenant_email_storage()
 --     (HIGH, older than this file: no caller check, executable by anon too; PR #81
---     revokes it), record_integration_error() (MEDIUM, older: accepts any tenant id),
---     access_state() and is_tenant_admin() (LOW: answer for any user id they are
---     given, information only; they must stay open at aal1).
+--     revokes it), access_state() and is_tenant_admin() (LOW: answer for any user id
+--     they are given, information only; they must stay open at aal1).
+--     (record_integration_error() was here too; PR #90, 20261019120000, took
+--     EXECUTE away from the browser role.)
 --   * Enrolling a factor from a password-only session: the database cannot see
 --     the caller's level at that moment. See the recovery runbook of PR #68.
 --

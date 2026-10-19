@@ -1746,10 +1746,9 @@ heading("guard: SECURITY DEFINER functions the browser role can call");
       "check_and_prune_tenant_email_storage",
       "HIGH, older than the gate and not a two-factor question: no caller check, executable by anon too; PR #81 revokes it",
     ],
-    [
-      "record_integration_error",
-      "MEDIUM, older than the gate: accepts any tenant id, so a signed-in person can write another company's error log; separate fix",
-    ],
+    // record_integration_error() used to be here (MEDIUM: it accepted any tenant id). PR #90
+    // (20261019120000) takes EXECUTE away from the browser role, so it no longer shows up in
+    // the list below; if that migration is ever missing, the script fails on it by name.
   ]);
   /** A value of each argument type, enough to reach the first statement of the function. */
   const sample = (type) => {
