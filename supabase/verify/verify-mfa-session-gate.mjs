@@ -809,34 +809,98 @@ const dropRole = async (name) => {
     (await waDefinition()) === waDefinitionBefore,
   );
 }
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Stands in for the app: reads a table over and over on its own connection and
+ * remembers the slowest answer. A lock the migration holds on that table, while it
+ * waits for another one, shows up here as a slow answer.
+ */
+function watchReaders(table) {
+  const state = { stop: false, worst: 0, runs: 0 };
+  state.done = (async () => {
+    const reader = await connect();
+    while (!state.stop) {
+      const t = Date.now();
+      await reader.query(`select count(*) from ${table}`);
+      state.worst = Math.max(state.worst, Date.now() - t);
+      state.runs++;
+      await sleep(25);
+    }
+    await reader.end();
+  })();
+  return state;
+}
 {
-  // (c) another session holds a lock the file needs, for longer than 10 seconds
+  // (c) another session holds a lock the file needs (the situation of an upload in flight on
+  // storage.objects, which is the last table the file reaches). The file must give up after a
+  // few seconds, change nothing, say which table and what to do, and, the part that matters on
+  // a live app, never make the people using the OTHER tables wait while it tries.
   const holder = await connect();
   await holder.query("begin");
   await holder.query("lock table storage.objects in access share mode");
+  const readers = watchReaders("public.contacts");
+  await sleep(300);
   const started = Date.now();
   const running = apply(c, mineSql);
   // If the file does not give up by itself it would wait for ever, so stop waiting after 30 seconds.
-  const early = await Promise.race([
-    running,
-    new Promise((resolve) => setTimeout(resolve, 30_000)),
-  ]);
+  const early = await Promise.race([running, sleep(30_000)]);
   const waited = (Date.now() - started) / 1000;
+  readers.stop = true;
+  await readers.done;
   await holder.query("rollback");
   await holder.end();
   const r = early ?? (await running);
   check(
-    "a lock held elsewhere: the file gives up after about 10 seconds",
-    early !== undefined && r.error?.code === "55P03" && waited >= 9 && waited < 25,
+    "a lock held elsewhere: the file gives up within a few seconds, naming the table and saying to run it again",
+    early !== undefined &&
+      r.error?.code === "55P03" &&
+      /storage\.objects/.test(r.error.message) &&
+      /again/i.test(r.error.message) &&
+      /nothing was changed/i.test(r.error.message) &&
+      waited >= 3 &&
+      waited < 10,
     early === undefined
-      ? `still waiting after ${waited.toFixed(0)}s: no lock timeout`
+      ? `still waiting after ${waited.toFixed(0)}s: no limit`
       : r.error
-        ? `${r.error.code} after ${waited.toFixed(1)}s`
+        ? `${r.error.code} after ${waited.toFixed(1)}s: ${r.error.message}`
         : "it did NOT fail",
   );
   check(
-    "...having created gates on every earlier table first, all undone",
-    (await snapshot()) === untouched,
+    `...while it tried, nobody reading public.contacts was kept waiting (slowest of ${readers.runs} reads: ${readers.worst} ms)`,
+    readers.runs > 20 && readers.worst < 1000,
+    `${readers.runs} reads, slowest ${readers.worst} ms`,
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+}
+{
+  // (c2) the same lock, but released after a moment: the file waits it out by itself.
+  const holder = await connect();
+  await holder.query("begin");
+  await holder.query("lock table storage.objects in access share mode");
+  const readers = watchReaders("public.contacts");
+  const running = apply(c, mineSql);
+  await sleep(1500);
+  await holder.query("rollback");
+  await holder.end();
+  const r = await running;
+  readers.stop = true;
+  await readers.done;
+  const installed = (await snapshot()) !== untouched;
+  check(
+    "a lock held for a moment: the file waits for it and then succeeds",
+    r.error === null && installed,
+    r.error?.message,
+  );
+  check(
+    `...and nobody reading public.contacts was kept waiting meanwhile (slowest of ${readers.runs} reads: ${readers.worst} ms)`,
+    readers.runs > 20 && readers.worst < 1000,
+    `${readers.runs} reads, slowest ${readers.worst} ms`,
+  );
+  const undo = await apply(c, ROLLBACK);
+  check(
+    "...(the harness removed it again with the printed rollback)",
+    undo.error === null && (await snapshot()) === untouched,
+    undo.error?.message,
   );
 }
 
@@ -1412,6 +1476,25 @@ check(
   "...and leaves the policies and functions exactly as they were",
   (await snapshotAll()) === afterFirst,
 );
+{
+  // Tables that already have the right policy are not touched, so they are not locked either:
+  // re-running the file (or calling the function at the end of a later migration) cannot make
+  // anyone wait on them. Here other sessions are reading three of them.
+  const holder = await connect();
+  await holder.query("begin");
+  await holder.query("lock table contacts, messages, storage.objects in access share mode");
+  const t0 = Date.now();
+  const again = await apply(c, mineSql);
+  const took = Date.now() - t0;
+  await holder.query("rollback");
+  await holder.end();
+  check(
+    "re-running the file while other sessions hold locks on gated tables succeeds at once (nothing to lock)",
+    again.error === null && took < 4000,
+    again.error ? again.error.message : `${took} ms`,
+  );
+  check("...and changes nothing", (await snapshotAll()) === afterFirst);
+}
 
 // ---------------------------------------------------------------------------
 heading("migrations dated after the gate");
@@ -1566,7 +1649,23 @@ heading("a table added later");
     open === 1,
     String(open),
   );
-  const covered = await c.query("select public.apply_mfa_session_gate() as n");
+  // Other sessions are reading already-gated tables: covering the new table must not wait for them.
+  const holder = await connect();
+  await holder.query("begin");
+  await holder.query("lock table contacts, storage.objects in access share mode");
+  const call = c.query("select public.apply_mfa_session_gate() as n").then(
+    (result) => result,
+    (error) => ({ error }),
+  );
+  const answeredWhileHeld = (await Promise.race([call, sleep(8000).then(() => null)])) !== null;
+  await holder.query("rollback"); // lets a call that was waiting finish, so the script goes on
+  await holder.end();
+  const covered = await call;
+  check(
+    "covering the new table does not wait for sessions that are reading the tables that already have the gate",
+    answeredWhileHeld && !covered.error,
+    covered.error?.message,
+  );
   check(
     "apply_mfa_session_gate() covers it and reports the count",
     covered.rows[0].n === protectedNow.length + 1,
@@ -1579,6 +1678,29 @@ heading("a table added later");
   );
   check("...and open at aal2", (await countOf(AT(alice, AAL2), "zz_added_later")) === 1);
   await c.query("drop table public.zz_added_later");
+}
+
+heading("a gate policy that was changed by hand is put back");
+{
+  const before_ = await snapshotAll();
+  const tamper = [
+    "drop policy mfa_session_gate on contacts; create policy mfa_session_gate on contacts as permissive for all to authenticated using (true) with check (true)",
+    "drop policy mfa_session_gate on messages; create policy mfa_session_gate on messages as restrictive for all to authenticated using (true) with check (true)",
+    "drop policy mfa_session_gate on conversations; create policy mfa_session_gate on conversations as restrictive for all to public using ((select public.session_meets_mfa())) with check ((select public.session_meets_mfa()))",
+    "drop policy mfa_session_gate on system_alerts; create policy mfa_session_gate on system_alerts as restrictive for select to authenticated using ((select public.session_meets_mfa()))",
+    "drop policy mfa_session_gate on products; create policy mfa_session_gate on products as restrictive for all to authenticated using ((select public.session_meets_mfa()) or true) with check ((select public.session_meets_mfa()))",
+  ];
+  for (const sql of tamper) await c.query(sql);
+  check(
+    "five hand-made variants (permissive; always true; wrong role; select only; 'or true') leave the gate open",
+    (await snapshotAll()) !== before_ && (await countOf(AT(alice, AAL1), "contacts")) > 0,
+    String(await countOf(AT(alice, AAL1), "contacts")),
+  );
+  await c.query("select public.apply_mfa_session_gate()");
+  check(
+    "apply_mfa_session_gate() replaces every one of them with the real policy",
+    (await snapshotAll()) === before_ && (await countOf(AT(alice, AAL1), "contacts")) === 0,
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -59,8 +59,17 @@
 --     the caller's level at that moment. See the recovery runbook of PR #68.
 --
 -- SAFE TO RUN TWICE. One transaction: if anything fails, nothing is changed.
--- If the lock cannot be had within 10 seconds the file stops and changes nothing;
--- run it again in a quieter hour.
+--
+-- WHEN TO RUN IT: at a quiet time. Putting a policy on a table needs a short
+-- exclusive lock on it (every reader and writer of that table waits for the
+-- fraction of a second the file holds it, about a second in all). The file never
+-- queues behind a busy table: it asks for all its locks without waiting, lets them
+-- go the moment one is busy, tries again for about 5 seconds, and then stops with
+-- "<table> is in use by another session ... nothing was changed". That is not an
+-- error in the file: RUN IT AGAIN (it is safe to run again), in a quieter hour if
+-- it keeps happening (a Storage upload or a long report holds its table). Nobody
+-- else waits while it tries. SET LOCAL lock_timeout below is the net under that
+-- for any wait the file did not foresee.
 --
 -- KILL SWITCH (no table locks, takes effect for the next statement), if people
 -- are locked out and you need access back before you have found the cause.
@@ -83,15 +92,15 @@
 --   FOR r IN SELECT schemaname, tablename FROM pg_policies WHERE policyname = 'mfa_session_gate' LOOP
 --     EXECUTE format('DROP POLICY mfa_session_gate ON %I.%I', r.schemaname, r.tablename);
 --   END LOOP;
---   CREATE OR REPLACE FUNCTION public.list_subscribers()
---   RETURNS SETOF public.super_admin_subscribers
---   LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
---   BEGIN
---     IF NOT public.is_super_admin(auth.uid()) THEN
---       RAISE EXCEPTION 'Super admin only';
---     END IF;
---     RETURN QUERY SELECT * FROM public.super_admin_subscribers ORDER BY company_created_at DESC;
---   END; $$;
+-- CREATE OR REPLACE FUNCTION public.list_subscribers()
+-- RETURNS SETOF public.super_admin_subscribers
+-- LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+-- BEGIN
+--   IF NOT public.is_super_admin(auth.uid()) THEN
+--     RAISE EXCEPTION 'Super admin only';
+--   END IF;
+--   RETURN QUERY SELECT * FROM public.super_admin_subscribers ORDER BY company_created_at DESC;
+-- END; $$;
 -- CREATE OR REPLACE FUNCTION public.open_contact_whatsapp(p_contact_id uuid)
 -- RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 -- DECLARE
@@ -163,7 +172,7 @@
 
 BEGIN;
 
-SET LOCAL lock_timeout = '10s';
+SET LOCAL lock_timeout = '2s';
 
 -- ── 1. The rule ────────────────────────────────────────────────────────────
 -- SECURITY DEFINER because the browser role is not allowed to read
@@ -298,85 +307,7 @@ BEGIN
 END;
 $$;
 
--- ── 3. The policy, on every table that has row-level security ──────────────
--- The tables come from the catalogue, never from a list typed here, so a table
--- added by any migration (including one nobody remembered) is covered. It also
--- covers storage.objects. Creating the policy takes a brief exclusive lock on
--- each table; inside this transaction nobody can slip in between the drop and
--- the create.
--- Not callable by anyone but the owner: it changes policies.
-CREATE OR REPLACE FUNCTION public.apply_mfa_session_gate()
-RETURNS integer
-LANGUAGE plpgsql
-SET search_path = ''
-AS $$
-DECLARE
-  target record;
-  covered integer := 0;
-  -- See "NOT COVERED HERE" at the top of the file. Delete a name once nothing
-  -- refuses a policy on that table any more.
-  left_out constant text[] := ARRAY['tenant_alert_settings', 'lead_alerts_log'];
-BEGIN
-  FOR target IN
-    SELECT n.nspname AS schema_name, c.relname AS table_name
-      FROM pg_catalog.pg_class c
-      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-     WHERE c.relkind IN ('r', 'p')
-       AND c.relrowsecurity
-       AND n.nspname = 'public'
-       AND NOT (c.relname = ANY (left_out))
-     UNION ALL
-    SELECT n.nspname, c.relname
-      FROM pg_catalog.pg_class c
-      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-     WHERE c.relkind IN ('r', 'p')
-       AND n.nspname = 'storage'
-       AND c.relname = 'objects'
-     ORDER BY 1, 2
-  LOOP
-    EXECUTE format('DROP POLICY IF EXISTS mfa_session_gate ON %I.%I',
-                   target.schema_name, target.table_name);
-    EXECUTE format(
-      'CREATE POLICY mfa_session_gate ON %I.%I AS RESTRICTIVE FOR ALL TO authenticated '
-      'USING ((SELECT public.session_meets_mfa())) '
-      'WITH CHECK ((SELECT public.session_meets_mfa()))',
-      target.schema_name, target.table_name);
-    covered := covered + 1;
-  END LOOP;
-  RETURN covered;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.apply_mfa_session_gate() FROM PUBLIC, anon, authenticated, service_role;
-
-SELECT public.apply_mfa_session_gate();
-
--- Fail the whole file if any table with row-level security was left without it.
-DO $$
-DECLARE
-  missing text;
-BEGIN
-  SELECT string_agg(n.nspname || '.' || c.relname, ', ' ORDER BY n.nspname, c.relname)
-    INTO missing
-    FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-   WHERE c.relkind IN ('r', 'p')
-     AND c.relrowsecurity
-     AND n.nspname = 'public'
-     AND c.relname NOT IN ('tenant_alert_settings', 'lead_alerts_log')
-     AND NOT EXISTS (
-       SELECT 1 FROM pg_catalog.pg_policy p
-        WHERE p.polrelid = c.oid
-          AND p.polname = 'mfa_session_gate'
-          AND NOT p.polpermissive
-     );
-  IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'mfa_session_gate: tables left without the policy: %', missing;
-  END IF;
-END;
-$$;
-
--- ── 4. list_subscribers(): a definer function skips policies ───────────────
+-- ── 3. list_subscribers(): a definer function skips policies ───────────────
 -- Same body as 20260904010000; only the first check is new.
 CREATE OR REPLACE FUNCTION public.list_subscribers()
 RETURNS SETOF public.super_admin_subscribers
@@ -393,7 +324,7 @@ END; $$;
 REVOKE ALL ON FUNCTION public.list_subscribers() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.list_subscribers() TO authenticated;
 
--- ── 5. open_contact_whatsapp(): a definer function skips policies, too ───────
+-- ── 3b. open_contact_whatsapp(): a definer function skips policies, too ───────
 -- PR #66's body (20261007130000_open_contact_whatsapp_phone_identity.sql), copied
 -- unchanged, plus ONE guard placed right after its own sign-in check, so a caller
 -- with no identity still gets #66's message and everybody else the gate lets in
@@ -467,6 +398,137 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.open_contact_whatsapp(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.open_contact_whatsapp(uuid) TO authenticated;
+
+-- ── 4. The policy, on every table that has row-level security ──────────────
+-- The tables come from the catalogue, never from a list typed here, so a table
+-- added by any migration (including one nobody remembered) is covered. It also
+-- covers storage.objects. Not callable by anyone but the owner: it changes policies.
+--
+-- LOCKS. Creating or dropping a policy needs an ACCESS EXCLUSIVE lock on the table,
+-- which makes every reader and writer of that table wait. Taken one table at a time
+-- by waiting, the file would hold the locks it already has (every table before the
+-- busy one) while it waited for the busy one, and the whole app would queue behind
+-- it. So the function:
+--   * touches only tables that do NOT already have the exact policy, so running it
+--     again (or at the end of a later migration) locks nothing that is already done;
+--   * takes the locks it needs on all of those tables BEFORE changing anything, in
+--     one order (storage.objects first: Storage uploads hold locks the longest),
+--     and takes each one with NOWAIT: a busy table makes the attempt fail at once,
+--     the attempt's locks are let go at once (nobody queues behind it), it waits a
+--     quarter of a second and tries again, for about 5 seconds;
+--   * after that it stops with a message naming the busy table and changes nothing.
+-- Then it creates the policies, holding every lock it needs, so nothing waits
+-- midway and nobody can slip in between the drop and the create.
+CREATE OR REPLACE FUNCTION public.apply_mfa_session_gate()
+RETURNS integer
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+  -- See "NOT COVERED HERE" at the top of the file. Delete a name once nothing
+  -- refuses a policy on that table any more.
+  left_out constant text[] := ARRAY['tenant_alert_settings', 'lead_alerts_log'];
+  -- About 5 seconds in all.
+  max_attempts constant integer := 20;
+  pause constant double precision := 0.25;
+  browser_role oid;
+  every_table text[];
+  todo text[];
+  busy text;
+  attempt integer := 0;
+  one text;
+BEGIN
+  SELECT r.oid INTO browser_role FROM pg_catalog.pg_roles r WHERE r.rolname = 'authenticated';
+
+  -- Every table that must have the gate, and those of them that do not have it yet.
+  -- A policy counts as "has it" only if it is exactly the one this function creates:
+  -- restrictive, for all commands, for the browser role, and both expressions are
+  -- nothing but a call to the rule. A hand-made variant is replaced.
+  SELECT coalesce(array_agg(t.qname ORDER BY t.storage_first, t.qname), '{}'),
+         coalesce(array_agg(t.qname ORDER BY t.storage_first, t.qname) FILTER (WHERE NOT t.current_gate), '{}')
+    INTO every_table, todo
+    FROM (
+      SELECT pg_catalog.format('%I.%I', n.nspname, c.relname) AS qname,
+             (n.nspname <> 'storage') AS storage_first,
+             EXISTS (
+               SELECT 1 FROM pg_catalog.pg_policy p
+                WHERE p.polrelid = c.oid
+                  AND p.polname = 'mfa_session_gate'
+                  AND NOT p.polpermissive
+                  AND p.polcmd = '*'
+                  AND p.polroles = ARRAY[browser_role]
+                  AND pg_catalog.pg_get_expr(p.polqual, p.polrelid)
+                        ~ '^\(\s*SELECT\s+(public\.)?session_meets_mfa\(\)\s+AS\s+session_meets_mfa\s*\)$'
+                  AND pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid)
+                        ~ '^\(\s*SELECT\s+(public\.)?session_meets_mfa\(\)\s+AS\s+session_meets_mfa\s*\)$'
+             ) AS current_gate
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relkind IN ('r', 'p')
+         AND ((n.nspname = 'public' AND c.relrowsecurity AND NOT (c.relname = ANY (left_out)))
+              OR (n.nspname = 'storage' AND c.relname = 'objects'))
+    ) t;
+
+  IF cardinality(todo) > 0 THEN
+    LOOP
+      attempt := attempt + 1;
+      BEGIN
+        FOREACH busy IN ARRAY todo LOOP
+          EXECUTE pg_catalog.format('LOCK TABLE %s IN ACCESS EXCLUSIVE MODE NOWAIT', busy);
+        END LOOP;
+        EXIT; -- every lock is held
+      EXCEPTION WHEN lock_not_available THEN
+        -- The locks taken in this attempt were let go with the failed block.
+        IF attempt >= max_attempts THEN
+          RAISE EXCEPTION 'mfa_session_gate: % is in use by another session and could not be locked after % tries over about % seconds; nothing was changed. Nothing is wrong: run this file again in a quieter hour (it is safe to run again).',
+            busy, attempt, round((max_attempts * pause)::numeric)
+            USING ERRCODE = 'lock_not_available';
+        END IF;
+        PERFORM pg_catalog.pg_sleep(pause);
+      END;
+    END LOOP;
+
+    FOREACH one IN ARRAY todo LOOP
+      EXECUTE pg_catalog.format('DROP POLICY IF EXISTS mfa_session_gate ON %s', one);
+      EXECUTE pg_catalog.format(
+        'CREATE POLICY mfa_session_gate ON %s AS RESTRICTIVE FOR ALL TO authenticated '
+        'USING ((SELECT public.session_meets_mfa())) '
+        'WITH CHECK ((SELECT public.session_meets_mfa()))',
+        one);
+    END LOOP;
+  END IF;
+  RETURN cardinality(every_table);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.apply_mfa_session_gate() FROM PUBLIC, anon, authenticated, service_role;
+
+SELECT public.apply_mfa_session_gate();
+
+-- Fail the whole file if any table with row-level security was left without it.
+DO $$
+DECLARE
+  missing text;
+BEGIN
+  SELECT string_agg(n.nspname || '.' || c.relname, ', ' ORDER BY n.nspname, c.relname)
+    INTO missing
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   WHERE c.relkind IN ('r', 'p')
+     AND c.relrowsecurity
+     AND n.nspname = 'public'
+     AND c.relname NOT IN ('tenant_alert_settings', 'lead_alerts_log')
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_catalog.pg_policy p
+        WHERE p.polrelid = c.oid
+          AND p.polname = 'mfa_session_gate'
+          AND NOT p.polpermissive
+     );
+  IF missing IS NOT NULL THEN
+    RAISE EXCEPTION 'mfa_session_gate: tables left without the policy: %', missing;
+  END IF;
+END;
+$$;
 
 COMMIT;
 
