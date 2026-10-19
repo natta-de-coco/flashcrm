@@ -56,15 +56,29 @@
 --
 -- NOT COVERED HERE (on purpose; listed in the pull request):
 --   * tenant_alert_settings and lead_alerts_log (the lead-alert recipients and
---     their log): 20261016142000_settings_alert_prerequisites.sql (PR #87)
+--     their log). NOT an open door today: the browser role is granted SELECT and
+--     nothing else on them, and their read policies ask public.profiles whether
+--     the caller is an admin of the company; profiles is gated, so a two-factor
+--     company admin at aal1 reads 0 rows from both (proved in
+--     supabase/verify/verify-mfa-session-gate.mjs). That is a side effect, not a
+--     rule: a policy written with current_tenant_id(), which stays open at aal1,
+--     would open them. They are left out only because
+--     20261016142000_settings_alert_prerequisites.sql (PR #87, applied live)
 --     stops with "Alert prerequisite policy drift" when either table carries a
---     policy it does not know, and it runs in the repository's re-run check. A
---     gate policy there would make that file fail the day it is pasted. They are
---     left out of apply_mfa_session_gate() below, by name, until that check
---     ignores a policy called mfa_session_gate; then delete the two names from
---     the list and run SELECT public.apply_mfa_session_gate();
---   * record_integration_error(): a separate, older problem (it accepts any
---     tenant id). Not a two-factor question.
+--     policy it does not know, and the repository's re-run check pastes that file
+--     again after this one. To cover them: in that file change line 106 from
+--       IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND (
+--     to
+--       IF EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND policyname<>'mfa_session_gate' AND (
+--     then delete the two names from public.mfa_session_gate_left_out() below and
+--     run this file again.
+--   * Definer functions the browser can call that this file does not change and
+--     that are not two-factor questions (each is proved by calling it in the verify
+--     script, which fails on any new one): check_and_prune_tenant_email_storage()
+--     (HIGH, older than this file: no caller check, executable by anon too; PR #81
+--     revokes it), record_integration_error() (MEDIUM, older: accepts any tenant id),
+--     access_state() and is_tenant_admin() (LOW: answer for any user id they are
+--     given, information only; they must stay open at aal1).
 --   * Enrolling a factor from a password-only session: the database cannot see
 --     the caller's level at that moment. See the recovery runbook of PR #68.
 --

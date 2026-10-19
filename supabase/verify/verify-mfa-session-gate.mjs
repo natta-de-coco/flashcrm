@@ -225,6 +225,7 @@ const dave = await person("dave@acme.test", orgA, {
 const erin = await person("erin@acme.test", orgA, {
   factors: [TOTP, { type: "phone", status: "verified" }],
 });
+const ada = await person("ada@acme.test", orgA, { staffRole: "company_admin", admin: true }); // admin, no factor
 const frank = await person("frank@globex.test", orgB, { staffRole: "company_admin", admin: true });
 const gina = await person("gina@globex.test", orgB, { factors: [TOTP] });
 const sam = await person("sam@flas.test", orgA, {
@@ -506,11 +507,11 @@ const qname = (t) => `"${t.schema}"."${t.name}"`;
 const LEFT_OUT = new Map([
   [
     "tenant_alert_settings",
-    "20261016142000_settings_alert_prerequisites.sql (PR #87) stops when this table has a policy it does not know",
+    "not open at aal1 today (checked below); left out only because 20261016142000_settings_alert_prerequisites.sql (PR #87) stops when this table has a policy it does not know",
   ],
   [
     "lead_alerts_log",
-    "20261016142000_settings_alert_prerequisites.sql (PR #87) stops when this table has a policy it does not know",
+    "not open at aal1 today (checked below); left out only because 20261016142000_settings_alert_prerequisites.sql (PR #87) stops when this table has a policy it does not know",
   ],
 ]);
 const isLeftOut = (t) => t.schema === "public" && LEFT_OUT.has(t.name);
@@ -1333,6 +1334,56 @@ for (const [label, who, table, want] of [
   check(
     "storage: another company's invoice file is not visible to Acme at aal2",
     !(seen ?? []).some((n) => n.startsWith(orgB)),
+  );
+}
+
+heading("the two tables the gate leaves out: what they do at aal1 today");
+{
+  // Both are read through policies that ask public.profiles whether the caller is an admin of the
+  // company, and profiles is gated, so a two-factor admin at aal1 reads nothing. The browser role
+  // has SELECT and nothing else on them. That protection is a side effect, not a rule: the last
+  // check shows what would open them.
+  await c.query(
+    `insert into tenant_alert_settings(tenant_id) values ('${orgA}'), ('${orgB}') on conflict do nothing`,
+  );
+  await c.query(
+    `insert into lead_alerts_log(tenant_id, alert_channel, recipient) values ('${orgA}','email','a@acme.test'), ('${orgB}','email','g@globex.test')`,
+  );
+  for (const table of ["tenant_alert_settings", "lead_alerts_log"]) {
+    const seen = [
+      ["Acme admin with a verified app, no code (aal1)", AT(alice, AAL1), 0],
+      ["Acme admin with a verified app, code entered (aal2)", AT(alice, AAL2), 1],
+      ["Acme admin without a factor (aal1)", AT(ada, AAL1), 1],
+      ["Acme staff, not an admin", AT(bob, AAL1), 0],
+      ["Globex admin without a factor: Globex's row only", AT(frank, AAL1), 1],
+    ];
+    for (const [label, who, want] of seen) {
+      const n = await countOf(who, table);
+      check(`${table}: ${label} reads ${want}`, n === want, String(n));
+    }
+    const write = await as(AT(alice, AAL2), (run) =>
+      run(`delete from ${table} where tenant_id = '${orgA}'`),
+    );
+    check(
+      `${table}: even with the code, the browser role cannot change it (SELECT is all it is granted)`,
+      !write.ok && write.code === "42501" && /permission denied/i.test(write.message),
+      write.ok ? "it could" : `${write.code} ${write.message}`,
+    );
+  }
+  const opened = await as(
+    AT(alice, AAL1),
+    async (run) => (await run("select count(*)::int as n from tenant_alert_settings")).rows[0].n,
+    {
+      beforeBecoming: [
+        // what a future policy written the usual way would do: current_tenant_id() is open at aal1
+        "create policy zz_would_open on public.tenant_alert_settings for select to authenticated using (tenant_id = public.current_tenant_id())",
+      ],
+    },
+  );
+  check(
+    "...and a policy that used current_tenant_id() instead of profiles WOULD open it at aal1 (why they should be gated once #87's check allows it)",
+    opened === 1,
+    String(opened),
   );
 }
 
