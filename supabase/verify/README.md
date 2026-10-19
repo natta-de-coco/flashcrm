@@ -104,13 +104,30 @@ reach exactly what they reached before.
 node supabase/verify/verify-mfa-session-gate.mjs
 ```
 
-It takes the list of tables from the catalogue (never a typed list), tries
-select, insert, update and delete on each as eleven kinds of caller, and also
-checks: the gap before the migration, the migration stopping without changes when
-the rule cannot run or the lock is not available, another company staying out,
-storage, `list_subscribers()`, the service role, one helper call per statement,
-running twice, the kill switch and the one-statement rollback printed in the
-migration, and a table added later.
+It takes the list of tables from the catalogue (never a typed list; a partitioned
+table is included), tries select, insert, update and delete on each as eleven kinds
+of caller, and also checks:
+
+- the gap before the migration;
+- the migration stopping, in plain words and without changes, when the rule cannot
+  run: the factor table missing, the rule's owner without SELECT, **the owner able to
+  SELECT but not exempt from the factor table's row-level security (it would read no
+  rows and the gate would be inert)**, `open_contact_whatsapp()` not at PR #66's
+  version; and the rule turning into an error, never into "no factor", if its owner
+  loses the exemption later. Who may own the rule (BYPASSRLS, the table's owner, not
+  with FORCE ROW LEVEL SECURITY) is tried by installing the file with each;
+- the migration not queueing the app: with a lock held on `storage.objects` it gives
+  up after about 5 seconds naming the table while readers of other tables are never
+  slowed; with the lock held for a moment it waits it out; re-running it, or covering
+  a table added later, takes no lock on tables that already have the gate; a gate
+  policy changed by hand is put back;
+- another company staying out, storage, `list_subscribers()`,
+  `open_contact_whatsapp()` (the same answers and the same rows as PR #66's body for
+  everybody the gate lets in, refused for a verified-factor person without the code,
+  the body being #66's plus one guard), the service role, one helper call per
+  statement, a partitioned table, what the two left-out alert tables do at `aal1`,
+  running twice, the kill switch, the one-statement rollback printed in the migration
+  and a table added later.
 
 Three guards fail a future pull request, on purpose:
 
@@ -135,5 +152,10 @@ Three guards fail a future pull request, on purpose:
   USING ERRCODE = 'insufficient_privilege'; END IF;`
 
 The shim has a stand-in for `auth.mfa_factors` that the browser role cannot read,
-like the real one. What this cannot prove: Realtime delivery, Supabase's real
-grants on `auth`, and PostgREST turning the `Authorization` header into claims.
+with row-level security on (assumed for Auth's tables, not confirmed for the hosted
+project; it is the worse case for a function that has to read them). Limits of the
+shim: `storage.buckets` has no row-level security here (the hosted one has) and the
+harness grants the browser role `ALL` on the storage tables, so only
+`storage.objects` is covered by the gate and the matrix. What this cannot prove:
+Realtime delivery, Supabase's real grants on `auth`, which role the hosted SQL runner
+is, and PostgREST turning the `Authorization` header into claims.

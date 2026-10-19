@@ -54,6 +54,17 @@
 -- migration) is not covered until SELECT public.apply_mfa_session_gate(); is
 -- run again; the verification query at the bottom lists any that were missed.
 --
+-- OPEN TABS (what people see right after this file, for up to an hour): a browser
+-- that still holds a password-only token of a person who has a verified factor
+-- (an old page, a tab opened before the app was deployed, a device whose session
+-- Auth ended when a factor was enrolled elsewhere) keeps its token for as long as
+-- the token lives (an hour by default). Through the database that token now gets
+-- empty reads, refused inserts (42501) and updates and deletes that change no row
+-- WITHOUT any error; the company set-up window can appear because the person's own
+-- profile row reads as missing. The app cannot tell this from an empty company, so
+-- nothing in it can warn. After pasting this file, ask people to reload: a reload
+-- shows the code prompt. Staff do not need to do anything else.
+--
 -- NOT COVERED HERE (on purpose; listed in the pull request):
 --   * tenant_alert_settings and lead_alerts_log (the lead-alert recipients and
 --     their log). NOT an open door today: the browser role is granted SELECT and
