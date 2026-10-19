@@ -281,18 +281,21 @@ END
 $$;
 
 -- ── 2. Pre-flight: stop before changing anything if the rule cannot run ─────
--- Calls the real function the way a request does, which reads auth.mfa_factors
--- as the function's OWNER (not necessarily whoever pastes this file), exactly as
--- it will at run time:
---   a. for a person with no factor at all: must answer true. If the owner cannot
---      read the table (no SELECT; or row-level security on and the owner exempt
---      from it neither as a superuser, nor by BYPASSRLS, nor as the table's owner,
---      which would make a plain query see no rows and the gate inert) the call
---      raises; this block turns that into plain words and ends the transaction
---      before any policy is created.
---   b. when somebody already has a verified authenticator app: the rule must
---      answer false for that person at aal1. This is the only proof on real data
---      that the rule can see a factor; if nobody has one yet it says so and goes on.
+-- Three things, in this order, each ending the transaction before any policy exists:
+--   1. The two columns the rule compares, as text, with 'totp' and 'verified' must
+--      be able to hold those values. An enumeration without them makes the
+--      comparison never true: an inert gate with no error.
+--   2. The real function is called the way a request calls it, for a person with no
+--      factor at all; it must answer true. It reads auth.mfa_factors as the
+--      function's OWNER (not necessarily whoever pastes this file), exactly as it
+--      will at run time. If the owner cannot read the table (no SELECT; or
+--      row-level security on and the owner exempt from it neither as a superuser,
+--      nor by BYPASSRLS, nor as the table's owner, which would make a plain query
+--      see no rows and the gate inert) the call raises, and this block turns that
+--      into plain words.
+--   3. When somebody already has a verified authenticator app, the rule must answer
+--      false for that person at aal1: the proof on real data that it can see a
+--      factor. If nobody has one yet it says so and goes on.
 DO $$
 DECLARE
   nobody constant text := '00000000-0000-0000-0000-000000000000';
@@ -302,7 +305,24 @@ DECLARE
   has_rls boolean;
   exempt_by_role boolean;
   exempt_as_owner boolean;
+  column_check record;
 BEGIN
+  -- The rule compares f.factor_type and f.status, as text, with 'totp' and 'verified'.
+  -- If either column is an enumeration without that value, the comparison is never
+  -- true: no error, no rows, "no factor" for everybody, an inert gate.
+  FOR column_check IN
+    SELECT v.column_name, v.wanted
+      FROM (VALUES ('factor_type', 'totp'), ('status', 'verified')) AS v(column_name, wanted)
+      JOIN pg_catalog.pg_attribute a
+        ON a.attrelid = 'auth.mfa_factors'::regclass AND a.attname = v.column_name AND NOT a.attisdropped
+      JOIN pg_catalog.pg_type t ON t.oid = a.atttypid
+     WHERE t.typtype = 'e'
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_enum e WHERE e.enumtypid = t.oid AND e.enumlabel = v.wanted)
+  LOOP
+    RAISE EXCEPTION 'mfa_session_gate pre-flight: auth.mfa_factors.% has no value ''%''; the rule would compare with a value that never occurs and let everybody in; nothing was changed',
+      column_check.column_name, column_check.wanted;
+  END LOOP;
+
   PERFORM set_config('request.jwt.claim.sub', nobody, true);
   PERFORM set_config('request.jwt.claims', '{"sub":"' || nobody || '","aal":"aal1"}', true);
   BEGIN

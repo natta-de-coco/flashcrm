@@ -817,6 +817,26 @@ const dropRole = async (name) => {
   check("...and nothing else was installed", left);
   check("...(harness clean-up done)", (await snapshot()) === untouched);
 }
+for (const [column, label] of [
+  ["factor_type", "totp"],
+  ["status", "verified"],
+]) {
+  // (b4) the rule compares the column with the text 'totp' / 'verified'. If Auth's enumeration has no such
+  // value (renamed, or this is not the table the rule was written for) the comparison is never true: no
+  // error, no rows, "no factor" for everybody, an inert gate. The file has to notice that by itself.
+  const type = column === "factor_type" ? "auth.factor_type" : "auth.factor_status";
+  await c.query(`alter type ${type} rename value '${label}' to '${label}_renamed'`);
+  const r = await apply(c, mineSql);
+  await c.query(`alter type ${type} rename value '${label}_renamed' to '${label}'`);
+  check(
+    `the factor table's ${column} has no value '${label}': the file fails in plain words`,
+    r.error &&
+      new RegExp(`${column}.*${label}|${label}.*${column}`).test(r.error.message) &&
+      /nothing was changed/i.test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+}
 {
   // (d) PR #66 is not applied (the live open_contact_whatsapp does not read contact_identities):
   // the file must not install #66's body on its own
