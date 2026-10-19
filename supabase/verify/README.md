@@ -115,7 +115,12 @@ migration, and a table added later.
 Three guards fail a future pull request, on purpose:
 
 - a table with row-level security but no `mfa_session_gate` policy: end the
-  migration that adds it with `SELECT public.apply_mfa_session_gate();`
+  migration that adds it with `SELECT public.apply_mfa_session_gate();` (also
+  checked by `verify-migrations.mjs`, right after its first pass, so the database
+  job fails even if this script is not the one looked at). Migrations that do not
+  pass through CI (Lovable's own, direct pushes to `main`) are not seen by either
+  check: after any such batch run the "Verification" query at the bottom of
+  `20261020000000_mfa_session_gate.sql` and expect `missing = 0`.
 - a table with no row-level security at all, or a view the browser can read that
   is not `security_invoker`
 - a `SECURITY DEFINER` function the browser role can call that does not start with

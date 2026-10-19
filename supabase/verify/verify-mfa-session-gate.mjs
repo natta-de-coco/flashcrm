@@ -697,7 +697,7 @@ const snapshot = async () =>
       await c.query(`
         select
           (select count(*) from pg_policies where policyname = 'mfa_session_gate')::int as gate_policies,
-          (select count(*) from pg_proc where proname in ('session_meets_mfa','apply_mfa_session_gate')
+          (select count(*) from pg_proc where proname in ('session_meets_mfa','apply_mfa_session_gate','mfa_session_gate_left_out')
               and pronamespace = 'public'::regnamespace)::int as functions,
           (select md5(pg_get_functiondef('public.list_subscribers()'::regprocedure))) as list_subscribers`)
     ).rows[0],
@@ -1514,14 +1514,20 @@ const gateMissing = async () =>
       select c.relname as name
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname = 'public' and c.relkind in ('r','p') and c.relrowsecurity
+         and c.relname <> all (public.mfa_session_gate_left_out())
          and not exists (select 1 from pg_policy p where p.polrelid = c.oid
                            and p.polname = 'mfa_session_gate' and not p.polpermissive)
        order by 1`)
-  ).rows
-    .map((r) => r.name)
-    .filter((name) => !LEFT_OUT.has(name))
-    .map((name) => `public.${name}`);
+  ).rows.map((r) => `public.${r.name}`);
 {
+  const named = (
+    await c.query("select unnest(public.mfa_session_gate_left_out()) as name order by 1")
+  ).rows.map((r) => r.name);
+  check(
+    "the one list of tables left out (public.mfa_session_gate_left_out()) is exactly the one this script explains",
+    named.join(",") === [...LEFT_OUT.keys()].sort().join(","),
+    named.join(", "),
+  );
   const missing = await gateMissing();
   check(
     "no table in public with row-level security lacks the gate",
@@ -1729,11 +1735,11 @@ heading("full rollback (the single statement printed in the file)");
   const left = (
     await c.query(`
       select (select count(*) from pg_policies where policyname = 'mfa_session_gate')::int as policies,
-             (select count(*) from pg_proc where proname in ('session_meets_mfa','apply_mfa_session_gate')
+             (select count(*) from pg_proc where proname in ('session_meets_mfa','apply_mfa_session_gate','mfa_session_gate_left_out')
                 and pronamespace = 'public'::regnamespace)::int as functions`)
   ).rows[0];
   check(
-    "no mfa_session_gate policy and neither function is left",
+    "no mfa_session_gate policy and none of the three functions is left",
     left.policies === 0 && left.functions === 0,
     JSON.stringify(left),
   );

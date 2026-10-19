@@ -33,6 +33,16 @@
 --                                       its security mode or its grants, changes.
 --                                       The file stops if #66 is not applied.
 --
+-- RULE FOR EVERY LATER MIGRATION THAT CREATES A TABLE WITH ROW-LEVEL SECURITY:
+-- end it with   SELECT public.apply_mfa_session_gate();
+-- A table that appears after this file is open to a password-only token of a
+-- two-factor person until that line has run. The repository's checks
+-- (supabase/verify/verify-migrations.mjs and verify-mfa-session-gate.mjs, both in
+-- the CI "database" job) fail a pull request that forgets it. Migrations that do
+-- not pass through CI (Lovable's own, direct pushes) are not seen by those checks:
+-- after any such batch run the query under "Verification" at the bottom of this
+-- file and expect missing = 0.
+--
 -- !!! ROLL-OUT ORDER IS PART OF THE SAFETY OF THIS FILE !!!
 --   1. PR #68 (the app asks for the code) is live.
 --   2. The app code of the pull request that ships this file is live.
@@ -82,8 +92,8 @@
 -- FULL ROLLBACK, one statement: drops every mfa_session_gate policy (public
 -- tables and storage.objects), puts list_subscribers() back exactly as it was
 -- in 20260904010000 and open_contact_whatsapp() back exactly as PR #66 made it,
--- and drops the two functions. (The two come first because their guard line
--- calls the function that is being dropped.)
+-- and drops the three functions. (The two guarded ones come first because their
+-- guard line calls the function that is being dropped.)
 -- <rollback>
 -- DO $rollback$
 -- DECLARE
@@ -165,6 +175,7 @@
 -- END;
 -- $$;
 --   DROP FUNCTION IF EXISTS public.apply_mfa_session_gate();
+--   DROP FUNCTION IF EXISTS public.mfa_session_gate_left_out();
 --   DROP FUNCTION IF EXISTS public.session_meets_mfa();
 -- END
 -- $rollback$;
@@ -400,6 +411,21 @@ REVOKE ALL ON FUNCTION public.open_contact_whatsapp(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.open_contact_whatsapp(uuid) TO authenticated;
 
 -- ── 4. The policy, on every table that has row-level security ──────────────
+-- The tables that are left out on purpose are named in ONE place, here. The
+-- function, the check at the end of this file and the repository's checks
+-- (supabase/verify) all read this list, so no copy can drift. See "NOT COVERED
+-- HERE" at the top of the file; delete a name once nothing refuses a policy on
+-- that table any more, run the file again, and the table is covered.
+CREATE OR REPLACE FUNCTION public.mfa_session_gate_left_out()
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$ SELECT ARRAY['tenant_alert_settings', 'lead_alerts_log']::text[] $$;
+
+REVOKE ALL ON FUNCTION public.mfa_session_gate_left_out() FROM PUBLIC, anon, authenticated, service_role;
+
+
 -- The tables come from the catalogue, never from a list typed here, so a table
 -- added by any migration (including one nobody remembered) is covered. It also
 -- covers storage.objects. Not callable by anyone but the owner: it changes policies.
@@ -425,9 +451,7 @@ LANGUAGE plpgsql
 SET search_path = ''
 AS $$
 DECLARE
-  -- See "NOT COVERED HERE" at the top of the file. Delete a name once nothing
-  -- refuses a policy on that table any more.
-  left_out constant text[] := ARRAY['tenant_alert_settings', 'lead_alerts_log'];
+  left_out constant text[] := public.mfa_session_gate_left_out();
   -- About 5 seconds in all.
   max_attempts constant integer := 20;
   pause constant double precision := 0.25;
@@ -517,7 +541,7 @@ BEGIN
    WHERE c.relkind IN ('r', 'p')
      AND c.relrowsecurity
      AND n.nspname = 'public'
-     AND c.relname NOT IN ('tenant_alert_settings', 'lead_alerts_log')
+     AND c.relname <> ALL (public.mfa_session_gate_left_out())
      AND NOT EXISTS (
        SELECT 1 FROM pg_catalog.pg_policy p
         WHERE p.polrelid = c.oid
@@ -539,11 +563,11 @@ SELECT
     WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relrowsecurity) AS rls_tables,
   (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relrowsecurity
-      AND c.relname IN ('tenant_alert_settings', 'lead_alerts_log')) AS left_out,
+      AND c.relname = ANY (public.mfa_session_gate_left_out())) AS left_out,
   (SELECT count(*) FROM pg_policies
     WHERE policyname = 'mfa_session_gate' AND permissive = 'RESTRICTIVE') AS gated,
   (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relrowsecurity
-      AND c.relname NOT IN ('tenant_alert_settings', 'lead_alerts_log')
+      AND c.relname <> ALL (public.mfa_session_gate_left_out())
       AND NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid
                        AND p.polname = 'mfa_session_gate' AND NOT p.polpermissive)) AS missing;
