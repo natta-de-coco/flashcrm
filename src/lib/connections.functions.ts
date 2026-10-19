@@ -2,7 +2,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 import { SOCIAL_ACCOUNT_PLATFORMS } from "@/lib/connections-catalog";
 import { connectionStatus, statusInputFromRow } from "@/lib/connection-status";
-import { ONLY_ADMIN_MESSAGE } from "@/lib/integration-health";
+import { adminCaller } from "@/lib/workspace-admin.server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -19,36 +19,6 @@ async function callerTenantId(supabase: Client, userId: string): Promise<string 
     .eq("id", userId)
     .maybeSingle();
   return data?.tenant_id ?? null;
-}
-
-/**
- * The caller's workspace, for an action behind the Health report dialog (asking the platforms,
- * writing what they say, sealing stored credentials). Only an admin may do that: the screen hides
- * the button from everyone else, but a hidden button is not an authorization control.
- *
- * "Admin" is the database's own rule, is_tenant_admin(): an admin by the staff role on the profile
- * OR by the older user_roles table. The screen's `isAdmin` (useAuth) reads that older table, so
- * everyone it shows the button to is let in here. (A company admin by staff role alone is let in
- * by the server but is not shown the button until useAuth asks the same question.) The look-up
- * runs as the caller, and a failed look-up lets nobody in.
- */
-async function adminCaller(
-  supabase: Client,
-  userId: string,
-  refusal: string = ONLY_ADMIN_MESSAGE,
-): Promise<{ tenantId: string; staff: boolean }> {
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("tenant_id, staff_role")
-    .eq("id", userId)
-    .maybeSingle();
-  if (!profile?.tenant_id) {
-    throw new Error("Your workspace is still being set up — try again in a moment.");
-  }
-  const { data: isAdmin, error } = await supabase.rpc("is_tenant_admin");
-  if (error) throw new Error("Flas could not check your role just now. Try again in a moment.");
-  if (isAdmin !== true) throw new Error(refusal);
-  return { tenantId: profile.tenant_id, staff: profile.staff_role === "super_admin" };
 }
 
 /** Everything the Connect Your Business screen renders. */
@@ -341,14 +311,22 @@ export const disconnectConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => IdSchema.parse(input))
   .handler(async ({ data, context }) => {
-    // The update runs as the caller, so RLS decides who may disconnect. It
-    // returns the row so a refusal is visible: an RLS-blocked UPDATE affects
-    // zero rows without raising, which previously reported success while
-    // changing nothing.
-    const { data: changed, error } = await context.supabase
+    // Only an admin of the caller's own company may disconnect, and the write is scoped to that
+    // company. The browser role has no UPDATE on social_accounts any more (20261020100000), so the
+    // write is made here with the service role, after the same check the row-level policy made.
+    // It returns the row so a refusal is visible: an update that matches nothing affects zero rows
+    // without raising, which previously reported success while changing nothing.
+    const { tenantId } = await adminCaller(
+      context.supabase,
+      context.userId,
+      "That connection was not found, or you do not have permission to disconnect it.",
+    );
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: changed, error } = await supabaseAdmin
       .from("social_accounts")
       .update({ active: false, health: "disconnected" })
       .eq("id", data.id)
+      .eq("tenant_id", tenantId)
       .select("id, tenant_id, platform");
     if (error) throw error;
     const disconnected = changed?.[0];
@@ -369,17 +347,14 @@ export const disconnectConnection = createServerFn({ method: "POST" })
 
     // Recorded as a deliberate disconnect rather than lumped in with expiry,
     // revocation and failed refresh, which all used to read "disconnected".
-    const tenantId = await callerTenantId(context.supabase, context.userId);
-    if (tenantId) {
-      const { transitionConnection } = await import("@/lib/connection-state.server");
-      await transitionConnection({
-        accountId: data.id,
-        tenantId,
-        to: "disconnected",
-        reason: "Disconnected by a user in this workspace",
-        actorId: context.userId,
-      });
-    }
+    const { transitionConnection } = await import("@/lib/connection-state.server");
+    await transitionConnection({
+      accountId: data.id,
+      tenantId,
+      to: "disconnected",
+      reason: "Disconnected by a user in this workspace",
+      actorId: context.userId,
+    });
     const { logAudit } = await import("@/lib/audit.server");
     await logAudit({
       action: "connection.disconnected",

@@ -39,7 +39,8 @@ const stubs = {
     }
     export function resolveAllowedOrigin() { return null; }
     export async function resolveCredentials() { return { id: null, secret: null }; }`,
-  "flash-ai.server": "export async function callFlashAi() { return ''; }",
+  "flash-ai.server":
+    "export async function callFlashAi() { return ''; } export function aiOptionsFor() { return {}; } export async function getBusinessContext() { return ''; }",
   "auth-middleware": "export const requireSupabaseAuth = {};",
   "@tanstack/react-start": `export function createServerFn() {
       return { middleware() { return this; }, inputValidator() { return this; }, handler(fn) { return fn; } };
@@ -74,6 +75,8 @@ const bundle = (entry, out) =>
 
 // The server functions the Connect accounts screen and the health dialog call.
 await bundle("src/lib/connections.functions.ts", "flas-health-functions.mjs");
+// The Social Hub server functions; connectSocialAccount is the one that saves a pasted token.
+await bundle("src/lib/social.functions.ts", "flas-health-social-functions.mjs");
 // The engine itself (retryConnection / retryDueConnections / buildHealthReport).
 await bundle("src/lib/integration-health.server.ts", "flas-health-engine.mjs");
 // The reconnect write (saveAuthorizedConnection), which must clear stale evidence.

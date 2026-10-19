@@ -3,6 +3,7 @@ import type { Database } from "@/integrations/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { ConnectSchema, PLATFORMS } from "@/lib/social-schema";
+import { adminCaller } from "@/lib/workspace-admin.server";
 import { z } from "zod";
 
 const IdSchema = z.object({ id: z.string().uuid() });
@@ -89,13 +90,25 @@ export const getSocialHub = createServerFn({ method: "GET" })
     return { accounts: accounts.data, interactions: interactions.data, posts: posts.data };
   });
 
-/** Connect an Instagram professional account or Facebook Page (admin only via RLS). */
+/**
+ * Connect an Instagram professional account or Facebook Page with a pasted token (admin only).
+ * The browser role has no INSERT on social_accounts (20261020100000), so the row is written here
+ * with the service role, after the same admin check the row-level policy made, into the caller's
+ * own company. Nothing the caller sends can choose the company or set a verification.
+ */
 export const connectSocialAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => ConnectSchema.parse(input))
   .handler(async ({ data, context }) => {
+    const { tenantId } = await adminCaller(
+      context.supabase,
+      context.userId,
+      "Only a company admin can add an account with a pasted token.",
+    );
     const { sealSecret } = await import("@/lib/secret-box.server");
-    const { error } = await context.supabase.from("social_accounts").insert({
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.from("social_accounts").insert({
+      tenant_id: tenantId,
       platform: data.platform,
       label: data.label.trim(),
       external_id: data.externalId?.trim() || null,

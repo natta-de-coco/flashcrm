@@ -3408,3 +3408,225 @@ describe("another workspace's accounts are never read or listed (round 3, findin
     );
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CX-00 hold on PR #86: verification evidence is server-owned, so a signed-in browser
+   session writes nothing to social_accounts (20261020100000 takes INSERT and UPDATE away
+   from the browser role). The two writers that used the caller's own client now run on the
+   server, after an admin check, and keep working with no write grant at all.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const socialFunctions = await import("../node_modules/.cache/flas-health-social-functions.mjs");
+const { disconnectConnection } = functions;
+const { connectSocialAccount } = socialFunctions;
+
+/** What the database answers the browser role once the migration is applied. */
+const PERMISSION_DENIED = {
+  code: "42501",
+  message: "permission denied for table social_accounts",
+};
+
+/**
+ * A signed-in session whose every INSERT / UPDATE / UPSERT on social_accounts is refused, the way
+ * the database refuses it with no write grant. `attempts` lists each write that was tried.
+ */
+const withoutWriteGrant = (session) => {
+  const attempts = [];
+  const from = session.supabase.from;
+  const refused = () => {
+    const result = { data: null, error: PERMISSION_DENIED, count: null };
+    const chain = new Proxy(() => chain, {
+      get: (_, key) =>
+        key === "then" ? (ok, no) => Promise.resolve(result).then(ok, no) : () => chain,
+    });
+    return chain;
+  };
+  session.supabase.from = (table) => {
+    const query = from(table);
+    if (table !== "social_accounts") return query;
+    for (const verb of ["insert", "update", "upsert"]) {
+      query[verb] = () => {
+        attempts.push(verb);
+        return refused();
+      };
+    }
+    return query;
+  };
+  session.attempts = attempts;
+  return session;
+};
+
+const ADMIN_B = "22222222-0000-0000-0000-00000000000a";
+
+describe("disconnecting runs on the server, so it needs no write grant for the browser role", () => {
+  test("an admin disconnects an account while the browser role may write nothing", async () => {
+    const account = verified({ health: "connected" });
+    const session = withoutWriteGrant(world.admin());
+    const result = await disconnectConnection({ data: { id: account.id }, context: session });
+
+    assert.equal(result.ok, true);
+    const row = world.stored(account.id);
+    assert.equal(row.active, false);
+    assert.equal(row.health, "disconnected");
+    assert.equal(row.access_token, null, "the stored sign-in is cleared as before");
+    assert.equal(row.connection_state, "disconnected", "and it is recorded as a deliberate one");
+    assert.deepEqual(session.attempts, [], "nothing was written as the signed-in user");
+    assert.ok(world.audits.some((a) => a.action === "connection.disconnected"));
+  });
+
+  test("a member who is not an admin is refused and nothing changes", async () => {
+    const account = verified({ health: "connected" });
+    const before = clone(world.stored(account.id));
+    await assert.rejects(
+      disconnectConnection({ data: { id: account.id }, context: world.member() }),
+      /not found, or you do not have permission to disconnect it/,
+    );
+    assert.deepEqual(clone(world.stored(account.id)), before);
+    assert.deepEqual(world.audits, []);
+  });
+
+  test("an admin of another company cannot disconnect this company's account", async () => {
+    const account = verified({ health: "connected" });
+    const before = clone(world.stored(account.id));
+    await assert.rejects(
+      disconnectConnection({ data: { id: account.id }, context: world.session(B, ADMIN_B) }),
+      /not found, or you do not have permission to disconnect it/,
+    );
+    assert.deepEqual(clone(world.stored(account.id)), before);
+    assert.deepEqual(world.audits, []);
+  });
+
+  test("a role check that fails lets nobody in", async () => {
+    const account = verified({ health: "connected" });
+    const before = clone(world.stored(account.id));
+    world.db.onRpc("is_tenant_admin", async () => ({
+      data: null,
+      error: { message: "boom" },
+    }));
+    await assert.rejects(
+      disconnectConnection({ data: { id: account.id }, context: world.admin() }),
+      /could not check your role/,
+    );
+    assert.deepEqual(clone(world.stored(account.id)), before);
+  });
+
+  test("a write the database refuses is an error, not a disconnect", async () => {
+    const account = verified({ health: "connected" });
+    world.db.fail("social_accounts:update", { code: "XX000", message: "the database said no" });
+    await assert.rejects(
+      disconnectConnection({ data: { id: account.id }, context: world.admin() }),
+      { message: "the database said no" },
+    );
+    assert.equal(world.stored(account.id).active, true);
+    assert.equal(
+      world.audits.some((a) => a.action === "connection.disconnected"),
+      false,
+    );
+  });
+});
+
+describe("saving a pasted token runs on the server, so it needs no write grant either", () => {
+  const paste = {
+    platform: "instagram",
+    label: "  Shop  ",
+    externalId: " 17841 ",
+    accessToken: SECRET.meta,
+  };
+
+  test("an admin saves it for their own company, sealed, with no verification on it", async () => {
+    const session = withoutWriteGrant(world.admin());
+    await connectSocialAccount({ data: paste, context: session });
+
+    const rows = world.db.table("social_accounts");
+    assert.equal(rows.length, 1);
+    const [row] = rows;
+    assert.equal(row.tenant_id, A, "the company is the caller's, written by the server");
+    assert.equal(row.platform, "instagram");
+    assert.equal(row.label, "Shop");
+    assert.equal(row.external_id, "17841");
+    assert.equal(row.access_token, `sealed:${SECRET.meta}`, "never stored as typed");
+    for (const column of EVIDENCE) {
+      assert.equal(row[column] ?? null, null, `${column} is not set by saving a token`);
+    }
+    assert.deepEqual(session.attempts, [], "nothing was written as the signed-in user");
+    assert.ok(world.audits.some((a) => a.action === "social.account_connected"));
+  });
+
+  test("an admin of another company saves it into their own company, not this one", async () => {
+    await connectSocialAccount({
+      data: { ...paste, tenantId: A, tenant_id: A },
+      context: world.session(B, ADMIN_B),
+    });
+    const [row] = world.db.table("social_accounts");
+    assert.equal(row.tenant_id, B);
+  });
+
+  test("a member who is not an admin is refused and nothing is stored", async () => {
+    await assert.rejects(
+      connectSocialAccount({ data: paste, context: world.member() }),
+      /Only a company admin/,
+    );
+    assert.equal(world.db.table("social_accounts").length, 0);
+    assert.deepEqual(world.audits, []);
+  });
+
+  test("a write the database refuses is an error", async () => {
+    world.db.fail("social_accounts:insert", { code: "23505", message: "duplicate" });
+    await assert.rejects(connectSocialAccount({ data: paste, context: world.admin() }), {
+      message: "duplicate",
+    });
+    assert.equal(world.db.table("social_accounts").length, 0);
+    assert.deepEqual(world.audits, []);
+  });
+});
+
+describe("nothing in src writes social_accounts as the signed-in user", () => {
+  // INSERT and UPDATE only: deleting a connection (deleteSocialAccount) stays with the browser role.
+  const WRITES =
+    /([A-Za-z_$][\w$.]*(?:\(\))?)\s*\.from\(\s*["'`]social_accounts["'`](?:\s+as\s+\w+)?\s*\)\s*\.(insert|update|upsert)\(/g;
+  const SERVICE_ROLE = new Set(["supabaseAdmin", "untyped()"]);
+
+  const writersIn = (source) =>
+    [...source.matchAll(WRITES)].map((m) => ({
+      client: m[1],
+      verb: m[2],
+      line: source.slice(0, m.index).split("\n").length,
+    }));
+
+  const sourceFiles = (dir) =>
+    readdirSync(dir, { recursive: true })
+      .map(String)
+      .filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith("supabase/types.ts"))
+      .map((f) => join(dir, f));
+
+  test("the scan sees a write made as the caller, and one made with the service role", () => {
+    const sample = [
+      'await context.supabase.from("social_accounts").insert({ platform });',
+      'await supabaseAdmin\n  .from("social_accounts")\n  .update({ active: false });',
+      'const { data } = await context.supabase.from("social_accounts").select("id");',
+      'await browser.from("social_accounts" as never)\n  .upsert(row);',
+    ].join("\n");
+    assert.deepEqual(
+      writersIn(sample).map((w) => [w.client, w.verb, w.line]),
+      [
+        ["context.supabase", "insert", 1],
+        ["supabaseAdmin", "update", 2],
+        ["browser", "upsert", 6],
+      ],
+    );
+  });
+
+  test("every insert, update or upsert on social_accounts uses the service role", () => {
+    const offenders = [];
+    let service = 0;
+    for (const file of sourceFiles("src")) {
+      const text = readFileSync(file, "utf8").split("\r\n").join("\n");
+      for (const w of writersIn(text)) {
+        if (SERVICE_ROLE.has(w.client)) service++;
+        else offenders.push(`${file.split("\\").join("/")}:${w.line} ${w.client} ${w.verb}`);
+      }
+    }
+    assert.deepEqual(offenders, [], "a browser-role write would fail once the grant is gone");
+    assert.ok(service >= 8, "the scan found the server's own writes, so it is looking");
+  });
+});
