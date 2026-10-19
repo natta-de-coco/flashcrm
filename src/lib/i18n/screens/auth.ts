@@ -39,6 +39,11 @@ export default screen({
     "auth.verificationResent": "A new verification email has been sent.",
     "auth.resendFailed": "Could not resend.",
     "auth.checkInboxFor": "Check {email} for your Flas verification email.",
+    "auth.mfaIntro":
+      "Your account is protected with two-factor sign-in. Enter your code to continue.",
+    "auth.mfaAccount": "Account: {email}",
+    "auth.mfaUnchecked":
+      "We could not check your sign-in security just now. Please try again in a moment.",
   },
   ar: {
     "auth.heroTitle": "كل محادثات واتساب في صندوق وارد مشترك واحد.",
@@ -77,6 +82,10 @@ export default screen({
     "auth.verificationResent": "أرسلنا بريد تحقق جديدًا.",
     "auth.resendFailed": "تعذّرت إعادة الإرسال.",
     "auth.checkInboxFor": "تحقّق من {email} للعثور على بريد التحقق من Flas.",
+    "auth.mfaIntro": "حسابك محميّ بتسجيل الدخول بالتحقق الثنائي. أدخل رمزك للمتابعة.",
+    "auth.mfaAccount": "الحساب: {email}",
+    "auth.mfaUnchecked":
+      "لم نتمكن من التحقق من أمان تسجيل دخولك الآن. يُرجى المحاولة مرة أخرى بعد قليل.",
   },
   ms: {
     "auth.heroTitle": "Setiap perbualan WhatsApp, dalam satu peti masuk bersama.",
@@ -115,6 +124,11 @@ export default screen({
     "auth.verificationResent": "E-mel pengesahan baharu telah dihantar.",
     "auth.resendFailed": "Tidak dapat menghantar semula.",
     "auth.checkInboxFor": "Semak {email} untuk e-mel pengesahan Flas anda.",
+    "auth.mfaIntro":
+      "Akaun anda dilindungi dengan log masuk dua faktor. Masukkan kod anda untuk meneruskan.",
+    "auth.mfaAccount": "Akaun: {email}",
+    "auth.mfaUnchecked":
+      "Kami tidak dapat menyemak keselamatan log masuk anda sekarang. Sila cuba lagi sebentar lagi.",
   },
   fil: {
     "auth.heroTitle": "Bawat usapan sa WhatsApp, sa iisang shared inbox.",
@@ -153,6 +167,11 @@ export default screen({
     "auth.verificationResent": "Naipadala na ang bagong verification email.",
     "auth.resendFailed": "Hindi maipadala muli.",
     "auth.checkInboxFor": "Tingnan ang {email} para sa iyong Flas verification email.",
+    "auth.mfaIntro":
+      "Protektado ang iyong account gamit ang two-factor sign-in. Ilagay ang iyong code para magpatuloy.",
+    "auth.mfaAccount": "Account: {email}",
+    "auth.mfaUnchecked":
+      "Hindi namin masuri ang seguridad ng iyong pag-sign in ngayon. Pakisubukan muli sa ilang sandali.",
   },
   sw: {
     "auth.heroTitle": "Kila mazungumzo ya WhatsApp, katika kikasha kimoja cha pamoja.",
@@ -191,5 +210,10 @@ export default screen({
     "auth.verificationResent": "Barua pepe mpya ya uthibitishaji imetumwa.",
     "auth.resendFailed": "Imeshindwa kutuma tena.",
     "auth.checkInboxFor": "Angalia {email} kwa barua pepe yako ya uthibitishaji ya Flas.",
+    "auth.mfaIntro":
+      "Akaunti yako inalindwa kwa kuingia kwa hatua mbili. Weka msimbo wako ili kuendelea.",
+    "auth.mfaAccount": "Akaunti: {email}",
+    "auth.mfaUnchecked":
+      "Hatukuweza kukagua usalama wa kuingia kwako sasa hivi. Tafadhali jaribu tena baada ya muda mfupi.",
   },
 });

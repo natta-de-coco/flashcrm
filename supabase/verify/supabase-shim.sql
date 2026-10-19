@@ -35,6 +35,29 @@ CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS $$
   SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb);
 $$;
 
+-- Second-factor enrolments. Supabase Auth owns this table and the app never
+-- reads it directly: the browser role gets no grant on it, so only a
+-- SECURITY DEFINER function can look at it (public.session_meets_mfa does).
+-- The enums and columns are the ones that function reads.
+CREATE TYPE auth.factor_type AS ENUM ('totp', 'webauthn', 'phone');
+CREATE TYPE auth.factor_status AS ENUM ('unverified', 'verified');
+CREATE TABLE auth.mfa_factors (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  friendly_name text,
+  factor_type auth.factor_type NOT NULL,
+  status auth.factor_status NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Auth's own tables are assumed to have row-level security on (not confirmed for
+-- the hosted project; on is the worse case for a function that has to read them).
+-- The postgres role of this harness is a superuser and so exempt; a role that is
+-- neither a superuser, nor BYPASSRLS, nor the table's owner sees no rows at all,
+-- which is the silent failure the gate's pre-flight has to catch.
+ALTER TABLE auth.mfa_factors ENABLE ROW LEVEL SECURITY;
+
 -- Realtime publication the first migration adds tables to.
 CREATE PUBLICATION supabase_realtime;
 

@@ -1,0 +1,1709 @@
+// Two-factor sign-in, on screen: what the sign-in page and the signed-in layout
+// do with a session that has given the password but not the code.
+//
+//   npm run test:stale-chunk        (this file is on that line)
+//
+// The real sign-in page, the real signed-in layout, the real auth provider and
+// the real supabase-js client are drawn in jsdom. Only what needs a deployment
+// is replaced: the Auth service is an in-process double that signs real tokens
+// (tests/support/fake-supabase.mjs), the router is a small stand-in that
+// records every move (tests/support/two-factor-router-double.jsx), and the
+// layout's data-loading children are blanked. "A signed-in screen" is a marker
+// that stands for any screen the layout protects.
+//
+// Look here first if this suite stops starting after a dependency bump:
+// tests/support/two-factor-build.mjs bundles the app for it, and
+// tests/support/two-factor-wire.mjs drives TanStack Start's own middleware
+// executor (__executeServer, runWithStartContext from @tanstack/start-storage-
+// context, a transitive package). A change in either shows up as a bundle or
+// import error, not as a silent pass.
+//
+// The pull request lists the ways this bug can come back (the rule ignoring the
+// assurance level, the server not asking, a failure letting a call through, and
+// so on). Each was put back by hand, one at a time, and this suite failed.
+import { test, describe, before, after, beforeEach, afterEach, mock } from "node:test";
+import assert from "node:assert/strict";
+import { installBrowser } from "./support/two-factor-dom.mjs";
+import { createFakeSupabase } from "./support/fake-supabase.mjs";
+import { buildScreensBundle } from "./support/two-factor-build.mjs";
+
+// The browser must exist before React is loaded: react-dom looks for a document
+// when it loads and switches its event handling off if there is none. (That is
+// why React is imported here and not at the top of the file.)
+const browser = installBrowser();
+const React = (await import("react")).default;
+const { act } = React;
+const { createRoot } = await import("react-dom/client");
+const fake = await createFakeSupabase();
+process.env.SUPABASE_URL = fake.url;
+process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_fake_for_tests";
+const realFetch = globalThis.fetch;
+globalThis.fetch = fake.fetch;
+
+// A stand-in for Supabase Realtime's WebSocket, speaking just enough of its
+// protocol (Phoenix channels, version 2: every message is the array
+// [join_ref, ref, topic, event, payload]) for a channel to join, and recording
+// what the browser sends. Installed before the app is loaded because the client
+// picks its WebSocket when it is created.
+class FakeRealtimeSocket {
+  static sockets = [];
+  constructor(url) {
+    this.url = url;
+    this.readyState = 0;
+    this.binaryType = "arraybuffer";
+    /** Every message the browser sent, decoded: { joinRef, ref, topic, event, payload }. */
+    this.sent = [];
+    FakeRealtimeSocket.sockets.push(this);
+    setTimeout(() => {
+      this.readyState = 1;
+      this.onopen?.({ type: "open" });
+    }, 0);
+  }
+  reply(joinRef, ref, topic, response) {
+    const data = JSON.stringify([joinRef, ref, topic, "phx_reply", { status: "ok", response }]);
+    setTimeout(() => this.onmessage?.({ data }), 0);
+  }
+  send(data) {
+    const [joinRef, ref, topic, event, payload] = JSON.parse(data);
+    this.sent.push({ joinRef, ref, topic, event, payload });
+    // The server confirms the changes the channel asked for, numbered.
+    if (event === "phx_join")
+      this.reply(joinRef, ref, topic, {
+        postgres_changes: (payload.config?.postgres_changes ?? []).map((change, i) => ({
+          ...change,
+          id: i + 1,
+        })),
+      });
+    else if (event === "heartbeat" || event === "access_token") this.reply(joinRef, ref, topic, {});
+  }
+  close() {
+    this.readyState = 3;
+    this.onclose?.({ type: "close", code: 1000 });
+  }
+  addEventListener() {}
+  removeEventListener() {}
+}
+const realWebSocket = globalThis.WebSocket;
+globalThis.WebSocket = FakeRealtimeSocket;
+
+const app = await import(await buildScreensBundle());
+const { supabase, watched, lastQueryClient } = app;
+
+before(() => {
+  // The server guard logs every call; and useServerFn warns that there is no
+  // real router, which only matters when a server function redirects.
+  mock.method(console, "info", () => {});
+  const warn = console.warn;
+  mock.method(console, "warn", (...args) => {
+    if (/RouterProvider/.test(String(args[0]))) return;
+    if (/^\[serverFn\]/.test(String(args[0]))) return;
+    // The server half builds its own client per call, in the same "browser".
+    if (/Multiple GoTrueClient instances/.test(String(args[0]))) return;
+    warn(...args);
+  });
+  // A handler that fails for its own reasons is logged by the guard as an error.
+  const error = console.error;
+  mock.method(console, "error", (...args) => {
+    if (/^\[serverFn\]/.test(String(args[0]))) return;
+    error(...args);
+  });
+});
+after(() => {
+  mock.restoreAll();
+  globalThis.fetch = realFetch;
+  globalThis.WebSocket = realWebSocket;
+  browser.window.close();
+});
+
+// ---------------------------------------------------------------------------
+// Driving the page
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const doc = browser.document;
+let root = null;
+let observer = null;
+let watchedSelectors = new Map();
+
+/** Let whatever is in flight finish. */
+const settle = (ms = 60) =>
+  act(async () => {
+    await sleep(ms);
+  });
+
+/** Wait until something is true (or give up and say so), letting the page react meanwhile. */
+async function until(predicate, ms = 2500) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await settle(15);
+  }
+  return Boolean(predicate());
+}
+
+/** Draw the app at an address, in a language. */
+async function show({ at = "/auth", language = "en" } = {}) {
+  doc.cookie = `flas_lang=${language}; path=/`;
+  root = createRoot(browser.root);
+  await act(async () => {
+    root.render(React.createElement(app.App, { startAt: at, language }));
+  });
+  await settle();
+}
+
+/** Remembers whether an element ever appeared, even for an instant. */
+function keepWatching(selector) {
+  watchedSelectors.set(selector, false);
+  observer ??= new browser.window.MutationObserver(() => {
+    for (const key of watchedSelectors.keys())
+      if (doc.querySelector(key)) watchedSelectors.set(key, true);
+  });
+  observer.observe(doc.body, { childList: true, subtree: true });
+}
+const everAppeared = (selector) =>
+  watchedSelectors.get(selector) === true || Boolean(doc.querySelector(selector));
+
+const codeField = () => doc.getElementById("mfa");
+/** Server calls the signed-in layout made that the server ran, by function name. */
+const servedBy = (name) => watched.served.filter((call) => call.name === name);
+const heartbeatServed = () => servedBy("touchPresence").length > 0;
+const signedInScreen = () => doc.querySelector("[data-testid='signed-in-screen']");
+const here = () => browser.root.firstElementChild?.getAttribute("data-address");
+
+function setValue(input, value) {
+  const set = Object.getOwnPropertyDescriptor(
+    browser.window.HTMLInputElement.prototype,
+    "value",
+  ).set;
+  set.call(input, value);
+  input.dispatchEvent(new browser.window.Event("input", { bubbles: true }));
+}
+const type = (id, value) =>
+  act(async () => {
+    setValue(doc.getElementById(id), value);
+  });
+const submit = (id) =>
+  act(async () => {
+    doc
+      .getElementById(id)
+      .closest("form")
+      .dispatchEvent(new browser.window.Event("submit", { bubbles: true, cancelable: true }));
+  });
+const press = (element) =>
+  act(async () => {
+    element.dispatchEvent(new browser.window.MouseEvent("click", { bubbles: true, button: 0 }));
+  });
+// Radix tabs open on mouse-down, not on click.
+const pressTab = (element) =>
+  act(async () => {
+    element.dispatchEvent(new browser.window.MouseEvent("mousedown", { bubbles: true, button: 0 }));
+  });
+const buttonSaying = (text) =>
+  [...doc.querySelectorAll("button")].find((button) => button.textContent.trim() === text);
+
+async function signInWithPassword(person) {
+  await type("email", person.email);
+  await type("password", person.password);
+  await submit("email");
+}
+
+async function enterCode(code) {
+  await type("mfa", code);
+  await submit("mfa");
+}
+
+/** A browser session that did not come from the password form, e.g. a link in an e-mail. */
+async function arriveWithSession(person, options) {
+  const made = await fake.session(person.id, options);
+  const body = await fake.sessionBody(made);
+  let outcome;
+  await act(async () => {
+    outcome = await supabase.auth.setSession(body);
+  });
+  assert.equal(outcome.error, null, outcome.error?.message);
+  return made;
+}
+
+// ---------------------------------------------------------------------------
+// People
+
+let people = 0;
+/** A fresh account each time, so no test leans on what another left behind. */
+function person({ factors = [], roles = [], staffRole = "staff" } = {}) {
+  people += 1;
+  const id = `20000000-0000-4000-8000-${String(people).padStart(12, "0")}`;
+  const account = {
+    id,
+    email: `person${people}@example.test`,
+    password: `pw-${people}-correct-horse`,
+  };
+  fake.addUser({ ...account, factors, roles, staffRole });
+  return account;
+}
+const VERIFIED = { id: "factor-verified", status: "verified" };
+const UNVERIFIED = { id: "factor-started", status: "unverified" };
+const RIGHT_CODE = "123456";
+
+beforeEach(() => {
+  watched.reset();
+  browser.location.assigned.length = 0;
+  browser.location.pathname = "/auth";
+  browser.location.search = "";
+  fake.clearCalls();
+  fake.confirmEmailOnSignUp(false);
+  for (const name of ["user", "user:update", "token:refresh_token", "jwks", "rpc:access_state"])
+    fake.recover(name);
+  watchedSelectors = new Map();
+  observer?.disconnect();
+  observer = null;
+});
+afterEach(async () => {
+  await act(async () => {
+    root?.unmount();
+  });
+  root = null;
+  delete globalThis.__flasTestCompany;
+  app.forgetDraftsExcept(null);
+  await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+  browser.window.localStorage.clear();
+  doc.cookie = "flas_lang=; path=/; max-age=0";
+});
+
+const INTRO = "Your account is protected with two-factor sign-in. Enter your code to continue.";
+
+// ---------------------------------------------------------------------------
+
+describe("the sign-in page, for an account with two-factor", () => {
+  test("asks for the code after the right password and does not let anyone in", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    keepWatching("[data-testid='signed-in-screen']");
+    await signInWithPassword(me);
+    assert.ok(
+      await until(() => codeField() || watched.navigations.length),
+      "nothing happened after the password",
+    );
+    await settle(200); // long enough for a late redirect to show up
+    assert.ok(codeField(), "the code field is not on screen");
+    assert.deepEqual(watched.navigations, [], "the page moved on with only the password");
+    assert.equal(everAppeared("[data-testid='signed-in-screen']"), false);
+    assert.equal(here(), "/auth");
+  });
+
+  test("says why it is asking, and which account is waiting", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    assert.ok(doc.body.textContent.includes(INTRO), "the introduction is missing");
+    const line = [...doc.querySelectorAll("p")].find((p) => p.textContent.startsWith("Account:"));
+    assert.ok(line, "the account line is missing");
+    assert.equal(line.textContent, `Account: ${me.email}`);
+    const address = line.querySelector("bdi");
+    assert.ok(address, "the address is not isolated from the sentence around it");
+    assert.equal(address.getAttribute("dir"), "ltr");
+    assert.equal(address.textContent, me.email);
+  });
+
+  test("in Arabic the sentence is translated and the address stays left-to-right inside it", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show({ language: "ar" });
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    const line = doc.querySelector("p:has(bdi)");
+    assert.ok(line, "the account line is missing");
+    assert.equal(line.textContent, `الحساب: ${me.email}`);
+    assert.equal(line.querySelector("bdi").getAttribute("dir"), "ltr");
+    assert.match(doc.body.textContent, /حسابك محميّ بتسجيل الدخول بالتحقق الثنائي/);
+    assert.ok(!doc.body.textContent.includes(INTRO), "the English sentence is showing in Arabic");
+  });
+
+  test("asks for the code of the verified authenticator app, not of one that was only started", async () => {
+    // The account's list holds a half-finished set-up FIRST. Asking for it would
+    // fail with the right code (it belongs to the other app), or worse, finish
+    // that set-up from the sign-in page.
+    const half = { ...UNVERIFIED, code: "654321" };
+    const me = person({ factors: [half, VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0), "the right code did not get in");
+    const verified = fake.calls
+      .filter((call) => call.name === "factors:verify")
+      .map((call) => call.pathname);
+    assert.deepEqual(verified, [`/auth/v1/factors/${VERIFIED.id}/verify`]);
+    assert.equal(
+      fake.user(me.id).factors[0].status,
+      "unverified",
+      "the half-finished set-up was completed by the sign-in page",
+    );
+  });
+
+  test("moves on exactly once, to the home screen, after the right code", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0), "never moved on");
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+    assert.ok(signedInScreen());
+    assert.equal(codeField(), null);
+  });
+
+  test("moves on to the page it was asked for, when that page is on this site", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show({ at: "/auth?redirect=%2Fsettings" });
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/settings"]);
+  });
+
+  test("ignores a destination that leaves the site", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show({ at: "/auth?redirect=%2F%2Fevil.test" });
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+
+  test("stays on the code form, with Auth's message, after a wrong code", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await enterCode("000000");
+    assert.ok(await until(() => watched.toasts.length > 0), "no message was shown");
+    await settle(200);
+    assert.equal(watched.toasts[0].kind, "error");
+    assert.match(watched.toasts[0].message, /Invalid TOTP code/);
+    assert.ok(codeField(), "the code form went away");
+    assert.deepEqual(watched.navigations, []);
+    assert.equal(signedInScreen(), null);
+  });
+
+  test("Back signs the half-signed-in session out and shows the password form again", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await press(buttonSaying("Back"));
+    assert.ok(
+      await until(() => doc.getElementById("password")),
+      "the password form did not come back",
+    );
+    assert.equal(codeField(), null);
+    assert.equal((await supabase.auth.getSession()).data.session, null);
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("after Back, somebody else can sign in on the same page", async () => {
+    const first = person({ factors: [VERIFIED] });
+    const second = person();
+    await show();
+    await signInWithPassword(first);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await press(buttonSaying("Back"));
+    assert.ok(await until(() => doc.getElementById("password")));
+    await signInWithPassword(second);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+
+  test("is asked for the code too when the session arrived some other way, such as an e-mailed link", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    keepWatching("[data-testid='signed-in-screen']");
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    assert.ok(await until(() => codeField() || watched.navigations.length));
+    await settle(200);
+    assert.ok(codeField(), "a link sign-in skipped the code");
+    assert.deepEqual(watched.navigations, []);
+    assert.equal(everAppeared("[data-testid='signed-in-screen']"), false);
+  });
+
+  test("moves on by itself when the code is finished somewhere else", async () => {
+    // Two tabs share one stored session: when the other tab verifies, this one follows.
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await arriveWithSession(me, { aal: "aal2" });
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+
+  test("goes straight on with a session that has already entered its code", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    keepWatching("#mfa");
+    await arriveWithSession(me, { aal: "aal2" });
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+    assert.equal(everAppeared("#mfa"), false, "asked for a code it already had");
+  });
+});
+
+describe("the sign-in page, for an account without two-factor", () => {
+  test("goes in after the password, with no code form at all", async () => {
+    const me = person();
+    await show();
+    keepWatching("#mfa");
+    await signInWithPassword(me);
+    assert.ok(await until(() => watched.navigations.length > 0), "never moved on");
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+    assert.equal(everAppeared("#mfa"), false, "the code form flashed up");
+    assert.deepEqual(watched.toasts, []);
+  });
+
+  test("goes in after the password when two-factor was only started, not finished", async () => {
+    const me = person({ factors: [UNVERIFIED] });
+    await show();
+    keepWatching("#mfa");
+    await signInWithPassword(me);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+    assert.equal(everAppeared("#mfa"), false, "asked for a code the account cannot give");
+  });
+
+  test("a wrong password still shows Auth's message and goes nowhere", async () => {
+    const me = person();
+    await show();
+    await signInWithPassword({ ...me, password: "not the password" });
+    assert.ok(await until(() => watched.toasts.length > 0));
+    await settle(100);
+    assert.match(watched.toasts[0].message, /Invalid login credentials/);
+    assert.deepEqual(watched.navigations, []);
+    assert.equal(codeField(), null);
+  });
+});
+
+describe("creating an account", () => {
+  async function fillSignUp(email) {
+    await pressTab(doc.querySelector("[role='tab'][id$='trigger-signup']"));
+    assert.ok(await until(() => doc.getElementById("email2")), "the sign-up form did not open");
+    await type("name", "New Person");
+    await type("email2", email);
+    await type("password2", "a-long-enough-password");
+    await submit("email2");
+  }
+
+  test("that gets a session at once goes in, exactly once, and is not asked for a code", async () => {
+    await show({ at: "/auth?redirect=%2Fsettings" });
+    keepWatching("#mfa");
+    await fillSignUp("brand-new@example.test");
+    assert.ok(await until(() => watched.navigations.length > 0), "never moved on");
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/settings"]);
+    assert.equal(everAppeared("#mfa"), false);
+  });
+
+  test("that must confirm its e-mail first stays on the page and says to check the inbox", async () => {
+    fake.confirmEmailOnSignUp(true);
+    await show();
+    await fillSignUp("later@example.test");
+    assert.ok(await until(() => watched.toasts.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, []);
+    assert.match(doc.body.textContent, /later@example\.test/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("the signed-in layout, for a session that only gave the password", () => {
+  const SCREEN = "[data-testid='signed-in-screen']";
+
+  test("draws nothing, sends no heartbeat, and sends the person to the code prompt", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "password" });
+    keepWatching(SCREEN);
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0), "the layout let the session stay");
+    await settle(300);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox"]);
+    assert.equal(
+      everAppeared(SCREEN),
+      false,
+      "a signed-in screen was drawn for a session that owes a code",
+    );
+    assert.deepEqual(
+      watched.sent,
+      [],
+      "a server call left the browser for a session that owes a code",
+    );
+    assert.ok(codeField(), "the code prompt is not on screen");
+  });
+
+  test("remembers the page it was on, whichever page that was", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/contacts" });
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Fcontacts"]);
+  });
+
+  test("brings the person back to that page, and draws it, once the code is right", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen()), "never got back in");
+    await settle(300);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox", "/inbox"]);
+    assert.equal(codeField(), null);
+    assert.ok(
+      watched.served.some((call) => call.name === "touchPresence" && call.userId === me.id),
+      "the heartbeat did not start once the code was entered",
+    );
+  });
+
+  test("catches a session that becomes owed while the app is open (two-factor switched on elsewhere)", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "the account without two-factor was not let in");
+    assert.deepEqual(watched.navigations, []);
+
+    // Another device enrols and verifies a factor; this browser learns of it when its token refreshes.
+    fake.user(me.id).factors.push({ ...VERIFIED, type: "totp", code: RIGHT_CODE });
+    await act(async () => {
+      await supabase.auth.refreshSession();
+    });
+    assert.ok(
+      await until(() => watched.navigations.length > 0),
+      "the open page was never asked for the code",
+    );
+    await settle(300);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox"]);
+    assert.equal(signedInScreen(), null);
+    assert.ok(codeField());
+  });
+});
+
+describe("the signed-in layout, for everyone else", () => {
+  test("draws the screen for a session that has entered its code, and sends the heartbeat", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "an account that entered its code was kept out");
+    assert.ok(await until(heartbeatServed), "no heartbeat");
+    assert.deepEqual(watched.navigations, []);
+    assert.equal(servedBy("touchPresence")[0].userId, me.id);
+  });
+
+  test("draws the screen for an account without two-factor", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()));
+    assert.ok(await until(heartbeatServed), "no heartbeat");
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("draws the screen for an account that only started setting two-factor up", async () => {
+    const me = person({ factors: [UNVERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()));
+    assert.ok(await until(heartbeatServed), "no heartbeat");
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("sends a visitor with no session to the sign-in page, as before", async () => {
+    keepWatching("[data-testid='signed-in-screen']");
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/auth"]);
+    assert.equal(everAppeared("[data-testid='signed-in-screen']"), false);
+    assert.deepEqual(watched.sent, []);
+  });
+});
+
+describe("the workspace's region, which the signed-in layout reads for the language and currency", () => {
+  // useLocale is called by the layout before it decides who may see anything,
+  // and used to start its server call whatever the session was. The server
+  // refused the call from a session that owed a code, but only after a lookup
+  // at Auth for every try.
+  const regionCalls = () => watched.sent.filter((call) => call.name === "getWorkspaceRegion");
+
+  for (const method of ["password", "magiclink", "recovery"]) {
+    test(`is not asked for by a session that owes its code (${method})`, async () => {
+      const me = person({ factors: [VERIFIED] });
+      await arriveWithSession(me, { aal: "aal1", method });
+      await show({ at: "/inbox" });
+      assert.ok(await until(() => watched.navigations.length > 0), "never sent to the prompt");
+      await settle(500);
+      assert.deepEqual(regionCalls(), [], "the region was asked for by a session that owes a code");
+      assert.deepEqual(watched.sent, []);
+    });
+  }
+
+  test("is not asked for by a visitor with no session", async () => {
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(500);
+    assert.deepEqual(regionCalls(), []);
+  });
+
+  test("is still asked for by a session that entered its code", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => servedBy("getWorkspaceRegion").length > 0), "never asked for");
+    assert.equal(servedBy("getWorkspaceRegion")[0].userId, me.id);
+  });
+
+  test("is still asked for by an account without two-factor", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => servedBy("getWorkspaceRegion").length > 0), "never asked for");
+  });
+
+  test("is asked for as soon as the code has been entered, and not before", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    await settle(300);
+    assert.deepEqual(regionCalls(), []);
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => servedBy("getWorkspaceRegion").length > 0), "never asked for");
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("the inbox drafts and send locks (InboxDraftProvider), across the two-factor code prompt", () => {
+  // The drafts are in memory, under the signed-in person and company. A session
+  // that turns out to owe a code in the middle of a working day is sent to the
+  // sign-in page, which takes the whole signed-in layout, and the drafts, off the
+  // screen. They must come back for the same person and company, once the code is
+  // entered, with the same send lock (a send whose answer was never seen keeps
+  // its reference, and a fresh lock would send it twice), and for nobody else.
+  const REPLY = "Thanks, your order ships tomorrow.";
+  const KEY = "conv-1\nbody";
+  const screenDraft = () => signedInScreen()?.getAttribute("data-draft");
+  const screenLoaded = () => signedInScreen()?.getAttribute("data-loaded");
+  const settledOnIdentity = () => {
+    const scope = signedInScreen()?.getAttribute("data-scope") ?? "undefined";
+    return !/undefined|null/.test(scope);
+  };
+  const typeReply = (text) =>
+    act(async () => {
+      watched.drafts.setDraft(text);
+    });
+
+  /** Somebody working in the inbox: signed in without two-factor, with a reply typed and a send waiting for its answer. */
+  async function workingInTheInbox(me) {
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never settled");
+    await typeReply(REPLY);
+    assert.ok(await until(() => screenDraft() === REPLY), "the reply was not typed");
+    const sends = watched.drafts.sends;
+    const attempt = sends.begin(KEY, "conv-1", () => "ref-1");
+    assert.equal(attempt?.ref, "ref-1");
+    return sends;
+  }
+  /** Two-factor is switched on from another device; this browser hears at its next token refresh. */
+  async function twoFactorSwitchedOnElsewhere(me) {
+    fake.user(me.id).factors.push({ ...VERIFIED, type: "totp", code: RIGHT_CODE });
+    await act(async () => {
+      await supabase.auth.refreshSession();
+    });
+    assert.ok(await until(() => codeField()), "never sent to the code prompt");
+    assert.equal(signedInScreen(), null, "the signed-in screen stayed up");
+  }
+  async function backAtThePrompt() {
+    await press(buttonSaying("Back"));
+    assert.ok(
+      await until(() => doc.getElementById("password")),
+      "the password form did not come back",
+    );
+  }
+
+  test("a person sent to the code prompt mid-session finds their reply and their waiting send as they left them", async () => {
+    const me = person();
+    const sends = await workingInTheInbox(me);
+    await twoFactorSwitchedOnElsewhere(me);
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen()), "never came back");
+    assert.ok(await until(() => screenDraft() === REPLY), `the reply was lost: "${screenDraft()}"`);
+    assert.equal(watched.drafts.sends, sends, "the send lock was replaced by a new one");
+    assert.equal(sends.isPending("conv-1"), true, "the waiting send was released");
+    assert.equal(
+      sends.begin(KEY, "conv-1", () => "ref-2"),
+      null,
+      "a second send was allowed",
+    );
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox", "/inbox"]);
+  });
+
+  test("a send whose answer was never seen is retried as the same message, not a new one", async () => {
+    const me = person();
+    const sends = await workingInTheInbox(me);
+    await twoFactorSwitchedOnElsewhere(me);
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()));
+    // The request never got an answer: the lock is released but the reference is kept.
+    sends.finish(KEY, "ref-1", false);
+    const retry = watched.drafts.sends.begin(KEY, "conv-1", () => "ref-2");
+    assert.equal(retry?.ref, "ref-1", "the retry would be sent as a different message");
+  });
+
+  test("an answer that arrives while the prompt is up releases the lock the person comes back to", async () => {
+    const me = person();
+    const sends = await workingInTheInbox(me);
+    await twoFactorSwitchedOnElsewhere(me);
+    // The send's callbacks still hold the lock the layout had; the server answered.
+    sends.finish(KEY, "ref-1", true);
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()));
+    assert.equal(
+      watched.drafts.sends.isPending("conv-1"),
+      false,
+      "still waiting for an answer it had",
+    );
+    assert.equal(watched.drafts.sends.begin(KEY, "conv-1", () => "ref-2")?.ref, "ref-2");
+  });
+
+  test("a session that never owed a code keeps its drafts through ordinary navigation, as before", async () => {
+    const me = person();
+    await workingInTheInbox(me);
+    await settle(300);
+    assert.equal(screenDraft(), REPLY);
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("somebody who signs in after 'Back' sees none of it: no reply, no lock, nothing the first person's screens loaded", async () => {
+    const first = person();
+    const firstSends = await workingInTheInbox(first);
+    assert.ok(await until(() => screenLoaded() === `loaded for ${first.id}`), "nothing loaded");
+    await twoFactorSwitchedOnElsewhere(first);
+    await backAtThePrompt();
+    assert.equal(lastQueryClient.current.getQueryData(["loaded-by-the-screen"]), undefined);
+
+    const second = person();
+    await signInWithPassword(second);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never got in");
+    assert.equal(screenDraft(), "", "the first person's reply is on screen");
+    assert.notEqual(
+      watched.drafts.sends,
+      firstSends,
+      "the first person's send lock was handed over",
+    );
+    assert.equal(watched.drafts.sends.isPending("conv-1"), false);
+    assert.ok(await until(() => screenLoaded()), "the screen loaded nothing");
+    assert.equal(
+      screenLoaded(),
+      `loaded for ${second.id}`,
+      "the first person's cached data was shown",
+    );
+  });
+
+  test("... and the first person, signing in again later, does not get their old reply back either", async () => {
+    const first = person();
+    await workingInTheInbox(first);
+    await twoFactorSwitchedOnElsewhere(first);
+    await backAtThePrompt();
+    await signInWithPassword(first);
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never got in");
+    assert.equal(screenDraft(), "", "a reply survived a sign-out");
+    assert.equal(watched.drafts.sends.isPending("conv-1"), false);
+  });
+
+  test("somebody else who signs in on this browser while the prompt is up sees none of it", async () => {
+    const first = person();
+    await workingInTheInbox(first);
+    await twoFactorSwitchedOnElsewhere(first);
+    const second = person();
+    await arriveWithSession(second, { aal: "aal1" });
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never got in");
+    assert.equal(screenDraft(), "");
+    assert.equal(watched.drafts.sends.isPending("conv-1"), false);
+    assert.ok(await until(() => screenLoaded()), "the screen loaded nothing");
+    assert.equal(
+      screenLoaded(),
+      `loaded for ${second.id}`,
+      "the first person's cached data was shown",
+    );
+  });
+
+  test("the same person in another company does not get them", async () => {
+    const me = person();
+    await workingInTheInbox(me);
+    await twoFactorSwitchedOnElsewhere(me);
+    globalThis.__flasTestCompany = "company-2";
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen() && settledOnIdentity()), "never got in");
+    assert.match(signedInScreen().getAttribute("data-scope"), /:company-2$/);
+    assert.equal(screenDraft(), "", "a reply from another company is on screen");
+    assert.equal(watched.drafts.sends.isPending("conv-1"), false);
+  });
+
+  test("after 'Back', a person with two-factor who signs in on the same server is asked for their code, whatever was remembered for the first", async () => {
+    // The server remembers, for a minute, that the first person has no second
+    // factor. That is theirs alone.
+    const first = person();
+    await arriveWithSession(first, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(heartbeatServed), "no heartbeat, so nothing was remembered");
+    await act(async () => {
+      await supabase.auth.signOut();
+    });
+    assert.ok(await until(() => watched.navigations.includes("/auth")));
+
+    const second = person({ factors: [VERIFIED] });
+    await signInWithPassword(second);
+    assert.ok(await until(() => codeField()), "the second person was not asked for their code");
+    await settle(300);
+    assert.equal(signedInScreen(), null);
+    let refusal = null;
+    try {
+      await app.serverFunction("probe")({ data: undefined });
+    } catch (error) {
+      refusal = error;
+    }
+    assert.equal(refusal?.message, INTRO, "the second person's call was accepted");
+  });
+});
+
+describe("what the draft keeper will and will not hold", () => {
+  const key = (scope) => app.emptyDrafts(scope);
+  const keep = (scope) => {
+    const sends = new app.InboxSendSession();
+    app.keepDrafts(scope, key(scope), sends);
+    return sends;
+  };
+  beforeEach(() => app.forgetDraftsExcept(null));
+
+  test("hands back exactly what was kept for exactly that person and company", () => {
+    const sends = keep("u1:c1");
+    const back = app.recallDrafts("u1:c1");
+    assert.equal(back?.sends, sends);
+    assert.equal(back?.state.scope, "u1:c1");
+    assert.equal(app.recallDrafts("u1:c2"), null, "another company got it");
+    assert.equal(app.recallDrafts("u2:c1"), null, "another person got it");
+  });
+
+  test("keeps nothing while the person or the company is still unknown", () => {
+    for (const scope of [
+      "undefined:undefined",
+      "u1:undefined",
+      "undefined:c1",
+      "u1:null",
+      "u1:",
+      ":c1",
+      "a:b:c",
+      "",
+    ]) {
+      keep(scope);
+      assert.equal(app.recallDrafts(scope), null, scope);
+    }
+  });
+
+  test("a company that has not loaded yet cannot overwrite or pick up what is kept", () => {
+    const sends = keep("u1:c1");
+    keep("u1:undefined");
+    assert.equal(app.recallDrafts("u1:undefined"), null);
+    assert.equal(app.recallDrafts("u1:c1")?.sends, sends);
+  });
+
+  test("keeps only one identity: the newest replaces the last", () => {
+    keep("u1:c1");
+    const second = keep("u1:c2");
+    assert.equal(app.recallDrafts("u1:c1"), null);
+    assert.equal(app.recallDrafts("u1:c2")?.sends, second);
+  });
+
+  test("is emptied as soon as anybody else, or nobody, is signed in; not by the same person", () => {
+    const sends = keep("u1:c1");
+    app.forgetDraftsExcept("u1");
+    assert.equal(app.recallDrafts("u1:c1")?.sends, sends, "the same person's refresh forgot it");
+    app.forgetDraftsExcept("u2");
+    assert.equal(app.recallDrafts("u1:c1"), null);
+    keep("u1:c1");
+    app.forgetDraftsExcept(null);
+    assert.equal(app.recallDrafts("u1:c1"), null);
+  });
+
+  test("refuses state whose own scope is not the identity it is kept under", () => {
+    app.keepDrafts("u1:c1", app.emptyDrafts("u9:c9"), new app.InboxSendSession());
+    assert.equal(app.recallDrafts("u1:c1"), null);
+  });
+});
+
+describe("when the server turns a call back", () => {
+  // These calls go through the app's own browser middleware (src/lib/session-guard.ts,
+  // src/start.ts) and then its own server middleware, as the heartbeat does.
+  const UNCHECKED =
+    "We could not check your sign-in security just now. Please try again in a moment.";
+  const INTRO_AR = "حسابك محميّ بتسجيل الدخول بالتحقق الثنائي. أدخل رمزك للمتابعة.";
+  const UNCHECKED_AR =
+    "لم نتمكن من التحقق من أمان تسجيل دخولك الآن. يُرجى المحاولة مرة أخرى بعد قليل.";
+  const refreshes = () => fake.count("token:refresh_token");
+
+  /** Make a call from the browser; return what it threw, or null. */
+  async function callFromTheBrowser(fn = app.serverFunction("probe")) {
+    try {
+      await fn({ data: undefined });
+      return null;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  /** A browser that holds a password-only session from before the account switched two-factor on. */
+  async function staleBrowser() {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.user(me.id).factors.push({ ...VERIFIED, type: "totp", code: RIGHT_CODE });
+    fake.clearCalls();
+    return me;
+  }
+
+  test("two-factor switched on elsewhere: refreshes the session once and says to enter the code", async () => {
+    await staleBrowser();
+    const error = await callFromTheBrowser();
+    assert.ok(error, "the call was let through");
+    assert.equal(error.message, INTRO);
+    assert.equal(refreshes(), 1, "the session was not refreshed exactly once");
+    const stored = (await supabase.auth.getSession()).data.session;
+    assert.ok(
+      stored.user.factors?.some((factor) => factor.status === "verified"),
+      "the refreshed session does not know about the factor",
+    );
+  });
+
+  test("says it in the person's language", async () => {
+    await staleBrowser();
+    doc.cookie = "flas_lang=ar; path=/";
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, INTRO_AR);
+  });
+
+  test("an open page is then moved to the code prompt, once, and does not loop", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.user(me.id).factors.push({ ...VERIFIED, type: "totp", code: RIGHT_CODE });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0), "never sent to the code prompt");
+    await settle(400);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox"]);
+    assert.equal(refreshes(), 1);
+    assert.ok(codeField());
+  });
+
+  test("when the browser already knows the code is owed, there is no refresh", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.clearCalls();
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, INTRO);
+    assert.equal(refreshes(), 0, "refreshed a session that already knew");
+  });
+
+  test("a check that could not be made says to try again, and neither refreshes nor redirects", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.fail("user", { status: 500 });
+    fake.clearCalls();
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, UNCHECKED);
+    assert.equal(refreshes(), 0);
+    assert.deepEqual(browser.location.assigned, []);
+    assert.deepEqual(watched.navigations, []);
+    assert.notEqual(error.message, INTRO, "told to enter a code that was never asked for");
+  });
+
+  test("a check that could not be made is said in the person's language too", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.fail("user", { network: true });
+    doc.cookie = "flas_lang=ar; path=/";
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, UNCHECKED_AR);
+  });
+
+  test("a session that entered its code is not affected by any of this", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    fake.fail("user", { status: 500 });
+    fake.clearCalls();
+    assert.equal(await callFromTheBrowser(), null);
+    assert.equal(refreshes(), 0);
+  });
+
+  test("an error that has nothing to do with signing in passes through untouched", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    fake.clearCalls();
+    const error = await callFromTheBrowser(
+      app.serverFunction("boom", { throws: "The invoice could not be saved." }),
+    );
+    assert.equal(error.message, "The invoice could not be saved.");
+    assert.equal(refreshes(), 0);
+    assert.deepEqual(browser.location.assigned, []);
+  });
+
+  test("signed out entirely: still told the session has expired, and sent to sign in", async () => {
+    browser.location.pathname = "/inbox";
+    const error = await callFromTheBrowser();
+    assert.equal(error.message, "Your session has expired. Please sign in again to continue.");
+    assert.deepEqual(browser.location.assigned, ["/auth?redirect=%2Finbox"]);
+    assert.ok(
+      watched.toasts.some((toast) => toast.message === error.message),
+      "no message was shown",
+    );
+  });
+});
+
+describe("when Auth has dropped a session the browser still stores", () => {
+  // Signing out everywhere, "Back" at the prompt, a dashboard "sign out user",
+  // or a code verified on another device all end a session at Auth. The
+  // browser keeps the tokens until something tells it, so every server call
+  // fails until the stored token runs out. Whatever the first failed call
+  // learns must send the person to sign in, not leave them among errors.
+  const EXPIRED = "Your session has expired. Please sign in again to continue.";
+  const refreshes = () => fake.count("token:refresh_token");
+
+  async function callFromTheBrowser(fn = app.serverFunction("probe")) {
+    try {
+      await fn({ data: undefined });
+      return null;
+    } catch (error) {
+      return error;
+    }
+  }
+
+  for (const [what, factors] of [
+    ["an account without two-factor", []],
+    ["an account with two-factor that has not entered its code", [VERIFIED]],
+  ]) {
+    test(`${what}: the browser forgets the session and goes to sign in`, async () => {
+      const me = person({ factors });
+      const stored = await arriveWithSession(me, { aal: "aal1" });
+      fake.revoke(stored.id);
+      browser.location.pathname = "/contacts";
+      const error = await callFromTheBrowser();
+      assert.equal(error.message, EXPIRED);
+      assert.deepEqual(browser.location.assigned, ["/auth?redirect=%2Fcontacts"]);
+      assert.equal(
+        (await supabase.auth.getSession()).data.session,
+        null,
+        "the dead session is still stored",
+      );
+      assert.ok(watched.toasts.some((toast) => toast.message === EXPIRED));
+    });
+  }
+
+  test("a screen that is open leaves for the sign-in page by itself", async (t) => {
+    const me = person();
+    const stored = await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "the account was not let in");
+    assert.ok(await until(heartbeatServed), "no heartbeat");
+    fake.revoke(stored.id);
+    browser.location.pathname = "/inbox";
+    // The server remembers for a minute that this account has no second factor,
+    // so it only notices the dropped session after that. (The clock is ours for
+    // the length of the call only: `until` waits on the real one.)
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    t.mock.timers.tick(61_000);
+    const error = await callFromTheBrowser();
+    t.mock.timers.reset();
+    assert.equal(error?.message, EXPIRED);
+    assert.ok(await until(() => watched.navigations.includes("/auth")), "never left the screen");
+    await settle(200);
+    assert.equal(signedInScreen(), null, "the signed-in screen is still showing");
+    assert.deepEqual(browser.location.assigned, ["/auth?redirect=%2Finbox"]);
+  });
+
+  test("an 'Unauthorized' answer that is not about the session leaves a live session alone", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    fake.clearCalls();
+    const error = await callFromTheBrowser(
+      app.serverFunction("boom", { throws: "Unauthorized: you may not change this invoice." }),
+    );
+    assert.ok(error, "the call was let through");
+    assert.ok((await supabase.auth.getSession()).data.session, "a live session was removed");
+    assert.deepEqual(browser.location.assigned, []);
+    assert.equal(refreshes(), 1, "the session was not checked exactly once");
+  });
+
+  test("a refresh that fails because Auth cannot be reached does not sign the person out", async () => {
+    const me = person();
+    const stored = await arriveWithSession(me, { aal: "aal1" });
+    fake.revoke(stored.id);
+    fake.fail("token:refresh_token", { network: true });
+    const started = Date.now();
+    const error = await callFromTheBrowser();
+    // The library would retry a dead network for about twenty-five seconds.
+    assert.ok(Date.now() - started < 10_000, "waited out the library's whole retry schedule");
+    assert.ok(error, "the call was let through");
+    assert.ok(
+      (await supabase.auth.getSession()).data.session,
+      "a session was removed because the network failed, not because Auth dropped it",
+    );
+    assert.deepEqual(browser.location.assigned, []);
+    fake.recover("token:refresh_token");
+  });
+
+  test("a refresh that Auth answers with a rate limit does not sign the person out", async () => {
+    const me = person();
+    const stored = await arriveWithSession(me, { aal: "aal1" });
+    fake.revoke(stored.id);
+    fake.fail("token:refresh_token", { status: 429, body: { code: 429, msg: "slow down" } });
+    await callFromTheBrowser();
+    assert.ok((await supabase.auth.getSession()).data.session);
+    assert.deepEqual(browser.location.assigned, []);
+    fake.recover("token:refresh_token");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nobody is locked out by the fix. Each way a person could be is a case here.
+
+describe("nobody is locked out: password reset", () => {
+  const NEW_PASSWORD = "a-brand-new-password";
+  const CODE_FIRST =
+    "Your account uses two-factor sign-in. Enter your code first, then choose your new password.";
+  const CODE_FIRST_AR =
+    "يستخدم حسابك تسجيل الدخول بالتحقق الثنائي. أدخل رمزك أولاً، ثم اختر كلمة المرور الجديدة.";
+
+  async function submitNewPassword() {
+    assert.ok(
+      await until(() => doc.getElementById("new-password")),
+      "the reset form did not appear",
+    );
+    await type("new-password", NEW_PASSWORD);
+    await type("confirm-password", NEW_PASSWORD);
+    await submit("new-password");
+  }
+  async function resetPassword() {
+    await submitNewPassword();
+    assert.ok(await until(() => watched.navigations.length > 0), "never left the reset page");
+    await settle(200);
+  }
+
+  test("an account with two-factor is taken to the code prompt, not left at a dead end, and finishes the reset after the code", async () => {
+    // The real Auth service refuses to change the password of such an account
+    // from a recovery session (it only gave aal1): the double does too.
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/reset-password" });
+    await resetPassword();
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Freset-password"]);
+    assert.equal(fake.user(me.id).password, me.password, "the password changed without the code");
+    assert.ok(
+      watched.toasts.some((toast) => toast.message === CODE_FIRST),
+      "the person was not told why they are being asked for a code",
+    );
+    assert.ok(
+      !watched.toasts.some((toast) => /AAL2|MFA/.test(toast.message)),
+      "Auth's own English text was shown",
+    );
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+
+    await enterCode(RIGHT_CODE);
+    // Back at the reset page, now with the code entered: the change goes through.
+    await submitNewPassword();
+    assert.ok(await until(() => fake.user(me.id).password === NEW_PASSWORD), "never changed");
+    assert.ok(await until(() => watched.navigations.includes("/auth")));
+    await settle(200);
+    assert.deepEqual(watched.navigations, [
+      "/auth?redirect=%2Freset-password",
+      "/reset-password",
+      "/auth",
+    ]);
+    assert.equal((await supabase.auth.getSession()).data.session, null);
+
+    // And the new password works, with the code, as for anybody.
+    await signInWithPassword({ ...me, password: NEW_PASSWORD });
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen()), "never got in");
+    assert.equal(watched.navigations.at(-1), "/inbox");
+  });
+
+  test("the sentence about the code is said in the person's language", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/reset-password", language: "ar" });
+    await resetPassword();
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Freset-password"]);
+    assert.ok(watched.toasts.some((toast) => toast.message === CODE_FIRST_AR));
+    assert.ok(!watched.toasts.some((toast) => toast.message === CODE_FIRST));
+  });
+
+  test("any other refusal from Auth stays on the page with Auth's own message", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    fake.fail("user:update", {
+      status: 422,
+      body: {
+        code: 422,
+        error_code: "same_password",
+        msg: "New password should be different from the old password.",
+      },
+    });
+    await show({ at: "/reset-password" });
+    await submitNewPassword();
+    assert.ok(await until(() => watched.toasts.length > 0), "no message was shown");
+    await settle(200);
+    assert.equal(
+      watched.toasts[0].message,
+      "New password should be different from the old password.",
+    );
+    assert.deepEqual(watched.navigations, []);
+    assert.ok(doc.getElementById("new-password"), "the form went away");
+  });
+
+  test("an account without two-factor does the same and is never asked for a code", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/reset-password" });
+    keepWatching("#mfa");
+    await resetPassword();
+    assert.deepEqual(watched.navigations, ["/auth"]);
+    await signInWithPassword({ ...me, password: NEW_PASSWORD });
+    assert.ok(await until(() => signedInScreen()), "never got in");
+    assert.deepEqual(watched.navigations, ["/auth", "/inbox"]);
+    assert.equal(everAppeared("#mfa"), false);
+  });
+
+  test("the reset page is not sent to the code prompt by a session that owes its code", async () => {
+    // It lives outside the signed-in layout and makes no server call, so it is
+    // reachable exactly as before; what Auth itself allows is outside this test.
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "recovery" });
+    await show({ at: "/reset-password" });
+    assert.ok(await until(() => doc.getElementById("new-password")));
+    await settle(300);
+    assert.deepEqual(watched.navigations, []);
+    assert.equal(codeField(), null);
+    assert.deepEqual(watched.sent, []);
+  });
+});
+
+describe("nobody is locked out: e-mailed links", () => {
+  for (const method of ["magiclink", "otp", "recovery", "signup"]) {
+    test(`a ${method} session of an account without two-factor goes straight in from the sign-in page`, async () => {
+      const me = person();
+      await show();
+      keepWatching("#mfa");
+      await arriveWithSession(me, { aal: "aal1", method });
+      assert.ok(await until(() => watched.navigations.length > 0));
+      await settle(200);
+      assert.deepEqual(watched.navigations, ["/inbox"]);
+      assert.equal(everAppeared("#mfa"), false);
+    });
+
+    test(`a ${method} session of an account without two-factor is let into the app`, async () => {
+      const me = person();
+      await arriveWithSession(me, { aal: "aal1", method });
+      await show({ at: "/inbox" });
+      assert.ok(await until(() => signedInScreen()), "kept out of the app");
+      assert.ok(await until(heartbeatServed), "the heartbeat was refused");
+      assert.deepEqual(watched.navigations, []);
+    });
+  }
+
+  test("a link session of an account with two-factor is let in once the code is entered, at the page the link pointed to", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    await show({ at: "/auth?redirect=%2Fcontacts" });
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(200);
+    assert.deepEqual(watched.navigations, ["/contacts"]);
+  });
+});
+
+describe("nobody is locked out: finishing two-factor set-up", () => {
+  test("verifying the first code on the open page does not send the person to a code prompt", async () => {
+    // What the security card does: the factor is started (unverified), the code
+    // from the authenticator app is checked, and the same session becomes aal2.
+    const me = person({ factors: [UNVERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "the half-set-up account was kept out");
+
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: UNVERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    await settle(500);
+    assert.deepEqual(watched.navigations, [], "finishing set-up sent the person away");
+    assert.ok(signedInScreen());
+    assert.equal(codeField(), null);
+    assert.equal(fake.user(me.id).factors[0].status, "verified");
+  });
+
+  test("... and the layout then asks the server to write the audit entry, once, as the account that did it", async () => {
+    const me = person({ factors: [UNVERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()), "the half-set-up account was kept out");
+    assert.deepEqual(servedBy("recordTwoFactorEnabled"), [], "asked before anything was turned on");
+
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: UNVERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    assert.ok(
+      await until(() => servedBy("recordTwoFactorEnabled").length > 0),
+      "the server was never asked to record it",
+    );
+    await settle(300);
+    assert.equal(servedBy("recordTwoFactorEnabled").length, 1);
+    assert.equal(servedBy("recordTwoFactorEnabled")[0].userId, me.id);
+  });
+
+  test("entering the code at the sign-in page asks for no entry: nothing was turned on", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code form never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => signedInScreen()), "never got in");
+    await settle(400);
+    assert.deepEqual(servedBy("recordTwoFactorEnabled"), []);
+  });
+
+  test("an ordinary working session asks for no entry", async () => {
+    const me = person();
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(heartbeatServed));
+    await settle(400);
+    assert.deepEqual(servedBy("recordTwoFactorEnabled"), []);
+  });
+
+  test("a code entered while the layout still shows its placeholder asks for no entry either", async () => {
+    // With the router slow to move, the layout is still up (drawing only its
+    // placeholder) when the code is verified; it must not take that for a factor
+    // having been turned on.
+    watched.holdNavigation = true;
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0), "never asked to move");
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: VERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    assert.ok(await until(() => signedInScreen()), "the screen never came back");
+    await settle(400);
+    assert.deepEqual(servedBy("recordTwoFactorEnabled"), []);
+  });
+
+  test("a person who has only started set-up can sign in with the password alone", async () => {
+    const me = person({ factors: [UNVERIFIED] });
+    await show();
+    keepWatching("#mfa");
+    await signInWithPassword(me);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+    assert.equal(everAppeared("#mfa"), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe("while the router is still making a move", () => {
+  // The router stand-in normally finishes a move at once and the asking page
+  // disappears. A real one takes a moment, and what the page does in that moment
+  // is where a stray second move or a half-drawn screen would show.
+  beforeEach(() => {
+    watched.holdNavigation = true;
+  });
+
+  test("a session that owes its code gets no screen and no server call, only the one move to the prompt", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal1", method: "magiclink" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => watched.navigations.length > 0), "never asked to move");
+    await settle(500);
+    assert.deepEqual(watched.navigations, ["/auth?redirect=%2Finbox"]);
+    assert.equal(
+      signedInScreen(),
+      null,
+      "a signed-in screen is on screen for a session that owes a code",
+    );
+    assert.ok(doc.querySelector("[data-app-shell]"), "the loading placeholder is not showing");
+    assert.deepEqual(
+      watched.sent,
+      [],
+      "a server call left the browser for a session that owes a code",
+    );
+  });
+
+  test("a session that has entered its code is drawn and sends its heartbeat", async () => {
+    // The same placeholder rule must not catch people it is not meant for.
+    const me = person({ factors: [VERIFIED] });
+    await arriveWithSession(me, { aal: "aal2" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => signedInScreen()));
+    assert.ok(await until(heartbeatServed));
+    assert.deepEqual(watched.navigations, []);
+  });
+
+  test("the right code asks the router for exactly one move", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code field never appeared");
+    assert.deepEqual(watched.navigations, [], "moved before the code was entered");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(500);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+
+  test("a password for an account without two-factor asks for exactly one move", async () => {
+    const me = person();
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(500);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+
+  test("a new account that gets a session at once asks for exactly one move", async () => {
+    await show();
+    await pressTab(doc.querySelector("[role='tab'][id$='trigger-signup']"));
+    assert.ok(await until(() => doc.getElementById("email2")));
+    await type("name", "New Person");
+    await type("email2", "held@example.test");
+    await type("password2", "a-long-enough-password");
+    await submit("email2");
+    assert.ok(await until(() => watched.navigations.length > 0));
+    await settle(500);
+    assert.deepEqual(watched.navigations, ["/inbox"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The database also asks for the second sign-in step (migration
+// 20261020000000_mfa_session_gate.sql): a token that has not entered the code,
+// for a person who has a verified authenticator app, is shown none of that
+// person's rows. The Auth/REST double applies the same rule to the two reads
+// the auth provider makes, so these tests see what the app would see.
+
+describe("the admin flags, with the database also asking for the second step", () => {
+  const ADMIN = { roles: ["admin"], staffRole: "super_admin" };
+  const flags = () => {
+    const probe = doc.querySelector("[data-testid='auth-flags']");
+    return { admin: probe?.getAttribute("data-admin"), super: probe?.getAttribute("data-super") };
+  };
+  const roleReads = (name) =>
+    fake.calls.filter((call) =>
+      name ? call.name === name : /^rest:(user_roles|profiles)$/.test(call.name),
+    );
+  const flagsOn = () => flags().admin === "true" && flags().super === "true";
+
+  test("a session that owes its code reads no roles and shows no admin rights", async () => {
+    const me = person({ factors: [VERIFIED], ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(() => codeField()), "the code prompt never appeared");
+    await settle(300);
+    assert.deepEqual(
+      roleReads().map((call) => `${call.name} at ${call.aal}`),
+      [],
+      "the roles were read with a token that has not entered its code",
+    );
+    assert.deepEqual(flags(), { admin: "false", super: "false" });
+  });
+
+  test("the same, when the person has just typed the password on the sign-in page", async () => {
+    const me = person({ factors: [VERIFIED], ...ADMIN });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code prompt never appeared");
+    await settle(300);
+    assert.deepEqual(roleReads(), [], "the roles were read before the code was entered");
+    assert.deepEqual(flags(), { admin: "false", super: "false" });
+  });
+
+  test("once the code is right, the roles are read again with the new token and the flags come on without a reload", async () => {
+    const me = person({ factors: [VERIFIED], ...ADMIN });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()), "the code prompt never appeared");
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(flagsOn), `the admin flags never turned on: ${JSON.stringify(flags())}`);
+    await settle(300);
+    assert.equal(roleReads("rest:user_roles").length, 1, "user_roles was not read exactly once");
+    assert.equal(roleReads("rest:profiles").length, 1, "profiles was not read exactly once");
+    assert.deepEqual(
+      roleReads().map((call) => call.aal),
+      ["aal2", "aal2"],
+      "a read was made with a token that had not entered its code",
+    );
+  });
+
+  test("a person with two-factor who is not an admin is read, and stays not an admin", async () => {
+    const me = person({ factors: [VERIFIED] });
+    await show();
+    await signInWithPassword(me);
+    assert.ok(await until(() => codeField()));
+    await enterCode(RIGHT_CODE);
+    assert.ok(await until(() => roleReads().length === 2), "the roles were never read");
+    await settle(200);
+    assert.deepEqual(flags(), { admin: "false", super: "false" });
+  });
+
+  test("an account without two-factor is read once, as before, and its flags are on", async () => {
+    const me = person({ ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(flagsOn), `the admin flags never turned on: ${JSON.stringify(flags())}`);
+    await settle(300);
+    assert.deepEqual(
+      roleReads().map((call) => `${call.name} at ${call.aal}`),
+      ["rest:user_roles at aal1", "rest:profiles at aal1"],
+    );
+  });
+
+  test("a token refresh at the same level does not read the roles again", async () => {
+    const me = person({ ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(flagsOn));
+    await act(async () => {
+      await supabase.auth.refreshSession();
+    });
+    await settle(400);
+    assert.equal(roleReads().length, 2, "a refresh at the same level read the roles again");
+    assert.ok(flagsOn());
+  });
+
+  test("finishing two-factor set-up on the open page reads the roles again at the new level", async () => {
+    const me = person({ factors: [UNVERIFIED], ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(flagsOn));
+    assert.equal(roleReads().length, 2);
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: UNVERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    assert.ok(await until(() => roleReads().length === 4), "the roles were not read again");
+    await settle(300);
+    assert.deepEqual(
+      roleReads().map((call) => call.aal),
+      ["aal1", "aal1", "aal2", "aal2"],
+    );
+    assert.ok(flagsOn(), "the flags went off while set-up finished");
+  });
+
+  test("signing out turns the flags off", async () => {
+    const me = person({ ...ADMIN });
+    await arriveWithSession(me, { aal: "aal1" });
+    await show({ at: "/inbox" });
+    assert.ok(await until(flagsOn));
+    await act(async () => {
+      await supabase.auth.signOut({ scope: "local" });
+    });
+    assert.ok(
+      await until(() => flags().admin === "false" && flags().super === "false"),
+      "the admin flags stayed on after sign-out",
+    );
+  });
+});
+
+describe("realtime: a channel that was opened before the code was entered", () => {
+  const joinOf = (socket) => socket.sent.find((m) => m.event === "phx_join");
+  const levelOf = (token) =>
+    JSON.parse(Buffer.from(String(token).split(".")[1], "base64url").toString()).aal;
+  const tokensPushed = (socket) =>
+    socket.sent.filter((m) => m.event === "access_token").map((m) => m.payload.access_token);
+
+  afterEach(async () => {
+    await supabase.removeAllChannels();
+    supabase.realtime.disconnect();
+    FakeRealtimeSocket.sockets.length = 0;
+  });
+
+  test("is handed the token that has entered its code on the next heartbeat, with no help from the page", async () => {
+    // The inbox opens its channel with whatever token the browser holds. For a
+    // person finishing two-factor set-up on the open page that token is aal1,
+    // and from the moment the factor is verified the database wants aal2.
+    const me = person({ factors: [UNVERIFIED] });
+    await arriveWithSession(me, { aal: "aal1" });
+    const held = (await supabase.auth.getSession()).data.session.access_token;
+    assert.equal(levelOf(held), "aal1");
+
+    let joined = false;
+    await act(async () => {
+      supabase
+        .channel("inbox-live")
+        .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {})
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") joined = true;
+        });
+    });
+    assert.ok(await until(() => joined, 4000), "the channel never joined");
+    const socket = FakeRealtimeSocket.sockets.at(-1);
+    assert.equal(levelOf(joinOf(socket).payload.access_token), "aal1", "joined with another token");
+
+    await act(async () => {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: UNVERIFIED.id,
+        code: RIGHT_CODE,
+      });
+      assert.equal(error, null, error?.message);
+    });
+    await settle(200);
+    const stored = (await supabase.auth.getSession()).data.session.access_token;
+    assert.equal(levelOf(stored), "aal2", "the browser did not store the new token");
+    assert.notEqual(stored, held);
+    // Nothing has pushed it yet: the verification itself does not reach Realtime.
+    assert.deepEqual(tokensPushed(socket), [], "the token was pushed without a heartbeat");
+
+    await act(async () => {
+      await supabase.realtime.sendHeartbeat();
+    });
+    assert.ok(await until(() => tokensPushed(socket).length > 0, 3000), "no token was ever pushed");
+    assert.deepEqual(
+      tokensPushed(socket).map(levelOf),
+      ["aal2"],
+      "the channel was not given the token that has entered its code",
+    );
+    assert.equal(tokensPushed(socket)[0], stored);
+  });
+});

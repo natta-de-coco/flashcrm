@@ -83,22 +83,24 @@ try {
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
   `);
 
-  // Everything that exists today, except the fix. A file that fails here is a real failure.
-  const history = fs
-    .readdirSync(MIG)
-    .filter((f) => f.endsWith(".sql") && f !== FIX_FILE)
-    .sort();
-  for (const f of history) {
+  // Everything that exists before the fix. A file that fails here is a real failure.
+  // Migrations dated AFTER the fix (today the second-sign-in gate, 20261020000000) are not
+  // part of the state the fix sees: they are applied last, in section 6, to prove that they
+  // leave both holes closed.
+  const applyFile = async (f) => {
     try {
       await db.query(fs.readFileSync(path.join(MIG, f), "utf8"));
     } catch (e) {
       throw new Error(`${f} did not apply: ${e.message}`);
     }
-  }
-  ok(
-    !history.some((f) => f > FIX_FILE),
-    "a migration newer than the fix exists; the fix would not be last",
-  );
+  };
+  const all = fs
+    .readdirSync(MIG)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  const history = all.filter((f) => f < FIX_FILE);
+  const newer = all.filter((f) => f > FIX_FILE);
+  for (const f of history) await applyFile(f);
 
   // ── people and rows ───────────────────────────────────────────────────────
   const org = async (name, slug) =>
@@ -699,6 +701,56 @@ try {
     "42501",
     "RE-APPLY: function closed",
   );
+
+  // ═══ 6. Migrations dated after the fix leave both holes closed ═════════════════════
+  // Today that is the second-sign-in gate: a RESTRICTIVE policy on every table, which must
+  // neither be counted as a delete grant by the fix's own check nor reopen anything.
+  for (const f of newer) await applyFile(f);
+  const verdictAfterNewer = (await db.query(fix)).at(-1).rows[0];
+  same(
+    Number(verdictAfterNewer.webhook_delete_policies),
+    0,
+    `with ${newer.length} newer migration(s) applied (${newer.join(", ") || "none"}), no permissive policy grants DELETE`,
+  );
+  same(
+    [verdictAfterNewer.authenticated_can_delete, verdictAfterNewer.authenticated_can_record],
+    [false, false],
+    "with the newer migrations applied, the browser role still has neither privilege",
+  );
+  same(
+    (
+      await db.query(
+        `SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = 'webhook_events'
+            AND permissive = 'PERMISSIVE' ORDER BY policyname`,
+      )
+    ).rows.map((r) => r.policyname),
+    ["webhook_events_read_tenant", "webhook_events_update_tenant"],
+    "with the newer migrations applied, the permissive policies are still only the tenant-scoped read and update",
+  );
+  for (const who of personas) {
+    same(
+      await deleteAs("authenticated", people[who], "everything"),
+      "42501",
+      `with the newer migrations applied, ${who} deleting every event is still refused outright`,
+    );
+  }
+  same(
+    await deleteAs("authenticated", people.legacyA, ev.b1),
+    "42501",
+    "with the newer migrations applied, deleting another company's event by id is still refused",
+  );
+  same(
+    await recordAs("authenticated", people.agentA, B, "newer"),
+    "42501",
+    "with the newer migrations applied, record_integration_error is still closed to the browser role",
+  );
+  same(await eventIds(), allEvents, "with the newer migrations applied, every event is still there");
+  same(
+    await deleteAs("service_role", null, ev.b1),
+    1,
+    "with the newer migrations applied, the server role still deletes an event",
+  );
+  await seedEvents();
 
   console.log(
     `PASS (${checks} checks): before the fix, one unfiltered DELETE by a legacy admin of company A removed company B's webhook events, and a member of A wrote integration errors into company B; after it the browser roles can do neither (own company included), the server role still does both, read/update/insert behaviour and the other policies are identical, the function body/search_path are unchanged, a second run and a run beside a RESTRICTIVE gate change nothing, the rollback text restores the old state exactly, and a lock timeout leaves everything untouched`,

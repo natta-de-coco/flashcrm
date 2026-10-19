@@ -1,0 +1,2100 @@
+// The database requires the second sign-in step too: proof, in a real
+// PostgreSQL, per role and per assurance level ("aal").
+//
+//   npm install --no-save --package-lock=false embedded-postgres@17.10.0-beta.17 pg@8.23.0
+//   node supabase/verify/verify-mfa-session-gate.mjs
+//
+// WHAT IS BEING PROVED
+// Migration 20261020000000_mfa_session_gate.sql puts a RESTRICTIVE policy
+// (mfa_session_gate) on every table with row-level security in `public` and on
+// storage.objects, and a guard line in list_subscribers(). A person whose token
+// has not entered the code (aal1) but who HAS a verified authenticator-app
+// factor must then reach nothing; everybody else must be exactly where they
+// were. The two halves of that sentence are both checked, because a mistake in
+// either one hurts: too loose leaves the gap open, too tight locks every
+// two-factor user out of their data.
+//
+// HOW (each step runs the real SQL, nothing is read off the page):
+//   1. Build the database: shim + Supabase's default privileges + every
+//      migration BEFORE the gate. People, two companies, rows, a storage bucket.
+//   2. Show the gap first: with the gate not yet applied, a password-only token
+//      of a person with a verified factor reads the company's data.
+//   3. Show the migration is safe to paste: it stops and changes NOTHING when the
+//      rule cannot run (factor table missing; owner not allowed to read it) and
+//      when it cannot get its locks in time.
+//   4. Apply the migration. Then, for EVERY table found in the catalogue (the list
+//      is never typed here) and for ten kinds of caller, try select, insert,
+//      update and delete. To see the gate and nothing else, each table gets a
+//      throwaway "let everyone in" policy inside a transaction that is rolled
+//      back, so the only thing deciding is mfa_session_gate.
+//   5. With the real policies and real rows: another company is still refused,
+//      profile / role / organization / billing view / storage rows behave, the
+//      functions the code prompt needs still answer, list_subscribers is guarded,
+//      the service role is unaffected, the helper cannot be abused or swallow an
+//      error, and it costs one call per statement, not one per row.
+//   6. Run twice, kill switch, one-statement rollback (taken from the migration
+//      file itself), a table added later is caught and covered.
+//   7. Guards that fail a future pull request: a table without the policy, a
+//      table without row-level security, a view that skips policies, and a
+//      SECURITY DEFINER function the browser can call that nobody has classified.
+//
+// NOT PROVABLE HERE: Realtime delivery, Supabase's real grants on `auth`,
+// PostgREST turning the Authorization header into claims. Those need a staging
+// project.
+import EmbeddedPostgres from "embedded-postgres";
+import pg from "pg";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const MIG = path.join(HERE, "..", "migrations");
+const PORT = 54975;
+const MINE = "20261020000000_mfa_session_gate.sql";
+
+const mineSql = fs.readFileSync(path.join(MIG, MINE), "utf8");
+const mineText = mineSql.replace(/\r\n/g, "\n");
+/** The SQL between <tag> and </tag> in the migration's own comments, uncommented. */
+function snippet(tag) {
+  const found = mineText.match(new RegExp(`^-- <${tag}>\\n([\\s\\S]*?)^-- </${tag}>`, "m"));
+  if (!found) throw new Error(`${MINE} has no <${tag}> block`);
+  return found[1]
+    .split("\n")
+    .map((line) => line.replace(/^-- ?/, ""))
+    .join("\n");
+}
+const KILL_SWITCH = snippet("killswitch");
+const ROLLBACK = snippet("rollback");
+
+// ---------------------------------------------------------------------------
+// Reporting
+
+let failures = 0;
+let checks = 0;
+const check = (label, pass, detail) => {
+  checks++;
+  if (!pass) failures++;
+  console.log(`  ${pass ? "OK  " : "FAIL"}  ${label}${detail ? "  -> " + detail : ""}`);
+};
+const heading = (text) => console.log(`\n=== ${text} ===`);
+
+// ---------------------------------------------------------------------------
+// The throwaway database
+
+const DATA = path.join(HERE, ".pgdata-mfa-gate");
+fs.rmSync(DATA, { recursive: true, force: true }); // a run that crashed leaves its directory behind
+const server = new EmbeddedPostgres({
+  databaseDir: DATA,
+  user: "postgres",
+  password: "postgres",
+  port: PORT,
+  persistent: false,
+  initdbFlags: ["--encoding=UTF8", "--locale=C"],
+  // Every refused statement below is expected and checked in this script; the
+  // server's own log of them would bury the results.
+  postgresFlags: ["-c", "log_min_messages=log"],
+});
+await server.initialise();
+await server.start();
+const connect = async (user = "postgres", password = "postgres") => {
+  const client = new pg.Client({
+    host: "localhost",
+    port: PORT,
+    user,
+    password,
+    database: "postgres",
+  });
+  await client.connect();
+  await client.query("SET search_path TO public, extensions");
+  return client;
+};
+const c = await connect();
+
+// If the script itself breaks, still stop the database and say so: a run that
+// crashes must neither leave a server behind nor look like a pass.
+const crash = async (error) => {
+  console.log(`FAIL  the script itself stopped: ${error?.stack ?? error}`);
+  await c.end().catch(() => {});
+  await server.stop().catch(() => {});
+  process.exit(1);
+};
+process.on("uncaughtException", crash);
+process.on("unhandledRejection", crash);
+
+async function finish() {
+  await c.end().catch(() => {});
+  await server.stop().catch(() => {});
+  console.log("");
+  console.log(
+    failures === 0
+      ? `OK - the second sign-in step is enforced by the database (${checks} checks).`
+      : `FAIL - ${failures} of ${checks} checks failed.`,
+  );
+  process.exit(failures === 0 ? 0 : 1);
+}
+
+await c.query(fs.readFileSync(path.join(HERE, "supabase-shim.sql"), "utf8"));
+// Supabase gives its three API roles everything on whatever the postgres role
+// creates in `public`, so what a person may reach is decided by policies alone.
+// The shim does not, so say it here: the proof then holds for the worst case.
+await c.query(`
+  GRANT ALL ON ALL TABLES IN SCHEMA storage TO anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+  ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
+`);
+
+const files = fs
+  .readdirSync(MIG)
+  .filter((f) => f.endsWith(".sql"))
+  .sort();
+if (!files.includes(MINE)) {
+  console.log(`FAIL  ${MINE} is not in ${MIG}`);
+  process.exit(1);
+}
+const before = files.filter((f) => f < MINE);
+const after = files.filter((f) => f > MINE);
+
+/** Runs a file the way the harness always has; returns the error or null. A failed file leaves its transaction open, so end it. */
+async function apply(client, sql) {
+  try {
+    return { results: await client.query(sql), error: null };
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+    return { results: null, error };
+  }
+}
+
+heading("the database before the gate");
+const brokenBefore = [];
+for (const f of before) {
+  const { error } = await apply(c, fs.readFileSync(path.join(MIG, f), "utf8"));
+  if (error) brokenBefore.push(`${f}: ${error.message}`);
+}
+check(
+  `${before.length} earlier migrations apply clean`,
+  brokenBefore.length === 0,
+  brokenBefore.join("; "),
+);
+
+// ---------------------------------------------------------------------------
+// People, companies, rows
+
+const one = async (sql, params) => (await c.query(sql, params)).rows[0];
+const orgA = (await one("insert into organizations(name,slug) values('Acme','acme') returning id"))
+  .id;
+const orgB = (
+  await one("insert into organizations(name,slug) values('Globex','globex') returning id")
+).id;
+
+/** factors: [{ type: 'totp' | 'phone' | 'webauthn', status: 'verified' | 'unverified' }] */
+async function person(email, org, { staffRole = "staff", admin = false, factors = [] } = {}) {
+  const id = (await one("insert into auth.users(email) values($1) returning id", [email])).id;
+  await c.query("update profiles set tenant_id=$2, staff_role=$3 where id=$1", [
+    id,
+    org,
+    staffRole,
+  ]);
+  if (admin)
+    await c.query(
+      "insert into user_roles(user_id,role) values($1,'admin') on conflict do nothing",
+      [id],
+    );
+  for (const f of factors)
+    await c.query(
+      "insert into auth.mfa_factors(user_id,factor_type,status) values($1,$2::auth.factor_type,$3::auth.factor_status)",
+      [id, f.type, f.status],
+    );
+  return { id, email, org };
+}
+const TOTP = { type: "totp", status: "verified" };
+const alice = await person("alice@acme.test", orgA, {
+  staffRole: "company_admin",
+  admin: true,
+  factors: [TOTP],
+});
+const bob = await person("bob@acme.test", orgA); // no factor at all
+const carol = await person("carol@acme.test", orgA, {
+  factors: [{ type: "totp", status: "unverified" }],
+});
+const dave = await person("dave@acme.test", orgA, {
+  factors: [{ type: "phone", status: "verified" }],
+});
+const erin = await person("erin@acme.test", orgA, {
+  factors: [TOTP, { type: "phone", status: "verified" }],
+});
+const ada = await person("ada@acme.test", orgA, { staffRole: "company_admin", admin: true }); // admin, no factor
+const frank = await person("frank@globex.test", orgB, { staffRole: "company_admin", admin: true });
+const gina = await person("gina@globex.test", orgB, { factors: [TOTP] });
+const sam = await person("sam@flas.test", orgA, {
+  staffRole: "super_admin",
+  admin: true,
+  factors: [TOTP],
+});
+const sue = await person("sue@flas.test", orgA, { staffRole: "super_admin", admin: true });
+
+const contactIds = {};
+for (const [org, names] of [
+  [orgA, ["A contact 1", "A contact 2"]],
+  [orgB, ["B contact 1"]],
+])
+  for (const name of names)
+    contactIds[name] = (
+      await one("insert into contacts(name,tenant_id) values($1,$2) returning id", [name, org])
+    ).id;
+for (const [org, title] of [
+  [orgA, "Acme alert"],
+  [orgB, "Globex alert"],
+])
+  await c.query("insert into system_alerts(title,severity,tenant_id) values($1,'warning',$2)", [
+    title,
+    org,
+  ]);
+for (const [org, name] of [
+  [orgA, "A contact 1"],
+  [orgB, "B contact 1"],
+]) {
+  const conv = (
+    await one("insert into conversations(contact_id,tenant_id) values($1,$2) returning id", [
+      contactIds[name],
+      org,
+    ])
+  ).id;
+  await c.query(
+    "insert into messages(conversation_id,direction,sender,body,tenant_id) values($1,'inbound','contact','hello',$2)",
+    [conv, org],
+  );
+}
+// A partitioned table with row-level security (relkind 'p'), the way a future migration might
+// create one. Rows live in its partitions; policies on the parent apply to queries through it.
+// None exists among the real migrations, so without this the 'p' branch of the gate would
+// never be exercised. The partitions are protected too (a partition can be queried directly).
+await c.query(`
+  create table public.zz_partitioned (
+    id uuid not null default gen_random_uuid(), region text not null default 'a', tenant_id uuid,
+    primary key (id, region)) partition by list (region);
+  create table public.zz_partitioned_a partition of public.zz_partitioned for values in ('a');
+  create table public.zz_partitioned_rest partition of public.zz_partitioned default;
+  alter table public.zz_partitioned enable row level security;
+  alter table public.zz_partitioned_a enable row level security;
+  alter table public.zz_partitioned_rest enable row level security;
+  create policy zz_partitioned_all on public.zz_partitioned for all to authenticated using (true) with check (true);
+  create policy zz_partitioned_a_all on public.zz_partitioned_a for all to authenticated using (true) with check (true);
+  create policy zz_partitioned_rest_all on public.zz_partitioned_rest for all to authenticated using (true) with check (true);
+  insert into public.zz_partitioned(region, tenant_id) values ('a', '${orgA}'), ('b', '${orgA}');`);
+await c.query("insert into storage.buckets(id,name) values('invoices','invoices')");
+for (const org of [orgA, orgB])
+  await c.query("insert into storage.objects(bucket_id,name) values('invoices',$1)", [
+    `${org}/invoice.pdf`,
+  ]);
+
+// ---------------------------------------------------------------------------
+// Acting as somebody
+
+const ident = (sub, aal, extra = {}) =>
+  JSON.stringify({
+    role: "authenticated",
+    ...(sub ? { sub } : {}),
+    ...(aal ? { aal } : {}),
+    ...extra,
+  });
+/** Browser-role callers. aal: "aal1" | "aal2" | "aal3" | undefined (a token that says nothing). */
+const AT = (user, aal) => ({ role: "authenticated", sub: user.id, claims: ident(user.id, aal) });
+const NOBODY = (aal) => ({ role: "authenticated", sub: "", claims: ident(null, aal) });
+const SERVICE = { role: "service_role", sub: "", claims: JSON.stringify({ role: "service_role" }) };
+const ANON = { role: "anon", sub: "", claims: JSON.stringify({ role: "anon" }) };
+
+/** Both claim settings, because the shim's auth.uid() reads one and auth.jwt() the other. */
+const becomeSql = (who) =>
+  `select set_config('request.jwt.claim.sub', ${c.escapeLiteral(who.sub)}, true), ` +
+  `set_config('request.jwt.claims', ${c.escapeLiteral(who.claims)}, true); ` +
+  `set local role ${who.role}`;
+
+/** One statement that may fail: success or { code, message }, and the transaction survives either way. */
+async function attempt(sql, params) {
+  await c.query("savepoint attempt_point");
+  try {
+    const r = await c.query(sql, params);
+    await c.query("release attempt_point");
+    return { ok: true, rows: r.rows, rowCount: r.rowCount };
+  } catch (e) {
+    await c.query("rollback to attempt_point");
+    await c.query("release attempt_point");
+    return { ok: false, code: e.code, message: e.message };
+  }
+}
+/** Runs fn(run) as somebody inside a transaction that is always rolled back. */
+async function as(who, fn, { beforeBecoming = [] } = {}) {
+  await c.query("begin");
+  try {
+    for (const sql of beforeBecoming) await c.query(sql);
+    await c.query(becomeSql(who));
+    return await fn(attempt);
+  } finally {
+    await c.query("rollback");
+  }
+}
+const countOf = async (who, table) =>
+  as(who, async (run) => {
+    const r = await run(`select count(*)::int as n from ${table}`);
+    return r.ok ? r.rows[0].n : `error ${r.code}: ${r.message}`;
+  });
+const refusedByPolicy = (r) => !r.ok && r.code === "42501" && /row-level security/i.test(r.message);
+
+const AAL1 = "aal1";
+const AAL2 = "aal2";
+
+// ---------------------------------------------------------------------------
+heading("the gap, before the migration");
+for (const [label, who] of [
+  ["a person WITH a verified factor, password only (aal1)", AT(alice, AAL1)],
+  ["the same person, token with no aal claim", AT(alice, undefined)],
+]) {
+  const n = await countOf(who, "contacts");
+  check(`${label}, reads their company's contacts`, n === 2, `${n} row(s): this is the gap`);
+}
+const gapWrite = await as(AT(alice, AAL1), (run) =>
+  run("delete from contacts where name = 'A contact 2'"),
+);
+check("...and could delete them (rolled back here)", gapWrite.ok && gapWrite.rowCount === 1);
+
+// ---------------------------------------------------------------------------
+// open_contact_whatsapp(): what it does today (PR #66's body), recorded now so
+// that the same calls can be compared after the gate. A definer function skips
+// policies, so the gate has to be written into the function itself; the only
+// permitted difference is that a person who has a verified factor and no code
+// is refused.
+
+const WA_FILE = "20261007130000_open_contact_whatsapp_phone_identity.sql";
+const WA = {
+  ok: "aaaaaaaa-0000-0000-0000-0000000000f1", // phone on the record, consent given
+  noConsent: "aaaaaaaa-0000-0000-0000-0000000000f2",
+  noNumber: "aaaaaaaa-0000-0000-0000-0000000000f3", // an email identity only
+  otherCompany: "bbbbbbbb-0000-0000-0000-0000000000f4",
+  unknown: "cccccccc-0000-0000-0000-0000000000f5", // no such contact
+};
+const waBase = (withNumber = true) => [
+  ...(withNumber
+    ? [
+        `insert into wa_numbers(tenant_id,label,phone_number_id,access_token,is_default,active) values ('${orgA}','A line','pn-a','t',true,true)`,
+      ]
+    : []),
+  `insert into contacts(id,tenant_id,name,phone,consent_given) values ('${WA.ok}','${orgA}','WA ok','+971500000001',true)`,
+  `insert into contacts(id,tenant_id,name,phone,consent_given) values ('${WA.noConsent}','${orgA}','WA no consent','+971500000002',false)`,
+  `insert into contacts(id,tenant_id,name,phone,consent_given) values ('${WA.noNumber}','${orgA}','WA no number',null,true)`,
+  `insert into contact_identities(tenant_id,contact_id,kind,value,is_primary) values ('${orgA}','${WA.noNumber}','email','nonumber@acme.test',true)`,
+  `insert into contacts(id,tenant_id,name,phone,consent_given) values ('${WA.otherCompany}','${orgB}','WA other company','+971500000004',true)`,
+];
+const WA_SCENARIOS = [
+  ["a normal contact", WA.ok, waBase()],
+  ["the contact of another company", WA.otherCompany, waBase()],
+  ["a contact that does not exist", WA.unknown, waBase()],
+  ["no consent recorded", WA.noConsent, waBase()],
+  ["no phone number", WA.noNumber, waBase()],
+  [
+    "the subscription is paused",
+    WA.ok,
+    [...waBase(), `update organizations set suspended = true where id = '${orgA}'`],
+  ],
+  ["no default WhatsApp number", WA.ok, waBase(false)],
+];
+const WA_OPEN_CALLERS = [
+  ["no factor, aal1", AT(bob, AAL1)],
+  ["only an unverified app, aal1", AT(carol, AAL1)],
+  ["only a verified phone, aal1", AT(dave, AAL1)],
+  ["verified app, code entered (aal2)", AT(alice, AAL2)],
+  ["no identity at all, aal1", NOBODY(AAL1)],
+  ["service role", SERVICE],
+  ["anon", ANON],
+];
+const WA_GATED_CALLERS = [
+  ["verified app, no code (aal1)", AT(alice, AAL1)],
+  ["verified app, token without an aal claim", AT(alice, undefined)],
+  ["verified app AND verified phone, aal1", AT(erin, AAL1)],
+];
+/** What the call answered and what it left behind, as one comparable line. */
+async function waOutcome(who, contactId, setup) {
+  return as(
+    who,
+    async (run) => {
+      const r = await run(`select public.open_contact_whatsapp('${contactId}') as id`);
+      await c.query("reset role"); // look at the result as the owner, not as the caller
+      const left = (
+        await c.query(
+          `select count(*)::int as n, count(wa_number_id)::int as on_a_line
+             from conversations where contact_id = $1 and channel = 'whatsapp'`,
+          [contactId],
+        )
+      ).rows[0];
+      const effect = `conversations: ${left.n}, on a line: ${left.on_a_line}`;
+      return r.ok ? `ok (${effect})` : `${r.code} ${r.message} (${effect})`;
+    },
+    { beforeBecoming: setup },
+  );
+}
+async function waAll(callers) {
+  const out = new Map();
+  for (const [scenario, contactId, setup] of WA_SCENARIOS)
+    for (const [who, caller] of callers)
+      out.set(`${scenario} / ${who}`, await waOutcome(caller, contactId, setup));
+  return out;
+}
+const waFunctionFacts = async () =>
+  JSON.stringify(
+    (
+      await c.query(`
+        select p.proowner::regrole::text as owner, p.prosecdef, p.proconfig, p.proacl::text as acl,
+               pg_get_function_arguments(p.oid) as args, pg_get_function_result(p.oid) as result,
+               p.provolatile, p.proisstrict, p.prolang::regclass::text as lang
+          from pg_proc p where p.oid = 'public.open_contact_whatsapp(uuid)'::regprocedure`)
+    ).rows[0],
+  );
+const waDefinition = async () =>
+  (
+    await c.query(
+      "select pg_get_functiondef('public.open_contact_whatsapp(uuid)'::regprocedure) as d",
+    )
+  ).rows[0].d;
+const waOpenBefore = await waAll(WA_OPEN_CALLERS);
+const waGatedBefore = await waAll(WA_GATED_CALLERS);
+const waFactsBefore = await waFunctionFacts();
+const waDefinitionBefore = await waDefinition();
+heading("open_contact_whatsapp() before the gate (PR #66's body, live)");
+check(
+  "a normal contact is opened by everybody who may call it, including a verified-factor person with no code (the gap)",
+  waOpenBefore.get("a normal contact / no factor, aal1")?.startsWith("ok") &&
+    waGatedBefore.get("a normal contact / verified app, no code (aal1)")?.startsWith("ok"),
+  `${waOpenBefore.get("a normal contact / no factor, aal1")} | ${waGatedBefore.get("a normal contact / verified app, no code (aal1)")}`,
+);
+check(
+  "the sample cases reach the function's own refusals (the comparison below is not vacuous)",
+  [
+    "the contact of another company / no factor, aal1",
+    "no consent recorded / no factor, aal1",
+    "no phone number / no factor, aal1",
+    "the subscription is paused / no factor, aal1",
+    "no default WhatsApp number / no factor, aal1",
+  ].every((k) => /^P0001 /.test(waOpenBefore.get(k) ?? "")),
+  [...waOpenBefore.entries()]
+    .filter(([k]) => k.endsWith("no factor, aal1"))
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(" | "),
+);
+console.log(
+  `  (${waOpenBefore.size} + ${waGatedBefore.size} recorded answers to compare after the gate)`,
+);
+
+// ---------------------------------------------------------------------------
+// The tables, from the catalogue
+
+const listProtected = async () =>
+  (
+    await c.query(`
+      select n.nspname as schema, c.relname as name, c.relispartition as partition
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where c.relkind in ('r','p') and c.relrowsecurity
+         and (n.nspname = 'public' or (n.nspname = 'storage' and c.relname = 'objects'))
+       order by 1, 2`)
+  ).rows;
+const qname = (t) => `"${t.schema}"."${t.name}"`;
+/**
+ * Tables the migration leaves out of the gate on purpose, and why. The set of
+ * tables that really lack the gate must equal this list exactly: a table taken
+ * off it without being gated, or left off the gate without being listed, fails.
+ */
+const LEFT_OUT = new Map([
+  [
+    "tenant_alert_settings",
+    "not open at aal1 today (checked below); left out only because 20261016142000_settings_alert_prerequisites.sql (PR #87) stops when this table has a policy it does not know",
+  ],
+  [
+    "lead_alerts_log",
+    "not open at aal1 today (checked below); left out only because 20261016142000_settings_alert_prerequisites.sql (PR #87) stops when this table has a policy it does not know",
+  ],
+]);
+const isLeftOut = (t) => t.schema === "public" && LEFT_OUT.has(t.name);
+/** What the gate is meant to cover: every protected table except the ones named above. */
+const listGated = async () => (await listProtected()).filter((t) => !isLeftOut(t));
+
+/** Everything about a table the matrix needs to put one row in it and try the four verbs. */
+async function describe(t) {
+  const cols = (
+    await c.query(
+      `select a.attname as name, format_type(a.atttypid, a.atttypmod) as type, ty.typname, ty.typtype,
+              a.attnotnull as notnull, a.attgenerated as generated, a.attidentity as identity,
+              exists (select 1 from pg_index i where i.indrelid = a.attrelid and i.indisprimary
+                         and a.attnum = any (i.indkey)) as in_pk
+         from pg_attribute a join pg_type ty on ty.oid = a.atttypid
+        where a.attrelid = $1::regclass and a.attnum > 0 and not a.attisdropped
+        order by a.attnum`,
+      [qname(t)],
+    )
+  ).rows;
+  const checkNames = (
+    await c.query(
+      "select conname from pg_constraint where conrelid = $1::regclass and contype = 'c'",
+      [qname(t)],
+    )
+  ).rows.map((r) => r.conname);
+  return { cols, checkNames };
+}
+const ident_ = (s) => `"${s.replace(/"/g, '""')}"`;
+/** A value for a primary-key column; `seed` tells two rows apart. */
+function dummy(col, seed) {
+  if (col.typtype === "e")
+    return `(select enumlabel from pg_enum where enumtypid = ${c.escapeLiteral(col.type)}::regtype order by enumsortorder limit 1)`;
+  switch (col.typname) {
+    case "uuid":
+      return "gen_random_uuid()";
+    case "text":
+    case "varchar":
+    case "bpchar":
+    case "citext":
+      return `'pk-${seed}'`;
+    case "int2":
+    case "int4":
+    case "int8":
+    case "numeric":
+      return String(seed);
+    case "bool":
+      return seed === 1 ? "true" : "false";
+    case "date":
+      return `current_date + ${seed}`;
+    case "timestamp":
+    case "timestamptz":
+      return `now() + interval '${seed} day'`;
+    default:
+      throw new Error(
+        `the matrix has no sample value for ${col.name} (${col.type}); add one in dummy()`,
+      );
+  }
+}
+const insertSql = (t, d, seed) => {
+  const pk = d.cols.filter((col) => col.in_pk && col.identity !== "a" && col.generated === "");
+  return pk.length
+    ? `insert into ${qname(t)} (${pk.map((col) => ident_(col.name)).join(", ")}) values (${pk.map((col) => dummy(col, seed)).join(", ")})`
+    : `insert into ${qname(t)} default values`;
+};
+
+/**
+ * Who may do what to a table. Each caller tries select, insert, update and delete
+ * on a table that holds one sample row and a throwaway permissive policy that
+ * lets any browser caller in, so the only thing deciding is mfa_session_gate.
+ *   expect "blocked": nothing is visible, writes are refused or touch no row.
+ *   expect "open":    everything the sample policy allows goes through.
+ */
+function scenarios() {
+  return [
+    ["verified app, no code (aal1)", AT(alice, AAL1), "blocked"],
+    ["verified app, token without an aal claim", AT(alice, undefined), "blocked"],
+    ["verified app, aal3 (not aal2)", AT(alice, "aal3"), "blocked"],
+    ["verified app AND verified phone, aal1", AT(erin, AAL1), "blocked"],
+    ["no identity at all (no sub), aal1", NOBODY(AAL1), "blocked"],
+    ["no identity at all, but an aal2 claim", NOBODY(AAL2), "blocked"],
+    ["verified app, code entered (aal2)", AT(alice, AAL2), "open"],
+    ["no factor, aal1", AT(bob, AAL1), "open"],
+    ["only an unverified app, aal1", AT(carol, AAL1), "open"],
+    ["only a verified phone, aal1", AT(dave, AAL1), "open"],
+    ["service role", SERVICE, "open"],
+  ];
+}
+
+/**
+ * Tries the four verbs for every caller on one table. Returns one line per
+ * caller and verb that did not behave: [] means all as expected.
+ * Everything here is undone: one transaction, rolled back.
+ */
+async function probe(t, list, { blockedOnly = false } = {}) {
+  const d = await describe(t);
+  const wrong = [];
+  let clean = 0;
+  let passedPolicyThenFailed = 0;
+  await c.query("begin");
+  try {
+    await c.query("set local session_replication_role = replica"); // no triggers, no foreign-key checks
+    for (const col of d.cols)
+      if (col.notnull && !col.in_pk && col.identity === "" && col.generated === "")
+        await c.query(`alter table ${qname(t)} alter column ${ident_(col.name)} drop not null`);
+    for (const name of d.checkNames)
+      await c.query(`alter table ${qname(t)} drop constraint ${ident_(name)}`);
+    await c.query(`grant all on ${qname(t)} to authenticated, service_role`);
+    await c.query(
+      `create policy zz_probe on ${qname(t)} as permissive for all to authenticated using (true) with check (true)`,
+    );
+    // Some tables already hold their one fixed row (the migrations insert it), so a clash is fine.
+    await c.query(`${insertSql(t, d, 1)} on conflict do nothing`);
+    const total = (await c.query(`select count(*)::int as n from ${qname(t)}`)).rows[0].n;
+    const settable = d.cols.find((col) => col.generated === "" && col.identity !== "a");
+    for (const [label, who, expect] of list) {
+      if (blockedOnly && expect !== "blocked") continue;
+      const verbs = {
+        select: `select count(*)::int as n from ${qname(t)}`,
+        insert: insertSql(t, d, 2),
+        update: settable
+          ? `update ${qname(t)} set ${ident_(settable.name)} = ${ident_(settable.name)}`
+          : null,
+        delete: `delete from ${qname(t)}`,
+      };
+      for (const [verb, sql] of Object.entries(verbs)) {
+        if (!sql) continue;
+        await c.query("savepoint verb");
+        await c.query(becomeSql(who));
+        let outcome;
+        try {
+          const r = await c.query(sql);
+          outcome = { ok: true, rowCount: r.rowCount, n: verb === "select" ? r.rows[0].n : null };
+        } catch (e) {
+          outcome = { ok: false, code: e.code, message: e.message };
+        }
+        await c.query("rollback to verb");
+        await c.query("release verb");
+
+        let behaved;
+        if (verb === "select")
+          behaved = outcome.ok && (expect === "blocked" ? outcome.n === 0 : outcome.n === total);
+        else if (verb === "insert") {
+          behaved =
+            expect === "blocked"
+              ? refusedByPolicy(outcome)
+              : outcome.ok || !refusedByPolicy(outcome);
+          if (expect === "open" && behaved) outcome.ok ? clean++ : passedPolicyThenFailed++;
+        } else
+          behaved =
+            outcome.ok &&
+            (expect === "blocked" ? outcome.rowCount === 0 : outcome.rowCount === total);
+        if (!behaved)
+          wrong.push(
+            `${qname(t)} / ${label} / ${verb}: ` +
+              (outcome.ok
+                ? `ok rows=${outcome.n ?? outcome.rowCount} (total ${total})`
+                : `${outcome.code} ${outcome.message}`),
+          );
+      }
+    }
+  } finally {
+    await c.query("rollback");
+  }
+  return { wrong, clean, passedPolicyThenFailed };
+}
+
+/**
+ * A partition cannot take a generic sample row directly (its bound refuses it), so the
+ * matrix probes the parent, whose policies and gate apply to every row read through it,
+ * and each partition is tested by name in "a partitioned table" below.
+ */
+const probeable = (tables) => tables.filter((t) => !t.partition);
+async function matrix(tables, list, options) {
+  tables = probeable(tables);
+  const wrong = [];
+  let clean = 0;
+  let late = 0;
+  for (const t of tables) {
+    const r = await probe(t, list, options);
+    wrong.push(...r.wrong);
+    clean += r.clean;
+    late += r.passedPolicyThenFailed;
+  }
+  return { wrong, clean, late };
+}
+
+const tablesBefore = await listProtected();
+heading(
+  `before the migration: the same probe reaches all ${probeable(tablesBefore).length} tables at aal1`,
+);
+{
+  const open = scenarios().map(([label, who]) => [label, who, "open"]);
+  const r = await matrix(
+    tablesBefore,
+    open.filter(([label]) => /^verified app, no code|AND verified phone/.test(label)),
+  );
+  check(
+    `a person with a verified factor and no code can select, insert, update and delete on all ${probeable(tablesBefore).length} tables (the probe is sound)`,
+    r.wrong.length === 0,
+    r.wrong.slice(0, 3).join(" | "),
+  );
+}
+
+// ---------------------------------------------------------------------------
+heading("the migration stops and changes nothing when it cannot do its job");
+const snapshot = async () =>
+  JSON.stringify(
+    (
+      await c.query(`
+        select
+          (select count(*) from pg_policies where policyname = 'mfa_session_gate')::int as gate_policies,
+          (select count(*) from pg_proc where proname in ('session_meets_mfa','apply_mfa_session_gate','mfa_session_gate_left_out')
+              and pronamespace = 'public'::regnamespace)::int as functions,
+          (select md5(pg_get_functiondef('public.list_subscribers()'::regprocedure))) as list_subscribers`)
+    ).rows[0],
+  );
+const untouched = await snapshot();
+check(
+  "nothing is installed yet",
+  JSON.parse(untouched).gate_policies === 0 && JSON.parse(untouched).functions === 0,
+);
+
+{
+  // (a) the factor table is not there
+  await c.query("alter table auth.mfa_factors rename to mfa_factors_hidden");
+  const r = await apply(c, mineSql);
+  await c.query("alter table auth.mfa_factors_hidden rename to mfa_factors");
+  check(
+    "factor table missing: the file fails, naming the table",
+    r.error && /mfa_factors/.test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+}
+/** A role the way the SQL editor might run as: may create in public and see the auth schema, nothing more. */
+async function makeRole(name, attributes = "login") {
+  await c.query(`create role ${name} ${attributes} password '${name}'`);
+  await c.query(`grant create, usage on schema public to ${name}`);
+  await c.query(`grant usage on schema auth, extensions to ${name}`);
+}
+const dropRole = async (name) => {
+  await c.query(`drop owned by ${name}`);
+  await c.query(`drop role ${name}`);
+};
+{
+  // (b) the owner of the file has no SELECT on the factor table (row-level security off here,
+  // so that this is the only thing in the way; with it on, the answer is case (b2) below)
+  await c.query("alter table auth.mfa_factors disable row level security");
+  await makeRole("migrator");
+  const m = await connect("migrator", "migrator");
+  const r = await apply(m, mineSql);
+  await m.end();
+  await dropRole("migrator");
+  await c.query("alter table auth.mfa_factors enable row level security");
+  check(
+    "owner may not read the factor table: the file fails before creating a policy",
+    r.error && /permission denied for table mfa_factors/.test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+}
+{
+  // (b2) the reviewer's case: the owner may SELECT, but row-level security is on for the
+  // factor table and the owner is exempt from it in no way. It reads ZERO rows, no error,
+  // so "no factor" would be the answer for everybody and the gate would be inert.
+  await makeRole("migrator");
+  await c.query("grant select on auth.mfa_factors to migrator");
+  const m = await connect("migrator", "migrator");
+  const r = await apply(m, mineSql);
+  await m.end();
+  await dropRole("migrator");
+  check(
+    "owner can select but is not exempt from row-level security on the factor table: the file fails, in plain words",
+    r.error &&
+      /mfa_factors/.test(r.error.message) &&
+      /row-level security/i.test(r.error.message) &&
+      /nothing was changed/i.test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+}
+{
+  // (b3) the same, when the rule already exists with such an owner and a different role runs the file
+  // (CREATE OR REPLACE keeps the owner). The owner of the RULE is what matters, not who pastes the file.
+  await makeRole("migrator");
+  await c.query("grant select on auth.mfa_factors to migrator");
+  await c.query(
+    "create function public.session_meets_mfa() returns boolean language sql as 'select true'",
+  );
+  await c.query("alter function public.session_meets_mfa() owner to migrator");
+  const r = await apply(c, mineSql);
+  const left = (await snapshot()) === JSON.stringify({ ...JSON.parse(untouched), functions: 1 });
+  await c.query("drop function public.session_meets_mfa()");
+  await dropRole("migrator");
+  check(
+    "the rule is owned by a role that sees no factor rows: the file fails, whoever runs it",
+    r.error &&
+      /row-level security/i.test(r.error.message) &&
+      /nothing was changed/i.test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing else was installed", left);
+  check("...(harness clean-up done)", (await snapshot()) === untouched);
+}
+for (const [column, label] of [
+  ["factor_type", "totp"],
+  ["status", "verified"],
+]) {
+  // (b4) the rule compares the column with the text 'totp' / 'verified'. If Auth's enumeration has no such
+  // value (renamed, or this is not the table the rule was written for) the comparison is never true: no
+  // error, no rows, "no factor" for everybody, an inert gate. The file has to notice that by itself.
+  const type = column === "factor_type" ? "auth.factor_type" : "auth.factor_status";
+  await c.query(`alter type ${type} rename value '${label}' to '${label}_renamed'`);
+  const r = await apply(c, mineSql);
+  await c.query(`alter type ${type} rename value '${label}_renamed' to '${label}'`);
+  check(
+    `the factor table's ${column} has no value '${label}': the file fails in plain words`,
+    r.error &&
+      new RegExp(`${column}.*${label}|${label}.*${column}`).test(r.error.message) &&
+      /nothing was changed/i.test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+}
+{
+  // (d) PR #66 is not applied (the live open_contact_whatsapp does not read contact_identities):
+  // the file must not install #66's body on its own
+  await c.query(`create or replace function public.open_contact_whatsapp(p_contact_id uuid)
+    returns uuid language plpgsql security definer set search_path = public, pg_temp
+    as $$ begin return null; end; $$`);
+  const r = await apply(c, mineSql);
+  await apply(c, fs.readFileSync(path.join(MIG, WA_FILE), "utf8"));
+  check(
+    "PR #66 not applied: the file stops, naming #66's file",
+    r.error && new RegExp(WA_FILE.replace(".", "\.")).test(r.error.message),
+    r.error ? r.error.message : "it did NOT fail",
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+  check(
+    "...(the harness put #66's function back as it was)",
+    (await waDefinition()) === waDefinitionBefore,
+  );
+}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Stands in for the app: reads a table over and over on its own connection and
+ * remembers the slowest answer. A lock the migration holds on that table, while it
+ * waits for another one, shows up here as a slow answer.
+ */
+function watchReaders(table) {
+  const state = { stop: false, worst: 0, runs: 0 };
+  state.done = (async () => {
+    const reader = await connect();
+    while (!state.stop) {
+      const t = Date.now();
+      await reader.query(`select count(*) from ${table}`);
+      state.worst = Math.max(state.worst, Date.now() - t);
+      state.runs++;
+      await sleep(25);
+    }
+    await reader.end();
+  })();
+  return state;
+}
+{
+  // (c) another session holds a lock the file needs (the situation of an upload in flight on
+  // storage.objects, which is the last table the file reaches). The file must give up after a
+  // few seconds, change nothing, say which table and what to do, and, the part that matters on
+  // a live app, never make the people using the OTHER tables wait while it tries.
+  const holder = await connect();
+  await holder.query("begin");
+  await holder.query("lock table storage.objects in access share mode");
+  const readers = watchReaders("public.contacts");
+  await sleep(300);
+  const started = Date.now();
+  const running = apply(c, mineSql);
+  // If the file does not give up by itself it would wait for ever, so stop waiting after 30 seconds.
+  const early = await Promise.race([running, sleep(30_000)]);
+  const waited = (Date.now() - started) / 1000;
+  readers.stop = true;
+  await readers.done;
+  await holder.query("rollback");
+  await holder.end();
+  const r = early ?? (await running);
+  check(
+    "a lock held elsewhere: the file gives up within a few seconds, naming the table and saying to run it again",
+    early !== undefined &&
+      r.error?.code === "55P03" &&
+      /storage\.objects/.test(r.error.message) &&
+      /again/i.test(r.error.message) &&
+      /nothing was changed/i.test(r.error.message) &&
+      waited >= 3 &&
+      waited < 10,
+    early === undefined
+      ? `still waiting after ${waited.toFixed(0)}s: no limit`
+      : r.error
+        ? `${r.error.code} after ${waited.toFixed(1)}s: ${r.error.message}`
+        : "it did NOT fail",
+  );
+  check(
+    `...while it tried, nobody reading public.contacts was kept waiting (slowest of ${readers.runs} reads: ${readers.worst} ms)`,
+    readers.runs > 20 && readers.worst < 1000,
+    `${readers.runs} reads, slowest ${readers.worst} ms`,
+  );
+  check("...and nothing was installed", (await snapshot()) === untouched);
+}
+{
+  // (c2) the same lock, but released after a moment: the file waits it out by itself.
+  const holder = await connect();
+  await holder.query("begin");
+  await holder.query("lock table storage.objects in access share mode");
+  const readers = watchReaders("public.contacts");
+  const running = apply(c, mineSql);
+  await sleep(1500);
+  await holder.query("rollback");
+  await holder.end();
+  const r = await running;
+  readers.stop = true;
+  await readers.done;
+  const installed = (await snapshot()) !== untouched;
+  check(
+    "a lock held for a moment: the file waits for it and then succeeds",
+    r.error === null && installed,
+    r.error?.message,
+  );
+  check(
+    `...and nobody reading public.contacts was kept waiting meanwhile (slowest of ${readers.runs} reads: ${readers.worst} ms)`,
+    readers.runs > 20 && readers.worst < 1000,
+    `${readers.runs} reads, slowest ${readers.worst} ms`,
+  );
+  const undo = await apply(c, ROLLBACK);
+  check(
+    "...(the harness removed it again with the printed rollback)",
+    undo.error === null && (await snapshot()) === untouched,
+    undo.error?.message,
+  );
+}
+
+// ---------------------------------------------------------------------------
+heading("applying the migration");
+const first = await apply(c, mineSql);
+check("the migration applies", first.error === null, first.error?.message);
+const verification = first.results?.[first.results.length - 1]?.rows?.[0];
+const allProtected = await listProtected();
+const protectedNow = await listGated();
+const publicCount = allProtected.filter((t) => t.schema === "public").length;
+const leftOutNow = allProtected.filter(isLeftOut).length;
+check(
+  "its own closing query reports every table gated and none missing",
+  verification &&
+    Number(verification.rls_tables) === publicCount &&
+    Number(verification.left_out) === leftOutNow &&
+    Number(verification.gated) === publicCount - leftOutNow + 1 &&
+    Number(verification.missing) === 0,
+  JSON.stringify(verification),
+);
+console.log(
+  `  (${publicCount} tables with row-level security in public, ${leftOutNow} left out by name, plus storage.objects: ${protectedNow.length} gated)`,
+);
+
+heading("open_contact_whatsapp(): guarded, and otherwise exactly PR #66's function");
+{
+  const open = await waAll(WA_OPEN_CALLERS);
+  const changed = [...waOpenBefore.entries()].filter(([k, v]) => open.get(k) !== v);
+  check(
+    `everybody the gate lets in gets the same answer and the same effect as before (${waOpenBefore.size} cases)`,
+    changed.length === 0,
+    changed
+      .slice(0, 3)
+      .map(([k, v]) => `${k}: was "${v}" now "${open.get(k)}"`)
+      .join(" | "),
+  );
+  const gated = await waAll(WA_GATED_CALLERS);
+  const notRefused = [...gated.entries()].filter(
+    ([, v]) => !/^42501 Two-factor code required \(conversations: 0, on a line: 0\)$/.test(v),
+  );
+  check(
+    `a verified-factor person without the code is refused, and nothing is opened (${gated.size} cases, every scenario)`,
+    notRefused.length === 0,
+    notRefused
+      .slice(0, 3)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(" | "),
+  );
+  check(
+    "the same person with the code (aal2) opens the conversation",
+    open.get("a normal contact / verified app, code entered (aal2)")?.startsWith("ok"),
+    open.get("a normal contact / verified app, code entered (aal2)"),
+  );
+  check(
+    "owner, security mode, search_path, grants, arguments and result are as PR #66 set them",
+    (await waFunctionFacts()) === waFactsBefore,
+    `${waFactsBefore} -> ${await waFunctionFacts()}`,
+  );
+  // The new body must be #66's body with the guard added and nothing else.
+  const functionBlock = (sql, label) => {
+    const m = sql
+      .replace(/\r\n/g, "\n")
+      .match(
+        /^CREATE OR REPLACE FUNCTION public\.open_contact_whatsapp\(p_contact_id uuid\)[\s\S]*?\n\$\$;/m,
+      );
+    if (!m) throw new Error(`no open_contact_whatsapp definition found in ${label}`);
+    return m[0];
+  };
+  const GUARD = `  IF NOT public.session_meets_mfa() THEN
+    RAISE EXCEPTION 'Two-factor code required' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+`;
+  const theirs = functionBlock(fs.readFileSync(path.join(MIG, WA_FILE), "utf8"), WA_FILE);
+  const mine = functionBlock(mineSql, MINE);
+  check(
+    "the migration's body is PR #66's body plus exactly one guard (the guard removed gives #66's text, character for character)",
+    mine.includes(GUARD) && mine.replace(GUARD, "") === theirs,
+    !mine.includes(GUARD)
+      ? "no guard in the body"
+      : mine.replace(GUARD, "") === theirs
+        ? ""
+        : "the bodies differ",
+  );
+  check(
+    "...and the guard comes right after the sign-in check, before anything is read",
+    mine.indexOf("IF auth.uid() IS NULL") !== -1 &&
+      mine.indexOf("IF auth.uid() IS NULL") < mine.indexOf(GUARD) &&
+      mine.indexOf(GUARD) < mine.indexOf("v_tenant := public.current_tenant_id()"),
+  );
+}
+
+heading("a partitioned table (relkind 'p')");
+{
+  const kinds = (
+    await c.query(`
+      select c.relname, c.relkind::text as kind,
+             exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polname = 'mfa_session_gate'
+                       and not p.polpermissive) as gated
+        from pg_class c where c.relname like 'zz_partitioned%' and c.relnamespace = 'public'::regnamespace
+          and c.relkind in ('r','p')
+       order by 1`)
+  ).rows;
+  check(
+    "the partitioned parent and both partitions are in the catalogue and all three are gated",
+    kinds.length === 3 &&
+      kinds.some((k) => k.kind === "p") &&
+      kinds.filter((k) => k.kind === "r").length === 2 &&
+      kinds.every((k) => k.gated),
+    JSON.stringify(kinds),
+  );
+  const through = (who) => countOf(who, "public.zz_partitioned");
+  check(
+    "rows read THROUGH the parent: a verified-factor person at aal1 sees none; at aal2 and without a factor, both",
+    (await through(AT(alice, AAL1))) === 0 &&
+      (await through(AT(alice, AAL2))) === 2 &&
+      (await through(AT(bob, AAL1))) === 2,
+    `${await through(AT(alice, AAL1))} / ${await through(AT(alice, AAL2))} / ${await through(AT(bob, AAL1))}`,
+  );
+  check(
+    "rows read straight from a partition: none at aal1 with a factor",
+    (await countOf(AT(alice, AAL1), "public.zz_partitioned_a")) === 0 &&
+      (await countOf(AT(alice, AAL1), "public.zz_partitioned_rest")) === 0,
+  );
+}
+
+heading("the policy itself, on every table from the catalogue");
+// Postgres prints the policy's `(SELECT public.session_meets_mfa())` back as a sub-select.
+const ONCE_PER_STATEMENT = /\(\s*SELECT\s+(public\.)?session_meets_mfa\(\)/i;
+{
+  const rows = (
+    await c.query(`
+      select n.nspname as schema, c.relname as name, p.polpermissive as permissive, p.polcmd as cmd,
+             (select array_agg(r.rolname::text order by r.rolname) from pg_roles r where r.oid = any (p.polroles)) as roles,
+             pg_get_expr(p.polqual, p.polrelid) as using_sql, pg_get_expr(p.polwithcheck, p.polrelid) as check_sql
+        from pg_policy p join pg_class c on c.oid = p.polrelid join pg_namespace n on n.oid = c.relnamespace
+       where p.polname = 'mfa_session_gate'
+       order by 1, 2`)
+  ).rows;
+  const names = new Set(rows.map((r) => `${r.schema}.${r.name}`));
+  const wanted = protectedNow.map((t) => `${t.schema}.${t.name}`);
+  check(
+    `exactly one policy per table: ${rows.length} policies for ${wanted.length} tables`,
+    rows.length === wanted.length &&
+      wanted.every((w) => names.has(w)) &&
+      names.size === rows.length,
+    wanted.filter((w) => !names.has(w)).join(", "),
+  );
+  check(
+    "every one is RESTRICTIVE",
+    rows.every((r) => r.permissive === false),
+  );
+  check(
+    "every one covers all commands (select, insert, update, delete)",
+    rows.every((r) => r.cmd === "*"),
+  );
+  check(
+    "every one is for the browser role only (anon and service_role are not touched)",
+    rows.every((r) => r.roles.length === 1 && r.roles[0] === "authenticated"),
+  );
+  check(
+    "every one asks the helper for reading AND for writing, once per statement",
+    rows.every(
+      (r) =>
+        ONCE_PER_STATEMENT.test(r.using_sql ?? "") && ONCE_PER_STATEMENT.test(r.check_sql ?? ""),
+    ),
+    rows.find((r) => !ONCE_PER_STATEMENT.test(r.using_sql ?? ""))?.using_sql,
+  );
+}
+
+heading("the helper");
+{
+  const fn = (
+    await c.query(
+      `select p.prosrc, p.prosecdef, p.provolatile, p.proconfig,
+              has_function_privilege('anon', p.oid, 'EXECUTE') as anon,
+              has_function_privilege('authenticated', p.oid, 'EXECUTE') as auth,
+              has_function_privilege('service_role', p.oid, 'EXECUTE') as svc,
+              has_function_privilege('public', p.oid, 'EXECUTE') as pub
+         from pg_proc p where p.proname = 'session_meets_mfa' and p.pronamespace = 'public'::regnamespace`,
+    )
+  ).rows[0];
+  check(
+    "SECURITY DEFINER with an empty search_path",
+    fn.prosecdef && (fn.proconfig ?? []).some((x) => /^search_path=("")?$/.test(x)),
+    JSON.stringify(fn.proconfig),
+  );
+  check(
+    "row_security = off in its settings: if its owner could not see the factor table it ERRORS instead of reading nothing",
+    (fn.proconfig ?? []).includes("row_security=off"),
+    JSON.stringify(fn.proconfig),
+  );
+  check("STABLE (so a policy may evaluate it once per statement)", fn.provolatile === "s");
+  check("swallows no error: its body has no EXCEPTION handler", !/exception/i.test(fn.prosrc));
+  check("callable by the browser role and the service role", fn.auth && fn.svc);
+  check("not callable by anon or by everybody", !fn.anon && !fn.pub);
+  const apply_ = (
+    await c.query(
+      `select has_function_privilege('anon', p.oid, 'EXECUTE') as anon, has_function_privilege('authenticated', p.oid, 'EXECUTE') as auth,
+              has_function_privilege('service_role', p.oid, 'EXECUTE') as svc, has_function_privilege('public', p.oid, 'EXECUTE') as pub,
+              has_function_privilege('postgres', p.oid, 'EXECUTE') as owner
+         from pg_proc p where p.proname = 'apply_mfa_session_gate' and p.pronamespace = 'public'::regnamespace`,
+    )
+  ).rows[0];
+  check(
+    "apply_mfa_session_gate() is callable by the owner and by nobody else",
+    apply_.owner && !apply_.anon && !apply_.auth && !apply_.svc && !apply_.pub,
+    JSON.stringify(apply_),
+  );
+  for (const [label, who] of [
+    ["anon", ANON],
+    ["a signed-in person", AT(alice, AAL2)],
+    ["the service role", SERVICE],
+  ]) {
+    const r = await as(who, (run) => run("select public.apply_mfa_session_gate()"));
+    check(
+      `${label} cannot run apply_mfa_session_gate()`,
+      !r.ok && r.code === "42501",
+      r.ok ? "it ran" : r.code,
+    );
+  }
+  const anonCall = await as(ANON, (run) => run("select public.session_meets_mfa()"));
+  check("anon cannot call the helper", !anonCall.ok && anonCall.code === "42501");
+}
+
+heading("what the helper answers (the rule, case by case)");
+const mfaAnswer = async (who) => {
+  const r = await as(who, (run) => run("select public.session_meets_mfa() as ok"));
+  return r.ok ? r.rows[0].ok : `error ${r.code}`;
+};
+for (const [label, who, want] of [
+  ["verified app, aal1", AT(alice, AAL1), false],
+  ["verified app, aal2", AT(alice, AAL2), true],
+  ["verified app, no aal claim", AT(alice, undefined), false],
+  ["verified app, aal3", AT(alice, "aal3"), false],
+  ["verified app, claim of another shape (AAL2 upper case)", AT(alice, "AAL2"), false],
+  ["verified app AND verified phone, aal1", AT(erin, AAL1), false],
+  ["no factor, aal1", AT(bob, AAL1), true],
+  ["no factor, no aal claim", AT(bob, undefined), true],
+  ["only an unverified app, aal1", AT(carol, AAL1), true],
+  [
+    "only a verified phone, aal1 (the app cannot ask for a phone code, so it must not lock out)",
+    AT(dave, AAL1),
+    true,
+  ],
+  ["no identity (no sub), aal1", NOBODY(AAL1), false],
+  ["no identity (no sub), aal2", NOBODY(AAL2), false],
+])
+  check(`${label} -> ${want}`, (await mfaAnswer(who)) === want, String(await mfaAnswer(who)));
+
+heading("every table, every kind of caller, every verb (generated from the catalogue)");
+const list = scenarios();
+const full = await matrix(protectedNow, list);
+check(
+  `${probeable(protectedNow).length} tables x ${list.length} callers x 4 verbs: ${probeable(protectedNow).length * list.length * 4} cases behave as expected`,
+  full.wrong.length === 0,
+  full.wrong.slice(0, 5).join(" | "),
+);
+console.log(
+  `  (writes that were let through by the gate: ${full.clean} inserts succeeded; ${full.late} stopped at a table constraint AFTER the policy had let them through)`,
+);
+for (const w of full.wrong.slice(0, 40)) console.log("    " + w);
+
+// ---------------------------------------------------------------------------
+heading("real policies, real rows: nothing else changed");
+for (const [label, who, table, want] of [
+  ["Acme admin, verified app, aal1", AT(alice, AAL1), "contacts", 0],
+  ["Acme admin, verified app, aal2", AT(alice, AAL2), "contacts", 2],
+  ["Acme staff, no factor, aal1", AT(bob, AAL1), "contacts", 2],
+  ["Acme staff with an unverified app, aal1", AT(carol, AAL1), "contacts", 2],
+  ["Acme staff with a verified phone only, aal1", AT(dave, AAL1), "contacts", 2],
+  ["Globex staff, verified app, aal2", AT(gina, AAL2), "contacts", 1],
+  ["Globex staff, verified app, aal1", AT(gina, AAL1), "contacts", 0],
+  ["Acme admin, aal2", AT(alice, AAL2), "messages", 1],
+  ["Acme admin, aal1", AT(alice, AAL1), "messages", 0],
+  ["Acme admin, aal2", AT(alice, AAL2), "conversations", 1],
+  ["Acme admin, aal1", AT(alice, AAL1), "conversations", 0],
+  ["Acme admin, aal2", AT(alice, AAL2), "system_alerts", 1],
+  ["Acme admin, aal1", AT(alice, AAL1), "system_alerts", 0],
+]) {
+  const n = await countOf(who, table);
+  check(`${label}: ${table} -> ${want}`, n === want, String(n));
+}
+{
+  // Another company stays out, at every level, with every kind of factor.
+  for (const [label, who] of [
+    ["Acme admin, aal2", AT(alice, AAL2)],
+    ["Acme staff, no factor", AT(bob, AAL1)],
+  ]) {
+    const n = (
+      await as(who, (run) => run("select count(*)::int as n from contacts where name like 'B %'"))
+    ).rows[0].n;
+    check(`${label} still sees 0 of Globex's contacts`, n === 0, String(n));
+  }
+  const write = await as(AT(alice, AAL2), (run) =>
+    run("update contacts set name = 'hacked' where name = 'B contact 1'"),
+  );
+  check(
+    "Acme admin at aal2 still cannot change a Globex contact",
+    write.ok && write.rowCount === 0,
+  );
+}
+{
+  // Writes at aal1 with a verified factor.
+  const w = await as(AT(alice, AAL1), async (run) => ({
+    insert: await run("insert into contacts(name) values('planted')"),
+    update: await run("update contacts set name = 'changed' where name = 'A contact 1'"),
+    remove: await run("delete from contacts"),
+  }));
+  check(
+    "password-only token of a two-factor person: insert is refused by the policy",
+    refusedByPolicy(w.insert),
+    w.insert.message,
+  );
+  check("...update changes no row", w.update.ok && w.update.rowCount === 0);
+  check("...delete removes no row", w.remove.ok && w.remove.rowCount === 0);
+  const left = (await c.query("select count(*)::int as n from contacts")).rows[0].n;
+  check("...and all 3 contacts are still there", left === 3, String(left));
+  const ok = await as(AT(alice, AAL2), (run) =>
+    run("insert into contacts(name) values('allowed')"),
+  );
+  check("the same person with the code can write", ok.ok && ok.rowCount === 1);
+}
+{
+  const own = (who, sql) => as(who, async (run) => (await run(sql)).rows?.length ?? -1);
+  check(
+    "own profile row: hidden at aal1 with a verified factor",
+    (await own(AT(alice, AAL1), `select 1 from profiles where id = '${alice.id}'`)) === 0,
+  );
+  check(
+    "own profile row: visible at aal2",
+    (await own(AT(alice, AAL2), `select 1 from profiles where id = '${alice.id}'`)) === 1,
+  );
+  check(
+    "own profile row: visible without a factor at aal1",
+    (await own(AT(bob, AAL1), `select 1 from profiles where id = '${bob.id}'`)) === 1,
+  );
+  check(
+    "own role row (user_roles): hidden at aal1 with a verified factor",
+    (await own(AT(alice, AAL1), `select 1 from user_roles where user_id = '${alice.id}'`)) === 0,
+  );
+  check(
+    "own role row (user_roles): visible at aal2",
+    (await own(AT(alice, AAL2), `select 1 from user_roles where user_id = '${alice.id}'`)) >= 1,
+  );
+  check(
+    "own company (organizations): hidden at aal1 with a verified factor",
+    (await own(AT(alice, AAL1), "select 1 from organizations")) === 0,
+  );
+  check(
+    "own company (organizations): exactly one at aal2",
+    (await own(AT(alice, AAL2), "select 1 from organizations")) === 1,
+  );
+  check(
+    "view company_billing_overview: hidden at aal1 with a verified factor",
+    (await own(AT(alice, AAL1), "select 1 from company_billing_overview")) === 0,
+  );
+  check(
+    "view company_billing_overview: own company only at aal2",
+    (await own(AT(alice, AAL2), "select 1 from company_billing_overview")) === 1,
+  );
+  check(
+    "view company_billing_overview: own company only without a factor",
+    (await own(AT(bob, AAL1), "select 1 from company_billing_overview")) === 1,
+  );
+  check(
+    "platform staff with a verified factor at aal1 see no company",
+    (await own(AT(sam, AAL1), "select 1 from organizations")) === 0,
+  );
+  check(
+    "platform staff with a verified factor at aal2 see every company",
+    (await own(AT(sam, AAL2), "select 1 from organizations")) === 2,
+  );
+  check(
+    "platform staff without a factor see every company at aal1",
+    (await own(AT(sue, AAL1), "select 1 from organizations")) === 2,
+  );
+}
+{
+  const objects = (who) =>
+    as(who, async (run) => {
+      const r = await run(
+        "select name from storage.objects where bucket_id = 'invoices' order by name",
+      );
+      return r.ok ? r.rows.map((x) => x.name) : null; // null: the read itself failed
+    });
+  const howMany = (names) => (names === null ? "the read failed" : names.length);
+  check(
+    "storage: invoice file hidden at aal1 with a verified factor",
+    howMany(await objects(AT(alice, AAL1))) === 0,
+  );
+  const seen = await objects(AT(alice, AAL2));
+  check(
+    "storage: own company's invoice file only, at aal2",
+    seen?.length === 1 && seen[0].startsWith(orgA),
+    String(seen),
+  );
+  check("storage: visible without a factor at aal1", howMany(await objects(AT(bob, AAL1))) === 1);
+  check(
+    "storage: platform staff with a factor see all at aal2",
+    howMany(await objects(AT(sam, AAL2))) === 2,
+  );
+  check("storage: ...and none at aal1", howMany(await objects(AT(sam, AAL1))) === 0);
+  check(
+    "storage: another company's invoice file is not visible to Acme at aal2",
+    !(seen ?? []).some((n) => n.startsWith(orgB)),
+  );
+}
+
+heading("the two tables the gate leaves out: what they do at aal1 today");
+{
+  // Both are read through policies that ask public.profiles whether the caller is an admin of the
+  // company, and profiles is gated, so a two-factor admin at aal1 reads nothing. The browser role
+  // has SELECT and nothing else on them. That protection is a side effect, not a rule: the last
+  // check shows what would open them.
+  await c.query(
+    `insert into tenant_alert_settings(tenant_id) values ('${orgA}'), ('${orgB}') on conflict do nothing`,
+  );
+  await c.query(
+    `insert into lead_alerts_log(tenant_id, alert_channel, recipient) values ('${orgA}','email','a@acme.test'), ('${orgB}','email','g@globex.test')`,
+  );
+  for (const table of ["tenant_alert_settings", "lead_alerts_log"]) {
+    const seen = [
+      ["Acme admin with a verified app, no code (aal1)", AT(alice, AAL1), 0],
+      ["Acme admin with a verified app, code entered (aal2)", AT(alice, AAL2), 1],
+      ["Acme admin without a factor (aal1)", AT(ada, AAL1), 1],
+      ["Acme staff, not an admin", AT(bob, AAL1), 0],
+      ["Globex admin without a factor: Globex's row only", AT(frank, AAL1), 1],
+    ];
+    for (const [label, who, want] of seen) {
+      const n = await countOf(who, table);
+      check(`${table}: ${label} reads ${want}`, n === want, String(n));
+    }
+    const write = await as(AT(alice, AAL2), (run) =>
+      run(`delete from ${table} where tenant_id = '${orgA}'`),
+    );
+    check(
+      `${table}: even with the code, the browser role cannot change it (SELECT is all it is granted)`,
+      !write.ok && write.code === "42501" && /permission denied/i.test(write.message),
+      write.ok ? "it could" : `${write.code} ${write.message}`,
+    );
+  }
+  const opened = await as(
+    AT(alice, AAL1),
+    async (run) => (await run("select count(*)::int as n from tenant_alert_settings")).rows[0].n,
+    {
+      beforeBecoming: [
+        // what a future policy written the usual way would do: current_tenant_id() is open at aal1
+        "create policy zz_would_open on public.tenant_alert_settings for select to authenticated using (tenant_id = public.current_tenant_id())",
+      ],
+    },
+  );
+  check(
+    "...and a policy that used current_tenant_id() instead of profiles WOULD open it at aal1 (why they should be gated once #87's check allows it)",
+    opened === 1,
+    String(opened),
+  );
+}
+
+heading("what must stay reachable at aal1 for the code prompt and the layout");
+{
+  const call = (who, sql) => as(who, (run) => run(sql));
+  const t = await call(AT(alice, AAL1), "select public.current_tenant_id() as v");
+  check(
+    "current_tenant_id() answers for a verified-factor person at aal1",
+    t.ok && t.rows[0].v === orgA,
+    t.ok ? "" : t.message,
+  );
+  const my = await call(AT(alice, AAL1), "select public.my_tenant_id() as v");
+  check("my_tenant_id() answers", my.ok && my.rows[0].v === orgA, my.ok ? "" : my.message);
+  const st = await call(AT(alice, AAL1), `select public.access_state('${alice.id}') as v`);
+  check("access_state() answers", st.ok && st.rows[0].v === "ok", st.ok ? "" : st.message);
+  const flags = await call(
+    AT(alice, AAL1),
+    "select public.am_i_super_admin() as a, public.am_i_tenant_admin() as b, public.is_tenant_admin('" +
+      alice.id +
+      "') as c",
+  );
+  check(
+    "am_i_super_admin() / am_i_tenant_admin() / is_tenant_admin() answer",
+    flags.ok,
+    flags.ok ? "" : flags.message,
+  );
+  const factors = await call(AT(alice, AAL2), "select count(*) from auth.mfa_factors");
+  check(
+    "the browser role cannot read auth.mfa_factors (so the helper has to be a definer)",
+    !factors.ok && factors.code === "42501",
+    factors.ok ? "it can" : factors.code,
+  );
+  const anonRows = await call(ANON, "select count(*)::int as n from contacts");
+  check(
+    "anon is still refused (no policy lets it in)",
+    (anonRows.ok && anonRows.rows[0].n === 0) || (!anonRows.ok && anonRows.code === "42501"),
+  );
+}
+
+heading("list_subscribers(): a definer function skips policies, so it asks the rule itself");
+{
+  const probeRows = (who) =>
+    as(who, (run) => run("select count(*)::int as n from public.list_subscribers()"));
+  const s1 = await probeRows(AT(sam, AAL1));
+  check(
+    "platform admin with a verified factor, aal1: refused",
+    !s1.ok && s1.code === "42501" && /Two-factor/.test(s1.message),
+    s1.ok ? "it answered" : `${s1.code} ${s1.message}`,
+  );
+  const s2 = await probeRows(AT(sam, AAL2));
+  check(
+    "...with the code (aal2): answers, both companies",
+    s2.ok && s2.rows[0].n === 2,
+    s2.ok ? String(s2.rows[0].n) : s2.message,
+  );
+  const s3 = await probeRows(AT(sue, AAL1));
+  check(
+    "platform admin without a factor, aal1: answers",
+    s3.ok && s3.rows[0].n === 2,
+    s3.ok ? String(s3.rows[0].n) : s3.message,
+  );
+  const s4 = await probeRows(AT(alice, AAL2));
+  check(
+    "a company admin (not platform staff) at aal2: still 'Super admin only'",
+    !s4.ok && /Super admin only/.test(s4.message),
+    s4.ok ? "it answered" : s4.message,
+  );
+  const s5 = await probeRows(AT(alice, AAL1));
+  check("a company admin with a factor at aal1: refused", !s5.ok);
+  const s6 = await probeRows(SERVICE);
+  check(
+    "service role has no identity and was never a platform admin: still refused",
+    !s6.ok,
+    s6.ok ? String(s6.rows[0].n) : s6.message,
+  );
+}
+
+heading("the service role is unaffected");
+{
+  const n = await countOf(SERVICE, "contacts");
+  check("service role sees both companies' contacts", n === 3, String(n));
+  const w = await as(SERVICE, (run) =>
+    run("insert into contacts(name,tenant_id) values('server write', $1)", [orgB]),
+  );
+  check("...and can write for either company", w.ok && w.rowCount === 1, w.ok ? "" : w.message);
+}
+
+heading("it costs one call per statement, not one per row");
+{
+  const calls = await as(
+    AT(bob, AAL1),
+    async (run) => {
+      const r = await run("select count(*)::int as n from contacts");
+      const s = await run(
+        "select calls from pg_stat_xact_user_functions where funcname = 'session_meets_mfa'",
+      );
+      return {
+        n: r.ok ? r.rows[0].n : r.message,
+        calls: s.ok ? (s.rows[0]?.calls ?? 0) : s.message,
+      };
+    },
+    {
+      beforeBecoming: [
+        "set local track_functions = 'all'",
+        `insert into contacts(name,tenant_id) select 'bulk ' || g, '${orgA}' from generate_series(1,2000) g`,
+      ],
+    },
+  );
+  check(
+    "reading 2000+ rows calls the helper once",
+    calls.n > 2000 && Number(calls.calls) === 1,
+    `rows=${calls.n}, helper calls=${calls.calls}`,
+  );
+  const plan = await as(AT(bob, AAL1), async (run) => {
+    const r = await run("explain select * from contacts");
+    return r.ok ? r.rows.map((x) => x["QUERY PLAN"]).join("\n") : r.message;
+  });
+  check("the plan shows an InitPlan (evaluated once)", /InitPlan/.test(plan), plan.split("\n")[0]);
+}
+
+heading("the helper cannot fail open");
+{
+  await c.query("alter table auth.mfa_factors rename to mfa_factors_hidden");
+  const blocked = await as(AT(bob, AAL1), (run) => run("select count(*)::int as n from contacts"));
+  const withCode = await as(AT(alice, AAL2), (run) =>
+    run("select count(*)::int as n from contacts"),
+  );
+  const nobody = await as(NOBODY(AAL1), (run) => run("select count(*)::int as n from contacts"));
+  await c.query("alter table auth.mfa_factors_hidden rename to mfa_factors");
+  check(
+    "factor table unreadable: a request that needs it ERRORS, it does not pass",
+    !blocked.ok,
+    blocked.ok ? `returned ${blocked.rows[0].n} rows` : blocked.code,
+  );
+  check(
+    "...a request with the code never needs it and still works",
+    withCode.ok && withCode.rows[0].n === 2,
+  );
+  check(
+    "...a request with no identity is refused without needing it",
+    nobody.ok && nobody.rows[0].n === 0,
+    nobody.ok ? "" : nobody.message,
+  );
+}
+
+heading("the rule never turns itself off in silence");
+{
+  // Later, the role that owns the rule loses its exemption (someone takes BYPASSRLS away,
+  // the project moves to another owner). The rule must then ERROR for the people who need
+  // the factor table, never answer "no factor".
+  await makeRole("migrator");
+  await c.query("grant select on auth.mfa_factors to migrator");
+  await c.query("alter function public.session_meets_mfa() owner to migrator");
+  const a1 = await mfaAnswer(AT(alice, AAL1));
+  const b1 = await mfaAnswer(AT(bob, AAL1));
+  const a2 = await mfaAnswer(AT(alice, AAL2));
+  const read = await countOf(AT(alice, AAL1), "contacts");
+  await c.query("alter function public.session_meets_mfa() owner to postgres");
+  await dropRole("migrator");
+  check(
+    "owner not exempt from row-level security: a verified-factor person at aal1 gets an error, not 'true'",
+    typeof a1 === "string" && a1.startsWith("error 42501"),
+    String(a1),
+  );
+  check(
+    "...a person with no factor gets an error too (a visible outage, not a silent pass)",
+    typeof b1 === "string" && b1.startsWith("error 42501"),
+    String(b1),
+  );
+  check("...a person with the code never needs the table and is fine", a2 === true, String(a2));
+  check(
+    "...and reading company data at aal1 is an error, never a row",
+    typeof read === "string" && read.startsWith("error"),
+    String(read),
+  );
+  check(
+    "...and with the owner back, the rule is right again",
+    (await mfaAnswer(AT(alice, AAL1))) === false && (await mfaAnswer(AT(bob, AAL1))) === true,
+  );
+}
+
+// ---------------------------------------------------------------------------
+heading("run twice");
+const snapshotAll = async () =>
+  JSON.stringify(
+    (
+      await c.query(`
+        select (select count(*) from pg_policies where policyname = 'mfa_session_gate')::int as policies,
+               (select md5(string_agg(pg_get_functiondef(p.oid), '' order by p.proname)) from pg_proc p
+                 where p.pronamespace = 'public'::regnamespace
+                   and p.proname in ('session_meets_mfa','apply_mfa_session_gate','list_subscribers','open_contact_whatsapp')) as functions,
+               (select md5(string_agg(polrelid::regclass::text || pg_get_expr(polqual, polrelid) || pg_get_expr(polwithcheck, polrelid), '' order by polrelid::regclass::text))
+                  from pg_policy where polname = 'mfa_session_gate') as policies_md5`)
+    ).rows[0],
+  );
+const afterFirst = await snapshotAll();
+const second = await apply(c, mineSql);
+check("applying the file a second time succeeds", second.error === null, second.error?.message);
+check(
+  "...and leaves the policies and functions exactly as they were",
+  (await snapshotAll()) === afterFirst,
+);
+{
+  // Tables that already have the right policy are not touched, so they are not locked either:
+  // re-running the file (or calling the function at the end of a later migration) cannot make
+  // anyone wait on them. Here other sessions are reading three of them.
+  const holder = await connect();
+  await holder.query("begin");
+  await holder.query("lock table contacts, messages, storage.objects in access share mode");
+  const t0 = Date.now();
+  const again = await apply(c, mineSql);
+  const took = Date.now() - t0;
+  await holder.query("rollback");
+  await holder.end();
+  check(
+    "re-running the file while other sessions hold locks on gated tables succeeds at once (nothing to lock)",
+    again.error === null && took < 4000,
+    again.error ? again.error.message : `${took} ms`,
+  );
+  check("...and changes nothing", (await snapshotAll()) === afterFirst);
+}
+
+// ---------------------------------------------------------------------------
+heading("migrations dated after the gate");
+for (const f of after) {
+  const { error } = await apply(c, fs.readFileSync(path.join(MIG, f), "utf8"));
+  check(`${f} applies`, error === null, error?.message);
+}
+if (after.length === 0) console.log("  (none yet)");
+
+heading(
+  "guard: every table with row-level security has the gate; every table has row-level security",
+);
+/** RLS tables in public with no gate policy, other than the ones LEFT_OUT names. */
+const gateMissing = async () =>
+  (
+    await c.query(`
+      select c.relname as name
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind in ('r','p') and c.relrowsecurity
+         and c.relname <> all (public.mfa_session_gate_left_out())
+         and not exists (select 1 from pg_policy p where p.polrelid = c.oid
+                           and p.polname = 'mfa_session_gate' and not p.polpermissive)
+       order by 1`)
+  ).rows.map((r) => `public.${r.name}`);
+{
+  const named = (
+    await c.query("select unnest(public.mfa_session_gate_left_out()) as name order by 1")
+  ).rows.map((r) => r.name);
+  check(
+    "the one list of tables left out (public.mfa_session_gate_left_out()) is exactly the one this script explains",
+    named.join(",") === [...LEFT_OUT.keys()].sort().join(","),
+    named.join(", "),
+  );
+  const missing = await gateMissing();
+  check(
+    "no table in public with row-level security lacks the gate",
+    missing.length === 0,
+    missing.length
+      ? `${missing.join(", ")} -- end the migration that adds it with: SELECT public.apply_mfa_session_gate();`
+      : "",
+  );
+  const ungated = (
+    await c.query(`
+      select c.relname as name
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind in ('r','p') and c.relrowsecurity
+         and not exists (select 1 from pg_policy p where p.polrelid = c.oid
+                           and p.polname = 'mfa_session_gate' and not p.polpermissive)
+       order by 1`)
+  ).rows.map((r) => r.name);
+  for (const name of ungated)
+    console.log(`  KNOWN GAP  table ${name} has no gate: ${LEFT_OUT.get(name) ?? "NOT LISTED"}`);
+  check(
+    "the tables without the gate are exactly the ones the migration leaves out by name",
+    [...ungated].sort().join(",") === [...LEFT_OUT.keys()].sort().join(","),
+    ungated.join(", "),
+  );
+  const noRls = (
+    await c.query(`
+      select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind in ('r','p') and not c.relrowsecurity order by 1`)
+  ).rows.map((r) => r.relname);
+  check(
+    "no table in public lacks row-level security (a table without it is open to every signed-in person, gate or not)",
+    noRls.length === 0,
+    noRls.length ? `${noRls.join(", ")} -- enable row-level security on it` : "",
+  );
+  const views = (
+    await c.query(`
+      select c.relname, c.reloptions::text as opts, has_table_privilege('authenticated', c.oid, 'SELECT') as readable
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind in ('v','m','f') order by 1`)
+  ).rows;
+  const leaky = views.filter((v) => v.readable && !/security_invoker=(on|true)/.test(v.opts ?? ""));
+  check(
+    `no view the browser role can read skips the policies (${views.filter((v) => v.readable).length} readable, all security_invoker)`,
+    leaky.length === 0,
+    leaky.map((v) => v.relname).join(", ") +
+      (leaky.length ? " -- create it WITH (security_invoker = on)" : ""),
+  );
+}
+
+heading("guard: SECURITY DEFINER functions the browser role can call");
+{
+  // A definer function runs as its owner and skips every policy, gate included.
+  // So each one the browser can call must be guarded, be open by design, or be named
+  // below with the reason and how serious it is. A new one that is none of those fails
+  // here, in the pull request that adds it.
+  //
+  // "Guarded" is decided by CALLING the function, never by reading its text: a person
+  // with a verified factor and no code (aal1) must get "Two-factor code required"
+  // (42501) back, a person without a factor at aal1 and the same person at aal2 must
+  // not. A comment that mentions the rule, or a PERFORM whose answer is ignored, or an
+  // IF that raises nothing, do not pass this. (A call that raises is undone as a whole,
+  // so where in the function the guard sits does not matter for the data.)
+  const OPEN_BY_DESIGN = new Map([
+    ["am_i_super_admin", "own flag, used inside policies"],
+    ["am_i_tenant_admin", "own flag, used inside policies"],
+    ["current_tenant_id", "own company id, used inside policies and by the settings page"],
+    ["my_tenant_id", "own company id, used inside policies"],
+    ["session_meets_mfa", "the rule itself: answers only about the caller's own session"],
+  ]);
+  const OPEN_BUT_LOOSE = new Map([
+    // They have to stay callable at aal1 (the layout and the generated middleware ask
+    // access_state before the code is entered), but they answer for whichever user id
+    // they are given, not only the caller's. Reported in the pull request; LOW.
+    [
+      "access_state",
+      "LOW: answers for any user id it is given (information only); must stay open at aal1",
+    ],
+    [
+      "is_tenant_admin",
+      "LOW: answers for any user id it is given (information only); used inside policies",
+    ],
+  ]);
+  const KNOWN_GAPS = new Map([
+    [
+      "check_and_prune_tenant_email_storage",
+      "HIGH, older than the gate and not a two-factor question: no caller check, executable by anon too; PR #81 revokes it",
+    ],
+    // record_integration_error() used to be here (MEDIUM: it accepted any tenant id). PR #90
+    // (20261019120000) takes EXECUTE away from the browser role, so it no longer shows up in
+    // the list below; if that migration is ever missing, the script fails on it by name.
+  ]);
+  /** A value of each argument type, enough to reach the first statement of the function. */
+  const sample = (type) => {
+    if (type === "uuid") return "'11111111-1111-1111-1111-111111111111'::uuid";
+    if (/^(text|character varying|character|name|citext)/.test(type)) return "'x'";
+    if (/^(integer|smallint|bigint|numeric|double precision|real)$/.test(type)) return "1";
+    if (type === "boolean") return "false";
+    if (/^jsonb?$/.test(type)) return "'{}'";
+    if (/^timestamp/.test(type)) return "now()";
+    if (type === "date") return "current_date";
+    if (type.endsWith("[]")) return "'{}'";
+    throw new Error(
+      `the guard probe has no sample value for an argument of type ${type}; add one in sample()`,
+    );
+  };
+  const definerFunctions = async () =>
+    (
+      await c.query(`
+        select p.proname,
+               (select coalesce(array_agg(format_type(t, null) order by o), '{}')
+                  from unnest(p.proargtypes::oid[]) with ordinality as a(t, o)) as arg_types
+          from pg_proc p
+         where p.pronamespace = 'public'::regnamespace and p.prosecdef and p.prorettype <> 'trigger'::regtype
+           and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+         order by 1, 2`)
+    ).rows;
+  const TWO_FACTOR = (r) =>
+    !r.ok && r.code === "42501" && /Two-factor code required/.test(r.message);
+  /** Calls the function as three people; guarded only if the answers are exactly the rule's. */
+  const guardedByBehaviour = async (f) => {
+    const call = `select * from public.${f.proname}(${f.arg_types.map(sample).join(", ")})`;
+    const noCode = await as(AT(alice, AAL1), (run) => run(call));
+    const withCode = await as(AT(alice, AAL2), (run) => run(call));
+    const noFactor = await as(AT(bob, AAL1), (run) => run(call));
+    return TWO_FACTOR(noCode) && !TWO_FACTOR(withCode) && !TWO_FACTOR(noFactor);
+  };
+
+  // The probe has to be able to say no. Three throwaway definer functions that LOOK guarded
+  // in different ways but are not, and one that is, are classified first.
+  await c.query(`
+    create function public.zz_guard_ok(_x uuid) returns integer language plpgsql security definer set search_path = '' as $$
+    begin
+      if not public.session_meets_mfa() then raise exception 'Two-factor code required' using errcode = 'insufficient_privilege'; end if;
+      return 1;
+    end $$;
+    create function public.zz_guard_comment_only(_x uuid) returns integer language plpgsql security definer set search_path = '' as $$
+    begin
+      -- TODO: if not public.session_meets_mfa() then raise exception 'Two-factor code required'; end if;
+      return 1;
+    end $$;
+    create function public.zz_guard_ignored(_x uuid) returns integer language plpgsql security definer set search_path = '' as $$
+    begin
+      perform public.session_meets_mfa();
+      return 1;
+    end $$;
+    create function public.zz_guard_no_raise(_x uuid) returns integer language plpgsql security definer set search_path = '' as $$
+    begin
+      if not public.session_meets_mfa() then null; end if;
+      return 1;
+    end $$;`);
+  const probeTargets = new Map(
+    (await definerFunctions())
+      .filter((f) => f.proname.startsWith("zz_guard_"))
+      .map((f) => [f.proname, f]),
+  );
+  const verdicts = {};
+  for (const [name, f] of probeTargets) verdicts[name] = await guardedByBehaviour(f);
+  check(
+    "the guard probe accepts a real guard and rejects: a comment that mentions the rule, a PERFORM whose answer is ignored, a guard that raises nothing",
+    verdicts.zz_guard_ok === true &&
+      verdicts.zz_guard_comment_only === false &&
+      verdicts.zz_guard_ignored === false &&
+      verdicts.zz_guard_no_raise === false,
+    JSON.stringify(verdicts),
+  );
+  await c.query(`
+    drop function public.zz_guard_ok(uuid); drop function public.zz_guard_comment_only(uuid);
+    drop function public.zz_guard_ignored(uuid); drop function public.zz_guard_no_raise(uuid);`);
+
+  const fns = await definerFunctions();
+  const unclassified = [];
+  const guarded = [];
+  for (const f of fns) {
+    if (OPEN_BY_DESIGN.has(f.proname)) continue;
+    if (OPEN_BUT_LOOSE.has(f.proname)) {
+      console.log(`  OPEN       ${f.proname}: ${OPEN_BUT_LOOSE.get(f.proname)}`);
+      continue;
+    }
+    if (KNOWN_GAPS.has(f.proname)) {
+      console.log(`  KNOWN GAP  ${f.proname}: ${KNOWN_GAPS.get(f.proname)}`);
+      continue;
+    }
+    if (await guardedByBehaviour(f)) guarded.push(f.proname);
+    else unclassified.push(f.proname);
+  }
+  check(
+    `every one of the ${fns.length} definer functions callable by the browser role is guarded (proved by calling it), open by design, or a named known gap`,
+    unclassified.length === 0,
+    unclassified.length
+      ? `${unclassified.join(", ")} -- make its first statements IF NOT public.session_meets_mfa() THEN RAISE EXCEPTION 'Two-factor code required' USING ERRCODE = 'insufficient_privilege'; END IF; or list it in this script with the reason and how serious it is`
+      : `guarded: ${guarded.join(", ")}`,
+  );
+  check(
+    "list_subscribers and open_contact_whatsapp are among the guarded ones",
+    guarded.includes("list_subscribers") && guarded.includes("open_contact_whatsapp"),
+    guarded.join(", "),
+  );
+  // The two loose ones, for the record in the pull request: asked by alice (Acme) about a Globex person.
+  const loose = await as(AT(alice, AAL1), async (run) => ({
+    tenantAdmin: await run(`select public.is_tenant_admin('${frank.id}') as v`),
+    state: await run(`select public.access_state('${frank.id}') as v`),
+  }));
+  console.log(
+    `  (for the record: at aal1, an Acme admin asking about a Globex admin gets is_tenant_admin -> ${loose.tenantAdmin.ok ? loose.tenantAdmin.rows[0].v : loose.tenantAdmin.message}, access_state -> ${loose.state.ok ? loose.state.rows[0].v : loose.state.message})`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+heading("a table added later");
+{
+  await c.query(
+    "create table public.zz_added_later (id uuid primary key default gen_random_uuid(), tenant_id uuid)",
+  );
+  await c.query("alter table public.zz_added_later enable row level security");
+  await c.query(
+    "create policy zz_added_all on public.zz_added_later for all to authenticated using (true) with check (true)",
+  );
+  await c.query(`insert into public.zz_added_later(tenant_id) values ('${orgA}')`);
+  const missing = await gateMissing();
+  check(
+    "the new-table guard names it",
+    missing.length === 1 && missing[0] === "public.zz_added_later",
+    missing.join(","),
+  );
+  const open = await countOf(AT(alice, AAL1), "zz_added_later");
+  check(
+    "until covered, a verified-factor person at aal1 can read it (what the guard prevents)",
+    open === 1,
+    String(open),
+  );
+  // Other sessions are reading already-gated tables: covering the new table must not wait for them.
+  const holder = await connect();
+  await holder.query("begin");
+  await holder.query("lock table contacts, storage.objects in access share mode");
+  const call = c.query("select public.apply_mfa_session_gate() as n").then(
+    (result) => result,
+    (error) => ({ error }),
+  );
+  const answeredWhileHeld = (await Promise.race([call, sleep(8000).then(() => null)])) !== null;
+  await holder.query("rollback"); // lets a call that was waiting finish, so the script goes on
+  await holder.end();
+  const covered = await call;
+  check(
+    "covering the new table does not wait for sessions that are reading the tables that already have the gate",
+    answeredWhileHeld && !covered.error,
+    covered.error?.message,
+  );
+  check(
+    "apply_mfa_session_gate() covers it and reports the count",
+    covered.rows[0].n === protectedNow.length + 1,
+    String(covered.rows[0].n),
+  );
+  check("the guard is quiet again", (await gateMissing()).length === 0);
+  check(
+    "...and the new table is closed at aal1 with a factor",
+    (await countOf(AT(alice, AAL1), "zz_added_later")) === 0,
+  );
+  check("...and open at aal2", (await countOf(AT(alice, AAL2), "zz_added_later")) === 1);
+  await c.query("drop table public.zz_added_later");
+}
+
+heading("a gate policy that was changed by hand is put back");
+{
+  const before_ = await snapshotAll();
+  const tamper = [
+    "drop policy mfa_session_gate on contacts; create policy mfa_session_gate on contacts as permissive for all to authenticated using (true) with check (true)",
+    "drop policy mfa_session_gate on messages; create policy mfa_session_gate on messages as restrictive for all to authenticated using (true) with check (true)",
+    "drop policy mfa_session_gate on conversations; create policy mfa_session_gate on conversations as restrictive for all to public using ((select public.session_meets_mfa())) with check ((select public.session_meets_mfa()))",
+    "drop policy mfa_session_gate on system_alerts; create policy mfa_session_gate on system_alerts as restrictive for select to authenticated using ((select public.session_meets_mfa()))",
+    "drop policy mfa_session_gate on products; create policy mfa_session_gate on products as restrictive for all to authenticated using ((select public.session_meets_mfa()) or true) with check ((select public.session_meets_mfa()))",
+  ];
+  for (const sql of tamper) await c.query(sql);
+  check(
+    "five hand-made variants (permissive; always true; wrong role; select only; 'or true') leave the gate open",
+    (await snapshotAll()) !== before_ && (await countOf(AT(alice, AAL1), "contacts")) > 0,
+    String(await countOf(AT(alice, AAL1), "contacts")),
+  );
+  await c.query("select public.apply_mfa_session_gate()");
+  check(
+    "apply_mfa_session_gate() replaces every one of them with the real policy",
+    (await snapshotAll()) === before_ && (await countOf(AT(alice, AAL1), "contacts")) === 0,
+  );
+}
+
+// ---------------------------------------------------------------------------
+heading("kill switch (the statement printed in the file)");
+{
+  check("blocked before", (await countOf(AT(alice, AAL1), "contacts")) === 0);
+  const k = await apply(c, KILL_SWITCH);
+  check("the statement runs", k.error === null, k.error?.message);
+  check(
+    "a verified-factor person at aal1 reads again at once",
+    (await countOf(AT(alice, AAL1), "contacts")) === 2,
+  );
+  const again = await apply(c, mineSql);
+  check(
+    "re-running the file restores the real rule",
+    again.error === null && (await countOf(AT(alice, AAL1), "contacts")) === 0,
+    again.error?.message,
+  );
+  check("...and the functions are as after the first run", (await snapshotAll()) === afterFirst);
+}
+
+heading("full rollback (the single statement printed in the file)");
+{
+  const r = await apply(c, ROLLBACK);
+  check("the statement runs", r.error === null, r.error?.message);
+  const left = (
+    await c.query(`
+      select (select count(*) from pg_policies where policyname = 'mfa_session_gate')::int as policies,
+             (select count(*) from pg_proc where proname in ('session_meets_mfa','apply_mfa_session_gate','mfa_session_gate_left_out')
+                and pronamespace = 'public'::regnamespace)::int as functions`)
+  ).rows[0];
+  check(
+    "no mfa_session_gate policy and none of the three functions is left",
+    left.policies === 0 && left.functions === 0,
+    JSON.stringify(left),
+  );
+  check(
+    "a verified-factor person at aal1 reads again",
+    (await countOf(AT(alice, AAL1), "contacts")) === 2,
+  );
+  const s = await as(AT(sam, AAL1), (run) =>
+    run("select count(*)::int as n from public.list_subscribers()"),
+  );
+  check(
+    "list_subscribers() works again (it no longer calls the dropped function)",
+    s.ok && s.rows[0].n === 2,
+    s.ok ? "" : s.message,
+  );
+  const def = (
+    await c.query("select pg_get_functiondef('public.list_subscribers()'::regprocedure) as d")
+  ).rows[0].d;
+  check("...and is the original body", !/session_meets_mfa/.test(def));
+  check(
+    "open_contact_whatsapp() is PR #66's function again, byte for byte, and a verified-factor person at aal1 opens a conversation again",
+    (await waDefinition()) === waDefinitionBefore &&
+      (await waFunctionFacts()) === waFactsBefore &&
+      (await waOutcome(AT(alice, AAL1), WA.ok, waBase())).startsWith("ok"),
+    await waOutcome(AT(alice, AAL1), WA.ok, waBase()),
+  );
+  const again = await apply(c, mineSql);
+  check("the file applies again after a rollback", again.error === null, again.error?.message);
+  check("...and everything is as after the first run", (await snapshotAll()) === afterFirst);
+  check("...and it blocks again", (await countOf(AT(alice, AAL1), "contacts")) === 0);
+}
+
+// ---------------------------------------------------------------------------
+heading(
+  "who may own the rule: only a role that is exempt from row-level security on the factor table",
+);
+{
+  await apply(c, ROLLBACK); // start from the database without the gate
+  const clean = await snapshot();
+  const scenarios_ = [
+    {
+      label:
+        "a role with BYPASSRLS, not a superuser (what the hosted postgres role is believed to be)",
+      attributes: "login bypassrls",
+      setup: async () => {},
+      undo: async () => {},
+      accepted: true,
+    },
+    {
+      label: "the owner of the factor table (exempt as its owner)",
+      attributes: "login",
+      setup: async () => c.query("alter table auth.mfa_factors owner to rule_owner"),
+      undo: async () => c.query("alter table auth.mfa_factors owner to postgres"),
+      accepted: true,
+    },
+    {
+      label:
+        "the owner of the factor table, with FORCE ROW LEVEL SECURITY (the owner is then not exempt)",
+      attributes: "login",
+      setup: async () => {
+        await c.query("alter table auth.mfa_factors owner to rule_owner");
+        await c.query("alter table auth.mfa_factors force row level security");
+      },
+      undo: async () => {
+        await c.query("alter table auth.mfa_factors no force row level security");
+        await c.query("alter table auth.mfa_factors owner to postgres");
+      },
+      accepted: false,
+    },
+    {
+      label: "a plain role with no exemption",
+      attributes: "login",
+      setup: async () => {},
+      undo: async () => {},
+      accepted: false,
+    },
+  ];
+  for (const sc of scenarios_) {
+    await makeRole("rule_owner", sc.attributes);
+    await c.query("grant select on auth.mfa_factors to rule_owner");
+    await sc.setup();
+    await c.query(
+      "create function public.session_meets_mfa() returns boolean language sql as 'select true'",
+    );
+    await c.query("alter function public.session_meets_mfa() owner to rule_owner");
+    const r = await apply(c, mineSql);
+    if (sc.accepted) {
+      const answers = [
+        await mfaAnswer(AT(alice, AAL1)),
+        await mfaAnswer(AT(bob, AAL1)),
+        await mfaAnswer(AT(alice, AAL2)),
+      ];
+      const reads = [
+        await countOf(AT(alice, AAL1), "contacts"),
+        await countOf(AT(bob, AAL1), "contacts"),
+      ];
+      check(
+        `${sc.label}: the file is accepted, and the rule is right (aal1+factor ${answers[0]}, aal1 no factor ${answers[1]}, aal2 ${answers[2]}; contacts ${reads})`,
+        r.error === null &&
+          answers[0] === false &&
+          answers[1] === true &&
+          answers[2] === true &&
+          reads[0] === 0 &&
+          reads[1] === 2,
+        r.error?.message,
+      );
+      await apply(c, ROLLBACK);
+    } else {
+      check(
+        `${sc.label}: the file is refused, in plain words, before any policy`,
+        r.error &&
+          /row-level security/i.test(r.error.message) &&
+          /nothing was changed/i.test(r.error.message),
+        r.error ? r.error.message : "it did NOT fail",
+      );
+      await c.query("drop function if exists public.session_meets_mfa()");
+    }
+    await sc.undo();
+    await dropRole("rule_owner");
+    check("...and the database is back to without the gate", (await snapshot()) === clean);
+  }
+}
+
+await finish();

@@ -89,3 +89,73 @@ function reads the table, the policy runs again — and this harness hit "stack
 depth limit exceeded" on the first run. Production had not fallen over only
 because the planner happened to short-circuit the `OR`, which SQL does not
 guarantee. Fixed in `20260907200000`.
+
+
+## verify-mfa-session-gate.mjs
+
+Proves that the database itself asks for the second sign-in step, not only the
+app. Migration `20261020000000_mfa_session_gate.sql` puts one RESTRICTIVE policy
+(`mfa_session_gate`) on every table with row-level security in `public` and on
+`storage.objects`; a person who has a verified authenticator app but whose token
+has not entered the code (`aal1`) must reach nothing, and everybody else must
+reach exactly what they reached before.
+
+```bash
+node supabase/verify/verify-mfa-session-gate.mjs
+```
+
+It takes the list of tables from the catalogue (never a typed list; a partitioned
+table is included), tries select, insert, update and delete on each as eleven kinds
+of caller, and also checks:
+
+- the gap before the migration;
+- the migration stopping, in plain words and without changes, when the rule cannot
+  run: the factor table missing, the rule's owner without SELECT, **the owner able to
+  SELECT but not exempt from the factor table's row-level security (it would read no
+  rows and the gate would be inert)**, `open_contact_whatsapp()` not at PR #66's
+  version; and the rule turning into an error, never into "no factor", if its owner
+  loses the exemption later. Who may own the rule (BYPASSRLS, the table's owner, not
+  with FORCE ROW LEVEL SECURITY) is tried by installing the file with each;
+- the migration not queueing the app: with a lock held on `storage.objects` it gives
+  up after about 5 seconds naming the table while readers of other tables are never
+  slowed; with the lock held for a moment it waits it out; re-running it, or covering
+  a table added later, takes no lock on tables that already have the gate; a gate
+  policy changed by hand is put back;
+- another company staying out, storage, `list_subscribers()`,
+  `open_contact_whatsapp()` (the same answers and the same rows as PR #66's body for
+  everybody the gate lets in, refused for a verified-factor person without the code,
+  the body being #66's plus one guard), the service role, one helper call per
+  statement, a partitioned table, what the two left-out alert tables do at `aal1`,
+  running twice, the kill switch, the one-statement rollback printed in the migration
+  and a table added later.
+
+Three guards fail a future pull request, on purpose:
+
+- a table with row-level security but no `mfa_session_gate` policy: end the
+  migration that adds it with `SELECT public.apply_mfa_session_gate();` (also
+  checked by `verify-migrations.mjs`, right after its first pass, so the database
+  job fails even if this script is not the one looked at). Migrations that do not
+  pass through CI (Lovable's own, direct pushes to `main`) are not seen by either
+  check: after any such batch run the "Verification" query at the bottom of
+  `20261020000000_mfa_session_gate.sql` and expect `missing = 0`.
+- a table with no row-level security at all, or a view the browser can read that
+  is not `security_invoker`
+- a `SECURITY DEFINER` function the browser role can call that is not guarded and is
+  not listed in the script with the reason (and how serious it is) it may stay open (a
+  definer function skips every policy). "Guarded" is decided by calling it, never by
+  reading its text: a verified-factor person at `aal1` must get `42501 Two-factor code
+  required`, the same person at `aal2` and a person with no factor at `aal1` must not.
+  A comment that mentions the rule, a `PERFORM` whose answer is ignored or an `IF` that
+  raises nothing do not pass; the script proves its probe can say no with throwaway
+  functions of each kind before it classifies the real ones. A guarded function starts
+  `IF NOT public.session_meets_mfa() THEN RAISE EXCEPTION 'Two-factor code required'
+  USING ERRCODE = 'insufficient_privilege'; END IF;`
+
+The shim has a stand-in for `auth.mfa_factors` that the browser role cannot read,
+with row-level security on (assumed for Auth's tables, not confirmed for the hosted
+project; it is the worse case for a function that has to read them). Limits of the
+shim: `storage.buckets` has no row-level security here (the hosted one has) and the
+harness grants the browser role `ALL` on the storage tables, so only
+`storage.objects` is covered by the gate and the matrix. What this cannot prove:
+Realtime delivery, Supabase's real grants on `auth`, which role the hosted SQL runner
+is, and PostgREST turning the `Authorization` header into claims.

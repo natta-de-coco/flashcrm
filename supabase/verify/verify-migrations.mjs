@@ -65,6 +65,37 @@ client = await connect();
 console.log("search_path:", (await client.query("show search_path")).rows[0].search_path);
 
 const pass1 = await applyAll(client, "PASS 1 (fresh database)");
+// ── The two-factor gate must cover every table ──────────────────────────
+// A table with row-level security that appears in a migration after
+// 20261020000000_mfa_session_gate.sql is open to a password-only token of a
+// two-factor person until the migration that adds it ends with
+// SELECT public.apply_mfa_session_gate(); . This is the check that fails the pull
+// request that forgets it. (Tables the gate leaves out on purpose are named by the
+// gate's own public.mfa_session_gate_left_out().)
+// It is asked right after the FIRST pass, on purpose: the second pass runs the gate
+// migration again, which would cover a table the first pass left open and hide it.
+const gateGaps = [];
+try {
+  const { rows } = await client.query(`
+    select n.nspname || '.' || c.relname as name
+      from pg_class c join pg_namespace n on n.oid = c.relnamespace
+     where c.relkind in ('r','p')
+       and ((n.nspname = 'public' and c.relrowsecurity and c.relname <> all (public.mfa_session_gate_left_out()))
+            or (n.nspname = 'storage' and c.relname = 'objects'))
+       and not exists (select 1 from pg_policy p where p.polrelid = c.oid
+                         and p.polname = 'mfa_session_gate' and not p.polpermissive)
+     order by 1`);
+  gateGaps.push(...rows.map((r) => r.name));
+} catch (e) {
+  gateGaps.push(`(could not ask: ${e.message})`);
+}
+console.log("\n===== TWO-FACTOR GATE: every table with row-level security has mfa_session_gate =====");
+if (gateGaps.length === 0) console.log("  all covered");
+else {
+  for (const g of gateGaps) console.log("  NOT GATED  " + g);
+  console.log("  End the migration that creates the table with:  SELECT public.apply_mfa_session_gate();");
+}
+
 const pass2 = await applyAll(client, "PASS 2 (re-run — idempotency check)");
 
 // ── Smoke-calling the critical functions ────────────────────────────────
@@ -128,7 +159,8 @@ console.log('fresh-database failures : ' + pass1.length);
 console.log('pending re-run failures : ' + pendingRerun.length);
 console.log('baseline re-run failures: ' + (pass2.length - pendingRerun.length) + ' (expected)');
 console.log('broken function bodies  : ' + smokeFail.length);
-const fatal = pass1.length + pendingRerun.length + smokeFail.length;
+console.log('tables without the gate : ' + gateGaps.length);
+const fatal = pass1.length + pendingRerun.length + smokeFail.length + gateGaps.length;
 console.log('');
 console.log(fatal ? 'FAIL - do not paste this into Supabase yet.' : 'OK - safe to paste.');
 process.exit(fatal ? 1 : 0);

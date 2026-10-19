@@ -142,6 +142,7 @@ export default screen({
     "settings.api.scope.contacts:read": "Read contacts",
     "settings.api.scope.conversations:read": "Read conversations",
     "settings.api.scope.numbers:read": "Read connected numbers",
+    "settings.audit.action.mfa.enabled": "Two-step sign-in was turned on",
   },
   ar: {
     "settings.team.title": "الفريق والصلاحيات",
@@ -281,6 +282,7 @@ export default screen({
     "settings.api.scope.contacts:read": "قراءة جهات الاتصال",
     "settings.api.scope.conversations:read": "قراءة المحادثات",
     "settings.api.scope.numbers:read": "قراءة الأرقام المرتبطة",
+    "settings.audit.action.mfa.enabled": "جرى تفعيل تسجيل الدخول بالتحقق الثنائي",
   },
   ms: {
     "settings.team.title": "Pasukan dan akses",
@@ -424,6 +426,7 @@ export default screen({
     "settings.api.scope.contacts:read": "Baca kenalan",
     "settings.api.scope.conversations:read": "Baca perbualan",
     "settings.api.scope.numbers:read": "Baca nombor yang disambungkan",
+    "settings.audit.action.mfa.enabled": "Log masuk dua faktor telah dihidupkan",
   },
   fil: {
     "settings.team.title": "Team at access",
@@ -569,6 +572,7 @@ export default screen({
     "settings.api.scope.contacts:read": "Basahin ang mga contact",
     "settings.api.scope.conversations:read": "Basahin ang mga usapan",
     "settings.api.scope.numbers:read": "Basahin ang mga nakakonektang numero",
+    "settings.audit.action.mfa.enabled": "Na-on ang two-factor sign-in",
   },
   sw: {
     "settings.team.title": "Timu na ufikiaji",
@@ -711,5 +715,6 @@ export default screen({
     "settings.api.scope.contacts:read": "Soma anwani",
     "settings.api.scope.conversations:read": "Soma mazungumzo",
     "settings.api.scope.numbers:read": "Soma namba zilizounganishwa",
+    "settings.audit.action.mfa.enabled": "Kuingia kwa hatua mbili kumewashwa",
   },
 });
