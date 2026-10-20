@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+
 await build({
   stdin: {
     contents: `
@@ -17,4 +18,14 @@ await build({
   packages: "external",
   platform: "node",
   format: "esm",
+});
+
+await build({
+  entryPoints: ["src/lib/sales-pipeline.ts"],
+  outfile: "node_modules/.cache/flas-sales-pipeline.mjs",
+  format: "esm",
+  platform: "node",
+  bundle: true,
+  packages: "external",
+  logLevel: "error",
 });
