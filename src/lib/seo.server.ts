@@ -1,4 +1,4 @@
-import { isSafeWordPressUrl, isSameCanonicalOrigin } from "./seo-url";
+import { assertSafeDnsHost, isSafeWordPressUrl, isSameCanonicalOrigin } from "./seo-url";
 // Server-only helpers for the SEO Studio: multimodal vision analysis, article
 // drafting and WordPress REST publishing. WordPress application passwords are
 // only ever read here (via the admin client) after the caller's tenant has
@@ -511,38 +511,92 @@ async function wpFetch(c: WpCreds, path: string, init?: RequestInit): Promise<Re
     throw new Error("WordPress site URL is invalid or points to a restricted network address.");
   }
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  const url = `${cleanBase}/wp-json/wp/v2${cleanPath}`;
+  const initialUrl = `${cleanBase}/wp-json/wp/v2${cleanPath}`;
 
-  const defaultHeaders: Record<string, string> = {
-    Authorization: wpAuth(c),
+  // Initial SSRF anti-rebinding / DNS verification
+  await assertSafeDnsHost(initialUrl);
+
+  const baseHeaders: Record<string, string> = {
     Accept: "application/json",
     "User-Agent": "FlasCRM/1.0 (+https://flas.mobidigisol.com; WordPress Integration)",
   };
 
-  let res = await fetch(url, {
-    ...init,
-    headers: {
-      ...defaultHeaders,
-      ...(init?.headers ?? {}),
-    },
-  });
+  let currentUrl = initialUrl;
+  let currentAuth: string | null = wpAuth(c);
+  let requestInit = init;
+  const MAX_REDIRECTS = 3;
 
-  // When fetch follows cross-scheme or canonical redirects (e.g. http->https or non-www->www),
-  // standard fetch drops Authorization headers, returning 401. Re-attempt with credentials
-  // ONLY if the redirect destination is strictly HTTPS, passes SSRF checks, and is the same canonical origin.
-  if (res.status === 401 && res.url && res.url !== url) {
-    if (isSameCanonicalOrigin(res.url, url) && isSafeWordPressUrl(res.url)) {
-      res = await fetch(res.url, {
-        ...init,
-        headers: {
-          ...defaultHeaders,
-          ...(init?.headers ?? {}),
-        },
-      });
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const headers: Record<string, string> = {
+      ...baseHeaders,
+      ...((requestInit?.headers as Record<string, string>) ?? {}),
+    };
+    if (currentAuth) {
+      headers["Authorization"] = currentAuth;
+    } else {
+      delete headers["Authorization"];
     }
+
+    const res = await fetch(currentUrl, {
+      ...requestInit,
+      headers,
+      redirect: "manual",
+    });
+
+    // Check for HTTP redirects (301, 302, 303, 307, 308)
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get("location");
+      if (!location) {
+        return res; // No location header provided by server
+      }
+
+      if (hop === MAX_REDIRECTS) {
+        throw new Error(`WordPress request exceeded maximum redirects (${MAX_REDIRECTS}).`);
+      }
+
+      let targetUrl: string;
+      try {
+        targetUrl = new URL(location, currentUrl).toString();
+      } catch {
+        throw new Error(`WordPress server returned an invalid redirect location: ${location}`);
+      }
+
+      // Check scheme, hostname blocklist, IP ranges, and trailing dots on redirect target
+      if (!isSafeWordPressUrl(targetUrl)) {
+        throw new Error(
+          `Security violation: WordPress redirected to an unsafe or restricted URL (${targetUrl}).`,
+        );
+      }
+
+      // Verify DNS anti-rebinding on redirect target host
+      await assertSafeDnsHost(targetUrl);
+
+      // Only preserve Authorization if target is strictly same canonical origin over HTTPS
+      if (isSameCanonicalOrigin(targetUrl, initialUrl)) {
+        currentAuth = wpAuth(c);
+      } else {
+        // Cross-domain or downgrade: drop Authorization header completely
+        currentAuth = null;
+      }
+
+      // RFC 7231 / 9110: On 303 See Other, change method to GET for subsequent request
+      if (
+        res.status === 303 &&
+        requestInit?.method &&
+        requestInit.method !== "GET" &&
+        requestInit.method !== "HEAD"
+      ) {
+        requestInit = { ...requestInit, method: "GET", body: null };
+      }
+
+      currentUrl = targetUrl;
+      continue;
+    }
+
+    return res;
   }
 
-  return res;
+  throw new Error(`WordPress request exceeded maximum redirects (${MAX_REDIRECTS}).`);
 }
 
 export async function testWpConnection(c: WpCreds): Promise<{
