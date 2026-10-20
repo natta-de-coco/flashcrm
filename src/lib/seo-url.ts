@@ -67,9 +67,7 @@ export function isSafeWordPressUrl(raw: string): boolean {
   }
 
   // IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1 or ::ffff:7f00:1)
-  const mappedDotted = cleanHost.match(
-    /(?:^|:)ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/i,
-  );
+  const mappedDotted = cleanHost.match(/(?:^|:)ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/i);
   if (mappedDotted) {
     const [a, b, c, d] = [
       Number(mappedDotted[1]),
@@ -81,7 +79,12 @@ export function isSafeWordPressUrl(raw: string): boolean {
   }
 
   const mappedHex = cleanHost.match(/(?:^|:)(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
-  if (mappedHex && mappedHex[1] && mappedHex[2] && (cleanHost.startsWith("::") || /:ffff:/i.test(cleanHost))) {
+  if (
+    mappedHex &&
+    mappedHex[1] &&
+    mappedHex[2] &&
+    (cleanHost.startsWith("::") || /:ffff:/i.test(cleanHost))
+  ) {
     const high = parseInt(mappedHex[1], 16);
     const low = parseInt(mappedHex[2], 16);
     const a = (high >> 8) & 0xff;

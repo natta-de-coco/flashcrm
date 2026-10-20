@@ -905,11 +905,15 @@ function SeoStudioPage() {
                                     },
                                   });
                                   toast.success(
-                                    t("seoBlogStudio.savedToSocialHubDrafts", { platformName: p.platformName }),
+                                    t("seoBlogStudio.savedToSocialHubDrafts", {
+                                      platformName: p.platformName,
+                                    }),
                                   );
                                 } catch (err) {
                                   toast.error(
-                                    err instanceof Error ? err.message : t("seoBlogStudio.savingDraftFailed"),
+                                    err instanceof Error
+                                      ? err.message
+                                      : t("seoBlogStudio.savingDraftFailed"),
                                   );
                                 } finally {
                                   setPublishingPlatform(null);

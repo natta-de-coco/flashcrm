@@ -401,6 +401,7 @@ Respond in EXACTLY this JSON shape:
 export async function publishMicroPostToSocial(
   supabase: RlsClient,
   input: {
+    tenantId?: string | null;
     platform: PlatformKey;
     text: string;
     hashtags: string[];
@@ -444,14 +445,19 @@ export async function publishMicroPostToSocial(
     .limit(1)
     .maybeSingle();
 
+  const postRecord: Record<string, unknown> = {
+    caption: fullCaption,
+    account_id: account?.id ?? null,
+    status: input.scheduledAt ? "scheduled" : "draft",
+    scheduled_at: input.scheduledAt ?? null,
+  };
+  if (input.tenantId) {
+    postRecord["tenant_id"] = input.tenantId;
+  }
+
   const { data: created, error } = await client
     .from("social_posts")
-    .insert({
-      caption: fullCaption,
-      account_id: account?.id ?? null,
-      status: input.scheduledAt ? "scheduled" : "draft",
-      scheduled_at: input.scheduledAt ?? null,
-    })
+    .insert(postRecord)
     .select("id")
     .single();
 
@@ -493,7 +499,6 @@ export function normalizeWpUrl(rawUrl: string): string {
   u = u.replace(/\/wp-json(?:\/.*)?$/i, "");
   return u;
 }
-
 
 function wpAuth(c: WpCreds): string {
   const cleanAppPass = (c.appPassword ?? "").replace(/\s+/g, "");
@@ -741,10 +746,14 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
       detail = body ? `: ${body.slice(0, 150)}` : "";
     }
     if (res.status === 401) {
-      throw new Error(`WordPress publishing unauthorized (HTTP 401)${detail}. Check that your Application Password has not expired or been revoked.`);
+      throw new Error(
+        `WordPress publishing unauthorized (HTTP 401)${detail}. Check that your Application Password has not expired or been revoked.`,
+      );
     }
     if (res.status === 403) {
-      throw new Error(`WordPress publishing denied (HTTP 403)${detail}. Ensure this WordPress user account has permission to publish posts (Administrator or Editor).`);
+      throw new Error(
+        `WordPress publishing denied (HTTP 403)${detail}. Ensure this WordPress user account has permission to publish posts (Administrator or Editor).`,
+      );
     }
     throw new Error(`WordPress publish failed [${res.status}]${detail}`);
   }

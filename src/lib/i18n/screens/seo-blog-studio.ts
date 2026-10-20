@@ -7,7 +7,8 @@ export default screen({
   en: {
     "seoBlogStudio.saveToDrafts": "Save to Drafts",
     "seoBlogStudio.savingDraftFailed": "Saving draft failed",
-    "seoBlogStudio.savedToSocialHubDrafts": "Saved to Social Hub drafts for {platformName}! You can review and copy it from Social posts.",
+    "seoBlogStudio.savedToSocialHubDrafts":
+      "Saved to Social Hub drafts for {platformName}! You can review and copy it from Social posts.",
     "seoBlogStudio.couldNotBeRead": "{name} could not be read",
     "seoBlogStudio.visionContextExtracted": "Vision context extracted",
     "seoBlogStudio.analysisFailed": "Analysis failed",
@@ -88,7 +89,8 @@ export default screen({
   ar: {
     "seoBlogStudio.saveToDrafts": "حفظ في المسودات",
     "seoBlogStudio.savingDraftFailed": "فشل حفظ المسودة",
-    "seoBlogStudio.savedToSocialHubDrafts": "تم الحفظ في مسودات منصة التواصل الاجتماعي لـ {platformName}! يمكنك مراجعتها ونسخها من منشورات التواصل.",
+    "seoBlogStudio.savedToSocialHubDrafts":
+      "تم الحفظ في مسودات منصة التواصل الاجتماعي لـ {platformName}! يمكنك مراجعتها ونسخها من منشورات التواصل.",
     "seoBlogStudio.couldNotBeRead": "تعذّرت قراءة {name}",
     "seoBlogStudio.visionContextExtracted": "استُخرج سياق الصور",
     "seoBlogStudio.analysisFailed": "فشل التحليل",
@@ -169,7 +171,8 @@ export default screen({
   ms: {
     "seoBlogStudio.saveToDrafts": "Simpan ke Draf",
     "seoBlogStudio.savingDraftFailed": "Gagal menyimpan draf",
-    "seoBlogStudio.savedToSocialHubDrafts": "Disimpan ke draf Hab Sosial untuk {platformName}! Anda boleh menyemak dan menyalinnya dari catatan Sosial.",
+    "seoBlogStudio.savedToSocialHubDrafts":
+      "Disimpan ke draf Hab Sosial untuk {platformName}! Anda boleh menyemak dan menyalinnya dari catatan Sosial.",
     "seoBlogStudio.couldNotBeRead": "{name} tidak dapat dibaca",
     "seoBlogStudio.visionContextExtracted": "Konteks visual diekstrak",
     "seoBlogStudio.analysisFailed": "Analisis gagal",
@@ -250,7 +253,8 @@ export default screen({
   fil: {
     "seoBlogStudio.saveToDrafts": "I-save sa Mga Draft",
     "seoBlogStudio.savingDraftFailed": "Nabigo ang pag-save ng draft",
-    "seoBlogStudio.savedToSocialHubDrafts": "Nai-save sa mga draft ng Social Hub para sa {platformName}! Maaari mo itong suriin at kopyahin mula sa mga post sa Social.",
+    "seoBlogStudio.savedToSocialHubDrafts":
+      "Nai-save sa mga draft ng Social Hub para sa {platformName}! Maaari mo itong suriin at kopyahin mula sa mga post sa Social.",
     "seoBlogStudio.couldNotBeRead": "Hindi mabasa ang {name}",
     "seoBlogStudio.visionContextExtracted": "Nakuha ang vision context",
     "seoBlogStudio.analysisFailed": "Nabigo ang pagsusuri",
@@ -331,7 +335,8 @@ export default screen({
   sw: {
     "seoBlogStudio.saveToDrafts": "Hifadhi kwenye Rasimu",
     "seoBlogStudio.savingDraftFailed": "Imeshindwa kuhifadhi rasimu",
-    "seoBlogStudio.savedToSocialHubDrafts": "Imehifadhiwa kwenye rasimu za Kitovu cha Kijamii kwa {platformName}! Unaweza kuikagua na kuinakili kutoka machapisho ya Kijamii.",
+    "seoBlogStudio.savedToSocialHubDrafts":
+      "Imehifadhiwa kwenye rasimu za Kitovu cha Kijamii kwa {platformName}! Unaweza kuikagua na kuinakili kutoka machapisho ya Kijamii.",
     "seoBlogStudio.couldNotBeRead": "{name} haikuweza kusomwa",
     "seoBlogStudio.visionContextExtracted": "Muktadha wa picha umetolewa",
     "seoBlogStudio.analysisFailed": "Uchambuzi umeshindwa",

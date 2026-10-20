@@ -6,7 +6,8 @@ import { screen } from "../define";
 export default screen({
   en: {
     "wordPressSitesCard.wpRootAddressHint": "Your WordPress root address (e.g. https://myblog.com)",
-    "wordPressSitesCard.appPasswordHint": "Created in WordPress under Users > Profile > Application Passwords",
+    "wordPressSitesCard.appPasswordHint":
+      "Created in WordPress under Users > Profile > Application Passwords",
     "wordPressSitesCard.enterValidUrl": "Please enter a valid WordPress site URL.",
     "wordPressSitesCard.wordpressSiteConnected": "WordPress site connected",
     "wordPressSitesCard.couldNotSaveSite": "Could not save site",
@@ -32,8 +33,10 @@ export default screen({
     "wordPressSitesCard.connectSite": "Connect site",
   },
   ar: {
-    "wordPressSitesCard.wpRootAddressHint": "عنوان WordPress الأساسي الخاص بك (مثال: https://myblog.com)",
-    "wordPressSitesCard.appPasswordHint": "تم إنشاؤها في WordPress تحت المستخدمون > الملف الشخصي > كلمات مرور التطبيقات",
+    "wordPressSitesCard.wpRootAddressHint":
+      "عنوان WordPress الأساسي الخاص بك (مثال: https://myblog.com)",
+    "wordPressSitesCard.appPasswordHint":
+      "تم إنشاؤها في WordPress تحت المستخدمون > الملف الشخصي > كلمات مرور التطبيقات",
     "wordPressSitesCard.enterValidUrl": "يرجى إدخال عنوان URL صالح لموقع WordPress.",
     "wordPressSitesCard.wordpressSiteConnected": "رُبط موقع WordPress",
     "wordPressSitesCard.couldNotSaveSite": "تعذّر حفظ الموقع",
@@ -60,7 +63,8 @@ export default screen({
   },
   ms: {
     "wordPressSitesCard.wpRootAddressHint": "Alamat punca WordPress anda (cth. https://myblog.com)",
-    "wordPressSitesCard.appPasswordHint": "Dicipta dalam WordPress di bawah Pengguna > Profil > Kata Laluan Aplikasi",
+    "wordPressSitesCard.appPasswordHint":
+      "Dicipta dalam WordPress di bawah Pengguna > Profil > Kata Laluan Aplikasi",
     "wordPressSitesCard.enterValidUrl": "Sila masukkan URL laman WordPress yang sah.",
     "wordPressSitesCard.wordpressSiteConnected": "Laman WordPress disambungkan",
     "wordPressSitesCard.couldNotSaveSite": "Tidak dapat menyimpan laman",
@@ -86,8 +90,10 @@ export default screen({
     "wordPressSitesCard.connectSite": "Sambungkan laman",
   },
   fil: {
-    "wordPressSitesCard.wpRootAddressHint": "Ang iyong root address ng WordPress (hal. https://myblog.com)",
-    "wordPressSitesCard.appPasswordHint": "Ginawa sa WordPress sa ilalim ng Users > Profile > Application Passwords",
+    "wordPressSitesCard.wpRootAddressHint":
+      "Ang iyong root address ng WordPress (hal. https://myblog.com)",
+    "wordPressSitesCard.appPasswordHint":
+      "Ginawa sa WordPress sa ilalim ng Users > Profile > Application Passwords",
     "wordPressSitesCard.enterValidUrl": "Mangyaring maglagay ng wastong URL ng WordPress site.",
     "wordPressSitesCard.wordpressSiteConnected": "Nakakonekta na ang WordPress site",
     "wordPressSitesCard.couldNotSaveSite": "Hindi ma-save ang site",
@@ -113,8 +119,10 @@ export default screen({
     "wordPressSitesCard.connectSite": "Ikonekta ang site",
   },
   sw: {
-    "wordPressSitesCard.wpRootAddressHint": "Anwani yako ya msingi ya WordPress (mf. https://myblog.com)",
-    "wordPressSitesCard.appPasswordHint": "Imeundwa katika WordPress chini ya Watumiaji > Wasifu > Manenosiri ya Programu",
+    "wordPressSitesCard.wpRootAddressHint":
+      "Anwani yako ya msingi ya WordPress (mf. https://myblog.com)",
+    "wordPressSitesCard.appPasswordHint":
+      "Imeundwa katika WordPress chini ya Watumiaji > Wasifu > Manenosiri ya Programu",
     "wordPressSitesCard.enterValidUrl": "Tafadhali weka URL halali ya tovuti ya WordPress.",
     "wordPressSitesCard.wordpressSiteConnected": "Tovuti ya WordPress imeunganishwa",
     "wordPressSitesCard.couldNotSaveSite": "Imeshindwa kuhifadhi tovuti",
