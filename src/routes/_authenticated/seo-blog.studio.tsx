@@ -921,7 +921,7 @@ function SeoStudioPage() {
                               ) : (
                                 <BookmarkPlus className="size-3.5" />
                               )}
-                              Save to Drafts
+                              {t("seoBlogStudio.saveToDrafts")}
                             </Button>
                           </div>
                         </div>

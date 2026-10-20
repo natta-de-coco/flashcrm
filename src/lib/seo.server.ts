@@ -495,11 +495,6 @@ export function normalizeWpUrl(rawUrl: string): string {
 }
 
 
-/**
- * Verifies whether a redirect target URL is strictly same-origin or a canonical
- * subdomain (e.g. www <-> non-www on the exact same base domain) over HTTPS.
- * Never allows downgrades to plaintext HTTP or re-authenticating across distinct domains.
- */
 function wpAuth(c: WpCreds): string {
   const cleanAppPass = (c.appPassword ?? "").replace(/\s+/g, "");
   return `Basic ${Buffer.from(`${c.username.trim()}:${cleanAppPass}`).toString("base64")}`;
@@ -507,6 +502,9 @@ function wpAuth(c: WpCreds): string {
 
 async function wpFetch(c: WpCreds, path: string, init?: RequestInit): Promise<Response> {
   const cleanBase = normalizeWpUrl(c.siteUrl);
+  if (!isSafeWordPressUrl(cleanBase)) {
+    throw new Error("WordPress site URL is invalid or points to a restricted network address.");
+  }
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   const url = `${cleanBase}/wp-json/wp/v2${cleanPath}`;
 
@@ -524,16 +522,19 @@ async function wpFetch(c: WpCreds, path: string, init?: RequestInit): Promise<Re
     },
   });
 
-  // When fetch follows cross-scheme or cross-domain redirects (e.g. http->https or non-www->www),
-  // standard fetch drops Authorization headers, returning 401. Re-attempt with auth on redirected url.
+  // When fetch follows cross-scheme or canonical redirects (e.g. http->https or non-www->www),
+  // standard fetch drops Authorization headers, returning 401. Re-attempt with credentials
+  // ONLY if the redirect destination is strictly HTTPS, passes SSRF checks, and is the same canonical origin.
   if (res.status === 401 && res.url && res.url !== url) {
-    res = await fetch(res.url, {
-      ...init,
-      headers: {
-        ...defaultHeaders,
-        ...(init?.headers ?? {}),
-      },
-    });
+    if (isSameCanonicalOrigin(res.url, url) && isSafeWordPressUrl(res.url)) {
+      res = await fetch(res.url, {
+        ...init,
+        headers: {
+          ...defaultHeaders,
+          ...(init?.headers ?? {}),
+        },
+      });
+    }
   }
 
   return res;

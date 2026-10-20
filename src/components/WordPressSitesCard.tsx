@@ -197,7 +197,7 @@ export function WordPressSitesCard() {
                   onChange={(e) => setForm({ ...form, site_url: e.target.value })}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Your WordPress root address (e.g. https://myblog.com)
+                  {t("wordPressSitesCard.wpRootAddressHint")}
                 </p>
               </div>
               <div className="grid gap-1.5">
@@ -218,7 +218,7 @@ export function WordPressSitesCard() {
                   onChange={(e) => setForm({ ...form, app_password: e.target.value })}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Created in WordPress under Users &gt; Profile &gt; Application Passwords
+                  {t("wordPressSitesCard.appPasswordHint")}
                 </p>
               </div>
               <div className="grid gap-1.5">
