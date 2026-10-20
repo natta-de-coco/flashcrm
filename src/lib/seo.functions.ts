@@ -96,7 +96,9 @@ export const publishMicroPostToSocialFn = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => PublishMicroSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { publishMicroPostToSocial } = await import("@/lib/seo.server");
+    const { data: tenantId } = await context.supabase.rpc("current_tenant_id");
     return publishMicroPostToSocial(context.supabase as never, {
+      tenantId: tenantId as string | null,
       platform: data.platform,
       text: data.text,
       hashtags: data.hashtags,
@@ -139,6 +141,10 @@ export const testWpConnectionFn = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
+    const { isSafeWordPressUrl } = await import("@/lib/seo-url");
+    if (!isSafeWordPressUrl(data.siteUrl)) {
+      throw new Error("The site URL points to an invalid or restricted network address.");
+    }
     const { testWpConnection } = await import("@/lib/seo.server");
     return testWpConnection({
       siteUrl: data.siteUrl,

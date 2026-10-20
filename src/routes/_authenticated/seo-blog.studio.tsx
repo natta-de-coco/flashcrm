@@ -905,11 +905,11 @@ function SeoStudioPage() {
                                     },
                                   });
                                   toast.success(
-                                    `Saved to Social Hub drafts for ${p.platformName}! You can review and copy it from Social posts.`,
+                                    t("seoBlogStudio.savedToSocialHubDrafts", { platformName: p.platformName }),
                                   );
                                 } catch (err) {
                                   toast.error(
-                                    err instanceof Error ? err.message : "Saving draft failed",
+                                    err instanceof Error ? err.message : t("seoBlogStudio.savingDraftFailed"),
                                   );
                                 } finally {
                                   setPublishingPlatform(null);

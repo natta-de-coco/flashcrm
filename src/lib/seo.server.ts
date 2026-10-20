@@ -1,3 +1,4 @@
+import { isSafeWordPressUrl, isSameCanonicalOrigin } from "./seo-url";
 // Server-only helpers for the SEO Studio: multimodal vision analysis, article
 // drafting and WordPress REST publishing. WordPress application passwords are
 // only ever read here (via the admin client) after the caller's tenant has
@@ -493,6 +494,12 @@ export function normalizeWpUrl(rawUrl: string): string {
   return u;
 }
 
+
+/**
+ * Verifies whether a redirect target URL is strictly same-origin or a canonical
+ * subdomain (e.g. www <-> non-www on the exact same base domain) over HTTPS.
+ * Never allows downgrades to plaintext HTTP or re-authenticating across distinct domains.
+ */
 function wpAuth(c: WpCreds): string {
   const cleanAppPass = (c.appPassword ?? "").replace(/\s+/g, "");
   return `Basic ${Buffer.from(`${c.username.trim()}:${cleanAppPass}`).toString("base64")}`;

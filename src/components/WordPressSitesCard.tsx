@@ -76,7 +76,7 @@ export function WordPressSitesCard() {
     mutationFn: async () => {
       if (!tenant?.id) throw new Error("Workspace not loaded yet.");
       const cleanUrl = cleanWpUrl(form.site_url);
-      if (!cleanUrl) throw new Error("Please enter a valid WordPress site URL.");
+      if (!cleanUrl) throw new Error(t("wordPressSitesCard.enterValidUrl"));
       const { error } = await supabase.from("wordpress_sites").insert({
         tenant_id: tenant.id,
         label: form.label || cleanUrl,
