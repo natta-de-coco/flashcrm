@@ -207,9 +207,9 @@ export function InvoiceBuilder({
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.type")}</Label>
+            <Label htmlFor="doc_kind">{i18n.t("invoiceBuilder.type")}</Label>
             <Select value={state.kind} onValueChange={(v) => patch({ kind: v as "invoice" })}>
-              <SelectTrigger>
+              <SelectTrigger id="doc_kind" aria-label={i18n.t("invoiceBuilder.type")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -219,15 +219,18 @@ export function InvoiceBuilder({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.currency")}</Label>
+            <Label htmlFor="doc_currency">{i18n.t("invoiceBuilder.currency")}</Label>
             <Input
+              id="doc_currency"
+              placeholder="AED"
               value={state.currency}
               onChange={(e) => patch({ currency: e.target.value.toUpperCase().slice(0, 6) })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.issueDate")}</Label>
+            <Label htmlFor="doc_issue_date">{i18n.t("invoiceBuilder.issueDate")}</Label>
             <Input
+              id="doc_issue_date"
               type="date"
               value={state.issue_date}
               onChange={(e) => patch({ issue_date: e.target.value })}
@@ -235,8 +238,9 @@ export function InvoiceBuilder({
           </div>
           {state.kind === "invoice" ? (
             <div className="space-y-1.5">
-              <Label>{i18n.t("invoiceBuilder.dueDate")}</Label>
+              <Label htmlFor="doc_due_date">{i18n.t("invoiceBuilder.dueDate")}</Label>
               <Input
+                id="doc_due_date"
                 type="date"
                 value={state.due_date}
                 onChange={(e) => patch({ due_date: e.target.value })}
@@ -244,8 +248,9 @@ export function InvoiceBuilder({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <Label>{i18n.t("invoiceBuilder.validUntil")}</Label>
+              <Label htmlFor="doc_valid_until">{i18n.t("invoiceBuilder.validUntil")}</Label>
               <Input
+                id="doc_valid_until"
                 type="date"
                 value={state.valid_until}
                 onChange={(e) => patch({ valid_until: e.target.value })}
@@ -253,16 +258,27 @@ export function InvoiceBuilder({
             </div>
           )}
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.reference")}</Label>
-            <Input value={state.reference} onChange={(e) => patch({ reference: e.target.value })} />
+            <Label htmlFor="doc_reference">{i18n.t("invoiceBuilder.reference")}</Label>
+            <Input
+              id="doc_reference"
+              placeholder={i18n.t("invoiceBuilder.reference")}
+              value={state.reference}
+              onChange={(e) => patch({ reference: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.poNumber")}</Label>
-            <Input value={state.po_number} onChange={(e) => patch({ po_number: e.target.value })} />
+            <Label htmlFor="doc_po_number">{i18n.t("invoiceBuilder.poNumber")}</Label>
+            <Input
+              id="doc_po_number"
+              placeholder={i18n.t("invoiceBuilder.poNumber")}
+              value={state.po_number}
+              onChange={(e) => patch({ po_number: e.target.value })}
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label>{i18n.t("invoiceBuilder.paymentTerms")}</Label>
+            <Label htmlFor="doc_payment_terms">{i18n.t("invoiceBuilder.paymentTerms")}</Label>
             <Input
+              id="doc_payment_terms"
               value={state.payment_terms}
               placeholder={i18n.t("invoiceBuilder.50AdvanceBalanceOnDelivery")}
               onChange={(e) => patch({ payment_terms: e.target.value })}
@@ -277,9 +293,9 @@ export function InvoiceBuilder({
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
-            <Label>{i18n.t("invoiceBuilder.pickFromContacts")}</Label>
+            <Label htmlFor="cust_contact">{i18n.t("invoiceBuilder.pickFromContacts")}</Label>
             <Select value={state.contact_id ?? ""} onValueChange={pickContact}>
-              <SelectTrigger>
+              <SelectTrigger id="cust_contact" aria-label={i18n.t("invoiceBuilder.pickFromContacts")}>
                 <SelectValue placeholder={i18n.t("invoiceBuilder.searchYourCrmContacts")} />
               </SelectTrigger>
               <SelectContent>
@@ -293,44 +309,56 @@ export function InvoiceBuilder({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.name")}</Label>
+            <Label htmlFor="cust_name">{i18n.t("invoiceBuilder.name")}</Label>
             <Input
+              id="cust_name"
+              placeholder={i18n.t("invoiceBuilder.name")}
               value={state.customer.name}
               onChange={(e) => patch({ customer: { ...state.customer, name: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.company")}</Label>
+            <Label htmlFor="cust_company">{i18n.t("invoiceBuilder.company")}</Label>
             <Input
+              id="cust_company"
+              placeholder={i18n.t("invoiceBuilder.company")}
               value={state.customer.company}
               onChange={(e) => patch({ customer: { ...state.customer, company: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.whatsappNumber")}</Label>
+            <Label htmlFor="cust_phone">{i18n.t("invoiceBuilder.whatsappNumber")}</Label>
             <Input
+              id="cust_phone"
               value={state.customer.phone}
               placeholder="+9715XXXXXXX"
               onChange={(e) => patch({ customer: { ...state.customer, phone: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.email")}</Label>
+            <Label htmlFor="cust_email">{i18n.t("invoiceBuilder.email")}</Label>
             <Input
+              id="cust_email"
+              type="email"
+              placeholder="client@example.com"
               value={state.customer.email}
               onChange={(e) => patch({ customer: { ...state.customer, email: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.address")}</Label>
+            <Label htmlFor="cust_address">{i18n.t("invoiceBuilder.address")}</Label>
             <Input
+              id="cust_address"
+              placeholder={i18n.t("invoiceBuilder.address")}
               value={state.customer.address}
               onChange={(e) => patch({ customer: { ...state.customer, address: e.target.value } })}
             />
           </div>
           <div className="space-y-1.5">
-            <Label>{i18n.t("invoiceBuilder.vatTrn")}</Label>
+            <Label htmlFor="cust_vat">{i18n.t("invoiceBuilder.vatTrn")}</Label>
             <Input
+              id="cust_vat"
+              placeholder="100000000000003"
               value={state.customer.vat_number}
               onChange={(e) =>
                 patch({ customer: { ...state.customer, vat_number: e.target.value } })
@@ -358,12 +386,12 @@ export function InvoiceBuilder({
               <div key={index} className="rounded-lg border p-3">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-1.5 lg:col-span-2">
-                    <Label>{i18n.t("invoiceBuilder.fromCatalog")}</Label>
+                    <Label htmlFor={`item_${index}_catalog`}>{i18n.t("invoiceBuilder.fromCatalog")}</Label>
                     <Select
                       value={item.product_id ?? ""}
                       onValueChange={(v) => pickProduct(index, v)}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger id={`item_${index}_catalog`} aria-label={`${i18n.t("invoiceBuilder.fromCatalog")} ${index + 1}`}>
                         <SelectValue placeholder={i18n.t("invoiceBuilder.optionalPickAProduct")} />
                       </SelectTrigger>
                       <SelectContent>
@@ -377,38 +405,49 @@ export function InvoiceBuilder({
                     </Select>
                   </div>
                   <div className="space-y-1.5 lg:col-span-2">
-                    <Label>{i18n.t("invoiceBuilder.descriptionShownOnThePdf")}</Label>
+                    <Label htmlFor={`item_${index}_name`}>{i18n.t("invoiceBuilder.descriptionShownOnThePdf")}</Label>
                     <Input
+                      id={`item_${index}_name`}
+                      aria-label={`${i18n.t("invoiceBuilder.descriptionShownOnThePdf")} ${index + 1}`}
                       value={item.name}
                       placeholder={i18n.t("invoiceBuilder.itemName")}
                       onChange={(e) => patchItem(index, { name: e.target.value })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>{i18n.t("invoiceBuilder.qty")}</Label>
+                    <Label htmlFor={`item_${index}_qty`}>{i18n.t("invoiceBuilder.qty")}</Label>
                     <Input
+                      id={`item_${index}_qty`}
+                      aria-label={`${i18n.t("invoiceBuilder.qty")} ${index + 1}`}
                       type="number"
                       min={0}
+                      placeholder="1"
                       value={item.quantity}
                       onChange={(e) => patchItem(index, { quantity: Number(e.target.value) })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>{i18n.t("invoiceBuilder.unitPrice")}</Label>
+                    <Label htmlFor={`item_${index}_price`}>{i18n.t("invoiceBuilder.unitPrice")}</Label>
                     <Input
+                      id={`item_${index}_price`}
+                      aria-label={`${i18n.t("invoiceBuilder.unitPrice")} ${index + 1}`}
                       type="number"
                       min={0}
                       step="0.01"
+                      placeholder="0.00"
                       value={item.unit_price}
                       onChange={(e) => patchItem(index, { unit_price: Number(e.target.value) })}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>{i18n.t("invoiceBuilder.discount")}</Label>
+                    <Label htmlFor={`item_${index}_discount`}>{i18n.t("invoiceBuilder.discount")}</Label>
                     <div className="flex gap-2">
                       <Input
+                        id={`item_${index}_discount`}
+                        aria-label={`${i18n.t("invoiceBuilder.discount")} ${index + 1}`}
                         type="number"
                         min={0}
+                        placeholder="0"
                         value={item.discount_value}
                         onChange={(e) =>
                           patchItem(index, { discount_value: Number(e.target.value) })
@@ -418,7 +457,7 @@ export function InvoiceBuilder({
                         value={item.discount_type}
                         onValueChange={(v) => patchItem(index, { discount_type: v as "percent" })}
                       >
-                        <SelectTrigger className="w-20">
+                        <SelectTrigger className="w-20" aria-label={`${i18n.t("invoiceBuilder.discount")} ${index + 1} type`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -429,11 +468,14 @@ export function InvoiceBuilder({
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>{i18n.t("invoiceBuilder.tax")}</Label>
+                    <Label htmlFor={`item_${index}_tax`}>{i18n.t("invoiceBuilder.tax")}</Label>
                     <Input
+                      id={`item_${index}_tax`}
+                      aria-label={`${i18n.t("invoiceBuilder.tax")} ${index + 1}`}
                       type="number"
                       min={0}
                       step="0.01"
+                      placeholder="5"
                       value={item.tax_rate}
                       onChange={(e) => patchItem(index, { tax_rate: Number(e.target.value) })}
                     />
@@ -455,6 +497,7 @@ export function InvoiceBuilder({
                     <Button
                       size="sm"
                       variant="ghost"
+                      aria-label={`Delete item ${index + 1}`}
                       onClick={() => patch({ items: state.items.filter((_, i) => i !== index) })}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -474,52 +517,64 @@ export function InvoiceBuilder({
         <CardContent className="grid gap-4 lg:grid-cols-2">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>{i18n.t("invoiceBuilder.invoiceDiscount")}</Label>
+              <Label htmlFor="doc_invoice_discount">{i18n.t("invoiceBuilder.invoiceDiscount")}</Label>
               <Input
+                id="doc_invoice_discount"
                 type="number"
                 min={0}
+                placeholder="0.00"
                 value={state.invoice_discount}
                 onChange={(e) => patch({ invoice_discount: Number(e.target.value) })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>{i18n.t("invoiceBuilder.shipping")}</Label>
+              <Label htmlFor="doc_shipping">{i18n.t("invoiceBuilder.shipping")}</Label>
               <Input
+                id="doc_shipping"
                 type="number"
                 min={0}
+                placeholder="0.00"
                 value={state.shipping}
                 onChange={(e) => patch({ shipping: Number(e.target.value) })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>{i18n.t("invoiceBuilder.otherCharges")}</Label>
+              <Label htmlFor="doc_additional_charges">{i18n.t("invoiceBuilder.otherCharges")}</Label>
               <Input
+                id="doc_additional_charges"
                 type="number"
                 min={0}
+                placeholder="0.00"
                 value={state.additional_charges}
                 onChange={(e) => patch({ additional_charges: Number(e.target.value) })}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>{i18n.t("invoiceBuilder.roundingAdjustment")}</Label>
+              <Label htmlFor="doc_adjustment">{i18n.t("invoiceBuilder.roundingAdjustment")}</Label>
               <Input
+                id="doc_adjustment"
                 type="number"
+                placeholder="0.00"
                 value={state.adjustment}
                 onChange={(e) => patch({ adjustment: Number(e.target.value) })}
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>{i18n.t("invoiceBuilder.notesToCustomer")}</Label>
+              <Label htmlFor="doc_notes">{i18n.t("invoiceBuilder.notesToCustomer")}</Label>
               <Textarea
+                id="doc_notes"
                 rows={2}
+                placeholder={i18n.t("invoiceBuilder.notesToCustomer")}
                 value={state.notes}
                 onChange={(e) => patch({ notes: e.target.value })}
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>{i18n.t("invoiceBuilder.termsConditions")}</Label>
+              <Label htmlFor="doc_terms">{i18n.t("invoiceBuilder.termsConditions")}</Label>
               <Textarea
+                id="doc_terms"
                 rows={3}
+                placeholder={i18n.t("invoiceBuilder.termsConditions")}
                 value={state.terms}
                 onChange={(e) => patch({ terms: e.target.value })}
               />
