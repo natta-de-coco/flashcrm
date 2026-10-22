@@ -18,6 +18,7 @@ await build({
         for (const [filter, name] of [
           [/client\.server$/, "admin"],
           [/secret-box\.server$/, "encryption"],
+          [/social-secrets\.server$/, "pkce-encryption"],
           [/oauth\.server$/, "oauth"],
         ])
           b.onResolve({ filter }, () => ({ path: name, namespace: "preflight-test" }));
@@ -27,7 +28,9 @@ await build({
               ? "export const supabaseAdmin={from:(...a)=>globalThis.__preflight.from(...a),rpc:(...a)=>globalThis.__preflight.rpc(...a)};"
               : path === "encryption"
                 ? "export const encryptionConfigured=async()=>true;"
-                : "export async function resolveCredentials(){return {id:'synthetic-client',secret:'synthetic-secret',source:'shared'}} export function resolveAllowedOrigin(origin){return origin==='https://flas.example'?origin:null}",
+                : path === "pkce-encryption"
+                  ? "export const encryptionConfigured=()=>globalThis.__preflight.pkceReady;"
+                  : "export async function resolveCredentials(){return {id:'synthetic-client',secret:'synthetic-secret',source:'shared'}} export function resolveAllowedOrigin(origin){return origin==='https://flas.example'?origin:null}",
           loader: "js",
         }));
       },
@@ -40,6 +43,7 @@ process.env.PUBLIC_APP_URL = "https://flas.example";
 function setup(options = {}) {
   const reads = [];
   globalThis.__preflight = {
+    pkceReady: options.pkceReady !== false,
     from(table) {
       return {
         select(columns) {
@@ -104,3 +108,15 @@ for (const options of [{ guard: false }, { guardError: true }, { readError: true
       false,
     );
   });
+
+for (const provider of ["google", "twitter"])
+  test(`${provider}: legacy encryption alone cannot hide an unusable PKCE ring`, async () => {
+    setup({ pkceReady: false });
+    const result = await oauthPreflight(provider, "workspace-A", "https://flas.example");
+    assert.equal(result.checks.encryption, false);
+    assert.equal(result.ready, false);
+  });
+test("Meta does not require a PKCE ring it never uses", async () => {
+  setup({ pkceReady: false });
+  assert.equal((await oauthPreflight("meta", "workspace-A", "https://flas.example")).ready, true);
+});
