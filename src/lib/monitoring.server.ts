@@ -582,12 +582,29 @@ export async function processWaPayload(body: WaWebhookBody) {
         await checkNumberHealth(waNumberId);
       }
 
-      for (const message of value?.messages ?? []) {
+      const messagesList = value?.messages ?? [];
+      // Identify the last valid message for each sender in this batch to debounce rapid consecutive messages.
+      // Prior messages from the same sender are ingested for full conversational context without triggering redundant replies.
+      const lastIndexBySender = new Map<string, number>();
+      for (let i = 0; i < messagesList.length; i++) {
+        const m = messagesList[i];
+        if (!m) continue;
+        if (m.from && extractMessageBody(m) && m.id) {
+          lastIndexBySender.set(m.from, i);
+        }
+      }
+
+      for (let i = 0; i < messagesList.length; i++) {
+        const message = messagesList[i];
+        if (!message) continue;
         const text = extractMessageBody(message);
         const from = message.from;
         if (!text || !from || !message.id) continue;
         if (!(await claimWebhookEventOnce("whatsapp:message", message.id))) continue;
         handled += 1;
+
+        const isLastInBatchForSender = lastIndexBySender.get(from) === i;
+        const skipBotReply = !isLastInBatchForSender;
 
         let ingested: Awaited<ReturnType<typeof ingestInboundMessage>>;
         try {
@@ -600,6 +617,7 @@ export async function processWaPayload(body: WaWebhookBody) {
             waMessageId: message.id,
             waNumberId,
             media: mediaOf(message),
+            skipBotReply,
           });
         } catch (error) {
           // Retrying this event (Monitoring -> Retry) used to skip the message
