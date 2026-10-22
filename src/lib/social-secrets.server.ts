@@ -10,6 +10,12 @@
  *   SOCIAL_TOKEN_ENCRYPTION_KEYS = "k2026a:<base64 32 bytes>,k2026b:<...>"
  *   SOCIAL_TOKEN_ACTIVE_KEY_ID   = "k2026b"
  *
+ * With neither dedicated setting present, use the existing server
+ * TOKEN_ENCRYPTION_KEYS ring (first entry active), or TOKEN_ENCRYPTION_KEY
+ * shorthand. No material is copied or exposed. A partially configured
+ * dedicated ring fails closed; it never silently falls back to another key.
+ * Keep old key ids/material when moving to a dedicated ring or rotating it.
+ *
  * New writes use the active key; any key still in the ring decrypts. That is
  * what makes rotation possible: add a key, make it active, re-encrypt at
  * leisure, and only then remove the old one.
@@ -70,8 +76,13 @@ type KeyRing = { active: string; keys: Map<string, Uint8Array<ArrayBuffer>> };
  * key id at most -- never a key.
  */
 export function readKeyRing(env: Env = defaultEnv()): KeyRing {
-  const raw = env["SOCIAL_TOKEN_ENCRYPTION_KEYS"]?.trim();
-  const active = env["SOCIAL_TOKEN_ACTIVE_KEY_ID"]?.trim();
+  let raw = env["SOCIAL_TOKEN_ENCRYPTION_KEYS"]?.trim();
+  let active = env["SOCIAL_TOKEN_ACTIVE_KEY_ID"]?.trim();
+  if (!raw && !active) {
+    const one = env["TOKEN_ENCRYPTION_KEY"]?.trim();
+    raw = env["TOKEN_ENCRYPTION_KEYS"]?.trim() || (one ? `k1:${one}` : undefined);
+    active = raw?.split(",")[0]?.split(":")[0]?.trim();
+  }
   if (!raw || !active) {
     throw new TokenCryptoError(
       "not_configured",
