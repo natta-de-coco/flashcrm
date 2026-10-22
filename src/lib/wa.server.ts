@@ -509,8 +509,8 @@ export async function generateBotReply(
 
   const deptList = (staffRows ?? [])
     .map(
-      (s: { department: string; role_title: string | null; name: string }) =>
-        `- ${s.department}: ${s.role_title || s.name}`,
+      (s: { department: string; role_title: string | null; name: string; phone?: string }) =>
+        `- ${s.department}: ${s.name}${s.role_title ? ` (${s.role_title})` : ""}${s.phone ? ` [Direct: ${s.phone}]` : ""}`,
     )
     .join("\n");
 

@@ -1168,6 +1168,14 @@ export function InboxPage() {
                     )}
                   </Badge>
                 )}
+                {c.assigned_department && (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 border-primary/30 bg-primary/10 text-primary text-[10px] font-medium capitalize"
+                  >
+                    {c.assigned_department.replace(/_/g, " ")}
+                  </Badge>
+                )}
                 {c.bot_enabled && (
                   <Badge className="gap-1 bg-brand text-brand-foreground text-[10px]">
                     <Bot className="size-3" /> {i18n.t("inbox.bot")}
@@ -1226,7 +1234,17 @@ export function InboxPage() {
                   <ChevronLeft className="size-5 rtl:rotate-180" />
                 </Button>
                 <div className="min-w-0">
-                  <h2 className="truncate font-semibold">{active.contacts?.name}</h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="truncate font-semibold">{active.contacts?.name}</h2>
+                    {active.assigned_department && (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-primary/30 bg-primary/10 text-primary text-[10px] font-medium capitalize shrink-0"
+                      >
+                        {active.assigned_department.replace(/_/g, " ")}
+                      </Badge>
+                    )}
+                  </div>
                   <p className="truncate text-xs text-muted-foreground">
                     <bdi dir="ltr">{active.contacts?.phone ?? i18n.t("inbox.websiteVisitor")}</bdi>
                     {active.contacts?.company ? ` · ${active.contacts.company}` : ""}

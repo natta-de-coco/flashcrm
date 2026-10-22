@@ -34,6 +34,7 @@ export type Conversation = {
   channel: ConvChannel;
   status: ConvStatus;
   assigned_to: string | null;
+  assigned_department?: string | null;
   bot_enabled: boolean;
   tags: string[];
   unread_count: number;

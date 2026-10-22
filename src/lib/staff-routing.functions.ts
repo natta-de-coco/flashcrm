@@ -285,3 +285,82 @@ export const saveStaffAlertConfig = createServerFn({ method: "POST" })
     if (error) throw error;
     return { ok: true };
   });
+
+const SendTestAlertSchema = z.object({
+  phone: z.string().min(7, "Valid phone number required"),
+  department: z.string().default("sales"),
+  customTemplate: z.string().optional(),
+});
+
+/**
+ * Send a test staff WhatsApp alert with sample lead data.
+ */
+export const sendTestStaffAlert = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((d: unknown) => SendTestAlertSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: profile } = await context.supabase
+      .from("profiles")
+      .select("tenant_id")
+      .eq("id", context.userId)
+      .single();
+
+    if (!profile?.tenant_id) throw new Error("No active workspace found");
+
+    const tenantId = profile.tenant_id;
+    const { deliverWhatsAppText, resolveWaCredentials } = await import("@/lib/wa.server");
+    const { substituteStaffAlertTags, DEFAULT_STAFF_ALERT_TEMPLATE } =
+      await import("./staff-alert-template");
+
+    // Fetch company name for {{company_name}}
+    const { data: org } = await supabaseAdmin
+      .from("organizations")
+      .select("name")
+      .eq("id", tenantId)
+      .maybeSingle();
+
+    const templateToUse = data.customTemplate?.trim() || DEFAULT_STAFF_ALERT_TEMPLATE;
+    const alertBody = substituteStaffAlertTags(templateToUse, {
+      customerName: "Rashid Al-Maktoum (Sample Lead)",
+      customerPhone: "+971 50 123 4567",
+      department: data.department,
+      customerRequirements:
+        "Inquiring about package options and technician availability for branch maintenance.",
+      companyName: org?.name || "FLAS Workspace",
+      timestamp: new Date().toLocaleString(),
+    });
+
+    const digits = data.phone.replace(/[^0-9]/g, "");
+    const cleanPhone = digits.startsWith("+") ? digits : `+${digits}`;
+
+    let creds;
+    try {
+      creds = await resolveWaCredentials(tenantId);
+    } catch (err) {
+      return {
+        ok: false as const,
+        error:
+          (err as Error)?.message ||
+          "No connected WhatsApp number available for this workspace. Connect one in Settings > Integrations.",
+      };
+    }
+
+    try {
+      const outcome = await deliverWhatsAppText(cleanPhone, alertBody, creds);
+      if (outcome.state === "rejected") {
+        return {
+          ok: false as const,
+          error: outcome.message || "WhatsApp provider rejected the message.",
+        };
+      }
+      return {
+        ok: true as const,
+        message: `Test alert sent successfully to ${cleanPhone}`,
+      };
+    } catch (sendErr) {
+      return {
+        ok: false as const,
+        error: (sendErr as Error)?.message || "Failed to deliver test WhatsApp message.",
+      };
+    }
+  });

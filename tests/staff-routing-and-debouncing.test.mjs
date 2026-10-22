@@ -300,3 +300,25 @@ describe("Multi-Message Rapid Burst Debouncing", () => {
     );
   });
 });
+
+describe("Department Tagging & Live Alert Delivery", () => {
+  it("formats template for field technician with custom requirements", () => {
+    const template =
+      "🔧 *Technician Dispatch*\n" +
+      "Staff: {{department}}\n" +
+      "Client: {{customer_name}} ({{customer_phone}})\n" +
+      "Issue: {{customer_requirements}}";
+
+    const formatted = substituteStaffAlertTags(template, {
+      customerName: "Fatima Al-Zahra",
+      customerPhone: "+971520001122",
+      department: "technician",
+      customerRequirements: "Network terminal offline in Dubai Mall branch",
+    });
+
+    assert.ok(formatted.includes("Technician"));
+    assert.ok(formatted.includes("Fatima Al-Zahra"));
+    assert.ok(formatted.includes("+971520001122"));
+    assert.ok(formatted.includes("Network terminal offline in Dubai Mall branch"));
+  });
+});
