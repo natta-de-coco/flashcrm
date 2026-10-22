@@ -257,6 +257,117 @@ describe("when the factor lookup cannot be made", () => {
   });
 });
 
+describe("Auth factor metadata must be readable before remembering no second factor", () => {
+  const BAD_FACTORS = [
+    ["object instead of array", { unreadable: true }],
+    ["explicit null", null],
+    ["string instead of array", "verified"],
+    ["number instead of array", 0],
+    ["null entry", [null]],
+    ["scalar entry", ["verified"]],
+    ["nested array", [[]]],
+    ["missing status", [{ id: "factor-a", factor_type: "totp" }]],
+    ["unknown status", [{ id: "factor-a", status: "pending", factor_type: "totp" }]],
+    ["missing id", [{ status: "unverified", factor_type: "totp" }]],
+    ["empty id", [{ id: "", status: "unverified", factor_type: "totp" }]],
+    ["non-string type", [{ id: "factor-a", status: "unverified", factor_type: {} }]],
+    ["unrecognized type", [{ id: "factor-a", status: "verified", factor_type: "new-kind" }]],
+    ["valid entry mixed with unreadable entry", [{ ...UNVERIFIED, factor_type: "totp" }, {}]],
+  ];
+
+  for (const wrapped of [false, true]) {
+    for (const [what, factors] of BAD_FACTORS) {
+      test(`refuses ${what} (${wrapped ? "wrapped" : "direct"}) and does not seed the cache`, async () => {
+        const user = account([VERIFIED]);
+        const session = await fake.session(user);
+        const body = { id: user, factors };
+        fake.fail("user", { status: 200, body: wrapped ? { user: body } : body });
+        const target = serverFn("listInvoices");
+        refused(await call(target, session.token), target, COULD_NOT_CHECK);
+
+        // A second request must ask again, never borrow a fabricated no-factor answer.
+        fake.fail("user", { status: 500 });
+        const retry = serverFn("listInvoices");
+        refused(await call(retry, session.token), retry, COULD_NOT_CHECK);
+        assert.equal(fake.count("user"), 2);
+      });
+    }
+  }
+
+  for (const [what, fields] of [
+    ["omitted factors", {}],
+    ["empty factors", { factors: [] }],
+    ["unverified TOTP", { factors: [{ ...UNVERIFIED, factor_type: "totp" }] }],
+    ["legacy unverified TOTP", { factors: [UNVERIFIED] }],
+  ]) {
+    for (const wrapped of [false, true]) {
+      test(`keeps supported ${what} (${wrapped ? "wrapped" : "direct"}) working`, async () => {
+        const user = account();
+        const session = await fake.session(user);
+        const body = { id: user, ...fields };
+        fake.fail("user", { status: 200, body: wrapped ? { user: body } : body });
+        const target = serverFn("listInvoices");
+        accepted(await call(target, session.token), target, user);
+      });
+    }
+  }
+
+  for (const kind of ["totp", undefined, null]) {
+    test(`verified ${String(kind)} factor still requires a code`, async () => {
+      const user = account([VERIFIED]);
+      const session = await fake.session(user);
+      fake.fail("user", {
+        status: 200,
+        body: { id: user, factors: [{ ...VERIFIED, factor_type: kind }] },
+      });
+      const target = serverFn("listInvoices");
+      refused(await call(target, session.token), target, NEEDS_CODE);
+    });
+  }
+
+  for (const inner of [null, [], "unreadable", 0]) {
+    test(`does not fall back to an outer id when the wrapped user is ${JSON.stringify(inner)}`, async () => {
+      const user = account([VERIFIED]);
+      const session = await fake.session(user);
+      fake.fail("user", { status: 200, body: { id: user, user: inner } });
+      const target = serverFn("listInvoices");
+      refused(await call(target, session.token), target, COULD_NOT_CHECK);
+    });
+  }
+
+  test("malformed metadata can use an existing outage allowance but never refreshes it", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    const user = account();
+    const session = await fake.session(user, { expiresIn: 3600 });
+    const first = serverFn("listInvoices");
+    accepted(await call(first, session.token), first, user);
+    t.mock.timers.tick(5 * 60_000);
+    fake.fail("user", { status: 200, body: { id: user, factors: { unreadable: true } } });
+    const within = serverFn("listInvoices");
+    accepted(await call(within, session.token), within, user);
+    assert.match(
+      console.warn.mock.calls.map((entry) => entry.arguments.join(" ")).join("\n"),
+      /could not check/,
+    );
+    t.mock.timers.tick(5 * 60_000);
+    const expired = serverFn("listInvoices");
+    refused(await call(expired, session.token), expired, COULD_NOT_CHECK);
+    assert.equal(fake.count("user"), 3);
+  });
+
+  test("malformed metadata about another user never borrows the caller's allowance", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    const user = account();
+    const session = await fake.session(user);
+    const first = serverFn("listInvoices");
+    accepted(await call(first, session.token), first, user);
+    t.mock.timers.tick(90_000);
+    fake.fail("user", { status: 200, body: { id: "another-user", factors: {} } });
+    const target = serverFn("listInvoices");
+    refused(await call(target, session.token), target, COULD_NOT_CHECK);
+  });
+});
+
 describe("a token the Auth service no longer vouches for", () => {
   test("is refused for an account with two-factor that signed out after giving only the password", async () => {
     // Without this, "sign in with the password, sign out, keep the token"
