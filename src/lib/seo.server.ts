@@ -1,3 +1,4 @@
+import { assertSafeDnsHost, isSafeWordPressUrl, isSameCanonicalOrigin } from "./seo-url";
 // Server-only helpers for the SEO Studio: multimodal vision analysis, article
 // drafting and WordPress REST publishing. WordPress application passwords are
 // only ever read here (via the admin client) after the caller's tenant has
@@ -400,6 +401,7 @@ Respond in EXACTLY this JSON shape:
 export async function publishMicroPostToSocial(
   supabase: RlsClient,
   input: {
+    tenantId?: string | null;
     platform: PlatformKey;
     text: string;
     hashtags: string[];
@@ -443,14 +445,19 @@ export async function publishMicroPostToSocial(
     .limit(1)
     .maybeSingle();
 
+  const postRecord: Record<string, unknown> = {
+    caption: fullCaption,
+    account_id: account?.id ?? null,
+    status: input.scheduledAt ? "scheduled" : "draft",
+    scheduled_at: input.scheduledAt ?? null,
+  };
+  if (input.tenantId) {
+    postRecord["tenant_id"] = input.tenantId;
+  }
+
   const { data: created, error } = await client
     .from("social_posts")
-    .insert({
-      caption: fullCaption,
-      account_id: account?.id ?? null,
-      status: input.scheduledAt ? "scheduled" : "draft",
-      scheduled_at: input.scheduledAt ?? null,
-    })
+    .insert(postRecord)
     .select("id")
     .single();
 
@@ -481,16 +488,115 @@ export async function humanizeHtml(
 
 export type WpCreds = { siteUrl: string; username: string; appPassword: string };
 
+export function normalizeWpUrl(rawUrl: string): string {
+  let u = (rawUrl ?? "").trim();
+  if (!u) return "";
+  if (!/^https?:\/\//i.test(u)) {
+    u = `https://${u}`;
+  }
+  u = u.replace(/\/+$/, "");
+  u = u.replace(/\/wp-admin(?:\/.*)?$/i, "");
+  u = u.replace(/\/wp-json(?:\/.*)?$/i, "");
+  return u;
+}
+
 function wpAuth(c: WpCreds): string {
-  return `Basic ${Buffer.from(`${c.username}:${c.appPassword}`).toString("base64")}`;
+  const cleanAppPass = (c.appPassword ?? "").replace(/\s+/g, "");
+  return `Basic ${Buffer.from(`${c.username.trim()}:${cleanAppPass}`).toString("base64")}`;
 }
 
 async function wpFetch(c: WpCreds, path: string, init?: RequestInit): Promise<Response> {
-  const url = `${c.siteUrl.replace(/\/+$/, "")}/wp-json/wp/v2${path}`;
-  return fetch(url, {
-    ...init,
-    headers: { Authorization: wpAuth(c), ...(init?.headers ?? {}) },
-  });
+  const cleanBase = normalizeWpUrl(c.siteUrl);
+  if (!isSafeWordPressUrl(cleanBase)) {
+    throw new Error("WordPress site URL is invalid or points to a restricted network address.");
+  }
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const initialUrl = `${cleanBase}/wp-json/wp/v2${cleanPath}`;
+
+  // Initial SSRF anti-rebinding / DNS verification
+  await assertSafeDnsHost(initialUrl);
+
+  const baseHeaders: Record<string, string> = {
+    Accept: "application/json",
+    "User-Agent": "FlasCRM/1.0 (+https://flas.mobidigisol.com; WordPress Integration)",
+  };
+
+  let currentUrl = initialUrl;
+  let currentAuth: string | null = wpAuth(c);
+  let requestInit = init;
+  const MAX_REDIRECTS = 3;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const headers: Record<string, string> = {
+      ...baseHeaders,
+      ...((requestInit?.headers as Record<string, string>) ?? {}),
+    };
+    if (currentAuth) {
+      headers["Authorization"] = currentAuth;
+    } else {
+      delete headers["Authorization"];
+    }
+
+    const res = await fetch(currentUrl, {
+      ...requestInit,
+      headers,
+      redirect: "manual",
+    });
+
+    // Check for HTTP redirects (301, 302, 303, 307, 308)
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const location = res.headers.get("location");
+      if (!location) {
+        return res; // No location header provided by server
+      }
+
+      if (hop === MAX_REDIRECTS) {
+        throw new Error(`WordPress request exceeded maximum redirects (${MAX_REDIRECTS}).`);
+      }
+
+      let targetUrl: string;
+      try {
+        targetUrl = new URL(location, currentUrl).toString();
+      } catch {
+        throw new Error(`WordPress server returned an invalid redirect location: ${location}`);
+      }
+
+      // Check scheme, hostname blocklist, IP ranges, and trailing dots on redirect target
+      if (!isSafeWordPressUrl(targetUrl)) {
+        throw new Error(
+          `Security violation: WordPress redirected to an unsafe or restricted URL (${targetUrl}).`,
+        );
+      }
+
+      // Verify DNS anti-rebinding on redirect target host
+      await assertSafeDnsHost(targetUrl);
+
+      // Only preserve Authorization if target is strictly same canonical origin over HTTPS
+      if (isSameCanonicalOrigin(targetUrl, initialUrl)) {
+        currentAuth = wpAuth(c);
+      } else {
+        // Cross-domain or downgrade: drop Authorization header completely
+        currentAuth = null;
+      }
+
+      // RFC 7231 / 9110: On 303 See Other, change method to GET for subsequent request
+      if (
+        res.status === 303 &&
+        requestInit?.method &&
+        requestInit.method !== "GET" &&
+        requestInit.method !== "HEAD"
+      ) {
+        requestInit = { ...requestInit, method: "GET", body: null };
+      }
+
+      currentUrl = targetUrl;
+      continue;
+    }
+
+    return res;
+  }
+
+  throw new Error(`WordPress request exceeded maximum redirects (${MAX_REDIRECTS}).`);
 }
 
 export async function testWpConnection(c: WpCreds): Promise<{
@@ -498,30 +604,62 @@ export async function testWpConnection(c: WpCreds): Promise<{
   categories: Array<{ id: number; name: string }>;
   tags: Array<{ id: number; name: string }>;
 }> {
-  const me = await wpFetch(c, "/users/me");
-  if (!me.ok) {
-    const body = await me.text();
+  let me: Response;
+  try {
+    me = await wpFetch(c, "/users/me");
+  } catch (err) {
     throw new Error(
-      `WordPress rejected the connection [${me.status}] — check the site URL, username and application password. ${body.slice(0, 200)}`,
+      `Could not reach WordPress site at ${c.siteUrl}: ${err instanceof Error ? err.message : String(err)}. Check that the domain is online and reachable.`,
     );
   }
+
+  if (!me.ok) {
+    const body = await me.text();
+    let detail = "";
+    try {
+      const parsed = JSON.parse(body) as { message?: string; code?: string };
+      if (parsed.message) detail = `: ${parsed.message}`;
+    } catch {
+      detail = body ? `: ${body.slice(0, 150)}` : "";
+    }
+
+    if (me.status === 401) {
+      throw new Error(
+        `WordPress authentication failed (HTTP 401)${detail}. Check that your Application Password is correct, and that your site URL uses HTTPS.`,
+      );
+    }
+    if (me.status === 403) {
+      throw new Error(
+        `WordPress access denied (HTTP 403)${detail}. Check your user permissions in WordPress (Administrator/Editor role needed) or firewall rules (Wordfence/Cloudflare).`,
+      );
+    }
+    if (me.status === 404) {
+      throw new Error(
+        `WordPress REST API not found (HTTP 404). Ensure permalinks are enabled in WordPress (Settings > Permalinks, select 'Post name' rather than 'Plain').`,
+      );
+    }
+    throw new Error(`WordPress rejected the connection [${me.status}]${detail}`);
+  }
+
   const user = (await me.json()) as { name?: string };
   const [cats, tags] = await Promise.all([
-    wpFetch(c, "/categories?per_page=100"),
-    wpFetch(c, "/tags?per_page=100"),
+    wpFetch(c, "/categories?per_page=100").catch(() => null),
+    wpFetch(c, "/tags?per_page=100").catch(() => null),
   ]);
-  const categories = cats.ok
-    ? ((await cats.json()) as Array<{ id: number; name: string }>).map((x) => ({
-        id: x.id,
-        name: x.name,
-      }))
-    : [];
-  const tagList = tags.ok
-    ? ((await tags.json()) as Array<{ id: number; name: string }>).map((x) => ({
-        id: x.id,
-        name: x.name,
-      }))
-    : [];
+  const categories =
+    cats && cats.ok
+      ? ((await cats.json()) as Array<{ id: number; name: string }>).map((x) => ({
+          id: x.id,
+          name: x.name,
+        }))
+      : [];
+  const tagList =
+    tags && tags.ok
+      ? ((await tags.json()) as Array<{ id: number; name: string }>).map((x) => ({
+          id: x.id,
+          name: x.name,
+        }))
+      : [];
   return { user: user.name ?? "connected", categories, tags: tagList };
 }
 
@@ -642,12 +780,36 @@ export async function publishToWordPress(input: PublishInput): Promise<PublishRe
         body: JSON.stringify(payload),
       });
     } else {
-      throw new Error(`WordPress publish failed [${res.status}]: ${body.slice(0, 300)}`);
+      let detail = "";
+      try {
+        const parsed = JSON.parse(body) as { message?: string };
+        if (parsed.message) detail = `: ${parsed.message}`;
+      } catch {
+        detail = body ? `: ${body.slice(0, 150)}` : "";
+      }
+      throw new Error(`WordPress publish failed [${res.status}]${detail}`);
     }
   }
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`WordPress publish failed [${res.status}]: ${body.slice(0, 300)}`);
+    let detail = "";
+    try {
+      const parsed = JSON.parse(body) as { message?: string };
+      if (parsed.message) detail = `: ${parsed.message}`;
+    } catch {
+      detail = body ? `: ${body.slice(0, 150)}` : "";
+    }
+    if (res.status === 401) {
+      throw new Error(
+        `WordPress publishing unauthorized (HTTP 401)${detail}. Check that your Application Password has not expired or been revoked.`,
+      );
+    }
+    if (res.status === 403) {
+      throw new Error(
+        `WordPress publishing denied (HTTP 403)${detail}. Ensure this WordPress user account has permission to publish posts (Administrator or Editor).`,
+      );
+    }
+    throw new Error(`WordPress publish failed [${res.status}]${detail}`);
   }
 
   const post = (await res.json()) as { id?: number; link?: string };

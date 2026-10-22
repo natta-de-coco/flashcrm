@@ -1,4 +1,6 @@
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Database } from "@/integrations/supabase/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { ConnectSchema, PLATFORMS } from "@/lib/social-schema";
 import { z } from "zod";
@@ -21,9 +23,42 @@ const ComposeSchema = z.object({
 const SavePostSchema = z.object({
   caption: z.string().min(1).max(4000),
   platform: z.enum(PLATFORMS),
-  accountId: z.string().uuid().optional(),
+  /**
+   * Which account the post is for. A uuid is that account; null is "No
+   * account", which the screen offers and which must be kept; leaving it out
+   * (a screen loaded before null was sent) lets the server pick the platform's
+   * first active account, as it always did.
+   */
+  accountId: z.string().uuid().nullable().optional(),
   scheduledAt: z.string().datetime().optional(),
 });
+
+/**
+ * An account id a request names has to be one the caller can see. The lookup
+ * goes through the caller's own client, so row-level security decides: another
+ * workspace's account comes back as "no row", not as an account. Without this a
+ * post could be filed against any account id the database accepts (the foreign
+ * key does not look at who is asking). A new post must also be on the platform
+ * of the account it names; an edit has no platform to compare.
+ */
+async function requireVisibleAccount(
+  supabase: SupabaseClient<Database>,
+  accountId: string,
+  platform?: string,
+) {
+  const { data: account, error } = await supabase
+    .from("social_accounts")
+    .select("id, platform")
+    .eq("id", accountId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!account) throw new Error("That account could not be found. Choose the account again.");
+  if (platform !== undefined && account.platform !== platform) {
+    throw new Error(
+      "That account is on a different platform from this post. Choose the account again.",
+    );
+  }
+}
 
 /** Everything the Social Hub page needs in one round trip. */
 export const getSocialHub = createServerFn({ method: "GET" })
@@ -34,7 +69,7 @@ export const getSocialHub = createServerFn({ method: "GET" })
       supabase
         .from("social_accounts")
         .select(
-          "id, tenant_id, platform, label, external_id, active, last_synced_at, created_at, stats",
+          "id, tenant_id, platform, label, external_id, connect_method, active, last_synced_at, created_at, stats",
         )
         .order("created_at", { ascending: true }),
       supabase
@@ -311,15 +346,23 @@ export const saveSocialPost = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => SavePostSchema.parse(input))
   .handler(async ({ data, context }) => {
-    let accountId = data.accountId ?? null;
-    if (!accountId) {
-      const { data: account } = await context.supabase
+    // null is a choice: the person picked "No account", and the draft is saved
+    // with none. Only a request that says nothing about an account gets the
+    // platform's first active one — and if that account cannot be looked up,
+    // the draft is not saved against a guess of "none".
+    let accountId: string | null = data.accountId ?? null;
+    if (typeof data.accountId === "string") {
+      await requireVisibleAccount(context.supabase, data.accountId, data.platform);
+    }
+    if (data.accountId === undefined) {
+      const { data: account, error: lookupError } = await context.supabase
         .from("social_accounts")
         .select("id")
         .eq("platform", data.platform)
         .eq("active", true)
         .limit(1)
         .maybeSingle();
+      if (lookupError) throw lookupError;
       accountId = account?.id ?? null;
     }
 
@@ -356,19 +399,36 @@ const UpdatePostSchema = z.object({
  * (QA, 26 Sep). A published post is read back from the platform and is never
  * edited here — changing the caption in Flas would not change the post, so the
  * update refuses it rather than pretending.
+ *
+ * Only what the request says is changed. A request with no `scheduledAt` leaves
+ * the plan exactly as it is — the stored date and whether the post is planned
+ * or a draft — so rewriting a caption cannot quietly turn a planned post back
+ * into a draft. The plan is removed by sending `scheduledAt: null`, and moved
+ * by sending a new date. Likewise `accountId`: a uuid moves the post to that
+ * account, null takes it off its account, and leaving it out keeps it.
  */
 export const updateSocialPost = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => UpdatePostSchema.parse(input))
   .handler(async ({ data, context }) => {
+    const changes: {
+      caption: string;
+      account_id?: string | null;
+      scheduled_at?: string | null;
+      status?: string;
+    } = { caption: data.caption };
+    if (typeof data.accountId === "string") {
+      await requireVisibleAccount(context.supabase, data.accountId);
+    }
+    if (data.accountId !== undefined) changes.account_id = data.accountId;
+    if (data.scheduledAt !== undefined) {
+      changes.scheduled_at = data.scheduledAt;
+      changes.status = data.scheduledAt ? "scheduled" : "draft";
+    }
+
     const { data: changed, error } = await context.supabase
       .from("social_posts")
-      .update({
-        caption: data.caption,
-        account_id: data.accountId ?? null,
-        scheduled_at: data.scheduledAt ?? null,
-        status: data.scheduledAt ? "scheduled" : "draft",
-      })
+      .update(changes)
       .eq("id", data.id)
       .neq("status", "published")
       .select("id");

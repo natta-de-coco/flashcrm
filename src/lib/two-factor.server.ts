@@ -152,6 +152,37 @@ function remember(userId: string, now: number): void {
 
 type Lookup = { kind: "user"; id: unknown; factors: unknown } | { kind: "unknown"; reason: string };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * Auth omits factors when there are none, or returns a list. Only a readable
+ * list can confirm the absence of a verified TOTP factor. The browser's pure
+ * display helper deliberately tolerates bad session metadata; using its false
+ * result as a server-side no-factor answer would cache an unverified guess.
+ * Keep legacy factors with no kind (treated as TOTP by that helper), while
+ * refusing unknown kinds/statuses instead of silently dropping their entries.
+ */
+function factorsAreReadable(factors: unknown): boolean {
+  if (factors === undefined) return true;
+  if (!Array.isArray(factors)) return false;
+  return factors.every((factor) => {
+    if (!isRecord(factor)) return false;
+    const { id, status, factor_type: kind } = factor;
+    return (
+      typeof id === "string" &&
+      id.trim() !== "" &&
+      (status === "verified" || status === "unverified") &&
+      (kind === undefined ||
+        kind === null ||
+        kind === "totp" ||
+        kind === "phone" ||
+        kind === "webauthn")
+    );
+  });
+}
+
 /**
  * Is this the Auth service itself saying the session is gone? Its errors carry
  * an `error_code` (newer versions) or a numeric `code` with a `msg` (older
@@ -225,13 +256,11 @@ async function lookUpUser(token: string, limitMs: number): Promise<Lookup> {
   } finally {
     clearTimeout(timer);
   }
-  const outer =
-    body !== null && typeof body === "object" ? (body as Record<string, unknown>) : null;
+  const outer = isRecord(body) ? body : null;
   // Some versions of the service wrap the user as { user: {...} }.
-  const inner = outer?.["user"];
-  const user =
-    inner !== null && typeof inner === "object" ? (inner as Record<string, unknown>) : outer;
-  if (!user) return { kind: "unknown", reason: "Auth's answer was not a user" };
+  // An invalid wrapper must not fall back to unrelated outer fields.
+  const user = outer && Object.prototype.hasOwnProperty.call(outer, "user") ? outer["user"] : outer;
+  if (!isRecord(user)) return { kind: "unknown", reason: "Auth's answer was not a user" };
   return { kind: "user", id: user["id"], factors: user["factors"] };
 }
 
@@ -300,6 +329,11 @@ export async function enforceSecondFactor({
   // (and that is not "Auth is slow", so it gets no allowance).
   // (Remembered under the id Auth returned, which is this one.)
   if (found.id !== userId) return theCheckFailed("Auth described another user", userId);
+  // Identity is checked before this fallback, so another account's malformed
+  // metadata can never borrow the caller's previous no-factor answer.
+  if (!factorsAreReadable(found.factors)) {
+    return theCheckFailed("Auth's factor list was not readable", userId, hasAllowanceNow);
+  }
   if (hasVerifiedTotp(found.factors)) {
     // Whatever was remembered about this account is out of date.
     hasNoSecondFactor.delete(userId);

@@ -24,6 +24,7 @@ import { PageLanguage } from "@/components/PageLanguage";
 import { directionOf, isRtlUiLanguage } from "@/lib/i18n";
 import { readUiLanguage } from "@/lib/i18n/read-language";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppearanceProvider } from "@/hooks/useAppearance";
 import { APPEARANCE_BOOTSTRAP } from "@/lib/appearance";
 
@@ -183,18 +184,23 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <I18nProvider language={uiLanguage}>
         <AppearanceProvider>
-          <AuthProvider>
-            {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-            {inApp ? (
-              <Outlet />
-            ) : (
-              <PageLanguage pathname={pathname}>
+          <TooltipProvider>
+            <AuthProvider>
+              {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+              {inApp ? (
                 <Outlet />
-              </PageLanguage>
-            )}
-            {/* Toasts sit on the reading-end side: top-left in Arabic. */}
-            <Toaster position={isRtlUiLanguage(uiLanguage) ? "top-left" : "top-right"} richColors />
-          </AuthProvider>
+              ) : (
+                <PageLanguage pathname={pathname}>
+                  <Outlet />
+                </PageLanguage>
+              )}
+              {/* Toasts sit on the reading-end side: top-left in Arabic. */}
+              <Toaster
+                position={isRtlUiLanguage(uiLanguage) ? "top-left" : "top-right"}
+                richColors
+              />
+            </AuthProvider>
+          </TooltipProvider>
         </AppearanceProvider>
       </I18nProvider>
     </QueryClientProvider>
