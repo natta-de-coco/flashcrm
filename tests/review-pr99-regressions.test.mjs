@@ -1,5 +1,5 @@
 // Local independent review only. Desired security/behavior assertions are
-// expected to fail against PR #99 at 72b50f3. No remote services are contacted.
+// expected to fail against PR #99 at 1ee8902. No remote services are contacted.
 import assert from "node:assert/strict";
 import { test, beforeEach } from "node:test";
 import { build } from "esbuild";
@@ -173,6 +173,10 @@ for (const [name, data] of [
   ["deleteStaffRoutingNumber", { id: STAFF_ID }],
   ["toggleStaffRoutingStatus", { id: STAFF_ID, field: "isActive", value: false }],
   ["saveStaffAlertConfig", config],
+  [
+    "sendTestStaffAlert",
+    { phone: "+971500000004", department: "sales", customTemplate: "Synthetic test alert" },
+  ],
 ])
   test(`non-admin must be refused by real ${name} handler`, async () => {
     await assert.rejects(
@@ -184,6 +188,24 @@ test("positive control: company admin can save a routing number", async () => {
   db.state.rows.profiles[0].staff_role = "company_admin";
   assert.equal((await routing.saveStaffRoutingNumber({ data: add, context: context() })).ok, true);
   assert.equal(db.state.rows.tenant_staff_routing_numbers.length, 2);
+});
+test("an unconfirmed test alert must not be reported as successfully sent", async () => {
+  db.state.rows.profiles[0].staff_role = "company_admin";
+  globalThis.fetch = async (url, init) => {
+    assert.ok(String(url).includes("graph.facebook.com"));
+    graphCalls.push(JSON.parse(init.body));
+    throw new Error("Synthetic network timeout");
+  };
+  const result = await routing.sendTestStaffAlert({
+    data: { phone: "+971500000004", department: "sales", customTemplate: "Synthetic test alert" },
+    context: context(),
+  });
+  assert.equal(graphCalls.length, 1, "positive control: provider boundary was reached");
+  assert.notEqual(
+    result.ok,
+    true,
+    "uncertain delivery must not claim test alert sent successfully",
+  );
 });
 const inbound = (text, id, extra = {}) =>
   ingestInboundMessage({
