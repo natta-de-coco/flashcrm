@@ -52,7 +52,19 @@ function fixture(options = {}) {
     audits: [],
     calls: [],
     billing: { tenant_id: "tenant-A", logo_url: "https://example.test/old.png", vat_number: "OLD" },
-    business: { tenant_id: "tenant-A", tax_registration_number: "OLD" },
+    business: options.missingBusiness
+      ? null
+      : {
+          tenant_id: "tenant-A",
+          tax_registration_number: "OLD",
+          business_name: "Existing business",
+          description: "Keep the advisor profile",
+        },
+    otherBusiness: {
+      tenant_id: "tenant-B",
+      tax_registration_number: "OTHER",
+      business_name: "Other business",
+    },
   };
   globalThis.__billingSaveTest = state;
   const client = {
@@ -61,25 +73,51 @@ function fixture(options = {}) {
       return { data: options.noTenant ? null : "tenant-A", error: options.tenantError ?? null };
     },
     from(table) {
-      const call = { table, op: "select", filters: [], payload: null, columns: null };
+      const call = {
+        table,
+        op: "select",
+        filters: [],
+        payload: null,
+        columns: null,
+        upsertOptions: null,
+      };
       const run = async () => {
         state.calls.push(structuredClone(call));
         if (table === "profiles")
           return { data: { staff_role: options.role ?? "company_admin" }, error: null };
-        assert.equal(call.op, "update", "The save may only update the two existing rows");
-        assert.deepEqual(call.filters, [["tenant_id", "tenant-A"]]);
         if (table === "billing_settings") {
+          assert.equal(call.op, "update", "Billing must update the initialized workspace row");
+          assert.deepEqual(call.filters, [["tenant_id", "tenant-A"]]);
           if (options.billingError) return { data: null, error: options.billingError };
           if (options.noBillingRow) return { data: null, error: null };
           Object.assign(state.billing, call.payload);
           return { data: { tenant_id: "tenant-A" }, error: null };
         }
         assert.equal(table, "business_profiles");
+        assert.equal(call.op, "upsert", "The tax mirror must also support a missing profile");
+        assert.deepEqual(call.filters, []);
+        assert.deepEqual(call.upsertOptions, { onConflict: "tenant_id" });
+        assert.deepEqual(Object.keys(call.payload).sort(), [
+          "tax_registration_number",
+          "tenant_id",
+        ]);
+        assert.equal(
+          call.payload.tenant_id,
+          "tenant-A",
+          "Only the resolved workspace may be written",
+        );
         if (options.mirrorThrows) throw new Error("Private database transport detail");
         if (options.mirrorError) return { data: null, error: options.mirrorError };
         if (options.noMirrorRow) return { data: null, error: null };
-        Object.assign(state.business, call.payload);
-        return { data: { tenant_id: "tenant-A" }, error: null };
+        if (state.business) Object.assign(state.business, call.payload);
+        else state.business = { ...call.payload };
+        // Like PostgREST, a write without .select() does not return the row.
+        const returnedRow = options.mismatchedMirrorRow
+          ? { tenant_id: "tenant-B" }
+          : options.missingMirrorTenant
+            ? {}
+            : { tenant_id: state.business.tenant_id };
+        return { data: call.columns ? returnedRow : null, error: null };
       };
       const chain = {
         select(columns) {
@@ -95,6 +133,12 @@ function fixture(options = {}) {
           call.payload = payload;
           return chain;
         },
+        upsert(payload, upsertOptions) {
+          call.op = "upsert";
+          call.payload = payload;
+          call.upsertOptions = upsertOptions;
+          return chain;
+        },
         single: run,
         maybeSingle: run,
         then: (resolve, reject) => run().then(resolve, reject),
@@ -104,8 +148,12 @@ function fixture(options = {}) {
   };
   return {
     ...state,
+    get business() {
+      return state.business;
+    },
     save: (data) => saveBillingProfile({ data, context: { userId: "caller-A", supabase: client } }),
-    writes: (table) => state.calls.filter((call) => call.op === "update" && call.table === table),
+    writes: (table) =>
+      state.calls.filter((call) => ["update", "upsert"].includes(call.op) && call.table === table),
   };
 }
 
@@ -171,6 +219,51 @@ test("the named tax number takes precedence over a conflicting legacy alias", as
   assert.equal(db.billing.vat_number, "NEW");
   assert.equal(db.business.tax_registration_number, "NEW");
 });
+
+test("a missing business profile is created only for the resolved workspace", async () => {
+  const db = fixture({ missingBusiness: true });
+  const otherBefore = structuredClone(db.otherBusiness);
+  assert.deepEqual(await db.save({ tax_registration_number: "NEW", tenant_id: "tenant-B" }), {
+    ok: true,
+  });
+  assert.equal(db.billing.vat_number, "NEW");
+  assert.deepEqual(db.business, { tenant_id: "tenant-A", tax_registration_number: "NEW" });
+  assert.deepEqual(db.otherBusiness, otherBefore);
+  assert.equal(db.writes("business_profiles")[0].columns, "tenant_id");
+  assert.equal(db.audits.length, 1);
+  assert.equal(db.audits[0].tenantId, "tenant-A");
+});
+
+test("updating the tax mirror preserves the existing business profile and other workspace", async () => {
+  const db = fixture();
+  const otherBefore = structuredClone(db.otherBusiness);
+  await db.save({ tax_registration_number: "NEW", tenant_id: "tenant-B" });
+  assert.equal(db.business.business_name, "Existing business");
+  assert.equal(db.business.description, "Keep the advisor profile");
+  assert.equal(db.business.tax_registration_number, "NEW");
+  assert.deepEqual(db.otherBusiness, otherBefore);
+});
+
+test("an explicit tax clear can also initialize a missing business profile", async () => {
+  const db = fixture({ missingBusiness: true });
+  assert.deepEqual(await db.save({ tax_registration_number: null, vat_number: "STALE" }), {
+    ok: true,
+  });
+  assert.equal(db.billing.vat_number, null);
+  assert.deepEqual(db.business, { tenant_id: "tenant-A", tax_registration_number: null });
+});
+
+for (const options of [{ mismatchedMirrorRow: true }, { missingMirrorTenant: true }])
+  test(`a ${Object.keys(options)[0]} cannot confirm the tax mirror save`, async () => {
+    const db = fixture(options);
+    await assert.rejects(db.save({ tax_registration_number: "NEW" }), (error) => {
+      assert.match(error.message, /settings were saved, but the business profile tax number/);
+      assert.doesNotMatch(error.message, /tenant-[AB]|Tax mirror/);
+      return true;
+    });
+    assert.equal(db.billing.vat_number, "NEW");
+    assert.equal(db.audits.length, 0, "An unconfirmed mirror must not get a complete-save audit");
+  });
 
 for (const vat of ["LEGACY", null])
   test(`the legacy VAT alias still supports ${vat === null ? "clearing" : "saving"}`, async () => {

@@ -21,8 +21,10 @@ import { useI18n } from "@/hooks/useI18n";
 import { hasMessage, navMessageKey, workspaceDefaultLanguage } from "@/lib/i18n";
 import { TenantProvider, useTenant } from "@/hooks/useTenant";
 import { useNavAccess } from "@/hooks/useNavAccess";
+import { sessionOwesSecondFactor } from "@/lib/two-factor";
 import { cn } from "@/lib/utils";
 import { touchPresence } from "@/lib/presence.functions";
+import { recordTwoFactorEnabled } from "@/lib/two-factor-audit.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Link, Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -150,17 +152,22 @@ function AuthenticatedLayout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   useInboxViewport(pathname === "/inbox");
+  // A session that has only given its password is not signed in to this part
+  // of the app: it belongs at the code prompt, however it got here.
+  const owed = sessionOwesSecondFactor(session);
 
   useEffect(() => {
-    if (!loading && !session) navigate({ to: "/auth" });
-  }, [loading, session, navigate]);
+    if (loading) return;
+    if (!session) navigate({ to: "/auth" });
+    else if (owed) navigate({ to: "/auth", search: { redirect: pathname } });
+  }, [loading, session, owed, pathname, navigate]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || owed) return;
     let cancelled = false;
     const beat = async () => {
       let { data } = await supabase.auth.getSession();
@@ -183,7 +190,28 @@ function AuthenticatedLayout() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [session]);
+  }, [session, owed]);
+
+  // Turning two-factor on in the security card ends with a code verified in this
+  // browser. Tell the server, which checks with Auth that a factor really was
+  // turned on a moment ago and writes the audit entry the company's admins can
+  // read (lib/two-factor-audit.server.ts). Listening only while the session may
+  // use the app means a code entered at the sign-in prompt is never mistaken
+  // for it.
+  const mayUseApp = !!session && !owed;
+  useEffect(() => {
+    if (!mayUseApp) return;
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== "MFA_CHALLENGE_VERIFIED") return;
+      // Not inside the callback: the auth client can deadlock on its own lock.
+      window.setTimeout(() => {
+        recordTwoFactorEnabled({ data: undefined }).catch((error: unknown) => {
+          console.warn("[two-factor] could not record that two-factor was turned on", error);
+        });
+      }, 0);
+    });
+    return () => data.subscription.unsubscribe();
+  }, [mayUseApp]);
 
   useEffect(() => {
     try {
@@ -217,7 +245,7 @@ function AuthenticatedLayout() {
     window.addEventListener("pointerup", up);
   }
 
-  if (loading || !session) {
+  if (loading || !session || owed) {
     return (
       <div
         className={cn(

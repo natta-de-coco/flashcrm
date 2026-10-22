@@ -2225,6 +2225,50 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_alerts_log: {
+        Row: {
+          alert_channel: string
+          created_at: string
+          error: string | null
+          id: string
+          lead_id: string | null
+          recipient: string
+          status: string
+          subject: string | null
+          tenant_id: string
+        }
+        Insert: {
+          alert_channel: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          lead_id?: string | null
+          recipient: string
+          status?: string
+          subject?: string | null
+          tenant_id: string
+        }
+        Update: {
+          alert_channel?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          lead_id?: string | null
+          recipient?: string
+          status?: string
+          subject?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_alerts_log_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_routing_rules: {
         Row: {
           active: boolean
@@ -4342,6 +4386,39 @@ export type Database = {
           },
         ]
       }
+      tenant_alert_settings: {
+        Row: {
+          alert_email_addresses: string[]
+          alert_whatsapp_enabled: boolean
+          alert_whatsapp_phone: string | null
+          created_at: string
+          lead_alerts_enabled: boolean
+          quote_threshold_alert: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          alert_email_addresses?: string[]
+          alert_whatsapp_enabled?: boolean
+          alert_whatsapp_phone?: string | null
+          created_at?: string
+          lead_alerts_enabled?: boolean
+          quote_threshold_alert?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          alert_email_addresses?: string[]
+          alert_whatsapp_enabled?: boolean
+          alert_whatsapp_phone?: string | null
+          created_at?: string
+          lead_alerts_enabled?: boolean
+          quote_threshold_alert?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tenant_staff_routing_numbers: {
         Row: {
           created_at: string
@@ -4381,14 +4458,14 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "tenant_staff_routing_numbers_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
+            foreignKeyName: "tenant_staff_routing_numbers_tenant_id_fkey",
+            columns: ["tenant_id"],
+            isOneToOne: false,
+            referencedRelation: "organizations",
+            referencedColumns: ["id"],
           },
         ]
-      },
+      }
       tenant_bot_settings: {
         Row: {
           auto_department_handoff_enabled: boolean
@@ -5182,6 +5259,75 @@ export type Database = {
           },
         ]
       }
+      workspace_notifications: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          lead_id: string | null
+          read_at: string | null
+          recipient_user_id: string
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          read_at?: string | null
+          recipient_user_id: string
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          lead_id?: string | null
+          read_at?: string | null
+          recipient_user_id?: string
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_notifications_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_notifications_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "company_billing_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_notifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "super_admin_subscribers"
+            referencedColumns: ["tenant_id"]
+          },
+        ]
+      }
     }
     Views: {
       company_billing_overview: {
@@ -5512,6 +5658,15 @@ export type Database = {
         }
         Returns: string
       }
+      record_sales_lead_alert: {
+        Args: {
+          _body: string
+          _lead_id: string
+          _tenant_id: string
+          _title: string
+        }
+        Returns: Json
+      }
       release_connection_refresh: {
         Args: { _account_id: string }
         Returns: undefined
@@ -5538,6 +5693,10 @@ export type Database = {
       rotate_wa_number_app_secret: {
         Args: { _new_secret: string; _wa_number_id: string }
         Returns: boolean
+      }
+      set_default_wa_number: {
+        Args: { _number_id: string; _tenant_id: string }
+        Returns: string
       }
       set_tenant_ai_resilience: {
         Args: { _enabled: boolean; _tenant_id: string }

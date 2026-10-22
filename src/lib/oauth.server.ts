@@ -682,18 +682,45 @@ export async function consumeState(state: string): Promise<{
   code_verifier: string | null;
 } | null> {
   // Looked up by digest, because the plaintext state is no longer stored.
+  const stateHash = await sha256Hex(state);
   const { data, error } = await supabaseAdmin.rpc("consume_oauth_state_hash", {
-    _state_hash: await sha256Hex(state),
+    _state_hash: stateHash,
   });
   if (error) return null;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return null;
+  // The starter seals the verifier with tenant + attempt + field AAD. Open it
+  // only after the database has atomically consumed that attempt. Sending the
+  // ciphertext itself to the provider cannot match its S256 challenge.
+  let codeVerifier: string | null = null;
+  const storedVerifier: unknown = row.code_verifier;
+  if (storedVerifier !== null && storedVerifier !== undefined) {
+    const refused = () =>
+      new Error("OAuth PKCE verifier could not be opened. Reconnect to try again.");
+    if (typeof storedVerifier !== "string") throw refused();
+    let value = storedVerifier;
+    if (value.startsWith("v1:")) {
+      try {
+        const { decryptSecret, tokenAad } = await import("@/lib/social-secrets.server");
+        value = await decryptSecret(
+          value,
+          tokenAad(row.tenant_id, `oauth:${stateHash}`, "code_verifier"),
+        );
+      } catch {
+        throw refused();
+      }
+    }
+    // Finish valid in-flight legacy plaintext attempts, but never mistake a
+    // malformed/unknown encrypted envelope for plaintext (RFC 7636 section 4.1).
+    if (!/^[A-Za-z0-9._~-]{43,128}$/.test(value)) throw refused();
+    codeVerifier = value;
+  }
   return {
     tenant_id: row.tenant_id,
     user_id: row.user_id,
     platform: row.platform,
     redirect_uri: row.redirect_uri,
-    code_verifier: row.code_verifier ?? null,
+    code_verifier: codeVerifier,
   };
 }
 

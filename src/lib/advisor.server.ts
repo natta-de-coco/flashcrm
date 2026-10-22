@@ -40,10 +40,13 @@ export type AdvisorSnapshot = {
 };
 
 /** Gathers everything the advisor reasons about, as plain-text facts. */
-export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<AdvisorSnapshot> {
+export async function gatherAdvisorSnapshot(
+  supabase: SupabaseClient,
+  role = "staff",
+): Promise<AdvisorSnapshot> {
   const [profile, overview, leads, messaging, products, social, socialPosts] = await Promise.all([
     getAdvisorProfile(supabase).catch(() => null),
-    getDashboardOverviewData(supabase).catch(() => null),
+    getDashboardOverviewData(supabase, { role }).catch(() => null),
     gatherLeadSummary(supabase as never).catch(() => null),
     gatherMessagingAnalytics(supabase as never, 30).catch(() => null),
     supabase
@@ -377,8 +380,11 @@ const KPI_MENU = [
  * Turns the advisor's read of the business into concrete, measurable targets
  * for the six KPIs Flas can actually measure from live data.
  */
-export async function proposeKpiTargets(supabase: SupabaseClient): Promise<KpiProposal[]> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+export async function proposeKpiTargets(
+  supabase: SupabaseClient,
+  role = "staff",
+): Promise<KpiProposal[]> {
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
