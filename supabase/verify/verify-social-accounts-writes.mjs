@@ -463,6 +463,18 @@ try {
 
   // The pre-check / recovery query the file prints, run BEFORE applying it, as an operator would.
   const precheck = (await db.query(precheckSql)).rows;
+  // PRINT_PRECHECK=1 shows what the file's pre-check prints on this database (the review's state).
+  if (process.env.PRINT_PRECHECK) {
+    console.table(
+      precheck.map(({ level, column, role, privilege_type, grantable }) => ({
+        level,
+        column,
+        role,
+        privilege_type,
+        grantable,
+      })),
+    );
+  }
   ok(precheck.length >= writeGrantsBefore.length, "the pre-check lists every browser write grant");
   ok(
     precheck.every((r) => /^GRANT (INSERT|UPDATE) /.test(r.restore_with)),
