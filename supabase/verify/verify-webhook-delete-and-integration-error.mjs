@@ -95,10 +95,9 @@ try {
       throw new Error(`${f} did not apply: ${e.message}`);
     }
   }
-  ok(
-    !history.some((f) => f > FIX_FILE),
-    "a migration newer than the fix exists; the fix would not be last",
-  );
+  // Later migrations are part of today's baseline too. The before/after
+  // role-level exploit checks below prove the patch's effect; an unrelated
+  // newer migration must not make the security regression impossible to run.
 
   // ── people and rows ───────────────────────────────────────────────────────
   const org = async (name, slug) =>
