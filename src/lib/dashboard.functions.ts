@@ -11,6 +11,6 @@ import { requireDashboardAccess } from "./dashboard-access.server";
 export const getDashboardOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    await requireDashboardAccess(context.supabase, context.userId);
-    return getDashboardOverviewData(context.supabase);
+    const access = await requireDashboardAccess(context.supabase, context.userId);
+    return getDashboardOverviewData(context.supabase, access);
   });

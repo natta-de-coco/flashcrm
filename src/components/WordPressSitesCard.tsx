@@ -30,6 +30,18 @@ type WpSite = {
   seo_plugin: string;
 };
 
+function cleanWpUrl(raw: string): string {
+  let u = (raw ?? "").trim();
+  if (!u) return "";
+  if (!/^https?:\/\//i.test(u)) {
+    u = `https://${u}`;
+  }
+  u = u.replace(/\/+$/, "");
+  u = u.replace(/\/wp-admin(?:\/.*)?$/i, "");
+  u = u.replace(/\/wp-json(?:\/.*)?$/i, "");
+  return u;
+}
+
 /** Settings card: manage WordPress connections used by the SEO Studio. */
 export function WordPressSitesCard() {
   const { t } = useI18n();
@@ -63,11 +75,13 @@ export function WordPressSitesCard() {
   const addSite = useMutation({
     mutationFn: async () => {
       if (!tenant?.id) throw new Error("Workspace not loaded yet.");
+      const cleanUrl = cleanWpUrl(form.site_url);
+      if (!cleanUrl) throw new Error(t("wordPressSitesCard.enterValidUrl"));
       const { error } = await supabase.from("wordpress_sites").insert({
         tenant_id: tenant.id,
-        label: form.label || form.site_url,
-        site_url: form.site_url.replace(/\/+$/, ""),
-        username: form.username,
+        label: form.label || cleanUrl,
+        site_url: cleanUrl,
+        username: form.username.trim(),
         app_password: form.app_password.replace(/\s+/g, ""),
         default_author: form.default_author || null,
         seo_plugin: form.seo_plugin,
@@ -106,8 +120,8 @@ export function WordPressSitesCard() {
     mutationFn: () =>
       testConnection({
         data: {
-          siteUrl: form.site_url,
-          username: form.username,
+          siteUrl: cleanWpUrl(form.site_url),
+          username: form.username.trim(),
           appPassword: form.app_password.replace(/\s+/g, ""),
         },
       }),
@@ -182,6 +196,9 @@ export function WordPressSitesCard() {
                   value={form.site_url}
                   onChange={(e) => setForm({ ...form, site_url: e.target.value })}
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  {t("wordPressSitesCard.wpRootAddressHint")}
+                </p>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="wp_user">{t("wordPressSitesCard.wordpressUsername")}</Label>
@@ -200,6 +217,9 @@ export function WordPressSitesCard() {
                   value={form.app_password}
                   onChange={(e) => setForm({ ...form, app_password: e.target.value })}
                 />
+                <p className="text-[11px] text-muted-foreground">
+                  {t("wordPressSitesCard.appPasswordHint")}
+                </p>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="wp_author">{t("wordPressSitesCard.defaultAuthorOptional")}</Label>

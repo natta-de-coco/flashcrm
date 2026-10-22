@@ -261,9 +261,9 @@ export async function ingestLead(options: IngestLeadOptions) {
     .select()
     .single();
 
-  if (error) {
+  if (error || !savedLead?.id) {
     console.error("[leads] Failed to upsert lead", error);
-    throw error;
+    throw error ?? new Error("The captured lead could not be saved.");
   }
 
   // Trigger welcome automation only if consent was explicitly granted
@@ -298,7 +298,9 @@ export async function ingestLead(options: IngestLeadOptions) {
     }
   }
 
-  // Instant Sales Alert to sales reps
+  // Keep existing-lead retries: a previous capture may have saved the lead
+  // before its alert failed. Database idempotency prevents repeated widget
+  // messages or concurrent captures from multiplying alerts and diagnostics.
   try {
     const { dispatchSalesLeadAlert } = await import("./lead-alerts.server.ts");
     await dispatchSalesLeadAlert({
