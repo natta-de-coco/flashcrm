@@ -49,7 +49,9 @@ export async function oauthPreflight(
     const results = await Promise.all([
       supabaseAdmin
         .from("oauth_states")
-        .select("id, state_hash, redirect_uri, code_verifier, used_at, attempt_state")
+        .select(
+          "id, state_hash, redirect_uri, code_verifier, used_at, attempt_state, purpose, target_account_id, requested_scopes",
+        )
         .limit(0),
       supabaseAdmin
         .from("social_accounts")

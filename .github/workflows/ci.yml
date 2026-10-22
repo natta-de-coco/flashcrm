@@ -59,6 +59,8 @@ jobs:
         run: node supabase/verify/verify-migrations.mjs
       - name: OAuth state and refresh leases
         run: node supabase/verify/verify-oauth-security.mjs
+      - name: OAuth attempt prerequisites repair on partial schemas
+        run: node supabase/verify/verify-oauth-attempt-prerequisites.mjs
       - name: Social tenant isolation
         run: node supabase/verify/verify-social-tenant-isolation.mjs
       - name: Webhook events are deleted by the server only, integration errors written by the server only
