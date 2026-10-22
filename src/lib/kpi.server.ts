@@ -141,7 +141,10 @@ function missedTarget(direction: string, value: number, target: number): boolean
  * Compares live measurements to the workspace's targets, records the reading on
  * each target and opens an alert for any newly missed target (deduped for 12h).
  */
-export async function evaluateKpiTargets(supabase: SupabaseClient, role = "staff"): Promise<{
+export async function evaluateKpiTargets(
+  supabase: SupabaseClient,
+  role = "staff",
+): Promise<{
   statuses: KpiStatus[];
   newAlerts: number;
 }> {
