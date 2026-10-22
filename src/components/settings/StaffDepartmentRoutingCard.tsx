@@ -16,6 +16,8 @@ import {
   UserCheck,
   CheckCircle2,
   Clock,
+  Send,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +43,7 @@ import {
   deleteStaffRoutingNumber,
   toggleStaffRoutingStatus,
   saveStaffAlertConfig,
+  sendTestStaffAlert,
   type StaffDepartment,
   type StaffRoutingNumber,
   type StaffAlertConfig,
@@ -112,6 +115,7 @@ export function StaffDepartmentRoutingCard() {
   const deleteStaffFn = useServerFn(deleteStaffRoutingNumber);
   const toggleStatusFn = useServerFn(toggleStaffRoutingStatus);
   const saveConfigFn = useServerFn(saveStaffAlertConfig);
+  const sendTestAlertFn = useServerFn(sendTestStaffAlert);
 
   const query = useQuery({
     queryKey: ["staff_routing_directory", tenant?.id],
@@ -135,6 +139,24 @@ export function StaffDepartmentRoutingCard() {
   const [debounceSeconds, setDebounceSeconds] = useState(6);
   const [multiCrmEnabled, setMultiCrmEnabled] = useState(true);
   const [configLoaded, setConfigLoaded] = useState(false);
+
+  // Test alert form state
+  const [testPhone, setTestPhone] = useState("");
+  const [testDepartment, setTestDepartment] = useState<StaffDepartment>("sales");
+
+  const sendTestAlertMutation = useMutation({
+    mutationFn: async (vars: { phone: string; department: string; customTemplate?: string }) => {
+      return await sendTestAlertFn({ data: vars });
+    },
+    onSuccess: (res) => {
+      if (res.ok) {
+        toast.success(res.message);
+      } else {
+        toast.error(res.error);
+      }
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
 
   // Synchronize config when loaded
   useMemo(() => {
@@ -434,6 +456,22 @@ export function StaffDepartmentRoutingCard() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="size-8 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                        title={`Send test WhatsApp alert to ${staff.name}`}
+                        disabled={sendTestAlertMutation.isPending}
+                        onClick={() =>
+                          sendTestAlertMutation.mutate({
+                            phone: staff.phone,
+                            department: staff.department,
+                            customTemplate: template,
+                          })
+                        }
+                      >
+                        <Send className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="size-8 text-destructive hover:bg-destructive/10"
                         disabled={deleteStaffMutation.isPending}
                         onClick={() => deleteStaffMutation.mutate(staff.id)}
@@ -495,6 +533,54 @@ export function StaffDepartmentRoutingCard() {
             </span>
             <div className="rounded-md bg-background/80 border p-3 font-mono text-xs whitespace-pre-wrap leading-relaxed text-foreground/90 shadow-sm">
               {previewText}
+            </div>
+            {/* Test Alert Dispatch Bar */}
+            <div className="pt-2 border-t border-emerald-500/20 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="flex-1 flex items-center gap-2">
+                <Input
+                  placeholder="Enter phone with country code (e.g. +971501234567)"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  className="text-xs font-mono h-8 bg-background"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={testDepartment}
+                  onValueChange={(val) => setTestDepartment(val as StaffDepartment)}
+                >
+                  <SelectTrigger className="h-8 text-xs w-[140px] bg-background">
+                    <SelectValue placeholder="Department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DEPARTMENTS.map((d) => (
+                      <SelectItem key={d.id} value={d.id} className="text-xs">
+                        {d.label.split(" ")[0]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1.5 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 shrink-0"
+                  disabled={sendTestAlertMutation.isPending || !testPhone.trim()}
+                  onClick={() =>
+                    sendTestAlertMutation.mutate({
+                      phone: testPhone.trim(),
+                      department: testDepartment,
+                      customTemplate: template,
+                    })
+                  }
+                >
+                  {sendTestAlertMutation.isPending ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Send className="size-3" />
+                  )}
+                  Send Test Alert
+                </Button>
+              </div>
             </div>
           </div>
 
