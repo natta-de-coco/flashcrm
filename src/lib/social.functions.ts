@@ -92,7 +92,7 @@ export const getSocialHub = createServerFn({ method: "GET" })
 
 /**
  * Connect an Instagram professional account or Facebook Page with a pasted token (admin only).
- * The browser role has no INSERT on social_accounts (20261020100000), so the row is written here
+ * The browser role has no INSERT on social_accounts (20261022090000), so the row is written here
  * with the service role, after the same admin check the row-level policy made, into the caller's
  * own company. Nothing the caller sends can choose the company or set a verification.
  */

@@ -16,7 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * This is the same rule the "Admins manage social accounts" row-level-security policy applies to a
  * write made as the caller. The browser role no longer has any INSERT or UPDATE on social_accounts
- * (20261020100000), so the writes that policy used to decide now run here, after this check, with
+ * (20261022090000), so the writes that policy used to decide now run here, after this check, with
  * the workspace this returns written into the statement.
  */
 export async function adminCaller(

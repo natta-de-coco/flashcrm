@@ -312,7 +312,7 @@ export const disconnectConnection = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => IdSchema.parse(input))
   .handler(async ({ data, context }) => {
     // Only an admin of the caller's own company may disconnect, and the write is scoped to that
-    // company. The browser role has no UPDATE on social_accounts any more (20261020100000), so the
+    // company. The browser role has no UPDATE on social_accounts any more (20261022090000), so the
     // write is made here with the service role, after the same check the row-level policy made.
     // It returns the row so a refusal is visible: an update that matches nothing affects zero rows
     // without raising, which previously reported success while changing nothing.

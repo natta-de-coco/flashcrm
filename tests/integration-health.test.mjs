@@ -3411,7 +3411,7 @@ describe("another workspace's accounts are never read or listed (round 3, findin
 
 /* ══════════════════════════════════════════════════════════════════════════
    CX-00 hold on PR #86: verification evidence is server-owned, so a signed-in browser
-   session writes nothing to social_accounts (20261020100000 takes INSERT and UPDATE away
+   session writes nothing to social_accounts (20261022090000 takes INSERT and UPDATE away
    from the browser role). The two writers that used the caller's own client now run on the
    server, after an admin check, and keep working with no write grant at all.
    ══════════════════════════════════════════════════════════════════════════ */
