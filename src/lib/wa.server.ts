@@ -341,18 +341,62 @@ export function isTrivialAcknowledgment(text: string): boolean {
   const cleaned = text
     .trim()
     .toLowerCase()
-    .replace(/[.!?,:;~_*\-\(\)\[\]]/g, "")
+    .replace(/[.!?,:;~_*\-()[\]]/g, "")
     .trim();
 
   const exactTrivial = new Set([
-    "ok", "okay", "k", "kk", "yes", "yep", "yeah", "ya",
-    "sure", "thanks", "thank you", "thank", "you", "thx", "ty", "jazakallah", "shukran",
-    "noted", "got it", "got", "it", "thumbs up", "cool", "alright", "perfect",
-    "done", "fine", "understood", "right", "agreed", "no problem",
-    "welcome", "you are welcome", "youre welcome", "all good",
-    "sounds good", "great", "excellent", "good", "nice",
-    "bye", "goodbye", "tc", "take care",
-    "👍", "👌", "🙏", "🤝", "✅", "😊", "❤️", "🙌",
+    "ok",
+    "okay",
+    "k",
+    "kk",
+    "yes",
+    "yep",
+    "yeah",
+    "ya",
+    "sure",
+    "thanks",
+    "thank you",
+    "thank",
+    "you",
+    "thx",
+    "ty",
+    "jazakallah",
+    "shukran",
+    "noted",
+    "got it",
+    "got",
+    "it",
+    "thumbs up",
+    "cool",
+    "alright",
+    "perfect",
+    "done",
+    "fine",
+    "understood",
+    "right",
+    "agreed",
+    "no problem",
+    "welcome",
+    "you are welcome",
+    "youre welcome",
+    "all good",
+    "sounds good",
+    "great",
+    "excellent",
+    "good",
+    "nice",
+    "bye",
+    "goodbye",
+    "tc",
+    "take care",
+    "👍",
+    "👌",
+    "🙏",
+    "🤝",
+    "✅",
+    "😊",
+    "❤️",
+    "🙌",
   ]);
 
   if (exactTrivial.has(cleaned)) {
@@ -372,7 +416,12 @@ export async function generateBotReply(
   conversationId: string,
   settings: BotSettings,
   options: { throwOnFailure?: boolean } = {},
-): Promise<{ text: string; handoff: boolean; department?: string | null; customerRequirements?: string | null } | null> {
+): Promise<{
+  text: string;
+  handoff: boolean;
+  department?: string | null;
+  customerRequirements?: string | null;
+} | null> {
   if (!tenantId) return null;
   const { data: conversation, error: conversationError } = await supabaseAdmin
     .from("conversations")
@@ -459,7 +508,10 @@ export async function generateBotReply(
     .eq("is_active", true);
 
   const deptList = (staffRows ?? [])
-    .map((s: { department: string; role_title: string | null; name: string }) => `- ${s.department}: ${s.role_title || s.name}`)
+    .map(
+      (s: { department: string; role_title: string | null; name: string }) =>
+        `- ${s.department}: ${s.role_title || s.name}`,
+    )
     .join("\n");
 
   const deptSection =
@@ -936,7 +988,8 @@ export async function ingestInboundMessage(args: IngestArgs) {
   }
 
   // 5. Inter-webhook debounce window (debounce_window_seconds)
-  const debounceWindowSec = typeof settings.debounce_window_seconds === "number" ? settings.debounce_window_seconds : 6;
+  const debounceWindowSec =
+    typeof settings.debounce_window_seconds === "number" ? settings.debounce_window_seconds : 6;
   const lastBotReplyAt = (conv as { last_bot_reply_at?: string | null }).last_bot_reply_at;
   if (lastBotReplyAt && debounceWindowSec > 0) {
     const elapsedSec = (Date.now() - new Date(lastBotReplyAt).getTime()) / 1000;
@@ -983,11 +1036,7 @@ export async function ingestInboundMessage(args: IngestArgs) {
     .eq("tenant_id", tenantId);
 
   // Dispatch staff WhatsApp alert if department was identified and staff alerts are enabled
-  if (
-    settings.staff_alert_whatsapp_enabled !== false &&
-    generated?.department &&
-    waNumberId
-  ) {
+  if (settings.staff_alert_whatsapp_enabled !== false && generated?.department && waNumberId) {
     try {
       const { data: staffList } = await supabaseAdmin
         .from("tenant_staff_routing_numbers")
@@ -997,11 +1046,14 @@ export async function ingestInboundMessage(args: IngestArgs) {
         .eq("notify_on_lead", true);
 
       const deptStaff = (staffList ?? []).filter(
-        (s: { department: string }) => s.department === generated.department
+        (s: { department: string }) => s.department === generated.department,
       );
-      const targetStaff = deptStaff.length > 0
-        ? deptStaff
-        : (staffList ?? []).filter((s: { department: string }) => s.department === "department_head");
+      const targetStaff =
+        deptStaff.length > 0
+          ? deptStaff
+          : (staffList ?? []).filter(
+              (s: { department: string }) => s.department === "department_head",
+            );
 
       if (targetStaff.length > 0) {
         const { substituteStaffAlertTags } = await import("./staff-alert-template");

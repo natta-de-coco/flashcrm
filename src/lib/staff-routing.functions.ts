@@ -15,10 +15,7 @@ export {
   DEFAULT_STAFF_ALERT_TEMPLATE,
   substituteStaffAlertTags,
 } from "./staff-alert-template";
-import {
-  type StaffDepartment,
-  DEFAULT_STAFF_ALERT_TEMPLATE,
-} from "./staff-alert-template";
+import { type StaffDepartment, DEFAULT_STAFF_ALERT_TEMPLATE } from "./staff-alert-template";
 
 export interface StaffRoutingNumber {
   id: string;
@@ -79,7 +76,9 @@ export const getStaffRoutingDirectory = createServerFn({ method: "GET" })
     // Fetch bot settings for template & debouncing
     const { data: botSettings } = await supabaseAdmin
       .from("tenant_bot_settings")
-      .select("staff_alert_template, staff_alert_whatsapp_enabled, auto_department_handoff_enabled, debounce_window_seconds, multi_crm_coexistence_enabled" as never)
+      .select(
+        "staff_alert_template, staff_alert_whatsapp_enabled, auto_department_handoff_enabled, debounce_window_seconds, multi_crm_coexistence_enabled" as never,
+      )
       .eq("tenant_id", tenantId)
       .maybeSingle();
 
@@ -87,33 +86,33 @@ export const getStaffRoutingDirectory = createServerFn({ method: "GET" })
 
     const config: StaffAlertConfig = {
       staffAlertTemplate:
-        typeof rawSettings?.["staff_alert_template"] === "string" && rawSettings["staff_alert_template"].trim()
+        typeof rawSettings?.["staff_alert_template"] === "string" &&
+        rawSettings["staff_alert_template"].trim()
           ? rawSettings["staff_alert_template"]
           : DEFAULT_STAFF_ALERT_TEMPLATE,
-      staffAlertWhatsappEnabled:
-        rawSettings?.["staff_alert_whatsapp_enabled"] !== false,
-      autoDepartmentHandoffEnabled:
-        rawSettings?.["auto_department_handoff_enabled"] !== false,
+      staffAlertWhatsappEnabled: rawSettings?.["staff_alert_whatsapp_enabled"] !== false,
+      autoDepartmentHandoffEnabled: rawSettings?.["auto_department_handoff_enabled"] !== false,
       debounceWindowSeconds:
         typeof rawSettings?.["debounce_window_seconds"] === "number"
           ? rawSettings["debounce_window_seconds"]
           : 6,
-      multiCrmCoexistenceEnabled:
-        rawSettings?.["multi_crm_coexistence_enabled"] !== false,
+      multiCrmCoexistenceEnabled: rawSettings?.["multi_crm_coexistence_enabled"] !== false,
     };
 
-    const staffMembers: StaffRoutingNumber[] = (staffRows || []).map((r: Record<string, unknown>) => ({
-      id: String(r["id"]),
-      tenantId: String(r["tenant_id"]),
-      name: String(r["name"] || ""),
-      phone: String(r["phone"] || ""),
-      department: (r["department"] as StaffDepartment) || "other",
-      roleTitle: typeof r["role_title"] === "string" ? r["role_title"] : null,
-      notifyOnLead: Boolean(r["notify_on_lead"] !== false),
-      isActive: Boolean(r["is_active"] !== false),
-      createdAt: String(r["created_at"] || new Date().toISOString()),
-      updatedAt: String(r["updated_at"] || new Date().toISOString()),
-    }));
+    const staffMembers: StaffRoutingNumber[] = (staffRows || []).map(
+      (r: Record<string, unknown>) => ({
+        id: String(r["id"]),
+        tenantId: String(r["tenant_id"]),
+        name: String(r["name"] || ""),
+        phone: String(r["phone"] || ""),
+        department: (r["department"] as StaffDepartment) || "other",
+        roleTitle: typeof r["role_title"] === "string" ? r["role_title"] : null,
+        notifyOnLead: Boolean(r["notify_on_lead"] !== false),
+        isActive: Boolean(r["is_active"] !== false),
+        createdAt: String(r["created_at"] || new Date().toISOString()),
+        updatedAt: String(r["updated_at"] || new Date().toISOString()),
+      }),
+    );
 
     return { staffMembers, config };
   });
@@ -218,11 +217,13 @@ export const deleteStaffRoutingNumber = createServerFn({ method: "POST" })
 export const toggleStaffRoutingStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .validator((d: { id: string; field: "isActive" | "notifyOnLead"; value: boolean }) =>
-    z.object({
-      id: z.string().uuid(),
-      field: z.enum(["isActive", "notifyOnLead"]),
-      value: z.boolean(),
-    }).parse(d)
+    z
+      .object({
+        id: z.string().uuid(),
+        field: z.enum(["isActive", "notifyOnLead"]),
+        value: z.boolean(),
+      })
+      .parse(d),
   )
   .handler(async ({ data, context }) => {
     const { data: profile } = await context.supabase
@@ -268,20 +269,18 @@ export const saveStaffAlertConfig = createServerFn({ method: "POST" })
 
     if (!profile?.tenant_id) throw new Error("No active workspace found");
 
-    const { error } = await supabaseAdmin
-      .from("tenant_bot_settings")
-      .upsert(
-        {
-          tenant_id: profile.tenant_id,
-          staff_alert_template: data.staffAlertTemplate.trim(),
-          staff_alert_whatsapp_enabled: data.staffAlertWhatsappEnabled,
-          auto_department_handoff_enabled: data.autoDepartmentHandoffEnabled,
-          debounce_window_seconds: data.debounceWindowSeconds,
-          multi_crm_coexistence_enabled: data.multiCrmCoexistenceEnabled,
-          updated_at: new Date().toISOString(),
-        } as never,
-        { onConflict: "tenant_id" },
-      );
+    const { error } = await supabaseAdmin.from("tenant_bot_settings").upsert(
+      {
+        tenant_id: profile.tenant_id,
+        staff_alert_template: data.staffAlertTemplate.trim(),
+        staff_alert_whatsapp_enabled: data.staffAlertWhatsappEnabled,
+        auto_department_handoff_enabled: data.autoDepartmentHandoffEnabled,
+        debounce_window_seconds: data.debounceWindowSeconds,
+        multi_crm_coexistence_enabled: data.multiCrmCoexistenceEnabled,
+        updated_at: new Date().toISOString(),
+      } as never,
+      { onConflict: "tenant_id" },
+    );
 
     if (error) throw error;
     return { ok: true };

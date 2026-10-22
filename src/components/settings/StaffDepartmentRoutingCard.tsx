@@ -49,13 +49,48 @@ import {
 } from "@/lib/staff-routing.functions";
 
 const DEPARTMENTS: { id: StaffDepartment; label: string; icon: typeof Users; color: string }[] = [
-  { id: "sales", label: "Sales Number Management", icon: Briefcase, color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200" },
-  { id: "reception", label: "Reception / Front Desk", icon: Building, color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200" },
-  { id: "maintenance", label: "Maintenance / Operations", icon: Wrench, color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200" },
-  { id: "it_support", label: "IT Support / Helpdesk", icon: Headphones, color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200" },
-  { id: "technician", label: "Field Technician / Service Crew", icon: Wrench, color: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200" },
-  { id: "department_head", label: "Department Head / Supervisor", icon: UserCheck, color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200" },
-  { id: "other", label: "Other Team Member", icon: Users, color: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200" },
+  {
+    id: "sales",
+    label: "Sales Number Management",
+    icon: Briefcase,
+    color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200",
+  },
+  {
+    id: "reception",
+    label: "Reception / Front Desk",
+    icon: Building,
+    color: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200",
+  },
+  {
+    id: "maintenance",
+    label: "Maintenance / Operations",
+    icon: Wrench,
+    color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200",
+  },
+  {
+    id: "it_support",
+    label: "IT Support / Helpdesk",
+    icon: Headphones,
+    color: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200",
+  },
+  {
+    id: "technician",
+    label: "Field Technician / Service Crew",
+    icon: Wrench,
+    color: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200",
+  },
+  {
+    id: "department_head",
+    label: "Department Head / Supervisor",
+    icon: UserCheck,
+    color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200",
+  },
+  {
+    id: "other",
+    label: "Other Team Member",
+    icon: Users,
+    color: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200",
+  },
 ];
 
 const TEMPLATE_VARIABLES = [
@@ -150,7 +185,15 @@ export function StaffDepartmentRoutingCard() {
   });
 
   const toggleStatusMutation = useMutation({
-    mutationFn: async ({ id, field, value }: { id: string; field: "isActive" | "notifyOnLead"; value: boolean }) => {
+    mutationFn: async ({
+      id,
+      field,
+      value,
+    }: {
+      id: string;
+      field: "isActive" | "notifyOnLead";
+      value: boolean;
+    }) => {
       return await toggleStatusFn({ data: { id, field, value } });
     },
     onSuccess: () => {
@@ -184,7 +227,8 @@ export function StaffDepartmentRoutingCard() {
       customerName: "Mohammad Salem",
       customerPhone: "+971 50 987 6543",
       department: department,
-      customerRequirements: "AC cooling stopped in main server room, urgent technician inspection required.",
+      customerRequirements:
+        "AC cooling stopped in main server room, urgent technician inspection required.",
       companyName: "Flas Enterprise",
       timestamp: new Date().toLocaleString(),
     });
@@ -207,8 +251,9 @@ export function StaffDepartmentRoutingCard() {
               Staff Department Routing & Sales Numbers
             </CardTitle>
             <CardDescription>
-              Assign WhatsApp numbers for Sales, Reception, Maintenance, IT Support, Technicians, and Department Heads.
-              The AI recommends these departments and forwards leads directly to active staff.
+              Assign WhatsApp numbers for Sales, Reception, Maintenance, IT Support, Technicians,
+              and Department Heads. The AI recommends these departments and forwards leads directly
+              to active staff.
             </CardDescription>
           </div>
           <Button
@@ -250,7 +295,10 @@ export function StaffDepartmentRoutingCard() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="staff-department">Department / Category *</Label>
-                  <Select value={department} onValueChange={(v) => setDepartment(v as StaffDepartment)}>
+                  <Select
+                    value={department}
+                    onValueChange={(v) => setDepartment(v as StaffDepartment)}
+                  >
                     <SelectTrigger id="staff-department">
                       <SelectValue placeholder="Select department" />
                     </SelectTrigger>
@@ -286,11 +334,7 @@ export function StaffDepartmentRoutingCard() {
                   </Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Switch
-                    id="is-active"
-                    checked={isActive}
-                    onCheckedChange={setIsActive}
-                  />
+                  <Switch id="is-active" checked={isActive} onCheckedChange={setIsActive} />
                   <Label htmlFor="is-active" className="text-xs font-medium cursor-pointer">
                     On Duty / Active
                   </Label>
@@ -320,14 +364,16 @@ export function StaffDepartmentRoutingCard() {
               <Users className="mx-auto size-8 text-muted-foreground/50 mb-2" />
               <p className="font-medium text-foreground">No staff routing numbers configured yet</p>
               <p className="text-xs mt-1">
-                Add numbers for your Sales, Maintenance, Reception, or Technician teams so the AI chatbot can recommend them
-                and instantly dispatch customer leads.
+                Add numbers for your Sales, Maintenance, Reception, or Technician teams so the AI
+                chatbot can recommend them and instantly dispatch customer leads.
               </p>
             </div>
           ) : (
             <div className="divide-y rounded-md border">
               {staffList.map((staff) => {
-                const deptMeta = DEPARTMENTS.find((d) => d.id === staff.department) || DEPARTMENTS[DEPARTMENTS.length - 1]!;
+                const deptMeta =
+                  DEPARTMENTS.find((d) => d.id === staff.department) ||
+                  DEPARTMENTS[DEPARTMENTS.length - 1]!;
                 const DeptIcon = deptMeta.icon;
                 return (
                   <div
@@ -341,11 +387,16 @@ export function StaffDepartmentRoutingCard() {
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-semibold text-sm">{staff.name}</span>
-                          <Badge variant="outline" className={`text-xs px-2 py-0 border ${deptMeta.color}`}>
+                          <Badge
+                            variant="outline"
+                            className={`text-xs px-2 py-0 border ${deptMeta.color}`}
+                          >
                             {deptMeta.label}
                           </Badge>
                           {staff.roleTitle && (
-                            <span className="text-xs text-muted-foreground">· {staff.roleTitle}</span>
+                            <span className="text-xs text-muted-foreground">
+                              · {staff.roleTitle}
+                            </span>
                           )}
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -372,7 +423,11 @@ export function StaffDepartmentRoutingCard() {
                           checked={staff.isActive}
                           disabled={toggleStatusMutation.isPending}
                           onCheckedChange={(val) =>
-                            toggleStatusMutation.mutate({ id: staff.id, field: "isActive", value: val })
+                            toggleStatusMutation.mutate({
+                              id: staff.id,
+                              field: "isActive",
+                              value: val,
+                            })
                           }
                         />
                       </div>
@@ -402,7 +457,8 @@ export function StaffDepartmentRoutingCard() {
             Staff Lead Alert WhatsApp Template & Automation
           </CardTitle>
           <CardDescription>
-            Customize the message sent to your technicians and staff members when a customer inquires about their department.
+            Customize the message sent to your technicians and staff members when a customer
+            inquires about their department.
           </CardDescription>
         </CardHeader>
 
@@ -454,7 +510,8 @@ export function StaffDepartmentRoutingCard() {
                   Dispatch WhatsApp Alerts to On-Duty Staff
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Sends the formatted template directly to the assigned staff member's WhatsApp number.
+                  Sends the formatted template directly to the assigned staff member's WhatsApp
+                  number.
                 </p>
               </div>
               <Switch
@@ -470,7 +527,8 @@ export function StaffDepartmentRoutingCard() {
                   Auto-Recommend Departments & Handoff
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  The AI assistant suggests contacting the specific department (Sales, Maintenance, IT, etc.) when the customer's request matches.
+                  The AI assistant suggests contacting the specific department (Sales, Maintenance,
+                  IT, etc.) when the customer's request matches.
                 </p>
               </div>
               <Switch
@@ -486,7 +544,9 @@ export function StaffDepartmentRoutingCard() {
                   Multi-CRM Coexistence Mode
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  When enabled, FLAS respects external human agents (WhatsApp Web or another CRM) and avoids intrusive bot replies to simple acknowledgments ("ok", "yes", "thanks").
+                  When enabled, FLAS respects external human agents (WhatsApp Web or another CRM)
+                  and avoids intrusive bot replies to simple acknowledgments ("ok", "yes",
+                  "thanks").
                 </p>
               </div>
               <Switch
@@ -498,12 +558,16 @@ export function StaffDepartmentRoutingCard() {
 
             <div className="flex items-center justify-between gap-4 pt-1">
               <div className="space-y-0.5">
-                <Label htmlFor="debounce-seconds" className="text-sm font-medium flex items-center gap-1.5">
+                <Label
+                  htmlFor="debounce-seconds"
+                  className="text-sm font-medium flex items-center gap-1.5"
+                >
                   <Clock className="size-3.5 text-muted-foreground" />
                   Rapid Message Debounce Window (Seconds)
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Consolidates 3-4 consecutive messages into one conversational turn instead of sending multiple individual bot replies.
+                  Consolidates 3-4 consecutive messages into one conversational turn instead of
+                  sending multiple individual bot replies.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -514,7 +578,9 @@ export function StaffDepartmentRoutingCard() {
                   max={30}
                   className="w-20 text-center font-mono text-sm"
                   value={debounceSeconds}
-                  onChange={(e) => setDebounceSeconds(Math.max(2, Math.min(30, parseInt(e.target.value) || 6)))}
+                  onChange={(e) =>
+                    setDebounceSeconds(Math.max(2, Math.min(30, parseInt(e.target.value) || 6)))
+                  }
                 />
                 <span className="text-xs text-muted-foreground">sec</span>
               </div>

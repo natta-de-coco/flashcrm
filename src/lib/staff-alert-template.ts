@@ -6,13 +6,7 @@
  */
 
 export type StaffDepartment =
-  | "sales"
-  | "reception"
-  | "maintenance"
-  | "it_support"
-  | "technician"
-  | "department_head"
-  | "other";
+  "sales" | "reception" | "maintenance" | "it_support" | "technician" | "department_head" | "other";
 
 export const DEFAULT_STAFF_ALERT_TEMPLATE =
   "🚨 *New Customer Request - {{department}}*\n" +
