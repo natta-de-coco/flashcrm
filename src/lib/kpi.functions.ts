@@ -31,8 +31,10 @@ export const getKpiOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { KPI_DEFINITIONS, measureKpis } = await import("@/lib/kpi.server");
+    const { callerStaffRole } = await import("@/lib/dashboard-access.server");
+    const role = await callerStaffRole(context.supabase, context.userId);
     const [measurements, targets, alerts] = await Promise.all([
-      measureKpis(context.supabase),
+      measureKpis(context.supabase, role),
       context.supabase
         .from("kpi_targets")
         .select(
@@ -110,7 +112,9 @@ export const runKpiCheck = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { evaluateKpiTargets } = await import("@/lib/kpi.server");
-    const result = await evaluateKpiTargets(context.supabase);
+    const { callerStaffRole } = await import("@/lib/dashboard-access.server");
+    const role = await callerStaffRole(context.supabase, context.userId);
+    const result = await evaluateKpiTargets(context.supabase, role);
 
     if (result.newAlerts > 0) {
       const { logAudit } = await import("@/lib/audit.server");
@@ -148,7 +152,9 @@ export const generateKpiTargetsFromAdvisor = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { proposeKpiTargets } = await import("@/lib/advisor.server");
-    const proposals = await proposeKpiTargets(context.supabase);
+    const { callerStaffRole } = await import("@/lib/dashboard-access.server");
+    const role = await callerStaffRole(context.supabase, context.userId);
+    const proposals = await proposeKpiTargets(context.supabase, role);
 
     const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as

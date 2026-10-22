@@ -69,9 +69,12 @@ export const KPI_DEFINITIONS: KpiDefinition[] = [
 export type KpiMeasurement = KpiDefinition & { value: number | null };
 
 /** Measures every supported KPI from live tenant data. */
-export async function measureKpis(supabase: SupabaseClient): Promise<KpiMeasurement[]> {
+export async function measureKpis(
+  supabase: SupabaseClient,
+  role = "staff",
+): Promise<KpiMeasurement[]> {
   const [overview, messaging, contacts, leads] = await Promise.all([
-    getDashboardOverviewData(supabase).catch(() => null),
+    getDashboardOverviewData(supabase, { role }).catch(() => null),
     gatherMessagingAnalytics(supabase as never, 30).catch(() => null),
     supabase
       .from("contacts")
@@ -138,7 +141,7 @@ function missedTarget(direction: string, value: number, target: number): boolean
  * Compares live measurements to the workspace's targets, records the reading on
  * each target and opens an alert for any newly missed target (deduped for 12h).
  */
-export async function evaluateKpiTargets(supabase: SupabaseClient): Promise<{
+export async function evaluateKpiTargets(supabase: SupabaseClient, role = "staff"): Promise<{
   statuses: KpiStatus[];
   newAlerts: number;
 }> {
@@ -149,7 +152,7 @@ export async function evaluateKpiTargets(supabase: SupabaseClient): Promise<{
         "id, metric, label, target_value, unit, direction, source, note, active, last_value, last_checked_at",
       )
       .eq("active", true),
-    measureKpis(supabase),
+    measureKpis(supabase, role),
   ]);
 
   const rows = (targets ?? []) as unknown as KpiTargetRow[];
