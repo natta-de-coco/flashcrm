@@ -39,3 +39,18 @@ export async function requireDashboardAccess(
   }
   return { tenantId, role };
 }
+
+/**
+ * The caller's staff role for visibility shaping (which modules an overview
+ * includes), not an access gate. Falls back to the most limited role when
+ * the profile cannot be read, so a lookup failure hides data rather than
+ * widening it.
+ */
+export async function callerStaffRole(supabase: SupabaseClient, userId: string): Promise<string> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("staff_role")
+    .eq("id", userId)
+    .maybeSingle();
+  return typeof data?.staff_role === "string" ? data.staff_role : "staff";
+}

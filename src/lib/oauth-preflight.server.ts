@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { encryptionConfigured } from "./secret-box.server";
+import { encryptionConfigured as pkceEncryptionConfigured } from "./social-secrets.server";
 import { resolveAllowedOrigin, resolveCredentials } from "./oauth.server";
 import type { Connector } from "./connections-catalog";
 
@@ -38,7 +39,9 @@ export async function oauthPreflight(
   }
   let encryption = false;
   try {
-    encryption = await encryptionConfigured();
+    encryption =
+      (await encryptionConfigured()) &&
+      (!["google", "twitter"].includes(provider) || pkceEncryptionConfigured());
   } catch {
     /* invalid keyring is a blocker */
   }
@@ -49,7 +52,9 @@ export async function oauthPreflight(
     const results = await Promise.all([
       supabaseAdmin
         .from("oauth_states")
-        .select("id, state_hash, redirect_uri, code_verifier, used_at, attempt_state")
+        .select(
+          "id, tenant_id, user_id, platform, provider, state_hash, redirect_uri, code_verifier, used_at, attempt_state, purpose, target_account_id, requested_scopes",
+        )
         .limit(0),
       supabaseAdmin
         .from("social_accounts")
