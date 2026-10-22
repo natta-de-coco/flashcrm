@@ -669,15 +669,16 @@ export const saveBillingProfile = createServerFn({ method: "POST" })
 
     // This is a second write, not a transaction. If it fails, say that the
     // invoice settings were saved rather than acknowledging a complete save.
+    // Upsert: a workspace that never filled in the Advisor profile has no
+    // business_profiles row yet, and a plain update would match nothing.
     if (trn !== undefined) {
       try {
-        const { data: savedProfile, error: mirrorError } = await context.supabase
+        const { error: mirrorError } = await context.supabase
           .from("business_profiles")
-          .update({ tax_registration_number: trn })
-          .eq("tenant_id", tenantId)
-          .select("tenant_id")
-          .maybeSingle();
-        if (mirrorError || !savedProfile) throw new Error("Tax mirror was not saved.");
+          .upsert({ tenant_id: tenantId, tax_registration_number: trn } as never, {
+            onConflict: "tenant_id",
+          });
+        if (mirrorError) throw new Error("Tax mirror was not saved.");
       } catch {
         throw new Error(
           "Company settings were saved, but the business profile tax number could not be saved. Please retry or contact support.",
