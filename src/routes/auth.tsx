@@ -9,6 +9,7 @@ import { useI18n } from "@/hooks/useI18n";
 
 import { supabase } from "@/integrations/supabase/client";
 import { resendVerification } from "@/lib/otp-resend.functions";
+import { sessionOwesSecondFactor, verifiedTotpFactorId } from "@/lib/two-factor";
 import { useServerFn } from "@tanstack/react-start";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -41,24 +42,29 @@ function AuthPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const dest = safePath(search.redirect);
-  const { session } = useAuth();
-  const { t } = useI18n();
+  const { session, user } = useAuth();
+  const { t, tr } = useI18n();
   const runResend = useServerFn(resendVerification);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
-  // Two-factor step: set when the account has TOTP enabled.
-  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
+  // Two-factor step. Whether the code is still owed is a fact about the session
+  // (see lib/two-factor.ts), not something this form remembers: a session that
+  // arrived by a link, or in another tab, owes it just the same.
+  const owed = sessionOwesSecondFactor(session);
+  const factorId = owed ? verifiedTotpFactorId(session) : null;
   const [mfaCode, setMfaCode] = useState("");
   const [forgotOpen, setForgotOpen] = useState(false);
   const [verificationPending, setVerificationPending] = useState(false);
   const [resendSeconds, setResendSeconds] = useState(0);
   const resendAttempts = useRef(0);
 
+  // The only place this page sends anybody on. Every way of signing in ends in
+  // a session, and a session that still owes its code stays here.
   useEffect(() => {
-    if (session) navigate({ to: dest });
-  }, [session, navigate, dest]);
+    if (session && !owed) navigate({ to: dest });
+  }, [session, owed, navigate, dest]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
@@ -72,23 +78,13 @@ function AuthPage() {
     e.preventDefault();
     setBusy(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setBusy(false);
     if (error) {
-      setBusy(false);
       toast.error(error.message);
       return;
     }
-    // If the account has 2FA enabled, the session starts at AAL1 — require the code.
-    const aal = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    setBusy(false);
-    if (aal.data?.nextLevel === "aal2" && aal.data.currentLevel !== "aal2") {
-      const { data: factors } = await supabase.auth.mfa.listFactors();
-      const factor = (factors?.totp ?? []).find((f) => f.status === "verified");
-      if (factor) {
-        setMfaFactorId(factor.id);
-        return;
-      }
-    }
-    navigate({ to: dest });
+    // Nothing more to do here: the new session either owes a code (the form
+    // below appears) or does not (the effect above moves on).
   }
 
   async function requestPasswordReset(e: React.FormEvent) {
@@ -140,10 +136,10 @@ function AuthPage() {
 
   async function verifyMfa(e: React.FormEvent) {
     e.preventDefault();
-    if (!mfaFactorId) return;
+    if (!factorId) return;
     setBusy(true);
     const { error } = await supabase.auth.mfa.challengeAndVerify({
-      factorId: mfaFactorId,
+      factorId,
       code: mfaCode.trim(),
     });
     setBusy(false);
@@ -151,7 +147,8 @@ function AuthPage() {
       toast.error(error.message);
       return;
     }
-    navigate({ to: dest });
+    // The session is now stored as having entered its code, which clears
+    // `owed`; the effect above then moves on, once.
   }
 
   async function signUp(e: React.FormEvent) {
@@ -170,10 +167,9 @@ function AuthPage() {
       toast.error(error.message);
       return;
     }
-    if (data.session) {
-      navigate({ to: dest });
-      return;
-    }
+    // A new account has no second factor, so a session here moves on through
+    // the same effect as every other sign-in.
+    if (data.session) return;
     setVerificationPending(true);
     setResendSeconds(60);
     toast.success(t("auth.checkInboxFor", { email }));
@@ -207,14 +203,26 @@ function AuthPage() {
             </TabsList>
 
             <TabsContent value="signin">
-              {mfaFactorId ? (
+              {owed ? (
                 <form onSubmit={verifyMfa} className="space-y-4 pt-4">
+                  <div className="space-y-1">
+                    <p id="mfa-intro" className="text-sm">
+                      {t("auth.mfaIntro")}
+                    </p>
+                    {user?.email ? (
+                      <p className="text-xs text-muted-foreground">
+                        {/* An address reads left-to-right even inside right-to-left text. */}
+                        {tr("auth.mfaAccount", { email: <bdi dir="ltr">{user.email}</bdi> })}
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="mfa">{t("auth.mfaCode")}</Label>
                     <Input
                       id="mfa"
                       inputMode="numeric"
                       autoComplete="one-time-code"
+                      aria-describedby="mfa-intro"
                       placeholder="123456"
                       autoFocus
                       value={mfaCode}
@@ -234,8 +242,9 @@ function AuthPage() {
                     variant="ghost"
                     className="w-full"
                     onClick={() => {
+                      // Signing out removes the session, which is what shows the
+                      // password form again.
                       void supabase.auth.signOut();
-                      setMfaFactorId(null);
                       setMfaCode("");
                     }}
                   >

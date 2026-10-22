@@ -7,6 +7,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useI18n } from "@/hooks/useI18n";
+import { isCodeRequiredFirst } from "@/lib/two-factor";
 
 export const Route = createFileRoute("/reset-password")({
   head: () => ({
@@ -73,6 +74,15 @@ function ResetPasswordPage() {
     const { error } = await supabase.auth.updateUser({ password });
     setBusy(false);
     if (error) {
+      // A recovery link gives a session that has not entered a code, and Auth
+      // will not change the password of an account with two-factor from one
+      // (error code insufficient_aal). That is not a dead end: the sign-in page
+      // asks for the code and brings the person back here.
+      if (isCodeRequiredFirst(error)) {
+        toast.info(t("resetPassword.codeFirst"));
+        navigate({ to: "/auth", search: { redirect: "/reset-password" } });
+        return;
+      }
       toast.error(error.message);
       return;
     }
