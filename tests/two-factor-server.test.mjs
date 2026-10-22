@@ -1161,29 +1161,42 @@ describe("when the factor lookup fails: people Auth has already answered for", (
     const drain = async () => {
       for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
     };
+    const until = async (condition, message) => {
+      // JWT verification uses real asynchronous crypto. Event-loop turns do
+      // not prove the Auth lookup (and its deadline) has started on a busy CI
+      // runner. Synchronize on that request before moving the mocked clock.
+      const deadline = performance.now() + 5_000;
+      while (!condition() && performance.now() < deadline)
+        await new Promise((resolve) => setImmediate(resolve));
+      assert.ok(condition(), message);
+    };
 
     let settled = false;
     const mine = serverFn("listInvoices");
+    const myLookups = fake.count("user");
     const pending = call(mine, session.token).then((result) => {
       settled = true;
       return result;
     });
-    await drain();
+    await until(() => fake.count("user") > myLookups, "the first Auth lookup never started");
     t.mock.timers.tick(1_900);
     await drain();
     assert.equal(settled, false, "gave up before two seconds");
     t.mock.timers.tick(200);
-    await drain();
-    assert.equal(settled, true, "still waiting after two seconds, with an answer to fall back on");
+    await until(() => settled, "still waiting after two seconds, with an answer to fall back on");
     accepted(await pending, mine, user);
 
     let strangerSettled = false;
     const theirs = serverFn("listInvoices");
+    const strangerLookups = fake.count("user");
     const strangerPending = call(theirs, strangerSession.token).then((result) => {
       strangerSettled = true;
       return result;
     });
-    await drain();
+    await until(
+      () => fake.count("user") > strangerLookups,
+      "the stranger's Auth lookup never started",
+    );
     t.mock.timers.tick(2_500);
     await drain();
     assert.equal(
@@ -1192,6 +1205,7 @@ describe("when the factor lookup fails: people Auth has already answered for", (
       "gave up on somebody with nothing to fall back on at 2.5 s",
     );
     t.mock.timers.tick(2_600);
+    await until(() => strangerSettled, "still waiting after five seconds without an allowance");
     refused(await strangerPending, theirs, COULD_NOT_CHECK);
   });
 

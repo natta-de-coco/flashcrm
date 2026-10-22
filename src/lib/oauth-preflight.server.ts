@@ -50,7 +50,7 @@ export async function oauthPreflight(
       supabaseAdmin
         .from("oauth_states")
         .select(
-          "id, state_hash, redirect_uri, code_verifier, used_at, attempt_state, purpose, target_account_id, requested_scopes",
+          "id, tenant_id, user_id, platform, provider, state_hash, redirect_uri, code_verifier, used_at, attempt_state, purpose, target_account_id, requested_scopes",
         )
         .limit(0),
       supabaseAdmin

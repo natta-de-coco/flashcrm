@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { build } from "esbuild";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const harness = process.env.FLAS_DB_HARNESS_ROOT
@@ -18,6 +19,53 @@ const migration = fs.readFileSync(
   path.join(here, "../migrations/20261022073000_oauth_attempt_write_prerequisites.sql"),
   "utf8",
 );
+const providerMigration = fs.readFileSync(
+  path.join(here, "../migrations/20261022080000_oauth_provider_write_prerequisite.sql"),
+  "utf8",
+);
+// Exercise the actual starter against Postgres. A copied insert omitted
+// provider and code_verifier, so the first version missed a live failure.
+fs.mkdirSync("node_modules/.cache", { recursive: true });
+await build({
+  entryPoints: ["src/lib/oauth.server.ts"],
+  outfile: "node_modules/.cache/oauth-starter-postgres.mjs",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  alias: { "@": "./src" },
+  logLevel: "error",
+  plugins: [
+    {
+      name: "starter-io-boundaries",
+      setup(b) {
+        for (const [filter, name] of [
+          [/client\.server$/, "admin"],
+          [/oauth-preflight\.server$/, "preflight"],
+          [/secret-box\.server$/, "secrets"],
+          [/social-secrets\.server$/, "sealed"],
+          [/connection-state\.server$/, "bookkeeping"],
+        ])
+          b.onResolve({ filter }, () => ({ path: name, namespace: "starter-test" }));
+        const modules = {
+          admin: "export const supabaseAdmin={from:(...a)=>globalThis.__starterDb.from(...a)};",
+          preflight:
+            "export async function oauthPreflight(){return {ready:true,allowedOrigin:'https://flas.example',credentials:{id:'synthetic-client',secret:'synthetic-secret',source:'shared'}}}",
+          secrets:
+            "export async function openSecret(){throw new Error('No real credentials in this test')}",
+          sealed:
+            "export async function encryptSecret(){return 'synthetic-sealed-verifier'} export function tokenAad(){return 'synthetic-aad'}",
+          bookkeeping:
+            "export async function beginAuthorization(){} export async function sweepAbandonedAttempts(){}",
+        };
+        b.onLoad({ filter: /.*/, namespace: "starter-test" }, ({ path }) => ({
+          contents: modules[path],
+          loader: "js",
+        }));
+      },
+    },
+  ],
+});
+const { startAuthorization } = await import("../../node_modules/.cache/oauth-starter-postgres.mjs");
 const port = 55444;
 const database = new EmbeddedPostgres({
   databaseDir: path.join(here, ".pgdata-oauth-attempt-prerequisites"),
@@ -41,6 +89,33 @@ try {
     database: "postgres",
   });
   await client.connect();
+  globalThis.__starterDb = {
+    from(table) {
+      assert.equal(table, "oauth_states");
+      return {
+        async insert(row) {
+          const columns = Object.keys(row);
+          assert.ok(columns.every((column) => /^[a-z_]+$/.test(column)));
+          try {
+            await client.query(
+              `INSERT INTO public.oauth_states (${columns.join(",")}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(",")})`,
+              Object.values(row),
+            );
+            return { error: null };
+          } catch (error) {
+            return { error: { message: error.message } };
+          }
+        },
+      };
+    },
+  };
+  const start = () =>
+    startAuthorization({
+      platform: "youtube",
+      origin: "https://flas.example",
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      userId: "00000000-0000-4000-8000-000000000002",
+    });
   await client.query(`
     CREATE ROLE anon NOLOGIN;
     CREATE ROLE authenticated NOLOGIN;
@@ -67,6 +142,13 @@ try {
   ).rows;
   await client.query(migration);
   await client.query(migration);
+  await client.query("SET ROLE service_role");
+  const incomplete = await start();
+  assert.equal(incomplete.ready, false);
+  assert.match(incomplete.reason, /provider.*does not exist/);
+  await client.query("RESET ROLE");
+  await client.query(providerMigration);
+  await client.query(providerMigration);
   const after = (await client.query("SELECT id, state_hash FROM public.oauth_states ORDER BY id"))
     .rows;
   assert.deepEqual(after, before, "Repair must retain existing OAuth attempts");
@@ -81,9 +163,10 @@ try {
   const columns = (
     await client.query(`SELECT attname, format_type(atttypid,atttypmod) AS type
     FROM pg_attribute WHERE attrelid='public.oauth_states'::regclass AND NOT attisdropped
-    AND attname IN ('purpose','target_account_id','requested_scopes') ORDER BY attname`)
+    AND attname IN ('provider','purpose','target_account_id','requested_scopes') ORDER BY attname`)
   ).rows;
   assert.deepEqual(columns, [
+    { attname: "provider", type: "text" },
     { attname: "purpose", type: "text" },
     { attname: "requested_scopes", type: "text[]" },
     { attname: "target_account_id", type: "uuid" },
@@ -99,11 +182,21 @@ try {
       false,
     );
   await client.query("SET ROLE service_role");
-  await client.query(`INSERT INTO public.oauth_states
-    (tenant_id,user_id,platform,state_hash,redirect_uri,purpose,target_account_id,requested_scopes)
-    VALUES ('00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002',
-      'youtube','synthetic-new-hash','https://flas.example/api/public/oauth-callback','connect',NULL,
-      ARRAY['https://www.googleapis.com/auth/youtube.readonly'])`);
+  const complete = await start();
+  assert.equal(complete.ready, true);
+  const authorizeUrl = new URL(complete.url);
+  assert.equal(authorizeUrl.origin, "https://accounts.google.com");
+  assert.equal(authorizeUrl.searchParams.get("code_challenge_method"), "S256");
+  const attempt = (
+    await client.query(
+      "SELECT provider, purpose, code_verifier, requested_scopes, state_hash FROM public.oauth_states WHERE provider='google'",
+    )
+  ).rows[0];
+  assert.equal(attempt.purpose, "connect");
+  assert.equal(attempt.code_verifier, "synthetic-sealed-verifier");
+  assert.ok(attempt.requested_scopes.includes("https://www.googleapis.com/auth/youtube.readonly"));
+  assert.match(attempt.state_hash, /^[0-9a-f]{64}$/);
+  assert.notEqual(attempt.state_hash, authorizeUrl.searchParams.get("state"));
   await assert.rejects(
     client.query("UPDATE public.oauth_states SET purpose='invalid'"),
     /oauth_states_purpose_check/,
@@ -140,6 +233,20 @@ try {
   console.log(
     "PASS: incompatible existing types refuse atomically without leaving partial columns.",
   );
+  await client.query(
+    "DROP TABLE public.oauth_states; CREATE TABLE public.oauth_states(id uuid, provider integer)",
+  );
+  await assert.rejects(client.query(providerMigration), /unexpected type/);
+  await client.query("ROLLBACK");
+  assert.equal(
+    (
+      await client.query(
+        "SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='oauth_states' AND column_name='provider'",
+      )
+    ).rows[0].data_type,
+    "integer",
+  );
+  console.log("PASS: incompatible provider type refuses without casting or changing history.");
 } finally {
   if (client) await client.end();
   if (started) await database.stop();

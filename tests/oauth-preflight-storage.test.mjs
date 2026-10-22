@@ -75,7 +75,7 @@ function setup(options = {}) {
 }
 
 for (const provider of ["google", "meta"])
-  for (const missing of ["purpose", "target_account_id", "requested_scopes"])
+  for (const missing of ["purpose", "target_account_id", "requested_scopes", "provider"])
     test(`${provider}: an old successful guard cannot hide missing ${missing}`, async () => {
       setup({ missing });
       const result = await oauthPreflight(provider, "workspace-A", "https://flas.example");
@@ -92,7 +92,7 @@ test("complete attempt storage passes a read-only, zero-row preflight", async ()
     .find((r) => r.table === "oauth_states")
     .columns.split(",")
     .map((s) => s.trim());
-  for (const column of ["purpose", "target_account_id", "requested_scopes"])
+  for (const column of ["purpose", "target_account_id", "requested_scopes", "provider"])
     assert.ok(columns.includes(column));
 });
 
