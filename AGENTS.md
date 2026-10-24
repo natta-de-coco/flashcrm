@@ -13,6 +13,8 @@
 
 ## FLAS shared-agent handovers (owner instruction, 13 October 2026)
 
+Advisor AI entry points must resolve the authenticated caller's Advisor access through `requireDashboardAccess` and forward that role to their live snapshot; this preserves module visibility without treating every caller as staff.
+
 Before working, read [the team handover protocol](docs/handoff/TEAM-HANDOVER-PROTOCOL.md)
 and the latest comments in [the central GitHub ledger](https://github.com/natta-de-coco/flashcrm/issues/73).
 Every Claude, Antigravity and Codex chat must register its fixed chat name/ID there,
