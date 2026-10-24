@@ -111,8 +111,9 @@ export const runAdvisorAnalysis = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { buildAdvisorAnalysis } = await import("@/lib/advisor.server");
     const { logAudit } = await import("@/lib/audit.server");
-
-    const analysis = await buildAdvisorAnalysis(context.supabase);
+    const { requireDashboardAccess } = await import("@/lib/dashboard-access.server");
+    const { role } = await requireDashboardAccess(context.supabase, context.userId, "advisor");
+    const analysis = await buildAdvisorAnalysis(context.supabase, role);
 
     const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
@@ -156,7 +157,9 @@ export const askAdvisor = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => AskSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { askAdvisorQuestion } = await import("@/lib/advisor.server");
-    const answer = await askAdvisorQuestion(context.supabase, data.question, data.history);
+    const { requireDashboardAccess } = await import("@/lib/dashboard-access.server");
+    const { role } = await requireDashboardAccess(context.supabase, context.userId, "advisor");
+    const answer = await askAdvisorQuestion(context.supabase, data.question, data.history, role);
 
     const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as
@@ -179,7 +182,9 @@ export const startAdvisorFollowUp = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { buildFollowUpQuestions } = await import("@/lib/advisor.server");
-    return { questions: await buildFollowUpQuestions(context.supabase) };
+    const { requireDashboardAccess } = await import("@/lib/dashboard-access.server");
+    const { role } = await requireDashboardAccess(context.supabase, context.userId, "advisor");
+    return { questions: await buildFollowUpQuestions(context.supabase, role) };
   });
 
 /** Turns the owner's answers into a prioritised next-action plan. */
@@ -188,7 +193,9 @@ export const completeAdvisorFollowUp = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => FollowUpSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { buildFollowUpPlan } = await import("@/lib/advisor.server");
-    const plan = await buildFollowUpPlan(context.supabase, data.answers);
+    const { requireDashboardAccess } = await import("@/lib/dashboard-access.server");
+    const { role } = await requireDashboardAccess(context.supabase, context.userId, "advisor");
+    const plan = await buildFollowUpPlan(context.supabase, data.answers, role);
 
     const { data: tenantId, error: tenantError } = await context.supabase.rpc("current_tenant_id");
     // A recursion/timeout failure of this lookup used to be reported as

@@ -282,8 +282,11 @@ function stripFences(raw: string): string {
 }
 
 /** Full strategic review, returned as structured JSON for the advisor page. */
-export async function buildAdvisorAnalysis(supabase: SupabaseClient): Promise<AdvisorAnalysis> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+export async function buildAdvisorAnalysis(
+  supabase: SupabaseClient,
+  role = "staff",
+): Promise<AdvisorAnalysis> {
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
@@ -328,8 +331,9 @@ export async function askAdvisorQuestion(
   supabase: SupabaseClient,
   question: string,
   history: { role: "user" | "assistant"; content: string }[] = [],
+  role = "staff",
 ): Promise<string> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
@@ -434,8 +438,9 @@ export type FollowUpQuestion = { id: string; question: string; why: string };
  */
 export async function buildFollowUpQuestions(
   supabase: SupabaseClient,
+  role = "staff",
 ): Promise<FollowUpQuestion[]> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
@@ -482,8 +487,9 @@ export type FollowUpPlan = {
 export async function buildFollowUpPlan(
   supabase: SupabaseClient,
   answers: { question: string; answer: string }[],
+  role = "staff",
 ): Promise<FollowUpPlan> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
