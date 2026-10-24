@@ -20,6 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useI18n } from "@/hooks/useI18n";
+import { CAMPAIGN_EXTRA_LIMITS, CAMPAIGN_FIELD_LIMITS } from "@/lib/campaign-audience";
 import {
   BUILT_IN_EMAIL_TEMPLATES,
   substituteMergeTags,
@@ -40,7 +42,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 export interface CampaignComposerData {
@@ -56,7 +58,11 @@ export interface CampaignComposerData {
 interface CampaignComposerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (data: CampaignComposerData, isScheduled?: boolean) => Promise<void>;
+  /**
+   * Saves the campaign and says whether it was saved. The composer stays open,
+   * with what the person wrote, when it was not.
+   */
+  onSave: (data: CampaignComposerData, isScheduled?: boolean) => Promise<boolean>;
   isSmtpVerified: boolean;
   initialData?: Partial<CampaignComposerData> | undefined;
 }
@@ -68,6 +74,7 @@ export function CampaignComposerModal({
   isSmtpVerified,
   initialData,
 }: CampaignComposerModalProps) {
+  const { t } = useI18n();
   const defaultTpl = BUILT_IN_EMAIL_TEMPLATES[0]!;
   const [name, setName] = useState(initialData?.name || "");
   const [subject, setSubject] = useState(initialData?.subject || "");
@@ -85,6 +92,9 @@ export function CampaignComposerModal({
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [activeTab, setActiveTab] = useState<"composer" | "preview">("composer");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // State updates after the click is handled, so a second click in the same
+  // moment would still see "not submitting"; a ref does not wait.
+  const saving = useRef(false);
 
   function applyTemplate(tpl: EmailTemplate) {
     setTemplateId(tpl.id);
@@ -103,6 +113,7 @@ export function CampaignComposerModal({
 
   function addAttachment() {
     if (!newAttachmentName.trim() || !newAttachmentUrl.trim()) return;
+    if (attachments.length >= CAMPAIGN_EXTRA_LIMITS.attachments) return;
     const item: CampaignAttachment = {
       id: "att_" + Date.now(),
       name: newAttachmentName.trim(),
@@ -142,14 +153,26 @@ export function CampaignComposerModal({
       toast.error("Please provide an email subject line");
       return;
     }
+    // The same limits the server enforces (PR #58), said in the reader's language.
+    if (
+      name.trim().length > CAMPAIGN_FIELD_LIMITS.name ||
+      subject.trim().length > CAMPAIGN_FIELD_LIMITS.subject ||
+      body.length > CAMPAIGN_FIELD_LIMITS.body ||
+      imageUrl.length > CAMPAIGN_EXTRA_LIMITS.imageUrl
+    ) {
+      toast.error(t("marketing.campaignTooLong"));
+      return;
+    }
     if (schedule && !isSmtpVerified) {
       toast.error("Cannot schedule or send without a verified SMTP configuration in Settings.");
       return;
     }
 
+    if (saving.current) return;
+    saving.current = true;
     setIsSubmitting(true);
     try {
-      await onSave(
+      const saved = await onSave(
         {
           name: name.trim(),
           subject: subject.trim(),
@@ -160,8 +183,9 @@ export function CampaignComposerModal({
         },
         schedule,
       );
-      onOpenChange(false);
+      if (saved) onOpenChange(false);
     } finally {
+      saving.current = false;
       setIsSubmitting(false);
     }
   }
@@ -233,6 +257,7 @@ export function CampaignComposerModal({
                 <Label htmlFor="campName">Campaign Name (Internal)</Label>
                 <Input
                   id="campName"
+                  maxLength={CAMPAIGN_FIELD_LIMITS.name}
                   placeholder="e.g. Q4 Black Friday Welcome Blast"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -243,6 +268,7 @@ export function CampaignComposerModal({
                 <Label htmlFor="campSubject">Email Subject Line</Label>
                 <Input
                   id="campSubject"
+                  maxLength={CAMPAIGN_FIELD_LIMITS.subject}
                   placeholder="e.g. Welcome {{name}}! Claim 20% off your first order"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
@@ -259,6 +285,7 @@ export function CampaignComposerModal({
                 </Label>
                 <Input
                   id="heroImage"
+                  maxLength={CAMPAIGN_EXTRA_LIMITS.imageUrl}
                   placeholder="https://... (banner image)"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
@@ -296,12 +323,14 @@ export function CampaignComposerModal({
               </Label>
               <div className="flex gap-2">
                 <Input
+                  maxLength={CAMPAIGN_EXTRA_LIMITS.attachmentName}
                   placeholder="Attachment label (e.g. Brochure.pdf / Coupon.png)"
                   value={newAttachmentName}
                   onChange={(e) => setNewAttachmentName(e.target.value)}
                   className="h-8 text-xs"
                 />
                 <Input
+                  maxLength={CAMPAIGN_EXTRA_LIMITS.attachmentUrl}
                   placeholder="File URL (https://...)"
                   value={newAttachmentUrl}
                   onChange={(e) => setNewAttachmentUrl(e.target.value)}
@@ -340,6 +369,7 @@ export function CampaignComposerModal({
               <Label htmlFor="campBody">HTML Body Content</Label>
               <Textarea
                 id="campBody"
+                maxLength={CAMPAIGN_FIELD_LIMITS.body}
                 rows={10}
                 className="font-mono text-xs"
                 value={body}

@@ -10,6 +10,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useI18n } from "@/hooks/useI18n";
 import { navMessageKey } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
+import { AI_DRAFT_FIELD_LIMITS } from "@/lib/campaign-audience";
+import { getCampaignAudience } from "@/lib/campaign-audience.functions";
 import { draftCampaignMessage } from "@/lib/flash-ai.functions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -18,7 +20,11 @@ import { Copy, Download, Loader2, Mail, Plus, Send, Sparkles, Trash2 } from "luc
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { friendlyError } from "@/lib/friendly-error";
-import { CampaignBoard, type CampaignItem } from "@/components/marketing/CampaignBoard";
+import {
+  CampaignBoard,
+  type CampaignItem,
+  type CampaignPrefill,
+} from "@/components/marketing/CampaignBoard";
 import { DripSequenceBuilder } from "@/components/marketing/DripSequenceBuilder";
 import { getTenantSmtpConfig } from "@/lib/tenant-smtp.functions";
 
@@ -102,12 +108,14 @@ type Campaign = {
 };
 
 function MarketingPage() {
-  const { isAdmin, user } = useAuth();
-  const { tx } = useI18n();
+  const { isAdmin } = useAuth();
+  const { t, tx } = useI18n();
   const qc = useQueryClient();
   const [origin, setOrigin] = useState("");
   const [siteForm, setSiteForm] = useState({ name: "", platform: "wordpress" });
-  const [campaignForm, setCampaignForm] = useState({ name: "", subject: "", body: "" });
+  // A draft written by Flas AI, handed to the campaign board to open in its
+  // composer. The board saves it, through the server, like any other campaign.
+  const [prefill, setPrefill] = useState<CampaignPrefill | null>(null);
   const [ruleForm, setRuleForm] = useState({
     name: "",
     match_field: "tag" as RoutingRule["match_field"],
@@ -124,6 +132,7 @@ function MarketingPage() {
   });
   const [aiDraft, setAiDraft] = useState("");
   const draftWithFlashAi = useServerFn(draftCampaignMessage);
+  const loadAudience = useServerFn(getCampaignAudience);
   const getSmtpConfigFn = useServerFn(getTenantSmtpConfig);
   const smtpConfigQuery = useQuery({
     queryKey: ["tenant-smtp-config-marketing"],
@@ -151,6 +160,15 @@ function MarketingPage() {
       return data as unknown as Lead[];
     },
   });
+
+  // One number for who a campaign reaches: people with a consented, reachable
+  // email, counted once each. It used to be `leads.filter(l => l.subscribed)`,
+  // which counts rows, and `subscribed` defaults to true.
+  const audience = useQuery({
+    queryKey: ["campaign-audience"],
+    queryFn: () => loadAudience(),
+  });
+  const emailAudience = audience.data?.email ?? null;
 
   const sites = useQuery({
     queryKey: ["lead_sites"],
@@ -261,25 +279,6 @@ function MarketingPage() {
     onError: (e: Error) => toast.error(friendlyError(e)),
   });
 
-  const createCampaign = useMutation({
-    mutationFn: async () => {
-      const { error } = await supabase.from("campaigns").insert({
-        name: campaignForm.name,
-        subject: campaignForm.subject,
-        body: campaignForm.body,
-        recipients_count: (leads.data ?? []).filter((l) => l.subscribed).length,
-        created_by: user?.id ?? null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      setCampaignForm({ name: "", subject: "", body: "" });
-      toast.success("Campaign saved as a draft");
-      void qc.invalidateQueries({ queryKey: ["campaigns"] });
-    },
-    onError: (e: Error) => toast.error(friendlyError(e)),
-  });
-
   const generateDraft = useMutation({
     mutationFn: async () =>
       draftWithFlashAi({
@@ -300,24 +299,12 @@ function MarketingPage() {
   function useDraftInCampaign() {
     if (!aiDraft.trim()) return;
     const subjectMatch = aiDraft.match(/^Subject:\s*(.+)$/m);
-    setCampaignForm({
+    setPrefill({
       name: aiForm.goal.slice(0, 60) || "Flas AI campaign",
       subject: aiForm.channel === "email" ? (subjectMatch?.[1] ?? "") : "",
       body: aiForm.channel === "email" ? aiDraft.replace(/^Subject:.*\n?/m, "").trim() : aiDraft,
     });
-    toast.success("Draft copied into the campaign form below");
-  }
-
-  async function queueCampaign(id: string) {
-    const { error } = await supabase
-      .from("campaigns")
-      .update({ status: "scheduled", scheduled_at: new Date().toISOString() })
-      .eq("id", id);
-    if (error) toast.error(friendlyError(error));
-    else {
-      toast.success("Campaign queued. It sends once your email sending domain is verified.");
-      void qc.invalidateQueries({ queryKey: ["campaigns"] });
-    }
+    toast.success(t("marketing.draftOpenedInComposer"));
   }
 
   function copy(value: string) {
@@ -580,6 +567,7 @@ function MarketingPage() {
               <Textarea
                 id="ai_goal"
                 rows={2}
+                maxLength={AI_DRAFT_FIELD_LIMITS.goal}
                 placeholder="e.g. Re-engage wholesale leads who went quiet last month with a 10% reorder offer"
                 value={aiForm.goal}
                 onChange={(e) => setAiForm({ ...aiForm, goal: e.target.value })}
@@ -590,6 +578,7 @@ function MarketingPage() {
                 <Label htmlFor="ai_audience">Audience (optional)</Label>
                 <Input
                   id="ai_audience"
+                  maxLength={AI_DRAFT_FIELD_LIMITS.audience}
                   placeholder="e.g. popup-chat leads"
                   value={aiForm.audience}
                   onChange={(e) => setAiForm({ ...aiForm, audience: e.target.value })}
@@ -863,7 +852,10 @@ function MarketingPage() {
         <CampaignBoard
           campaigns={(campaigns.data ?? []) as unknown as CampaignItem[]}
           isSmtpVerified={isSmtpVerified}
-          audienceCount={(leads.data ?? []).filter((l) => l.subscribed).length}
+          audienceCount={emailAudience && !emailAudience.truncated ? emailAudience.total : null}
+          audiencePartial={emailAudience?.truncated === true}
+          audienceError={audience.isError ? friendlyError(audience.error) : null}
+          prefill={prefill}
         />
       </div>
     </main>

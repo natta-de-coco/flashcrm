@@ -14,7 +14,7 @@ export const draftCampaignMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => DraftSchema.parse(input))
   .handler(async ({ data, context }) => {
-    const { callFlashAi, getBusinessContext, gatherLeadSummary } =
+    const { callFlashAi, getBusinessContext, gatherLeadSummary, leadSummaryFacts } =
       await import("@/lib/flash-ai.server");
     const { logAudit } = await import("@/lib/audit.server");
 
@@ -41,14 +41,7 @@ export const draftCampaignMessage = createServerFn({ method: "POST" })
       `Business: ${business?.business_name ?? "unknown"} (${business?.industry ?? "general"})`,
       business?.description ? `About the business: ${business.description}` : "",
       business?.learned_facts ? `Learned facts: ${business.learned_facts}` : "",
-      `Audience data: ${leads.totalLeads} website leads plus your contacts, ${leads.consentedLeads} opted in (${leads.consentedContacts} of them contacts), sources: ${
-        Object.entries(leads.bySource)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(", ") || "none"
-      }, top tags: ${leads.topTags.join(", ") || "none"}.`,
-      `Pipeline: ${Object.entries(leads.contactsByStage)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(", ")}`,
+      `Audience data:\n${leadSummaryFacts(leads).join("\n")}`,
       data.audience ? `Target segment: ${data.audience}` : "",
       `Tone: ${data.tone}. Channel: ${data.channel}.`,
       `Campaign goal: ${data.goal}`,
