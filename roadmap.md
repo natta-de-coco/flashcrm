@@ -7,7 +7,8 @@
 - Do not claim delivered/opened status because the email provider does not expose those outcomes.
 - [x] Keep the Flas owner accounts separate from all client-company workspaces.
 # Flas CRM Roadmap
-- [ ] Finish Advisor role forwarding and verify real social activity / lead-flow health factors; preserve staff restrictions.
+- [x] Finish Advisor role forwarding and verify real social activity / lead-flow health factors; preserve staff restrictions (78 related tests; signed-in review generated and reloaded).
+- [ ] Post CL-03 Advisor handover to GitHub #73 — blocked: GitHub API returns 401; no authorized GitHub write connection in sandbox.
 ## Open tasks
 - [x] Resubmit add_secret form for platform credentials (user: "dont skip please submit") — form declined by user, can be reopened later.
 - [x] Chatbot page: show a banner when the bot is inactive because instructions are short (< 20 chars) or greeting is empty.
