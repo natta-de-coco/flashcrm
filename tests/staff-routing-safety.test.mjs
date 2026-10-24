@@ -581,3 +581,28 @@ test("a staff contact whose primary phone changed is refused before sending", as
   assert.equal(graphCalls.length, 0);
   assert.match(response.error, /does not match/);
 });
+
+for (const change of ["human takeover", "workspace assistant switched off"])
+  test(`late AI answer cannot undo ${change}`, async () => {
+    globalThis.fetch = async () => {
+      if (change === "human takeover") {
+        db.state.rows.conversations[0].bot_enabled = false;
+        db.state.rows.conversations[0].status = "pending";
+      } else db.state.rows.tenant_bot_settings[0].enabled = false;
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ text: "A late synthetic answer", handoff: false }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    };
+    const result = await inbound("A product question", "late-answer");
+    assert.equal(result.reply, null);
+    assert.equal(db.state.rows.messages.filter((m) => m.direction === "outbound").length, 0);
+  });

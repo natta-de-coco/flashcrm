@@ -26,6 +26,10 @@ No live messages, SQL, credentials or customer-data cleanup were used to test it
   for a person pause automation across the batch, retain pending status and
   produce one stored acknowledgement. Ordinary staff assignment is not proof
   of human takeover. A recent response no longer discards a follow-up question.
+  A late AI response rechecks the current conversation and workspace switch
+  before saving; it cannot re-enable a conversation a person took over while
+  the model was answering. This is a last check, not a claim of an atomic
+  cross-system send transaction.
 
 There is **no delayed cross-webhook worker or external-CRM agent detection**.
 Their misleading controls/promises are removed. Separate requests get normal

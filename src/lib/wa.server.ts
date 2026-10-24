@@ -1048,7 +1048,25 @@ async function answerSavedInbound(args: {
   // can only claim one outbound row; an uncertain send is never resent here.
   const { messageIdFor } = await import("./wa-send.server");
   const replyId = await messageIdFor(tenantId, conv.id, `bot:${inboundId}`);
-  const saveReply = async (body: string) => {
+  const saveReply = async (body: string, handoffNotice = false) => {
+    if (!handoffNotice) {
+      // A person can take over while the AI request is in flight. Do not
+      // revive the assistant using the snapshot read before that request.
+      const { data: current, error } = await supabaseAdmin
+        .from("conversations")
+        .select("id, bot_enabled")
+        .eq("tenant_id", tenantId)
+        .eq("id", conv.id)
+        .single();
+      const currentSettings = await readBotSettings(tenantId);
+      if (
+        error ||
+        !current?.bot_enabled ||
+        !currentSettings.ok ||
+        !currentSettings.settings?.enabled
+      )
+        return null;
+    }
     try {
       return await storeOutbound(tenantId, conv.id, body, "bot", null, null, replyStatus, replyId);
     } catch (error) {
@@ -1074,7 +1092,7 @@ async function answerSavedInbound(args: {
       .eq("tenant_id", tenantId);
     if (error) return result(null, null);
     const handoff = "I’ve passed this to the team. They’ll reply here when they’re available.";
-    const replyMessageId = await saveReply(handoff);
+    const replyMessageId = await saveReply(handoff, true);
     if (!replyMessageId) return result(null, null);
     return result(handoff, replyMessageId);
   }
@@ -1103,17 +1121,20 @@ async function answerSavedInbound(args: {
     console.error("[bot] Reply generation unavailable");
   }
   if (!generated || generated.handoff) {
-    const { error } = await supabaseAdmin
+    const { error, data: paused } = await supabaseAdmin
       .from("conversations")
       .update({ bot_enabled: false, status: "pending" })
       .eq("id", conv.id)
-      .eq("tenant_id", tenantId);
-    if (error) return result(null, null);
+      .eq("tenant_id", tenantId)
+      .eq("bot_enabled", true)
+      .select("id")
+      .maybeSingle();
+    if (error || !paused) return result(null, null);
   }
   const reply =
     generated?.text ??
     "I’ll leave this with the team so they can help. They’ll reply here when they’re available.";
-  const replyMessageId = await saveReply(reply);
+  const replyMessageId = await saveReply(reply, !generated || generated.handoff);
   if (!replyMessageId) return result(null, null);
 
   // Only report a department after a checked save; old schemas still accept
