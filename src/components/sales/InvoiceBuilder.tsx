@@ -295,7 +295,10 @@ export function InvoiceBuilder({
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="cust_contact">{i18n.t("invoiceBuilder.pickFromContacts")}</Label>
             <Select value={state.contact_id ?? ""} onValueChange={pickContact}>
-              <SelectTrigger id="cust_contact" aria-label={i18n.t("invoiceBuilder.pickFromContacts")}>
+              <SelectTrigger
+                id="cust_contact"
+                aria-label={i18n.t("invoiceBuilder.pickFromContacts")}
+              >
                 <SelectValue placeholder={i18n.t("invoiceBuilder.searchYourCrmContacts")} />
               </SelectTrigger>
               <SelectContent>
@@ -386,12 +389,17 @@ export function InvoiceBuilder({
               <div key={index} className="rounded-lg border p-3">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-1.5 lg:col-span-2">
-                    <Label htmlFor={`item_${index}_catalog`}>{i18n.t("invoiceBuilder.fromCatalog")}</Label>
+                    <Label htmlFor={`item_${index}_catalog`}>
+                      {i18n.t("invoiceBuilder.fromCatalog")}
+                    </Label>
                     <Select
                       value={item.product_id ?? ""}
                       onValueChange={(v) => pickProduct(index, v)}
                     >
-                      <SelectTrigger id={`item_${index}_catalog`} aria-label={`${i18n.t("invoiceBuilder.fromCatalog")} ${index + 1}`}>
+                      <SelectTrigger
+                        id={`item_${index}_catalog`}
+                        aria-label={`${i18n.t("invoiceBuilder.fromCatalog")} ${index + 1}`}
+                      >
                         <SelectValue placeholder={i18n.t("invoiceBuilder.optionalPickAProduct")} />
                       </SelectTrigger>
                       <SelectContent>
@@ -405,7 +413,9 @@ export function InvoiceBuilder({
                     </Select>
                   </div>
                   <div className="space-y-1.5 lg:col-span-2">
-                    <Label htmlFor={`item_${index}_name`}>{i18n.t("invoiceBuilder.descriptionShownOnThePdf")}</Label>
+                    <Label htmlFor={`item_${index}_name`}>
+                      {i18n.t("invoiceBuilder.descriptionShownOnThePdf")}
+                    </Label>
                     <Input
                       id={`item_${index}_name`}
                       aria-label={`${i18n.t("invoiceBuilder.descriptionShownOnThePdf")} ${index + 1}`}
@@ -427,7 +437,9 @@ export function InvoiceBuilder({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor={`item_${index}_price`}>{i18n.t("invoiceBuilder.unitPrice")}</Label>
+                    <Label htmlFor={`item_${index}_price`}>
+                      {i18n.t("invoiceBuilder.unitPrice")}
+                    </Label>
                     <Input
                       id={`item_${index}_price`}
                       aria-label={`${i18n.t("invoiceBuilder.unitPrice")} ${index + 1}`}
@@ -440,7 +452,9 @@ export function InvoiceBuilder({
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor={`item_${index}_discount`}>{i18n.t("invoiceBuilder.discount")}</Label>
+                    <Label htmlFor={`item_${index}_discount`}>
+                      {i18n.t("invoiceBuilder.discount")}
+                    </Label>
                     <div className="flex gap-2">
                       <Input
                         id={`item_${index}_discount`}
@@ -457,7 +471,10 @@ export function InvoiceBuilder({
                         value={item.discount_type}
                         onValueChange={(v) => patchItem(index, { discount_type: v as "percent" })}
                       >
-                        <SelectTrigger className="w-20" aria-label={`${i18n.t("invoiceBuilder.discount")} ${index + 1} type`}>
+                        <SelectTrigger
+                          className="w-20"
+                          aria-label={`${i18n.t("invoiceBuilder.discount")} ${index + 1} type`}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -517,7 +534,9 @@ export function InvoiceBuilder({
         <CardContent className="grid gap-4 lg:grid-cols-2">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="doc_invoice_discount">{i18n.t("invoiceBuilder.invoiceDiscount")}</Label>
+              <Label htmlFor="doc_invoice_discount">
+                {i18n.t("invoiceBuilder.invoiceDiscount")}
+              </Label>
               <Input
                 id="doc_invoice_discount"
                 type="number"
@@ -539,7 +558,9 @@ export function InvoiceBuilder({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="doc_additional_charges">{i18n.t("invoiceBuilder.otherCharges")}</Label>
+              <Label htmlFor="doc_additional_charges">
+                {i18n.t("invoiceBuilder.otherCharges")}
+              </Label>
               <Input
                 id="doc_additional_charges"
                 type="number"
