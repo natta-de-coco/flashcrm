@@ -102,3 +102,61 @@ test("ordinary invoice fits one A4 page; long descriptions and terms paginate", 
   );
   assert.ok(long.getPageCount() > 3);
 });
+
+test("InvoiceBuilder form controls have accessible labels, IDs, and aria attributes (Task 1 / Issue #92)", () => {
+  const fileContent = readFileSync("src/components/sales/InvoiceBuilder.tsx", "utf8");
+  const expectedLabels = [
+    ["doc_kind", 'htmlFor="doc_kind"'],
+    ["doc_currency", 'htmlFor="doc_currency"'],
+    ["doc_issue_date", 'htmlFor="doc_issue_date"'],
+    ["doc_due_date", 'htmlFor="doc_due_date"'],
+    ["doc_valid_until", 'htmlFor="doc_valid_until"'],
+    ["doc_reference", 'htmlFor="doc_reference"'],
+    ["doc_po_number", 'htmlFor="doc_po_number"'],
+    ["doc_payment_terms", 'htmlFor="doc_payment_terms"'],
+    ["cust_contact", 'htmlFor="cust_contact"'],
+    ["cust_name", 'htmlFor="cust_name"'],
+    ["cust_company", 'htmlFor="cust_company"'],
+    ["cust_phone", 'htmlFor="cust_phone"'],
+    ["cust_email", 'htmlFor="cust_email"'],
+    ["cust_address", 'htmlFor="cust_address"'],
+    ["cust_vat", 'htmlFor="cust_vat"'],
+    ["doc_invoice_discount", 'htmlFor="doc_invoice_discount"'],
+    ["doc_shipping", 'htmlFor="doc_shipping"'],
+    ["doc_additional_charges", 'htmlFor="doc_additional_charges"'],
+    ["doc_adjustment", 'htmlFor="doc_adjustment"'],
+    ["doc_notes", 'htmlFor="doc_notes"'],
+    ["doc_terms", 'htmlFor="doc_terms"'],
+  ];
+
+  for (const [id, labelPattern] of expectedLabels) {
+    if (!fileContent.includes(labelPattern)) {
+      throw new Error("Missing htmlFor for " + id);
+    }
+    if (!fileContent.includes(`id="${id}"`)) {
+      throw new Error("Missing id=\"" + id + "\"");
+    }
+  }
+
+  if (!fileContent.includes("id={`item_${index}_name`}")) {
+    throw new Error("Missing line item name id");
+  }
+  if (!fileContent.includes("htmlFor={`item_${index}_name`}")) {
+    throw new Error("Missing line item name htmlFor");
+  }
+  if (!fileContent.includes("id={`item_${index}_qty`}")) {
+    throw new Error("Missing line item qty id");
+  }
+  if (!fileContent.includes("id={`item_${index}_price`}")) {
+    throw new Error("Missing line item price id");
+  }
+  if (!fileContent.includes("id={`item_${index}_discount`}")) {
+    throw new Error("Missing line item discount id");
+  }
+  if (!fileContent.includes("id={`item_${index}_tax`}")) {
+    throw new Error("Missing line item tax id");
+  }
+  if (!fileContent.includes("aria-label={`Delete item ${index + 1}`}")) {
+    throw new Error("Missing delete button aria-label");
+  }
+});
