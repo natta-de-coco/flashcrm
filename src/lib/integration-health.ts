@@ -1,29 +1,73 @@
-// Browser-safe model + exporters for the Integration Health Report. One row per
-// supported platform: current status, last error, permissions we still need and
-// the exact next retry step, so a company can hand the report to whoever owns
-// the platform account.
+/// Browser-safe model + exporters for the Integration Health Report. One row per connected
+// account (and one per platform that has none): current status, last error, permissions we still
+// need and the exact next step, so a company can hand the report to whoever owns the platform
+// account.
 
 import { connector, CONNECTORS } from "./connections-catalog";
-import type { ConnectionState } from "./connection-status";
+import type {
+  ConnectionState,
+  EvidenceState,
+  NextAction,
+  StatusParams,
+  StatusReasonCode,
+} from "./connection-status";
+
+/**
+ * What the last check of an account found, for the people who fix things. Sent only to Flas
+ * staff (a super admin): a company's own people never receive it, because it names permissions
+ * and provider answers that mean nothing to them and are not theirs to act on.
+ */
+export type HealthDiagnostics = {
+  /** Where the last check stopped: gate, probe, refresh, save, done. */
+  stage: string | null;
+  /** What the platform answered, when it answered. */
+  http_status: number | null;
+  /** The short reference of that check. It holds no workspace, account or platform text. */
+  correlation_id: string | null;
+  last_attempt_at: string | null;
+  /** Whether verification results can be saved in this workspace (or could not be read just now). */
+  evidence_storage: "ready" | "missing" | "unreadable";
+  /** The permissions the platform granted and the ones it did not, by their technical names. */
+  scopes_granted: string[];
+  scopes_missing: string[];
+  /** What the platform said, with anything token-shaped removed. */
+  provider_message: string | null;
+};
 
 export type HealthRow = {
   platform: string;
   platform_name: string;
   group: string;
+  /** The account this row is about. Null for a platform nobody has connected. */
+  account_id: string | null;
   account_label: string | null;
   state: ConnectionState;
   state_label: string;
   reason: string;
+  /** Which sentence `reason` is, so a screen can translate it. */
+  reason_code: StatusReasonCode;
+  reason_params: StatusParams;
   fix: string;
+  /** The one thing to do next, as a fixed code: the screen shows one button for it. */
+  action: NextAction;
   last_error: string | null;
   last_error_at: string | null;
   last_synced_at: string | null;
+  /** The last time the platform accepted this account's token in a live check. */
+  last_verified_at: string | null;
   token_expires_at: string | null;
+  /** Technical names: Flas staff only; empty for everyone else. */
   granted_permissions: string[];
+  /** The features the platform did not grant, in plain words ("Read DMs"). */
   missing_permissions: string[];
+  /** Features a live token check cannot prove: they depend on the platform's app review. */
+  not_proven: string[];
   retry_count: number;
   next_retry_at: string | null;
   next_step: string;
+  evidence_state: EvidenceState;
+  /** Flas staff only; null for everyone else. */
+  diagnostics: HealthDiagnostics | null;
 };
 
 export type HealthReport = {
@@ -31,6 +75,7 @@ export type HealthReport = {
   generated_at: string;
   totals: Record<ConnectionState, number>;
   connected: number;
+  /** Every row that is neither connected nor not connected -- the rows the dialog lists. */
   needs_attention: number;
   not_connected: number;
   rows: HealthRow[];
@@ -45,6 +90,182 @@ export type HealthReport = {
     created_at: string;
   }[];
 };
+
+/** Rows that need a person to look at them: not connected, and not deliberately left alone. */
+export function needsAttention(state: ConnectionState): boolean {
+  return state !== "connected" && state !== "not_connected";
+}
+
+/**
+ * What one check of one account concluded. The first three are the only "verified" outcomes:
+ * the platform answered, accepted the token, and the result was saved.
+ */
+export type RetryOutcomeCode =
+  | "healthy"
+  | "recovered"
+  | "refreshed"
+  | "scopes_missing"
+  | "scopes_unknown"
+  | "provider_unavailable"
+  | "rate_limited"
+  | "forbidden"
+  | "needs_reconnect"
+  | "not_checkable"
+  | "save_failed"
+  | "evidence_unavailable"
+  | "skipped_disconnected"
+  | "no_sign_in"
+  | "not_identified"
+  | "reconnect_needed"
+  | "in_progress"
+  | "recently_checked"
+  | "waiting_to_retry"
+  | "changed_while_checking"
+  | "not_found"
+  | "failed";
+
+/** What a check returns. Everything past `reason` is new; older callers read only the first three. */
+export type RetryResult = {
+  platform: string;
+  outcome: RetryOutcomeCode;
+  /** English, with anything token-shaped removed. */
+  reason: string;
+  account_id?: string;
+  /** Where the check stopped. */
+  stage?: string;
+  /** The status the account has now, built from the saved row. */
+  status?: {
+    state: ConnectionState;
+    label: string;
+    code: StatusReasonCode;
+    params: StatusParams;
+    reason: string;
+    fix: string;
+    action: NextAction;
+  };
+  saved_at?: string | null;
+  /** Short reference of this check; quote it to support. */
+  correlation_id?: string;
+  http_status?: number | null;
+  /** False when the retry log entry could not be written. Never makes a check fail. */
+  log_saved?: boolean;
+  /** Values the screen needs to fill the sentence for this outcome. */
+  params?: { permissions?: string[]; retry_at?: string | null };
+};
+
+/**
+ * The English sentence for one outcome. It is what gets stored and exported; the screens
+ * translate by outcome code and fill the same blanks, so the two always say the same thing.
+ * `platform` is the platform's display name. None of these promise an automatic check: nothing
+ * scheduled runs one.
+ */
+export function describeOutcome(
+  outcome: RetryOutcomeCode,
+  p: {
+    platform: string;
+    httpStatus?: number | null | undefined;
+    features?: string[] | undefined;
+    retryAt?: string | null | undefined;
+    reference?: string | undefined;
+  },
+): string {
+  const at = p.retryAt ? new Date(p.retryAt).toLocaleString() : "a few minutes from now";
+  const ref = p.reference ?? "";
+  switch (outcome) {
+    case "healthy":
+    case "recovered":
+    case "refreshed":
+      return `Verified. ${p.platform} accepted the token and Flas saved the result.`;
+    case "scopes_missing":
+      return `The token works, but ${p.platform} did not grant: ${(p.features ?? []).join(", ")}. Reconnect and keep every permission switched on.`;
+    case "scopes_unknown":
+      return `${p.platform} accepts the token but did not list its permissions, so Flas cannot confirm them. Reconnect and keep every permission switched on.`;
+    case "provider_unavailable":
+      return p.httpStatus
+        ? `${p.platform} did not answer (HTTP ${p.httpStatus}). Nothing was changed and the account was not marked verified. Try again after ${at}.`
+        : `${p.platform} did not answer. Nothing was changed and the account was not marked verified. Try again after ${at}.`;
+    case "rate_limited":
+      return `${p.platform} is limiting requests right now. Nothing was changed. Try again in a few minutes.`;
+    case "needs_reconnect":
+      return `${p.platform} no longer accepts this token. Reconnect the account.`;
+    case "forbidden":
+      return `${p.platform} refused the check (HTTP 403). A permission is probably missing. Reconnect and keep every permission switched on.`;
+    case "not_checkable":
+      return `Flas has no live check for ${p.platform} yet, so it cannot verify this account.`;
+    case "save_failed":
+      return `The check ran, but Flas could not save the result, so nothing was marked verified. Reference ${ref}.`;
+    case "evidence_unavailable":
+      return `${p.platform} accepted the token, but this workspace cannot store verification results yet. Reference ${ref}.`;
+    case "skipped_disconnected":
+      return "This account was disconnected on purpose. Connect it again to use it.";
+    case "no_sign_in":
+      return "No sign-in is saved for this account, so there is nothing to check. Connect it to use it.";
+    case "in_progress":
+      return "Another check for this account is already running. Try again in a minute.";
+    case "recently_checked":
+      return "Checked a moment ago. Showing the saved result.";
+    case "waiting_to_retry":
+      return `Flas is waiting before it asks ${p.platform} again. Try again after ${at}.`;
+    case "changed_while_checking":
+      return "This account changed while Flas was checking it, so the result was not saved and nothing was marked verified.";
+    case "reconnect_needed":
+      return "This account was added with a pasted token. Reconnect it so Flas can verify it.";
+    case "not_identified":
+      return "This sign-in is saved, but no account was chosen yet. Choose which account to connect.";
+    case "not_found":
+      return "That account was not found in this workspace.";
+    case "failed":
+      return ref
+        ? `The check could not finish, so nothing was changed. Reference ${ref}.`
+        : "The check could not finish, so nothing was changed.";
+  }
+}
+
+const VERIFIED_OUTCOMES: readonly RetryOutcomeCode[] = ["healthy", "recovered", "refreshed"];
+/**
+ * Outcomes that leave nothing to act on: nothing was asked of the platform, or what it said was
+ * thrown away because the account changed meanwhile (changed_while_checking).
+ */
+const NOT_CHECKED_OUTCOMES: readonly RetryOutcomeCode[] = [
+  "not_checkable",
+  "skipped_disconnected",
+  "no_sign_in",
+  "not_identified",
+  "reconnect_needed",
+  "in_progress",
+  "recently_checked",
+  "waiting_to_retry",
+  "changed_while_checking",
+  "not_found",
+];
+
+export function isVerifiedOutcome(outcome: RetryOutcomeCode): boolean {
+  return VERIFIED_OUTCOMES.includes(outcome);
+}
+
+/** One line of truth for a batch of checks: how many passed, how many need attention, how many were not checked. */
+export function summariseOutcomes(results: ReadonlyArray<Pick<RetryResult, "outcome">>): {
+  checked: number;
+  verified: number;
+  attention: number;
+  skipped: number;
+} {
+  let verified = 0;
+  let skipped = 0;
+  for (const r of results) {
+    if (isVerifiedOutcome(r.outcome)) verified += 1;
+    else if (NOT_CHECKED_OUTCOMES.includes(r.outcome)) skipped += 1;
+  }
+  return {
+    checked: results.length,
+    verified,
+    skipped,
+    attention: results.length - verified - skipped,
+  };
+}
+
+/** What the server answers when someone who is not a company admin asks for a check. */
+export const ONLY_ADMIN_MESSAGE = "Only a company admin can check connections.";
 
 export const ALL_PLATFORM_IDS = CONNECTORS.map((c) => c.id);
 
@@ -66,10 +287,12 @@ export function healthReportCsv(report: HealthReport): string {
     "Recommended fix",
     "Last error",
     "Last error at",
+    "Last verified",
     "Last synced",
     "Token expires",
     "Granted permissions",
     "Missing permissions",
+    "Not proven by this check",
     "Retries",
     "Next retry",
     "Next step",
@@ -85,10 +308,12 @@ export function healthReportCsv(report: HealthReport): string {
         row.fix,
         row.last_error,
         row.last_error_at,
+        row.last_verified_at,
         row.last_synced_at,
         row.token_expires_at,
         row.granted_permissions,
         row.missing_permissions,
+        row.not_proven,
         row.retry_count,
         row.next_retry_at,
         row.next_step,
@@ -175,6 +400,9 @@ export async function downloadHealthReportPdf(report: HealthReport): Promise<voi
     if (row.missing_permissions.length) {
       text(`Missing permissions: ${row.missing_permissions.join(", ")}`, 9);
     }
+    if (row.last_verified_at && row.not_proven.length) {
+      text(`Not proven by this check: ${row.not_proven.join(", ")}`, 9);
+    }
     text(`Next step: ${row.next_step}`, 9);
     y += 6;
   }
@@ -182,7 +410,7 @@ export async function downloadHealthReportPdf(report: HealthReport): Promise<voi
   if (report.retries.length) {
     space(60);
     y += 10;
-    text("Recent automatic retries", 12, "bold");
+    text("Recent checks", 12, "bold");
     for (const r of report.retries.slice(0, 12)) {
       text(
         `${new Date(r.created_at).toLocaleString()} · ${platformName(r.platform)} · ${r.outcome}${

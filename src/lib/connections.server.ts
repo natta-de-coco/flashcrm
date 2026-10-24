@@ -6,6 +6,7 @@ import { isLegalTransition } from "@/lib/connection-state";
 import { LINKEDIN_API_VERSION } from "@/lib/linkedin";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { deriveConnectionState } from "@/lib/connection-state.server";
+import { EVIDENCE_RESET, isMissingEvidenceColumn } from "@/lib/connection-evidence.server";
 import type { AccountPlatform } from "./connections-catalog";
 import { connector } from "./connections-catalog";
 import { callFlashAi } from "./flash-ai.server";
@@ -181,6 +182,26 @@ export function computeHealth(row: {
   return stale ? "attention" : "connected";
 }
 
+/**
+ * Writes a (re)connected account's row and clears what the last token proved.
+ *
+ * A new token has not been checked by anyone, so the old "verified" and "last tried" times go
+ * with the old token; otherwise a reconnect would still read Connected for a token nobody asked
+ * the platform about. Done in the same write as the new token. Where the two evidence columns do
+ * not exist yet the write is repeated without them: there is nothing to clear.
+ */
+async function writeConnectionRow(id: string, tenantId: string, values: Record<string, unknown>) {
+  const run = (v: Record<string, unknown>) =>
+    supabaseAdmin
+      .from("social_accounts")
+      .update(v as never)
+      .eq("id", id)
+      .eq("tenant_id", tenantId);
+  const first = await run({ ...values, ...EVIDENCE_RESET });
+  if (first.error && isMissingEvidenceColumn(first.error)) return await run(values);
+  return first;
+}
+
 /** Stores an authorized connection (insert or refresh of an existing row). */
 export async function saveAuthorizedConnection(args: {
   tenantId: string;
@@ -287,11 +308,7 @@ export async function saveAuthorizedConnection(args: {
         .eq("tenant_id", args.tenantId);
       if (transitionError) throw new Error("Could not prepare the account for reconnect.");
     }
-    const { error: updateError } = await supabaseAdmin
-      .from("social_accounts")
-      .update(payload)
-      .eq("id", existing.id)
-      .eq("tenant_id", args.tenantId);
+    const { error: updateError } = await writeConnectionRow(existing.id, args.tenantId, payload);
     // Ignoring this error is how a reconnect "succeeded" while the row stayed
     // revoked with its dead token: the state trigger rejected the change and
     // nothing said so.
@@ -308,14 +325,10 @@ export async function saveAuthorizedConnection(args: {
   if (error?.code === "23505") {
     const winner = await findExisting();
     if (winner) {
-      const { error: retryError } = await supabaseAdmin
-        .from("social_accounts")
-        .update({
-          ...payload,
-          refresh_token: args.refreshToken ? sealedRefresh : await sealSecret(winner.refresh_token),
-        })
-        .eq("id", winner.id)
-        .eq("tenant_id", args.tenantId);
+      const { error: retryError } = await writeConnectionRow(winner.id, args.tenantId, {
+        ...payload,
+        refresh_token: args.refreshToken ? sealedRefresh : await sealSecret(winner.refresh_token),
+      });
       if (retryError) throw new Error("Could not save the reconnected account.");
       return winner.id;
     }

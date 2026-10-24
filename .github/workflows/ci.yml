@@ -63,6 +63,10 @@ jobs:
         run: node supabase/verify/verify-oauth-attempt-prerequisites.mjs
       - name: Social tenant isolation
         run: node supabase/verify/verify-social-tenant-isolation.mjs
+      - name: Verification evidence columns are added twice-safe, touch no row and hand out no privilege
+        run: node supabase/verify/verify-validation-evidence.mjs
+      - name: Browser roles cannot write social accounts or their verification evidence (real roles, live-like grants)
+        run: node supabase/verify/verify-social-accounts-writes.mjs
       - name: Webhook events are deleted by the server only, integration errors written by the server only
         run: node supabase/verify/verify-webhook-delete-and-integration-error.mjs
 

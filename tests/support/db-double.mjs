@@ -73,6 +73,10 @@ export function createDb() {
       this.filters.push((r) => String(r[key] ?? "") >= value);
       return this;
     }
+    lt(key, value) {
+      this.filters.push((r) => r[key] != null && String(r[key]) < value);
+      return this;
+    }
     not(key, operator, value) {
       if (operator === "is" && value === null) this.filters.push((r) => r[key] != null);
       return this;

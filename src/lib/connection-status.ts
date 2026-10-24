@@ -1,8 +1,26 @@
 // Browser-safe connection status model. One place decides whether an
-// integration is Connected, Needs verification, Pending review, Expired or
-// Failing — and always states the exact reason plus the quickest fix.
+// integration is Connected, Needs verification, Pending review, Expired,
+// Failing or Platform unavailable -- and always states the exact reason plus the
+// quickest fix.
+//
+// "Connected" means one thing: Flas asked the platform, the platform accepted the
+// token, every permission Flas needs was granted, and that result was saved
+// (last_validation_success_at). Being authorized, being active, having synced
+// once and having `connection_state = connected` are not evidence of that: the
+// state is written at connect time, before anyone has asked the platform.
+//
+// Both readers of this status (the Connect accounts screen and the Integration
+// Health report) build their input with statusInputFromRow() and call
+// connectionStatus(), so they cannot disagree about the same account.
 
-import { missingScopesFor } from "./connection-state";
+import {
+  featuresForScopes,
+  hasLiveCheck,
+  missingScopesFor,
+  notProvenFor,
+  scopesUnknown,
+} from "./connection-state";
+import { connector } from "./connections-catalog";
 import type { ConnectorId } from "./connections-catalog";
 
 export type ConnectionState =
@@ -12,17 +30,86 @@ export type ConnectionState =
   | "pending_review"
   | "expired"
   | "failing"
+  | "provider_unavailable"
   | "not_connected";
+
+/**
+ * Why the status says what it says, as a fixed code. The English `reason` and `fix` stay as the
+ * fallback (CSV, PDF, older screens); a screen that translates picks its sentence by this code
+ * and fills the gaps from `params`.
+ */
+export type StatusReasonCode =
+  | "never_connected"
+  | "disconnected"
+  | "revoked"
+  | "refresh_failed"
+  | "provider_unavailable"
+  | "expired"
+  | "expiring"
+  | "scopes_missing"
+  | "scopes_unknown"
+  | "manual_token"
+  | "unidentified"
+  | "evidence_unavailable"
+  | "evidence_unreadable"
+  | "not_verified"
+  | "verified_not_synced"
+  | "sync_stale"
+  | "connected";
+
+export type StatusParams = {
+  /** ISO time of the last successful live check. */
+  verified?: string | null;
+  /** ISO time of the last successful sync. */
+  synced?: string | null;
+  /** ISO time to try again after (platform unavailable). */
+  retry_at?: string | null;
+  /**
+   * What the platform did not grant, as plain feature names ("Read DMs"). Permission names such
+   * as pages_messaging are for staff diagnostics only and never travel in a status.
+   */
+  missing?: string[];
+  /** Features a live token check cannot prove (they depend on the platform's app review). */
+  not_proven?: string[];
+};
+
+/**
+ * The one thing a person should do next, chosen from the evidence on the account and nothing
+ * else. Every screen names it the same way:
+ *   connect         "Continue with {Platform}"   nothing is connected
+ *   choose_account  "Choose account"             signed in, but no account was chosen
+ *   verify          "Verify now"                 authorized, never verified
+ *   reconnect       "Reconnect"                  the token was refused, a permission is missing,
+ *                                                or the token was pasted by hand
+ *   retry           "Retry now"                  the platform did not answer; try again
+ *   coming_soon     "Coming soon"                Flas has no live check (or has not built it) for
+ *                                                this connector, so there is nothing to press
+ *   none                                         nothing to do
+ */
+export type NextAction =
+  "connect" | "choose_account" | "verify" | "reconnect" | "retry" | "coming_soon" | "none";
 
 export type ConnectionStatus = {
   state: ConnectionState;
   label: string;
-  /** Precise, human reason — never a generic "something went wrong". */
+  /** Precise, human reason -- never a generic "something went wrong". */
   reason: string;
-  /** The single next action that resolves it. */
+  /** The single next action that resolves it, in words. */
   fix: string;
   tone: "good" | "warn" | "bad" | "muted";
+  code: StatusReasonCode;
+  params: StatusParams;
+  /** The same next step as a fixed code, so a screen can show one button. */
+  action: NextAction;
 };
+
+/**
+ * Whether the saved verification results could be read at all.
+ *   ok           read
+ *   unavailable  the columns that hold them do not exist in this database yet
+ *   unreadable   they should exist, but the database did not answer the read
+ */
+export type EvidenceState = "ok" | "unavailable" | "unreadable";
 
 export type AccountLike = {
   platform: string;
@@ -30,14 +117,15 @@ export type AccountLike = {
   token_expires_at: string | null;
   last_synced_at: string | null;
   last_analytics_sync_at?: string | null;
-  /** Scopes the provider returned on the token response. */
+  /** Scopes the provider returned on the token response. The only source of permissions. */
   granted_scopes?: string[] | null;
-  permissions?: string[] | null;
   external_id?: string | null;
   connect_method?: string | null;
   label?: string | null;
   /** Last live provider call that proved the token works. */
   last_validation_success_at?: string | null;
+  /** Last time a live call was tried, whatever it found. */
+  last_validation_attempt_at?: string | null;
   legacy_manual_connection?: boolean | null;
   /** Batch 2A: set for channels on a shared authorization. */
   authorization_id?: string | null;
@@ -45,6 +133,18 @@ export type AccountLike = {
   missing_scopes?: string[] | null;
   /** True when a refresh token is stored, so the access token renews itself. */
   renews?: boolean | null | undefined;
+  /**
+   * Whether the account still holds a token. A deliberate disconnect clears them, so a switched-off
+   * account with none was disconnected by hand; one that still holds its token was refused by the
+   * platform. Unknown (undefined) keeps the older reading: switched off means refused.
+   */
+  has_token?: boolean | null | undefined;
+  /** The durable state model (connection-state.ts). Not evidence by itself. */
+  connection_state?: string | null;
+  last_error_at?: string | null;
+  next_retry_at?: string | null;
+  /** "unavailable": the columns that hold verification results could not be read. */
+  evidence?: EvidenceState | undefined;
 };
 
 const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatus["tone"] }> = {
@@ -54,32 +154,213 @@ const STATE_META: Record<ConnectionState, { label: string; tone: ConnectionStatu
   pending_review: { label: "Pending platform review", tone: "warn" },
   expired: { label: "Token expired", tone: "bad" },
   failing: { label: "Failing", tone: "bad" },
+  provider_unavailable: { label: "Platform unavailable", tone: "warn" },
   not_connected: { label: "Not connected", tone: "muted" },
 };
 
-/** Permissions Flas needs before a capability actually works. */
+/** The row fields the status reads, plus the saved verification result (if it could be read). */
+export type StatusRowFields = {
+  platform: string;
+  active: boolean;
+  token_expires_at: string | null;
+  last_synced_at: string | null;
+  last_analytics_sync_at?: string | null | undefined;
+  granted_scopes?: string[] | null | undefined;
+  external_id?: string | null | undefined;
+  connect_method?: string | null | undefined;
+  label?: string | null | undefined;
+  renews?: boolean | null | undefined;
+  has_token?: boolean | null | undefined;
+  connection_state?: string | null | undefined;
+  last_validation_success_at?: string | null | undefined;
+  last_validation_attempt_at?: string | null | undefined;
+  last_error_at?: string | null | undefined;
+  next_retry_at?: string | null | undefined;
+  legacy_manual_connection?: boolean | null | undefined;
+  authorization_id?: string | null | undefined;
+  missing_scopes?: string[] | null | undefined;
+};
+
+export type StatusEvidence = {
+  state: EvidenceState;
+  connection_state?: string | null | undefined;
+  last_validation_success_at?: string | null | undefined;
+  last_validation_attempt_at?: string | null | undefined;
+  last_error_at?: string | null | undefined;
+  next_retry_at?: string | null | undefined;
+};
+
+/**
+ * The one way to turn a stored account into the input of connectionStatus(). Both readers use
+ * it. When the verification results could not be read ("unavailable") any timestamp that happens
+ * to be on the row is ignored: a result that cannot be confirmed as saved is not shown as saved.
+ */
+export function statusInputFromRow(row: StatusRowFields, evidence?: StatusEvidence): AccountLike {
+  const readable = evidence ? evidence.state === "ok" : true;
+  return {
+    platform: row.platform,
+    active: row.active,
+    token_expires_at: row.token_expires_at,
+    last_synced_at: row.last_synced_at,
+    last_analytics_sync_at: row.last_analytics_sync_at ?? null,
+    granted_scopes: row.granted_scopes ?? null,
+    external_id: row.external_id ?? null,
+    connect_method: row.connect_method ?? null,
+    label: row.label ?? null,
+    renews: row.renews ?? null,
+    has_token: row.has_token ?? null,
+    legacy_manual_connection: row.legacy_manual_connection ?? null,
+    authorization_id: row.authorization_id ?? null,
+    missing_scopes: row.missing_scopes ?? null,
+    connection_state: evidence?.connection_state ?? row.connection_state ?? null,
+    last_validation_success_at: readable
+      ? (evidence?.last_validation_success_at ?? row.last_validation_success_at ?? null)
+      : null,
+    last_validation_attempt_at: readable
+      ? (evidence?.last_validation_attempt_at ?? row.last_validation_attempt_at ?? null)
+      : null,
+    last_error_at: evidence?.last_error_at ?? row.last_error_at ?? null,
+    next_retry_at: evidence?.next_retry_at ?? row.next_retry_at ?? null,
+    evidence: evidence?.state ?? "ok",
+  };
+}
+
+/** States that mean "no authorization is in place": nothing to verify, nothing failing. */
+const NOTHING_AUTHORIZED = new Set([
+  "disconnected",
+  "ready_to_authorize",
+  "missing_app_credentials",
+]);
+
+/**
+ * The next step for a reason code. It follows the evidence only: nothing is asked of a person
+ * that the account's own facts do not call for, and a connector Flas cannot test (or has not built)
+ * says "Coming soon" instead of offering a check that cannot run.
+ */
+export function nextActionFor(code: StatusReasonCode, platform: string | undefined): NextAction {
+  const meta = platform ? connector(platform) : undefined;
+  // Without a platform (no account) we cannot know; assume it can be connected.
+  // Built = Flas can connect it: a sign-in it can run, or its own screen (WhatsApp's numbers).
+  const built = platform
+    ? (Boolean(meta?.oauth) || Boolean(meta?.healthHref)) && !meta?.unavailableReason
+    : true;
+  const checkable = platform ? hasLiveCheck(platform) : true;
+  switch (code) {
+    case "never_connected":
+    case "disconnected":
+      return built ? "connect" : "coming_soon";
+    case "unidentified":
+      return "choose_account";
+    case "not_verified":
+    case "evidence_unavailable":
+    case "sync_stale":
+      return checkable ? "verify" : "coming_soon";
+    case "evidence_unreadable":
+      // Pressing a check would not help: the problem is reading what is saved, not checking.
+      return "none";
+    case "scopes_missing":
+    case "scopes_unknown":
+    case "manual_token":
+    case "revoked":
+    case "refresh_failed":
+    case "expired":
+    case "expiring":
+      return "reconnect";
+    case "provider_unavailable":
+      return "retry";
+    case "verified_not_synced":
+    case "connected":
+      return "none";
+  }
+}
 
 export function connectionStatus(account: AccountLike | undefined): ConnectionStatus {
-  const build = (state: ConnectionState, reason: string, fix: string): ConnectionStatus => ({
+  const platformName = (account && connector(account.platform)?.name) || "The platform";
+  const build = (
+    state: ConnectionState,
+    code: StatusReasonCode,
+    reason: string,
+    fix: string,
+    params: StatusParams = {},
+    label?: string,
+  ): ConnectionStatus => ({
     state,
+    code,
     reason,
     fix,
+    params,
+    action: nextActionFor(code, account?.platform),
     ...STATE_META[state],
+    ...(label ? { label } : {}),
   });
+  const when = (iso: string) => new Date(iso).toLocaleString();
 
   if (!account) {
     return build(
       "not_connected",
+      "never_connected",
       "Flas has never received an access token for this platform.",
       "Press Connect and follow the guided wizard — it takes about two minutes.",
     );
   }
 
-  if (!account.active) {
+  const state = account.connection_state ?? null;
+
+  // Someone disconnected it on purpose (or it was never authorized). That is not a failure, and
+  // it must not read as "the platform refused the stored access". Disconnecting takes three
+  // steps (switch off, clear the tokens, set the state) and the last can fail, so a switched-off
+  // account that holds no token is a disconnect whatever its saved state says -- unless that state
+  // says the platform revoked it.
+  const disconnectedByHand =
+    state === "disconnected" ||
+    (!account.active && account.has_token === false && state !== "revoked");
+  if (disconnectedByHand || (state !== null && NOTHING_AUTHORIZED.has(state))) {
+    if (disconnectedByHand) {
+      return build(
+        "not_connected",
+        "disconnected",
+        "Someone in this workspace disconnected this account on purpose.",
+        "Connect it again whenever you need it.",
+        {},
+        "Disconnected",
+      );
+    }
+    return build(
+      "not_connected",
+      "never_connected",
+      "Flas has never received an access token for this platform.",
+      "Press Connect and follow the guided wizard — it takes about two minutes.",
+    );
+  }
+
+  if (state === "refresh_failed") {
     return build(
       "failing",
+      "refresh_failed",
+      "The platform did not accept the stored sign-in the last time Flas checked it.",
+      "Reconnect the account.",
+    );
+  }
+  if (state === "revoked" || !account.active) {
+    return build(
+      "failing",
+      "revoked",
       "The platform revoked or refused the stored access — usually because the account owner removed Flas, changed the linked Page, or a password reset invalidated the session.",
       "Reconnect the account. Nothing else is lost: your history stays in Flas.",
+    );
+  }
+
+  // The platform is down or limiting requests. The connection itself was not touched, so this is
+  // not a failure and reconnecting would not help.
+  if (state === "provider_unavailable") {
+    return build(
+      "provider_unavailable",
+      "provider_unavailable",
+      `${platformName} is not answering or is limiting requests. Your connection has not been changed.`,
+      account.next_retry_at
+        ? `Nothing to do now. Press Retry now after ${when(account.next_retry_at)}.`
+        : "Nothing to do now. Press Retry now in a few minutes.",
+      { retry_at: account.next_retry_at ?? null },
     );
   }
 
@@ -94,6 +375,7 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   if (expiry && expiry < Date.now()) {
     return build(
       "expired",
+      "expired",
       `The access token expired on ${new Date(expiry).toLocaleDateString()}. Platforms expire tokens on a fixed schedule; this is normal.`,
       "Press Reconnect — one approval screen and syncing resumes.",
     );
@@ -101,20 +383,14 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   if (expiry && expiry - Date.now() < 1000 * 60 * 60 * 24 * 3) {
     return build(
       "needs_verification",
+      "expiring",
       `The access token expires on ${new Date(expiry).toLocaleDateString()} (less than three days).`,
       "Reconnect now so scheduled posts and inbox sync are not interrupted.",
     );
   }
 
-  // Reads granted_scopes -- the scopes the provider actually returned.
-  //
-  // The previous version read `permissions`, which connections.server.ts writes
-  // as the JSON object { granted: [...] } while this file typed it as an
-  // array. `permissions.length > 0` was therefore never true and this branch
-  // had never executed once. It also compared against REQUIRED_PERMISSIONS, a
-  // fourth hand-maintained scope list that named scopes Flas does not request
-  // (instagram_manage_messages, video.publish), so it would have reported
-  // permanent false positives even with the shape corrected.
+  // Reads granted_scopes -- the scopes the provider actually returned. (`permissions` holds the
+  // capability keys Flas enabled, never provider scopes, and is not read here.)
   //
   // missingScopesFor() derives from the connector registry and counts only
   // capabilities Flas has actually implemented, so a customer is never asked
@@ -126,37 +402,85 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
       ? (account.missing_scopes ?? [])
       : missingScopesFor(account.platform, account.granted_scopes ?? []);
     if (missing.length > 0) {
+      // Said in features ("Read DMs"), not in permission names: those are for staff diagnostics.
+      const features = featuresForScopes(account.platform, missing);
       return build(
         "needs_verification",
-        `Connected, but these permissions were not granted: ${missing.join(", ")}. Features that depend on them stay switched off.`,
+        "scopes_missing",
+        `Connected, but ${platformName} did not grant what these features need: ${features.join(", ")}. They stay switched off.`,
         "Reconnect and leave every permission toggle ON on the platform's consent screen.",
+        { missing: features },
+      );
+    }
+    // The platform has not said which permissions this token holds, and the connector needs some.
+    // A working token is not proof the right permissions are on it.
+    if (!account.authorization_id && scopesUnknown(account.platform, account.granted_scopes)) {
+      return build(
+        "unverified",
+        "scopes_unknown",
+        `${platformName} accepts the token but did not list its permissions, so Flas cannot confirm them.`,
+        "Reconnect and keep every permission switched on.",
       );
     }
   }
 
-  // Batch 1, Phase 20: "Healthy" needs a live provider check that succeeded.
-  // A recent sync proves the database was written, not that the token works,
-  // and a pasted token was never checked by anyone.
+  // "Healthy" needs a live provider check that succeeded. A recent sync proves the database was
+  // written, not that the token works, and a pasted token was never checked by anyone.
   if (account.legacy_manual_connection || account.connect_method === "manual") {
     return build(
       "unverified",
+      "manual_token",
       "Added with a pasted token before Batch 1, and never verified against the platform.",
       "Reconnect it through Connect & setup so Flas can verify it.",
     );
   }
+
+  // No account was chosen yet (a Meta login waiting for its Page, a sign-in waiting for its
+  // account). Nothing identifies what a check would be checking.
+  if (account.external_id !== undefined && !account.external_id) {
+    return build(
+      "unverified",
+      "unidentified",
+      "This sign-in is saved, but no account was chosen yet.",
+      "Choose which account to connect.",
+    );
+  }
+
+  // The results of checks could not be read or saved: say so, never guess green. Two different
+  // things: the database cannot hold them yet (an update to finish), or it did not answer just now.
+  if (account.evidence === "unreadable") {
+    return build(
+      "unverified",
+      "evidence_unreadable",
+      "Flas could not read this account's saved check results just now, so it cannot say whether the account is verified.",
+      "Try again in a moment. If it keeps happening, tell Flas support.",
+    );
+  }
+  if (account.evidence === "unavailable") {
+    return build(
+      "unverified",
+      "evidence_unavailable",
+      "Flas cannot save verification results for this workspace yet, so this account cannot be marked verified.",
+      "Ask Flas support to finish the database update, then press Verify now.",
+    );
+  }
+
   if (!account.last_validation_success_at) {
     return build(
       "unverified",
-      "Authorized, but no live check against the platform has succeeded yet.",
-      "Open the Health report and press Retry, or wait for the next automatic check.",
+      "not_verified",
+      `Authorized, but Flas has not yet confirmed with ${platformName} that the token works.`,
+      `Press Verify now. Flas checks with ${platformName} and saves the result.`,
     );
   }
 
   if (!account.last_synced_at) {
     return build(
       "pending_review",
-      "Authorisation succeeded but the platform has not returned data yet — typical while an app is in development mode or awaiting API access approval.",
-      "Submit your platform app for review (or add yourself as a tester) and press Sync now.",
+      "verified_not_synced",
+      `Verified ${when(account.last_validation_success_at)}, but the first sync has not finished.`,
+      "Press Sync now. If it stays empty, the platform app may still be in review or development mode.",
+      { verified: account.last_validation_success_at },
     );
   }
 
@@ -164,6 +488,7 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
   if (staleFor > 1000 * 60 * 60 * 24 * 7) {
     return build(
       "failing",
+      "sync_stale",
       `No successful sync for ${Math.round(staleFor / (1000 * 60 * 60 * 24))} days — the platform is rejecting requests or rate-limiting the app.`,
       "Open the logs below for the exact platform error, then reconnect if it mentions permissions or tokens.",
     );
@@ -171,8 +496,14 @@ export function connectionStatus(account: AccountLike | undefined): ConnectionSt
 
   return build(
     "connected",
-    `Healthy — verified ${new Date(account.last_validation_success_at).toLocaleString()}, last synced ${new Date(account.last_synced_at).toLocaleString()}.`,
-    "Nothing to do. Run a Flas Account Scan any time for growth suggestions.",
+    "connected",
+    `Verified ${when(account.last_validation_success_at)}. ${platformName} accepted the token and every permission Flas needs was granted. Last synced ${when(account.last_synced_at)}.`,
+    "Nothing to do.",
+    {
+      verified: account.last_validation_success_at,
+      synced: account.last_synced_at,
+      not_proven: notProvenFor(account.platform),
+    },
   );
 }
 

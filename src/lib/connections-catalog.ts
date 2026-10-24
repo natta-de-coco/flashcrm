@@ -49,6 +49,12 @@ export type Connector = {
   manageUrl: string;
   /** Handled by another Flas module instead of social_accounts. */
   internalHref?: string;
+  /**
+   * Where this connector's health is shown, when that is not the Integration Health report: the
+   * report reads social_accounts, and a connector kept in its own tables (WhatsApp numbers) is
+   * checked on its own page instead.
+   */
+  healthHref?: string;
   /** Set when the connector cannot be connected at all yet. Connect is disabled. */
   unavailableReason?: string;
   /** Set when the connector is limited by account tier or permission. */
@@ -162,6 +168,9 @@ export const CONNECTORS: Connector[] = [
     group: "messaging",
     blurb: "Numbers, templates, chatbot and conversations.",
     oauth: false,
+    // The numbers live in wa_numbers, which the Integration Health report does not read. Their
+    // health is on Alerts & health, so the report points there instead of listing a row.
+    healthHref: "/monitoring",
     manageUrl: "https://business.facebook.com/wa/manage/",
     // No internalHref: this used to point at /connect, the page the card is
     // already on, so "Set up in Flas" went nowhere. WhatsApp has no OAuth

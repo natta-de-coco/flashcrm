@@ -98,6 +98,13 @@ type Account = {
   profile_url: string | null;
   connect_method: string;
   created_at?: string | null;
+  /** What getConnections sends so connectionStatus() can tell verified from merely authorized. */
+  connection_state?: string | null;
+  last_validation_success_at?: string | null;
+  last_validation_attempt_at?: string | null;
+  last_error_at?: string | null;
+  next_retry_at?: string | null;
+  evidence?: "ok" | "unavailable";
 };
 
 /** A WhatsApp number as the browser may read it: never its token or secret. */
@@ -1336,7 +1343,9 @@ function ConnectedCard({
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div>
             <p className="text-muted-foreground">{t("integrationsAuditFixed.lastVerified")}</p>
-            <p className="mt-1 font-medium">{humanTime(account.last_synced_at)}</p>
+            <p className="mt-1 font-medium">
+              {humanTime(account.last_validation_success_at ?? null)}
+            </p>
           </div>
           <div>
             <p className="text-muted-foreground">{t("integrationsAuditFixed.lastSync")}</p>
