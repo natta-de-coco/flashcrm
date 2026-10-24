@@ -110,7 +110,7 @@ const base = (gate: SendCheck | null): Omit<SendResult, "ok" | "state"> => ({
  * Derived here from the workspace and the conversation as well as the
  * reference, so a reference cannot name, or collide with, a row anywhere else.
  */
-async function messageIdFor(
+export async function messageIdFor(
   tenantId: string,
   conversationId: string,
   clientRef?: string | null,
@@ -362,6 +362,8 @@ export async function sendConversationMessage(args: {
   conversationId: string;
   body: string;
   clientRef?: string | null;
+  /** Server-selected staff recipients must not move to another contact's phone. */
+  expectedRecipient?: string;
 }): Promise<SendResult> {
   const { tenantId, userId, clientRef } = args;
   const { data: conversation } = await supabaseAdmin
@@ -380,6 +382,22 @@ export async function sendConversationMessage(args: {
     conversationId: conversation.id,
     isTemplate: false,
   });
+  if (
+    args.expectedRecipient &&
+    gate.recipient?.replace(/\D/g, "") !== args.expectedRecipient.replace(/\D/g, "")
+  ) {
+    const message =
+      "The conversation's phone does not match the registered staff recipient. Nothing was sent.";
+    return blocked(
+      {
+        ...gate,
+        allowed: false,
+        reasons: [message],
+        blocks: [{ code: "recipient_invalid", message }],
+      },
+      { actorId: userId, entityType: "conversation", entityId: conversation.id },
+    );
+  }
   if (!gate.allowed) {
     return blocked(gate, {
       actorId: userId,

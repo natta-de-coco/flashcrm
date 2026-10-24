@@ -7,6 +7,7 @@ import { SecurityCard } from "@/components/settings/SecurityCard";
 import { TeamCard } from "@/components/settings/TeamCard";
 import { EmailMarketingCard } from "@/components/settings/EmailMarketingCard";
 import { LeadAlertsSettingsCard } from "@/components/settings/LeadAlertsSettingsCard";
+import { StaffDepartmentRoutingCard } from "@/components/settings/StaffDepartmentRoutingCard";
 import { InvoiceBrandingCard } from "@/components/settings/InvoiceBrandingCard";
 import { PersonalProfileCard } from "@/components/settings/PersonalProfileCard";
 import { AppearanceCard } from "@/components/settings/AppearanceCard";
@@ -150,7 +151,12 @@ function SettingsWorkspace() {
                         <InvoiceBrandingCard showCompanyDetails={false} />
                       </>
                     )}
-                    {item.id === "notifications" && <LeadAlertsSettingsCard />}
+                    {item.id === "notifications" && (
+                      <>
+                        <LeadAlertsSettingsCard />
+                        <StaffDepartmentRoutingCard />
+                      </>
+                    )}
                     {item.id === "team" && <TeamCard />}
                     {item.id === "billing" && <BillingCard />}
                     {item.id === "connections" && (

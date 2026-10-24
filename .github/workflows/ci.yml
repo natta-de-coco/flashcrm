@@ -68,6 +68,8 @@ jobs:
 
       - name: WhatsApp conversation isolation and concurrent opening
         run: node supabase/verify/verify-whatsapp-conversations.mjs
+      - name: Staff routing permissions, opt-in defaults and duplicate refusal
+        run: node supabase/verify/verify-staff-routing.mjs
 
       - name: Profile privilege trigger and identity resolver permissions
         run: node supabase/verify/verify-sql-security-guards.mjs

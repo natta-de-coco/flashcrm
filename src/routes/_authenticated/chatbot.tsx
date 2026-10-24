@@ -1,4 +1,5 @@
 import { WebsiteKnowledgeCard } from "@/components/WebsiteKnowledgeCard";
+import { StaffDepartmentRoutingCard } from "@/components/settings/StaffDepartmentRoutingCard";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -383,6 +384,8 @@ function ChatbotPage() {
             </label>
           </CardContent>
         </Card>
+
+        <StaffDepartmentRoutingCard />
 
         <div>
           <Button onClick={() => save.mutate()} disabled={save.isPending}>

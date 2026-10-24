@@ -490,6 +490,7 @@ export async function processWaPayload(body: WaWebhookBody) {
     completeOutboundDelivery,
     deliverWhatsAppText,
     ingestInboundMessage,
+    replyToSavedWhatsAppMessage,
     recordMessageEvidence,
     storeOutbound,
     findWaNumberByPhoneId,
@@ -502,7 +503,6 @@ export async function processWaPayload(body: WaWebhookBody) {
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
       const value = change.value;
-      const contactName = value?.contacts?.[0]?.profile?.name ?? null;
       const waNumber = await findWaNumberByPhoneId(value?.metadata?.phone_number_id ?? null);
 
       if (!waNumber) {
@@ -582,7 +582,20 @@ export async function processWaPayload(body: WaWebhookBody) {
         await checkNumberHealth(waNumberId);
       }
 
-      for (const message of value?.messages ?? []) {
+      const messagesList = value?.messages ?? [];
+      // Store first, choose reply work from rows that actually won the inbound
+      // unique key second. This remains correct when a final message becomes a
+      // duplicate concurrently, or the webhook dedup store is unavailable.
+      const pendingReplies = new Map<
+        string,
+        {
+          from: string;
+          conversationId: string;
+          waMessageId: string;
+          answer?: Awaited<ReturnType<typeof ingestInboundMessage>>;
+        }
+      >();
+      for (const message of messagesList) {
         const text = extractMessageBody(message);
         const from = message.from;
         if (!text || !from || !message.id) continue;
@@ -595,11 +608,12 @@ export async function processWaPayload(body: WaWebhookBody) {
             tenantId,
             channel: "whatsapp",
             phone: from,
-            name: contactName,
+            name: value?.contacts?.find((c) => c.wa_id === from)?.profile?.name ?? null,
             text,
             waMessageId: message.id,
             waNumberId,
             media: mediaOf(message),
+            skipBotReply: true,
           });
         } catch (error) {
           // Retrying this event (Monitoring -> Retry) used to skip the message
@@ -609,7 +623,27 @@ export async function processWaPayload(body: WaWebhookBody) {
           await releaseWebhookEvent("whatsapp:message", message.id);
           throw error;
         }
-        const { conversationId, reply, replyMessageId } = ingested;
+        if (
+          !("duplicate" in ingested && ingested.duplicate) &&
+          !pendingReplies.get(from)?.answer?.reply
+        )
+          pendingReplies.set(from, {
+            from,
+            conversationId: ingested.conversationId,
+            waMessageId: message.id,
+            ...(ingested.reply ? { answer: ingested } : {}),
+          });
+      }
+      for (const candidate of pendingReplies.values()) {
+        const { from } = candidate;
+        const { conversationId, reply, replyMessageId } =
+          candidate.answer ??
+          (await replyToSavedWhatsAppMessage({
+            tenantId,
+            waNumberId,
+            ...candidate,
+            phone: from,
+          }));
 
         if (reply) {
           // The reply was stored as "sending" before this call. What Meta

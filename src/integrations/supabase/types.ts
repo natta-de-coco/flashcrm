@@ -1255,12 +1255,14 @@ export type Database = {
       }
       conversations: {
         Row: {
+          assigned_department: string | null
           assigned_to: string | null
           bot_enabled: boolean
           channel: Database["public"]["Enums"]["conv_channel"]
           contact_id: string
           created_at: string
           id: string
+          last_bot_reply_at: string | null
           last_message_at: string
           last_message_preview: string | null
           status: Database["public"]["Enums"]["conv_status"]
@@ -1272,12 +1274,14 @@ export type Database = {
           web_session_id: string | null
         }
         Insert: {
+          assigned_department?: string | null
           assigned_to?: string | null
           bot_enabled?: boolean
           channel?: Database["public"]["Enums"]["conv_channel"]
           contact_id: string
           created_at?: string
           id?: string
+          last_bot_reply_at?: string | null
           last_message_at?: string
           last_message_preview?: string | null
           status?: Database["public"]["Enums"]["conv_status"]
@@ -1289,12 +1293,14 @@ export type Database = {
           web_session_id?: string | null
         }
         Update: {
+          assigned_department?: string | null
           assigned_to?: string | null
           bot_enabled?: boolean
           channel?: Database["public"]["Enums"]["conv_channel"]
           contact_id?: string
           created_at?: string
           id?: string
+          last_bot_reply_at?: string | null
           last_message_at?: string
           last_message_preview?: string | null
           status?: Database["public"]["Enums"]["conv_status"]
@@ -4425,46 +4431,108 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_staff_routing_numbers: {
+        Row: {
+          created_at: string
+          department: string
+          id: string
+          is_active: boolean
+          name: string
+          notify_on_lead: boolean
+          phone: string
+          role_title: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          department: string
+          id?: string
+          is_active?: boolean
+          name: string
+          notify_on_lead?: boolean
+          phone: string
+          role_title?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          department?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          notify_on_lead?: boolean
+          phone?: string
+          role_title?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_staff_routing_numbers_tenant_id_fkey",
+            columns: ["tenant_id"],
+            isOneToOne: false,
+            referencedRelation: "organizations",
+            referencedColumns: ["id"],
+          },
+        ]
+      }
       tenant_bot_settings: {
         Row: {
+          auto_department_handoff_enabled: boolean
           auto_enroll_new_chats: boolean
           automation_changed_at: string | null
           automation_changed_by: string | null
           bot_name: string
           business_hours_only: boolean
+          debounce_window_seconds: number
           enabled: boolean
           greeting: string
           handoff_keywords: string[]
           instructions: string
           model: string
+          multi_crm_coexistence_enabled: boolean
+          staff_alert_template: string | null
+          staff_alert_whatsapp_enabled: boolean
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          auto_department_handoff_enabled?: boolean
           auto_enroll_new_chats?: boolean
           automation_changed_at?: string | null
           automation_changed_by?: string | null
           bot_name?: string
           business_hours_only?: boolean
+          debounce_window_seconds?: number
           enabled?: boolean
           greeting?: string
           handoff_keywords?: string[]
           instructions?: string
           model?: string
+          multi_crm_coexistence_enabled?: boolean
+          staff_alert_template?: string | null
+          staff_alert_whatsapp_enabled?: boolean
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          auto_department_handoff_enabled?: boolean
           auto_enroll_new_chats?: boolean
           automation_changed_at?: string | null
           automation_changed_by?: string | null
           bot_name?: string
           business_hours_only?: boolean
+          debounce_window_seconds?: number
           enabled?: boolean
           greeting?: string
           handoff_keywords?: string[]
           instructions?: string
           model?: string
+          multi_crm_coexistence_enabled?: boolean
+          staff_alert_template?: string | null
+          staff_alert_whatsapp_enabled?: boolean
           tenant_id?: string
           updated_at?: string
         }
