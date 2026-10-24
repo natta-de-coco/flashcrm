@@ -40,10 +40,13 @@ export type AdvisorSnapshot = {
 };
 
 /** Gathers everything the advisor reasons about, as plain-text facts. */
-export async function gatherAdvisorSnapshot(supabase: SupabaseClient): Promise<AdvisorSnapshot> {
+export async function gatherAdvisorSnapshot(
+  supabase: SupabaseClient,
+  role = "staff",
+): Promise<AdvisorSnapshot> {
   const [profile, overview, leads, messaging, products, social, socialPosts] = await Promise.all([
     getAdvisorProfile(supabase).catch(() => null),
-    getDashboardOverviewData(supabase).catch(() => null),
+    getDashboardOverviewData(supabase, { role }).catch(() => null),
     gatherLeadSummary(supabase as never).catch(() => null),
     gatherMessagingAnalytics(supabase as never, 30).catch(() => null),
     supabase
@@ -279,8 +282,11 @@ function stripFences(raw: string): string {
 }
 
 /** Full strategic review, returned as structured JSON for the advisor page. */
-export async function buildAdvisorAnalysis(supabase: SupabaseClient): Promise<AdvisorAnalysis> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+export async function buildAdvisorAnalysis(
+  supabase: SupabaseClient,
+  role = "staff",
+): Promise<AdvisorAnalysis> {
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
@@ -325,8 +331,9 @@ export async function askAdvisorQuestion(
   supabase: SupabaseClient,
   question: string,
   history: { role: "user" | "assistant"; content: string }[] = [],
+  role = "staff",
 ): Promise<string> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
@@ -377,8 +384,11 @@ const KPI_MENU = [
  * Turns the advisor's read of the business into concrete, measurable targets
  * for the six KPIs Flas can actually measure from live data.
  */
-export async function proposeKpiTargets(supabase: SupabaseClient): Promise<KpiProposal[]> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+export async function proposeKpiTargets(
+  supabase: SupabaseClient,
+  role = "staff",
+): Promise<KpiProposal[]> {
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
@@ -428,8 +438,9 @@ export type FollowUpQuestion = { id: string; question: string; why: string };
  */
 export async function buildFollowUpQuestions(
   supabase: SupabaseClient,
+  role = "staff",
 ): Promise<FollowUpQuestion[]> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,
@@ -476,8 +487,9 @@ export type FollowUpPlan = {
 export async function buildFollowUpPlan(
   supabase: SupabaseClient,
   answers: { question: string; answer: string }[],
+  role = "staff",
 ): Promise<FollowUpPlan> {
-  const { facts } = await gatherAdvisorSnapshot(supabase);
+  const { facts } = await gatherAdvisorSnapshot(supabase, role);
 
   const system = [
     ADVISOR_PERSONA,

@@ -3,19 +3,50 @@
 // Client side: makes sure a live Supabase session exists (refreshing it when the
 // access token has lapsed) before any RPC leaves the browser, and turns every
 // "Unauthorized" answer into a friendly message plus a redirect to /auth —
-// instead of the blank screen a thrown runtime error used to produce.
+// instead of the blank screen a thrown runtime error used to produce. It also
+// turns the server's two-factor refusals into sentences in the person's language.
 //
 // Server side: logs exactly why a call was accepted or rejected (authorization
 // header present? token shaped like a JWT? which user id?) so a missing token is
-// traceable in the server logs.
+// traceable in the server logs. It also refuses a session that has only given
+// its password when the account has two-factor (see lib/two-factor.server.ts).
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { languageFromCookieHeader, translate, type MessageKey } from "@/lib/i18n";
+import {
+  isTwoFactorRequired,
+  isTwoFactorUnchecked,
+  sessionOwesSecondFactor,
+} from "@/lib/two-factor";
 
 const FRIENDLY = "Your session has expired. Please sign in again to continue.";
 
 function isUnauthorized(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /unauthorized|jwt|invalid token|no authorization header/i.test(message);
+}
+
+/** A sentence in the language the person chose (the language cookie), outside React. */
+function inTheirLanguage(key: MessageKey): string {
+  return translate(languageFromCookieHeader(document.cookie), key);
+}
+
+/** How long the guard waits for Auth to answer a refresh before it leaves the session alone. */
+const REFRESH_CHECK_LIMIT_MS = 4_000;
+
+/**
+ * Did Auth itself answer a session refresh with "no" (the session or its
+ * refresh token is gone), as opposed to a network failure, a 5xx or a rate
+ * limit, which say nothing about the session?
+ */
+function authRejectedTheSession(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  const { name, status } = error as { name?: unknown; status?: unknown };
+  if (name === "AuthSessionMissingError") return true;
+  return (
+    name === "AuthApiError" &&
+    (status === 400 || status === 401 || status === 403 || status === 404)
+  );
 }
 
 /** Best-effort `sub` claim for logging only — never used for authorization. */
@@ -44,9 +75,52 @@ export const sessionGuard = createMiddleware({ type: "function" })
     try {
       return await next();
     } catch (error) {
-      if (typeof window !== "undefined" && isUnauthorized(error)) {
+      if (typeof window !== "undefined" && isTwoFactorRequired(error)) {
+        // The server knows the account has two-factor and this session has not
+        // given its code. Usually this browser knows too and the screens have
+        // already sent the person to the prompt. When it does not (the factor
+        // was switched on from another device and this browser's copy of the
+        // user predates it), a refresh brings the current list of factors,
+        // which sends the open page to the prompt. If it already knows, do not
+        // refresh again: there is nothing new to learn.
         const { supabase } = await import("@/integrations/supabase/client");
         const { data } = await supabase.auth.getSession();
+        if (!sessionOwesSecondFactor(data.session)) {
+          await supabase.auth.refreshSession().catch(() => undefined);
+        }
+        throw new Error(inTheirLanguage("auth.mfaIntro"));
+      }
+      if (typeof window !== "undefined" && isTwoFactorUnchecked(error)) {
+        // Nothing is wrong with the session; the check just could not be made.
+        throw new Error(inTheirLanguage("auth.mfaUnchecked"));
+      }
+      if (typeof window !== "undefined" && isUnauthorized(error)) {
+        const { supabase } = await import("@/integrations/supabase/client");
+        let { data } = await supabase.auth.getSession();
+        if (data.session) {
+          // The browser still holds a session, but the server just said it is no
+          // good. Auth may have ended it (a sign-out everywhere, a code verified
+          // on another device, a dashboard "sign out user"), which this browser
+          // cannot know until it asks. Ask by refreshing; if Auth itself rejects
+          // the refresh the session is gone, so forget it and go to sign-in
+          // instead of leaving the person among errors until the token lapses.
+          // A refresh that fails any other way (network, rate limit) says
+          // nothing about the session, so it is left alone.
+          // The library retries a failing network for many seconds, so the wait
+          // is capped; an answer that has not come is no answer.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const outcome = await Promise.race([
+            supabase.auth.refreshSession(),
+            new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), REFRESH_CHECK_LIMIT_MS);
+            }),
+          ]);
+          clearTimeout(timer);
+          if (outcome && authRejectedTheSession(outcome.error)) {
+            await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+            data = { session: null };
+          }
+        }
         if (!data.session) {
           const { toast } = await import("sonner");
           toast.error(FRIENDLY);
@@ -60,7 +134,7 @@ export const sessionGuard = createMiddleware({ type: "function" })
       throw error;
     }
   })
-  .server(async ({ next }) => {
+  .server(async ({ next, serverFnMeta }) => {
     const request = getRequest();
     const label = request?.url ? new URL(request.url).pathname : "serverFn";
     const authHeader = request?.headers?.get("authorization") ?? null;
@@ -73,10 +147,22 @@ export const sessionGuard = createMiddleware({ type: "function" })
     );
 
     try {
+      // Before the function's own middleware: a session that still owes its
+      // code never reaches requireSupabaseAuth, let alone a handler.
+      const { enforceSecondFactor, noteCodeWasEntered } = await import("@/lib/two-factor.server");
+      await enforceSecondFactor({ request, serverFnMeta });
       const result = await next();
+      // The token's signature has been checked by now: a session that entered
+      // its code makes any remembered "no second factor" about it out of date.
+      noteCodeWasEntered({ request, serverFnMeta });
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (isTwoFactorRequired(error) || isTwoFactorUnchecked(error)) {
+        // An expected answer, not a failure: say so, and say whose call it was.
+        console.warn(`[serverFn] ${label} refused: ${message} (user=${subject})`);
+        throw error;
+      }
       if (isUnauthorized(error)) {
         console.warn(
           `[serverFn] ${label} rejected: ${message} (auth_header=${authHeader ? "present" : "absent"}, token=${shape}, user=${subject})`,

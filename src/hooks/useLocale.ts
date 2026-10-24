@@ -6,8 +6,10 @@
 // This is the single source of truth for the active language. Consuming
 // components call `useLocale()` to know the current code and RTL flag without
 // repeating the query.
+import { useAuth } from "@/hooks/useAuth";
 import { getWorkspaceRegion } from "@/lib/workspace.functions";
 import { isRtl, LANGUAGES, type LanguageOption } from "@/lib/locale";
+import { sessionOwesSecondFactor } from "@/lib/two-factor";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -40,9 +42,16 @@ const FALLBACK: ActiveLocale = {
  */
 export function useLocale(): ActiveLocale {
   const getRegion = useServerFn(getWorkspaceRegion);
+  const { session } = useAuth();
+  // No call for a visitor, and none for a session that still owes its
+  // two-factor code: the server refuses it, but only after a lookup at Auth for
+  // every try, and the signed-in layout calls this before it decides who may
+  // see anything.
+  const mayAsk = !!session && !sessionOwesSecondFactor(session);
   const { data } = useQuery({
     queryKey: ["workspace-region"],
     queryFn: () => getRegion(),
+    enabled: mayAsk,
     // Locale rarely changes; a long stale time avoids redundant re-fetches.
     staleTime: 5 * 60 * 1000,
   });

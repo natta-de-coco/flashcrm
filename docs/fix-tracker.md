@@ -21,6 +21,8 @@ unapplied until someone with DB access runs them).
 
 ## Tenant isolation & data security
 
+- [x] **[P1]** `(code)` Advisor reviews, questions and follow-up plans defaulted to staff visibility and omitted social activity / lead-flow health factors for managers — **fixed 2026-10-24**. All four AI handlers resolve authenticated Advisor access and forward the real role into the dashboard snapshot. `tests/advisor-health.test.mjs` exercises the actual handlers, snapshot and aggregator: 3 weekly leads = 30/100, 12 incoming social interactions = 48/100; staff/unknown roles denied before AI/data reads. Related suites: 78 tests passed. Signed-in review generated and reloaded successfully; live nonzero social/lead activity not verified. No SQL.
+
 - [x] **[SHIP]** `(code)` ~~Inbound messages (WhatsApp + widget chat) aren't tenant-scoped~~ —
       **fixed 2026-09-01**. `ingestInboundMessage` now requires `tenantId` and scopes every
       contact/conversation/message query by it. Needs migration `20260901000000` run (adds
