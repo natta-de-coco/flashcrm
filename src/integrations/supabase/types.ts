@@ -2599,9 +2599,13 @@ export type Database = {
           expires_at: string
           id: string
           platform: string
+          provider: string | null
+          purpose: string
           redirect_uri: string
+          requested_scopes: string[] | null
           state: string | null
           state_hash: string | null
+          target_account_id: string | null
           tenant_id: string
           used_at: string | null
           user_id: string
@@ -2614,9 +2618,13 @@ export type Database = {
           expires_at?: string
           id?: string
           platform: string
+          provider?: string | null
+          purpose?: string
           redirect_uri: string
+          requested_scopes?: string[] | null
           state?: string | null
           state_hash?: string | null
+          target_account_id?: string | null
           tenant_id?: string
           used_at?: string | null
           user_id?: string
@@ -2629,9 +2637,13 @@ export type Database = {
           expires_at?: string
           id?: string
           platform?: string
+          provider?: string | null
+          purpose?: string
           redirect_uri?: string
+          requested_scopes?: string[] | null
           state?: string | null
           state_hash?: string | null
+          target_account_id?: string | null
           tenant_id?: string
           used_at?: string | null
           user_id?: string

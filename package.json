@@ -39,7 +39,7 @@
     "test:inbox": "node scripts/build-inbox-bundle.mjs && node --test tests/inbox-thread.test.mjs",
     "test:settings": "node --test tests/settings-workspace.test.mjs tests/settings-alerts.test.mjs tests/settings-billing-save.test.mjs",
     "test:appearance": "node --test tests/appearance-inbox.test.mjs tests/root-tooltip-provider.test.mjs",
-    "test:dashboard": "node --test tests/dashboard-data.test.mjs tests/home-guide.test.mjs"
+    "test:dashboard": "node --test tests/dashboard-data.test.mjs tests/advisor-health.test.mjs tests/home-guide.test.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"
