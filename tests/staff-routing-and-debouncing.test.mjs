@@ -9,7 +9,10 @@
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { substituteStaffAlertTags, DEFAULT_STAFF_ALERT_TEMPLATE } from "../src/lib/staff-alert-template.ts";
+import {
+  substituteStaffAlertTags,
+  DEFAULT_STAFF_ALERT_TEMPLATE,
+} from "../src/lib/staff-alert-template.ts";
 import { createDb } from "./support/db-double.mjs";
 import {
   isTrivialAcknowledgment,
@@ -230,8 +233,9 @@ describe("Multi-Message Rapid Burst Debouncing", () => {
     assert.equal(db.state.rows.messages.length, 1, "Inbound acknowledgment stored in DB");
   });
 
-  it("suppresses bot reply when conversation is assigned to human agent", async () => {
+  it("stays quiet after explicit human takeover, rather than routine assignment", async () => {
     db.state.rows.conversations[0].assigned_to = "agent-user-id";
+    db.state.rows.conversations[0].bot_enabled = false;
 
     const res = await ingestInboundMessage({
       tenantId: TENANT_A,
@@ -246,7 +250,7 @@ describe("Multi-Message Rapid Burst Debouncing", () => {
     assert.equal(res.reply, null, "Bot should stay quiet when chat is assigned to human agent");
   });
 
-  it("suppresses bot reply inside debounce_window_seconds", async () => {
+  it("does not discard a follow-up because the previous reply was recent", async () => {
     // Simulate a reply sent 2 seconds ago
     db.state.rows.conversations[0].last_bot_reply_at = new Date(Date.now() - 2000).toISOString();
 
@@ -260,8 +264,12 @@ describe("Multi-Message Rapid Burst Debouncing", () => {
       waNumberId: "num-1",
     });
 
-    assert.equal(res.reply, null, "Bot should debounce rapid follow-up inside 6s window");
-    assert.equal(db.state.rows.messages.length, 1, "Rapid message is preserved in DB");
+    assert.ok(res.reply, "Follow-up receives an answer or a visible human handoff");
+    assert.equal(
+      db.state.rows.messages.filter((m) => m.direction === "inbound").length,
+      1,
+      "Rapid message is preserved in DB",
+    );
   });
 
   it("debounces intra-batch multiple messages from same sender", async () => {
@@ -275,8 +283,18 @@ describe("Multi-Message Rapid Burst Debouncing", () => {
                 contacts: [{ profile: { name: "Ahmed" } }],
                 messages: [
                   { id: "wamid.1", from: "971509998888", type: "text", text: { body: "Hi" } },
-                  { id: "wamid.2", from: "971509998888", type: "text", text: { body: "My AC is leaking" } },
-                  { id: "wamid.3", from: "971509998888", type: "text", text: { body: "Can technician come?" } },
+                  {
+                    id: "wamid.2",
+                    from: "971509998888",
+                    type: "text",
+                    text: { body: "My AC is leaking" },
+                  },
+                  {
+                    id: "wamid.3",
+                    from: "971509998888",
+                    type: "text",
+                    text: { body: "Can technician come?" },
+                  },
                 ],
               },
             },

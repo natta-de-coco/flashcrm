@@ -1,22 +1,20 @@
-/**
- * src/lib/staff-routing.functions.ts
- *
- * Staff Department & Number Management, Alert Templates, and Lead Notification Engine.
- * Supports: Sales, Reception, Maintenance, IT Support, Technician, Department Head.
- */
-
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  DEFAULT_STAFF_ALERT_TEMPLATE,
+  STAFF_DEPARTMENTS,
+  type StaffDepartment,
+} from "./staff-alert-template";
 
 export {
   type StaffDepartment,
   DEFAULT_STAFF_ALERT_TEMPLATE,
   substituteStaffAlertTags,
 } from "./staff-alert-template";
-import { type StaffDepartment, DEFAULT_STAFF_ALERT_TEMPLATE } from "./staff-alert-template";
-
 export interface StaffRoutingNumber {
   id: string;
   tenantId: string;
@@ -29,196 +27,160 @@ export interface StaffRoutingNumber {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface StaffAlertConfig {
   staffAlertTemplate: string;
   staffAlertWhatsappEnabled: boolean;
   autoDepartmentHandoffEnabled: boolean;
-  debounceWindowSeconds: number;
   multiCrmCoexistenceEnabled: boolean;
 }
-
 export interface StaffRoutingData {
+  tenantId: string;
   staffMembers: StaffRoutingNumber[];
   config: StaffAlertConfig;
 }
 
-/**
- * Fetch all staff routing numbers and alert template configuration for current tenant.
- */
+const workspace = z.object({ tenantId: z.string().uuid() });
+type Context = { userId: string; supabase: SupabaseClient<Database> };
+async function adminWorkspace(context: Context, expectedTenantId: string) {
+  const { data: profile, error } = await context.supabase
+    .from("profiles")
+    .select("tenant_id, staff_role")
+    .eq("id", context.userId)
+    .single();
+  if (
+    error ||
+    !profile?.tenant_id ||
+    !["company_admin", "super_admin"].includes(profile.staff_role)
+  ) {
+    throw new Error("Only a company admin can manage staff routing and alerts.");
+  }
+  if (profile.tenant_id !== expectedTenantId)
+    throw new Error("Workspace changed. Reload this page before saving.");
+  return profile.tenant_id;
+}
+const setupError = () =>
+  new Error(
+    "Staff routing could not be loaded. Ask an admin to check its database setup, then retry.",
+  );
+
 export const getStaffRoutingDirectory = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }): Promise<StaffRoutingData> => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", context.userId)
-      .single();
-
-    if (!profile?.tenant_id) {
-      throw new Error("No active workspace found");
-    }
-
-    const tenantId = profile.tenant_id;
-
-    // Fetch staff routing records
-    const { data: staffRows, error: staffErr } = await supabaseAdmin
+  .validator((d: unknown) => workspace.parse(d))
+  .handler(async ({ data, context }): Promise<StaffRoutingData> => {
+    const tenantId = await adminWorkspace(context, data.tenantId);
+    const { data: rows, error } = await supabaseAdmin
       .from("tenant_staff_routing_numbers")
-      .select("*")
+      .select(
+        "id, tenant_id, name, phone, department, role_title, notify_on_lead, is_active, created_at, updated_at",
+      )
       .eq("tenant_id", tenantId)
       .order("department")
       .order("name");
-
-    if (staffErr && (staffErr as { code?: string }).code !== "42P01") {
-      console.warn("[staff-routing] Error fetching staff numbers:", staffErr.message);
-    }
-
-    // Fetch bot settings for template & debouncing
-    const { data: botSettings } = await supabaseAdmin
+    if (error) throw setupError();
+    const { data: settings, error: settingsError } = await supabaseAdmin
       .from("tenant_bot_settings")
       .select(
-        "staff_alert_template, staff_alert_whatsapp_enabled, auto_department_handoff_enabled, debounce_window_seconds, multi_crm_coexistence_enabled" as never,
+        "staff_alert_template, staff_alert_whatsapp_enabled, staff_alert_actor_id, auto_department_handoff_enabled, multi_crm_coexistence_enabled" as never,
       )
       .eq("tenant_id", tenantId)
       .maybeSingle();
-
-    const rawSettings = botSettings as Record<string, unknown> | null;
-
-    const config: StaffAlertConfig = {
-      staffAlertTemplate:
-        typeof rawSettings?.["staff_alert_template"] === "string" &&
-        rawSettings["staff_alert_template"].trim()
-          ? rawSettings["staff_alert_template"]
-          : DEFAULT_STAFF_ALERT_TEMPLATE,
-      staffAlertWhatsappEnabled: rawSettings?.["staff_alert_whatsapp_enabled"] !== false,
-      autoDepartmentHandoffEnabled: rawSettings?.["auto_department_handoff_enabled"] !== false,
-      debounceWindowSeconds:
-        typeof rawSettings?.["debounce_window_seconds"] === "number"
-          ? rawSettings["debounce_window_seconds"]
-          : 6,
-      multiCrmCoexistenceEnabled: rawSettings?.["multi_crm_coexistence_enabled"] !== false,
+    if (settingsError) throw setupError();
+    const raw = settings as Record<string, unknown> | null;
+    return {
+      tenantId,
+      staffMembers: (rows ?? []).map((r) => ({
+        id: r.id,
+        tenantId: r.tenant_id,
+        name: r.name,
+        phone: r.phone,
+        department: r.department as StaffDepartment,
+        roleTitle: r.role_title,
+        notifyOnLead: r.notify_on_lead === true,
+        isActive: r.is_active === true,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      })),
+      config: {
+        staffAlertTemplate:
+          typeof raw?.["staff_alert_template"] === "string"
+            ? raw["staff_alert_template"]
+            : DEFAULT_STAFF_ALERT_TEMPLATE,
+        staffAlertWhatsappEnabled:
+          raw?.["staff_alert_whatsapp_enabled"] === true &&
+          typeof raw?.["staff_alert_actor_id"] === "string",
+        autoDepartmentHandoffEnabled: raw?.["auto_department_handoff_enabled"] === true,
+        multiCrmCoexistenceEnabled: raw?.["multi_crm_coexistence_enabled"] === true,
+      },
     };
-
-    const staffMembers: StaffRoutingNumber[] = (staffRows || []).map(
-      (r: Record<string, unknown>) => ({
-        id: String(r["id"]),
-        tenantId: String(r["tenant_id"]),
-        name: String(r["name"] || ""),
-        phone: String(r["phone"] || ""),
-        department: (r["department"] as StaffDepartment) || "other",
-        roleTitle: typeof r["role_title"] === "string" ? r["role_title"] : null,
-        notifyOnLead: Boolean(r["notify_on_lead"] !== false),
-        isActive: Boolean(r["is_active"] !== false),
-        createdAt: String(r["created_at"] || new Date().toISOString()),
-        updatedAt: String(r["updated_at"] || new Date().toISOString()),
-      }),
-    );
-
-    return { staffMembers, config };
   });
 
-const SaveStaffSchema = z.object({
+const staffSchema = workspace.extend({
   id: z.string().uuid().optional(),
-  name: z.string().min(1, "Name is required").max(100),
-  phone: z.string().min(7, "Valid phone number required").max(30),
-  department: z.enum([
-    "sales",
-    "reception",
-    "maintenance",
-    "it_support",
-    "technician",
-    "department_head",
-    "other",
-  ]),
-  roleTitle: z.string().max(100).optional().nullable(),
-  notifyOnLead: z.boolean().default(true),
+  name: z.string().trim().min(1).max(100),
+  phone: z
+    .string()
+    .trim()
+    .max(30)
+    .transform((value) => value.replace(/[\s()-]/g, ""))
+    .refine(
+      (value) => /^\+[1-9]\d{7,14}$/.test(value),
+      "Use an international number starting with + and its country code.",
+    ),
+  department: z.enum(STAFF_DEPARTMENTS),
+  roleTitle: z.string().trim().max(100).optional().nullable(),
+  notifyOnLead: z.boolean().default(false),
   isActive: z.boolean().default(true),
 });
-
-/**
- * Upsert a staff routing number.
- */
 export const saveStaffRoutingNumber = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: unknown) => SaveStaffSchema.parse(d))
+  .validator((d: unknown) => staffSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("tenant_id, staff_role")
-      .eq("id", context.userId)
-      .single();
-
-    if (!profile?.tenant_id) throw new Error("No active workspace found");
-
-    // Canonicalize phone number digits with leading +
-    const digits = data.phone.replace(/[^0-9]/g, "");
-    const cleanPhone = digits ? `+${digits}` : data.phone.trim();
-
+    const tenantId = await adminWorkspace(context, data.tenantId);
     const payload = {
-      tenant_id: profile.tenant_id,
-      name: data.name.trim(),
-      phone: cleanPhone,
+      tenant_id: tenantId,
+      name: data.name,
+      phone: data.phone,
       department: data.department,
-      role_title: data.roleTitle?.trim() || null,
+      role_title: data.roleTitle || null,
       notify_on_lead: data.notifyOnLead,
       is_active: data.isActive,
       updated_at: new Date().toISOString(),
     };
-
-    if (data.id) {
-      const { data: updated, error } = await supabaseAdmin
-        .from("tenant_staff_routing_numbers")
-        .update(payload)
-        .eq("id", data.id)
-        .eq("tenant_id", profile.tenant_id)
-        .select()
-        .single();
-      if (error) throw error;
-      return { ok: true, staff: updated };
-    } else {
-      const { data: created, error } = await supabaseAdmin
-        .from("tenant_staff_routing_numbers")
-        .insert(payload)
-        .select()
-        .single();
-      if (error) throw error;
-      return { ok: true, staff: created };
-    }
+    const query = data.id
+      ? supabaseAdmin
+          .from("tenant_staff_routing_numbers")
+          .update(payload)
+          .eq("id", data.id)
+          .eq("tenant_id", tenantId)
+      : supabaseAdmin.from("tenant_staff_routing_numbers").insert(payload);
+    const { data: saved, error } = await query.select().single();
+    if (error || !saved || saved.tenant_id !== tenantId)
+      throw new Error(
+        "Could not save this staff member. Check the number is not already registered, then retry.",
+      );
+    return { ok: true as const, staff: saved };
   });
 
-/**
- * Delete a staff routing number.
- */
 export const deleteStaffRoutingNumber = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: { id: string }) => z.object({ id: z.string().uuid() }).parse(d))
+  .validator((d: unknown) => workspace.extend({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", context.userId)
-      .single();
-
-    if (!profile?.tenant_id) throw new Error("No active workspace found");
-
-    const { error } = await supabaseAdmin
+    const tenantId = await adminWorkspace(context, data.tenantId);
+    const { data: removed, error } = await supabaseAdmin
       .from("tenant_staff_routing_numbers")
       .delete()
       .eq("id", data.id)
-      .eq("tenant_id", profile.tenant_id);
-
-    if (error) throw error;
-    return { ok: true };
+      .eq("tenant_id", tenantId)
+      .select("id")
+      .single();
+    if (error || !removed) throw new Error("Could not remove this staff member. Reload and retry.");
+    return { ok: true as const };
   });
-
-/**
- * Toggle a staff member's active or notify status.
- */
 export const toggleStaffRoutingStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: { id: string; field: "isActive" | "notifyOnLead"; value: boolean }) =>
-    z
-      .object({
+  .validator((d: unknown) =>
+    workspace
+      .extend({
         id: z.string().uuid(),
         field: z.enum(["isActive", "notifyOnLead"]),
         value: z.boolean(),
@@ -226,141 +188,79 @@ export const toggleStaffRoutingStatus = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data, context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", context.userId)
-      .single();
-
-    if (!profile?.tenant_id) throw new Error("No active workspace found");
-
-    const column = data.field === "isActive" ? "is_active" : "notify_on_lead";
-
-    const { error } = await supabaseAdmin
+    const tenantId = await adminWorkspace(context, data.tenantId);
+    const { data: saved, error } = await supabaseAdmin
       .from("tenant_staff_routing_numbers")
-      .update({ [column]: data.value, updated_at: new Date().toISOString() })
+      .update({
+        [data.field === "isActive" ? "is_active" : "notify_on_lead"]: data.value,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", data.id)
-      .eq("tenant_id", profile.tenant_id);
-
-    if (error) throw error;
-    return { ok: true };
+      .eq("tenant_id", tenantId)
+      .select("id")
+      .single();
+    if (error || !saved) throw new Error("Could not update this staff member. Reload and retry.");
+    return { ok: true as const };
   });
-
-const SaveConfigSchema = z.object({
-  staffAlertTemplate: z.string().min(10).max(1000),
-  staffAlertWhatsappEnabled: z.boolean(),
-  autoDepartmentHandoffEnabled: z.boolean(),
-  debounceWindowSeconds: z.number().int().min(2).max(60),
-  multiCrmCoexistenceEnabled: z.boolean(),
-});
-
-/**
- * Save staff alert template and AI debounce settings.
- */
 export const saveStaffAlertConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: unknown) => SaveConfigSchema.parse(d))
+  .validator((d: unknown) =>
+    workspace
+      .extend({
+        staffAlertTemplate: z.string().trim().min(10).max(1000),
+        staffAlertWhatsappEnabled: z.boolean(),
+        autoDepartmentHandoffEnabled: z.boolean(),
+        multiCrmCoexistenceEnabled: z.boolean(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
+    const tenantId = await adminWorkspace(context, data.tenantId);
+    const { data: saved, error } = await supabaseAdmin
+      .from("tenant_bot_settings")
+      .upsert(
+        {
+          tenant_id: tenantId,
+          staff_alert_template: data.staffAlertTemplate,
+          staff_alert_whatsapp_enabled: data.staffAlertWhatsappEnabled,
+          staff_alert_actor_id: context.userId,
+          auto_department_handoff_enabled: data.autoDepartmentHandoffEnabled,
+          multi_crm_coexistence_enabled: data.multiCrmCoexistenceEnabled,
+          updated_at: new Date().toISOString(),
+        } as never,
+        { onConflict: "tenant_id" },
+      )
       .select("tenant_id")
-      .eq("id", context.userId)
       .single();
-
-    if (!profile?.tenant_id) throw new Error("No active workspace found");
-
-    const { error } = await supabaseAdmin.from("tenant_bot_settings").upsert(
-      {
-        tenant_id: profile.tenant_id,
-        staff_alert_template: data.staffAlertTemplate.trim(),
-        staff_alert_whatsapp_enabled: data.staffAlertWhatsappEnabled,
-        auto_department_handoff_enabled: data.autoDepartmentHandoffEnabled,
-        debounce_window_seconds: data.debounceWindowSeconds,
-        multi_crm_coexistence_enabled: data.multiCrmCoexistenceEnabled,
-        updated_at: new Date().toISOString(),
-      } as never,
-      { onConflict: "tenant_id" },
-    );
-
-    if (error) throw error;
-    return { ok: true };
+    if (error || !saved || saved.tenant_id !== tenantId)
+      throw new Error("Could not save staff alert settings. Reload and retry.");
+    return { ok: true as const };
   });
 
-const SendTestAlertSchema = z.object({
-  phone: z.string().min(7, "Valid phone number required"),
-  department: z.string().default("sales"),
-  customTemplate: z.string().optional(),
-});
-
-/**
- * Send a test staff WhatsApp alert with sample lead data.
- */
 export const sendTestStaffAlert = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .validator((d: unknown) => SendTestAlertSchema.parse(d))
+  .validator((d: unknown) =>
+    workspace
+      .extend({
+        staffId: z.string().uuid(),
+        clientRef: z.string().uuid(),
+        customTemplate: z.string().trim().min(10).max(1000).optional(),
+      })
+      .parse(d),
+  )
   .handler(async ({ data, context }) => {
-    const { data: profile } = await context.supabase
-      .from("profiles")
-      .select("tenant_id")
-      .eq("id", context.userId)
-      .single();
-
-    if (!profile?.tenant_id) throw new Error("No active workspace found");
-
-    const tenantId = profile.tenant_id;
-    const { deliverWhatsAppText, resolveWaCredentials } = await import("@/lib/wa.server");
-    const { substituteStaffAlertTags, DEFAULT_STAFF_ALERT_TEMPLATE } =
-      await import("./staff-alert-template");
-
-    // Fetch company name for {{company_name}}
-    const { data: org } = await supabaseAdmin
-      .from("organizations")
-      .select("name")
-      .eq("id", tenantId)
-      .maybeSingle();
-
-    const templateToUse = data.customTemplate?.trim() || DEFAULT_STAFF_ALERT_TEMPLATE;
-    const alertBody = substituteStaffAlertTags(templateToUse, {
-      customerName: "Rashid Al-Maktoum (Sample Lead)",
-      customerPhone: "+971 50 123 4567",
-      department: data.department,
-      customerRequirements:
-        "Inquiring about package options and technician availability for branch maintenance.",
-      companyName: org?.name || "FLAS Workspace",
-      timestamp: new Date().toLocaleString(),
+    const tenantId = await adminWorkspace(context, data.tenantId);
+    const { sendStaffAlert } = await import("./staff-alert-delivery.server");
+    return sendStaffAlert({
+      tenantId,
+      userId: context.userId,
+      staffId: data.staffId,
+      clientRef: data.clientRef,
+      template: data.customTemplate || DEFAULT_STAFF_ALERT_TEMPLATE,
+      lead: {
+        customerName: "Sample lead",
+        customerPhone: "Not provided",
+        customerRequirements: "A sample work request. No customer data is included.",
+      },
     });
-
-    const digits = data.phone.replace(/[^0-9]/g, "");
-    const cleanPhone = digits.startsWith("+") ? digits : `+${digits}`;
-
-    let creds;
-    try {
-      creds = await resolveWaCredentials(tenantId);
-    } catch (err) {
-      return {
-        ok: false as const,
-        error:
-          (err as Error)?.message ||
-          "No connected WhatsApp number available for this workspace. Connect one in Settings > Integrations.",
-      };
-    }
-
-    try {
-      const outcome = await deliverWhatsAppText(cleanPhone, alertBody, creds);
-      if (outcome.state === "rejected") {
-        return {
-          ok: false as const,
-          error: outcome.message || "WhatsApp provider rejected the message.",
-        };
-      }
-      return {
-        ok: true as const,
-        message: `Test alert sent successfully to ${cleanPhone}`,
-      };
-    } catch (sendErr) {
-      return {
-        ok: false as const,
-        error: (sendErr as Error)?.message || "Failed to deliver test WhatsApp message.",
-      };
-    }
   });

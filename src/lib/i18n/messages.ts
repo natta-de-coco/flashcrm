@@ -8,6 +8,7 @@ import campaignPlanner from "./screens/campaign-planner";
 import catalog from "./screens/catalog";
 import channelReportDialog from "./screens/channel-report-dialog";
 import chatbot from "./screens/chatbot";
+import staffRouting from "./screens/staff-routing";
 import commandPalette from "./screens/command-palette";
 import common from "./screens/common";
 import companiesEmails from "./screens/companies-emails";
@@ -78,6 +79,7 @@ const SCREENS = [
   catalog,
   channelReportDialog,
   chatbot,
+  staffRouting,
   commandPalette,
   common,
   companiesEmails,

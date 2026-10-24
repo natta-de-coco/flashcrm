@@ -27,6 +27,7 @@ export type BotSettings = {
   auto_enroll_new_chats?: boolean;
   staff_alert_template?: string | null;
   staff_alert_whatsapp_enabled?: boolean;
+  staff_alert_actor_id?: string | null;
   auto_department_handoff_enabled?: boolean;
   debounce_window_seconds?: number;
   multi_crm_coexistence_enabled?: boolean;
@@ -500,22 +501,28 @@ export async function generateBotReply(
   const waited = waitedFor(lastCustomerMessage?.created_at);
   const late = isLate(lastCustomerMessage?.created_at);
 
-  // Query active staff numbers for department recommendation
-  const { data: staffRows } = await supabaseAdmin
-    .from("tenant_staff_routing_numbers")
-    .select("name, phone, department, role_title")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true);
-
-  const deptList = (staffRows ?? [])
-    .map(
-      (s: { department: string; role_title: string | null; name: string; phone?: string }) =>
-        `- ${s.department}: ${s.name}${s.role_title ? ` (${s.role_title})` : ""}${s.phone ? ` [Direct: ${s.phone}]` : ""}`,
-    )
-    .join("\n");
+  // Only department codes are needed by the model. Personal staff numbers,
+  // names and role text stay on the server, and routing is explicitly opt-in.
+  const { data: staffRows, error: staffError } =
+    settings.auto_department_handoff_enabled === true
+      ? await supabaseAdmin
+          .from("tenant_staff_routing_numbers")
+          .select("department")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+      : { data: null, error: null };
+  const { STAFF_DEPARTMENTS } = await import("./staff-alert-template");
+  const allowedDepartments = new Set(
+    (staffError ? [] : (staffRows ?? []))
+      .map((s) => s.department)
+      .filter((value): value is (typeof STAFF_DEPARTMENTS)[number] =>
+        STAFF_DEPARTMENTS.some((d) => d === value),
+      ),
+  );
+  const deptList = [...allowedDepartments].map((d) => `- ${d}`).join("\n");
 
   const deptSection =
-    settings.auto_department_handoff_enabled !== false && (staffRows?.length ?? 0) > 0
+    settings.auto_department_handoff_enabled === true && allowedDepartments.size > 0
       ? `\nInternal Departments Available:\n${deptList}\nIf the customer inquiry matches a department (Sales, Reception, Maintenance, IT Support, Technician, Department Head):\n1. Recommend or offer connecting them to that department in your reply.\n2. In your JSON response, set "department" to the matching department code: 'sales' | 'reception' | 'maintenance' | 'it_support' | 'technician' | 'department_head' | 'other'.\n3. Summarize their inquiry concisely in "customer_requirements" (under 200 characters).\nOtherwise leave department and customer_requirements empty.`
       : "";
 
@@ -589,7 +596,7 @@ Relevant website excerpts: ${JSON.stringify(websiteExcerpts)}`;
       return null;
 
     const repObj = reply as Record<string, unknown>;
-    const department =
+    const proposedDepartment =
       typeof repObj["department"] === "string" && repObj["department"].trim()
         ? repObj["department"].trim().toLowerCase()
         : null;
@@ -598,6 +605,11 @@ Relevant website excerpts: ${JSON.stringify(websiteExcerpts)}`;
         ? repObj["customer_requirements"].trim().slice(0, 300)
         : null;
 
+    const department =
+      proposedDepartment &&
+      allowedDepartments.has(proposedDepartment as (typeof STAFF_DEPARTMENTS)[number])
+        ? proposedDepartment
+        : null;
     return { text: reply.text.trim(), handoff: reply.handoff, department, customerRequirements };
   } catch {
     return null;
@@ -775,12 +787,14 @@ export async function ingestInboundMessage(args: IngestArgs) {
   let conversation: { id: string; bot_enabled: boolean; wa_number_id?: string | null } | null =
     null;
   if (channel === "web" && sessionId) {
-    const { data } = await supabaseAdmin
+    const { data, error: conversationReadError } = await supabaseAdmin
       .from("conversations")
-      .select("id, bot_enabled, contact_id, assigned_to, last_bot_reply_at, assigned_department")
+      .select("id, bot_enabled, contact_id")
       .eq("web_session_id", sessionId)
       .eq("tenant_id", tenantId)
       .maybeSingle();
+    if (conversationReadError)
+      throw new Error("Could not read the conversation. Retry this event.");
     if (data) conversation = data;
     if (!conversation) {
       if (!contactId) {
@@ -815,13 +829,15 @@ export async function ingestInboundMessage(args: IngestArgs) {
       }
     }
   } else {
-    const { data } = await supabaseAdmin
+    const { data, error: conversationReadError } = await supabaseAdmin
       .from("conversations")
-      .select("id, bot_enabled, wa_number_id, assigned_to, last_bot_reply_at, assigned_department")
+      .select("id, bot_enabled, wa_number_id")
       .eq("contact_id", contactId!)
       .eq("channel", "whatsapp")
       .eq("tenant_id", tenantId)
       .maybeSingle();
+    if (conversationReadError)
+      throw new Error("Could not read the conversation. Retry this event.");
     if (data) conversation = data;
     if (conversation && waNumberId && !conversation.wa_number_id) {
       await supabaseAdmin
@@ -904,9 +920,17 @@ export async function ingestInboundMessage(args: IngestArgs) {
     .update({
       last_message_at: new Date().toISOString(),
       last_message_preview: text.slice(0, 140),
-      status: "open",
     })
-    .eq("id", conversation.id);
+    .eq("id", conversation.id)
+    .eq("tenant_id", tenantId);
+  // A later message in the same batch must not undo the human handoff made
+  // by an earlier one. Keep pending chats in the team's queue.
+  await supabaseAdmin
+    .from("conversations")
+    .update({ status: "open" })
+    .eq("id", conversation.id)
+    .eq("tenant_id", tenantId)
+    .neq("status", "pending");
 
   if (contactId) {
     await supabaseAdmin
@@ -915,10 +939,91 @@ export async function ingestInboundMessage(args: IngestArgs) {
       .eq("id", contactId);
   }
 
+  return answerSavedInbound({
+    tenantId,
+    channel,
+    phone: phone ?? null,
+    name: name ?? null,
+    text,
+    waNumberId: waNumberId ?? null,
+    conv: conversation,
+    contactId,
+    contactCreated,
+    inboundId,
+    skipBotReply: args.skipBotReply === true,
+    settingsRead: await botSettings(),
+  });
+}
+
+// Batch processing first stores every new inbound message and applies every
+// human handoff, then answers the newest actually stored message per sender.
+// A concurrent duplicate therefore cannot strand an earlier new question.
+export async function replyToSavedWhatsAppMessage(args: {
+  tenantId: string;
+  conversationId: string;
+  waMessageId: string;
+  phone: string;
+  waNumberId: string;
+}) {
+  const { data: message, error } = await supabaseAdmin
+    .from("messages")
+    .select("id, body, conversation_id")
+    .eq("tenant_id", args.tenantId)
+    .eq("conversation_id", args.conversationId)
+    .eq("wa_message_id", args.waMessageId)
+    .eq("direction", "inbound")
+    .single();
+  const { data: conv, error: convError } = await supabaseAdmin
+    .from("conversations")
+    .select("id, bot_enabled, contact_id")
+    .eq("tenant_id", args.tenantId)
+    .eq("id", args.conversationId)
+    .single();
+  if (error || !message || convError || !conv)
+    throw new Error("Could not read the saved WhatsApp turn. Retry this event.");
+  return answerSavedInbound({
+    ...args,
+    channel: "whatsapp",
+    name: null,
+    text: message.body,
+    conv,
+    contactId: conv.contact_id,
+    contactCreated: false,
+    inboundId: message.id,
+    skipBotReply: false,
+    settingsRead: await readBotSettings(args.tenantId),
+  });
+}
+
+async function answerSavedInbound(args: {
+  tenantId: string;
+  channel: "whatsapp" | "web";
+  phone: string | null;
+  name: string | null;
+  text: string;
+  waNumberId: string | null;
+  conv: { id: string; bot_enabled: boolean };
+  contactId: string | null;
+  contactCreated: boolean;
+  inboundId: string;
+  skipBotReply: boolean;
+  settingsRead: Awaited<ReturnType<typeof readBotSettings>>;
+}) {
+  const {
+    tenantId,
+    channel,
+    phone,
+    name,
+    text,
+    waNumberId,
+    conv,
+    contactId,
+    contactCreated,
+    inboundId,
+  } = args;
   // Every exit from here reports which contact this message belongs to and
   // whether it was created just now, because the widget may only fill in
   // details for a contact its own chat created.
-  const conv = conversation;
   const result = async (reply: string | null, replyMessageId: string | null) => {
     if (replyMessageId) {
       // Written by the assistant, not typed by a person. On the website the
@@ -939,20 +1044,28 @@ export async function ingestInboundMessage(args: IngestArgs) {
   // handed to Meta by the caller: until that answer comes back it is only
   // "sending", and the caller records what Meta said.
   const replyStatus: WaMessageStatus = channel === "whatsapp" ? "sending" : "sent";
+  // One durable message row per saved inbound turn. Even simultaneous copies
+  // can only claim one outbound row; an uncertain send is never resent here.
+  const { messageIdFor } = await import("./wa-send.server");
+  const replyId = await messageIdFor(tenantId, conv.id, `bot:${inboundId}`);
+  const saveReply = async (body: string) => {
+    try {
+      return await storeOutbound(tenantId, conv.id, body, "bot", null, null, replyStatus, replyId);
+    } catch (error) {
+      if (error instanceof OutboundAlreadySaved) return null;
+      throw error;
+    }
+  };
   // The message is saved by now. If the settings cannot be read, the
   // assistant says nothing this time; it does not undo anything.
-  const settingsNow = await botSettings();
+  const settingsNow = args.settingsRead;
   const settings = settingsNow.ok ? settingsNow.settings : null;
   if (!settings || !settings.enabled || !conv.bot_enabled || !botIsConfigured(settings)) {
     return result(null, null);
   }
 
-  // 1. Intra-batch debounce: earlier messages from the same sender in this webhook payload skip bot generation
-  if (args.skipBotReply) {
-    return result(null, null);
-  }
-
-  // 2. Explicit human handoff request always runs first
+  // A human request takes priority even when this message is not the last in
+  // a batch. Batch grouping must never leave automation answering after it.
   if (needsHumanHandoff(text, settings.handoff_keywords ?? [])) {
     const { error } = await supabaseAdmin
       .from("conversations")
@@ -961,42 +1074,27 @@ export async function ingestInboundMessage(args: IngestArgs) {
       .eq("tenant_id", tenantId);
     if (error) return result(null, null);
     const handoff = "I’ve passed this to the team. They’ll reply here when they’re available.";
-    const replyMessageId = await storeOutbound(
-      tenantId,
-      conv.id,
-      handoff,
-      "bot",
-      null,
-      null,
-      replyStatus,
-    );
+    const replyMessageId = await saveReply(handoff);
+    if (!replyMessageId) return result(null, null);
     return result(handoff, replyMessageId);
   }
 
-  // 3. Multi-CRM coexistence: if an agent took over the conversation, stay quiet
-  if (settings.multi_crm_coexistence_enabled !== false) {
-    if ((conv as { assigned_to?: string | null }).assigned_to) {
-      return result(null, null);
-    }
-  }
+  if (args.skipBotReply) return result(null, null);
+  // Actual human takeover is bot_enabled=false, checked above. A local
+  // assignment does not prove a person replied, in FLAS or another app.
 
   // 4. Trivial acknowledgment check ("ok", "yes", "sure", "thanks", "👍")
   if (isTrivialAcknowledgment(text)) {
-    if (settings.multi_crm_coexistence_enabled !== false) {
+    if (
+      settings.multi_crm_coexistence_enabled === true &&
+      !/^(yes|yep|yeah|ya|sure|done|fine|perfect|okay|ok)[.!\s]*$/i.test(text.trim())
+    ) {
       return result(null, null);
     }
   }
 
-  // 5. Inter-webhook debounce window (debounce_window_seconds)
-  const debounceWindowSec =
-    typeof settings.debounce_window_seconds === "number" ? settings.debounce_window_seconds : 6;
-  const lastBotReplyAt = (conv as { last_bot_reply_at?: string | null }).last_bot_reply_at;
-  if (lastBotReplyAt && debounceWindowSec > 0) {
-    const elapsedSec = (Date.now() - new Date(lastBotReplyAt).getTime()) / 1000;
-    if (elapsedSec < debounceWindowSec) {
-      return result(null, null);
-    }
-  }
+  // Separate webhook requests are answered normally. There is no durable
+  // delayed worker here, so a timestamp must never discard the latest question.
 
   let generated: Awaited<ReturnType<typeof generateBotReply>> = null;
   try {
@@ -1015,65 +1113,70 @@ export async function ingestInboundMessage(args: IngestArgs) {
   const reply =
     generated?.text ??
     "I’ll leave this with the team so they can help. They’ll reply here when they’re available.";
-  const replyMessageId = await storeOutbound(
-    tenantId,
-    conv.id,
-    reply,
-    "bot",
-    null,
-    null,
-    replyStatus,
-  );
+  const replyMessageId = await saveReply(reply);
+  if (!replyMessageId) return result(null, null);
 
-  // Track last_bot_reply_at and assigned_department on conversation
-  await supabaseAdmin
-    .from("conversations")
-    .update({
-      last_bot_reply_at: new Date().toISOString(),
-      ...(generated?.department ? { assigned_department: generated.department } : {}),
-    })
-    .eq("id", conv.id)
-    .eq("tenant_id", tenantId);
+  // Only report a department after a checked save; old schemas still accept
+  // inbound messages and normal replies with department routing disabled.
+  const assignment = generated?.department
+    ? await supabaseAdmin
+        .from("conversations")
+        .update({
+          assigned_department: generated.department,
+        })
+        .eq("id", conv.id)
+        .eq("tenant_id", tenantId)
+        .select("id")
+        .single()
+    : null;
 
   // Dispatch staff WhatsApp alert if department was identified and staff alerts are enabled
-  if (settings.staff_alert_whatsapp_enabled !== false && generated?.department && waNumberId) {
+  if (
+    settings.staff_alert_whatsapp_enabled === true &&
+    settings.staff_alert_actor_id &&
+    generated?.department &&
+    assignment?.data &&
+    !assignment.error &&
+    waNumberId
+  ) {
     try {
       const { data: staffList } = await supabaseAdmin
         .from("tenant_staff_routing_numbers")
-        .select("name, phone, department, role_title, notify_on_lead, is_active")
+        .select("id, phone, department")
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
         .eq("notify_on_lead", true);
 
-      const deptStaff = (staffList ?? []).filter(
+      const targetStaff = (staffList ?? []).filter(
         (s: { department: string }) => s.department === generated.department,
       );
-      const targetStaff =
-        deptStaff.length > 0
-          ? deptStaff
-          : (staffList ?? []).filter(
-              (s: { department: string }) => s.department === "department_head",
-            );
-
       if (targetStaff.length > 0) {
-        const { substituteStaffAlertTags } = await import("./staff-alert-template");
-        const alertBody = substituteStaffAlertTags(settings.staff_alert_template || "", {
-          customerName: name || phone || "Customer",
-          customerPhone: phone || "Not provided",
-          department: generated.department,
-          customerRequirements: generated.customerRequirements || text,
-          timestamp: new Date().toLocaleString(),
-        });
-
-        const creds = await resolveWaCredentials(tenantId, waNumberId);
+        const { sendStaffAlert } = await import("./staff-alert-delivery.server");
+        const seen = new Set<string>();
         for (const staff of targetStaff) {
-          if (staff.phone && staff.phone.replace(/\D/g, "") !== (phone || "").replace(/\D/g, "")) {
-            await deliverWhatsAppText(staff.phone, alertBody, creds);
+          const digits = staff.phone.replace(/\D/g, "");
+          if (digits && !seen.has(digits) && digits !== (phone || "").replace(/\D/g, "")) {
+            seen.add(digits);
+            await sendStaffAlert({
+              tenantId,
+              userId: settings.staff_alert_actor_id,
+              staffId: staff.id,
+              clientRef: `staff-alert:${inboundId}`,
+              template: settings.staff_alert_template || "",
+              lead: {
+                customerName: name || phone || null,
+                customerPhone: phone ?? null,
+                customerRequirements: generated.customerRequirements || text,
+              },
+            });
           }
         }
       }
     } catch (staffAlertErr) {
-      console.warn("[staff-alert] Failed to deliver WhatsApp alert to staff:", staffAlertErr);
+      console.warn(
+        "[staff-alert] Staff alert could not be completed",
+        staffAlertErr instanceof Error ? staffAlertErr.name : "error",
+      );
     }
   }
 

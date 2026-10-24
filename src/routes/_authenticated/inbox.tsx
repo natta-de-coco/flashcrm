@@ -1,4 +1,5 @@
 import { useConversationDrafts } from "@/hooks/useConversationDrafts";
+import { staffDepartmentLabelKey } from "@/lib/staff-alert-template";
 import { useTenant } from "@/hooks/useTenant";
 import {
   formatInboxTime as formatTime,
@@ -1173,7 +1174,7 @@ export function InboxPage() {
                     variant="outline"
                     className="gap-1 border-primary/30 bg-primary/10 text-primary text-[10px] font-medium capitalize"
                   >
-                    {c.assigned_department.replace(/_/g, " ")}
+                    {i18n.t(staffDepartmentLabelKey(c.assigned_department))}
                   </Badge>
                 )}
                 {c.bot_enabled && (
@@ -1241,7 +1242,7 @@ export function InboxPage() {
                         variant="outline"
                         className="gap-1 border-primary/30 bg-primary/10 text-primary text-[10px] font-medium capitalize shrink-0"
                       >
-                        {active.assigned_department.replace(/_/g, " ")}
+                        {i18n.t(staffDepartmentLabelKey(active.assigned_department))}
                       </Badge>
                     )}
                   </div>

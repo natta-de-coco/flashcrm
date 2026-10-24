@@ -8,6 +8,28 @@
 export type StaffDepartment =
   "sales" | "reception" | "maintenance" | "it_support" | "technician" | "department_head" | "other";
 
+export const STAFF_DEPARTMENTS = [
+  "sales",
+  "reception",
+  "maintenance",
+  "it_support",
+  "technician",
+  "department_head",
+  "other",
+] as const;
+export function staffDepartmentLabelKey(department: string) {
+  const keys = {
+    sales: "staffRouting.sales",
+    reception: "staffRouting.reception",
+    maintenance: "staffRouting.maintenance",
+    it_support: "staffRouting.it",
+    technician: "staffRouting.technician",
+    department_head: "staffRouting.head",
+    other: "staffRouting.other",
+  } as const;
+  return Object.hasOwn(keys, department) ? keys[department as StaffDepartment] : keys.other;
+}
+
 export const DEFAULT_STAFF_ALERT_TEMPLATE =
   "🚨 *New Customer Request - {{department}}*\n" +
   "👤 *Customer:* {{customer_name}}\n" +
@@ -45,7 +67,8 @@ export function substituteStaffAlertTags(
 
   for (const [key, val] of Object.entries(replacements)) {
     const regex = new RegExp(`{{\\s*${key}\\s*}}`, "gi");
-    result = result.replace(regex, val);
+    // A lead containing "$&" is text, never a replacement-pattern instruction.
+    result = result.replace(regex, () => val);
   }
 
   return result;
